@@ -149,7 +149,7 @@ Verified on-disk formats are documented in [docs/formats.md](docs/formats.md).
 ### 4.3 OpenCode
 - **Root:** `$XDG_DATA_HOME/opencode` or `~/.local/share/opencode` (the same
   path is used on macOS).
-- **Three storage generations. Support all of them, newest first:**
+- **Three storage generations (v2 and v1 are read; legacy is detected only, M1-06):**
   1. `opencode.db` → `session_v2` + `session_message` (`type` ∈ user,
      assistant, compaction, synthetic, system, idle, …; `data` is JSON with a
      `content[]` of text/reasoning/tool entries). *(v2.x)*
@@ -157,7 +157,8 @@ Verified on-disk formats are documented in [docs/formats.md](docs/formats.md).
      reasoning, tool, patch, file, step-start/finish, compaction). *(v1.x)*
   3. Legacy JSON files: `storage/session/<projectID>/<id>.json`,
      `storage/message/<sessionID>/*.json`, `storage/part/<messageID>/*.json`.
-  - Dedupe by session id and prefer the newest generation. Here all 60 v1
+  - Dedupe by session id: the v2 row wins unless the v1 row's `time_updated`
+    is strictly newer (Scan and Load share this rule). Here all 60 v1
     sessions also exist among the 64 in v2.
 - Metadata comes directly from the session row: `directory`, `title`,
   `parent_id` (subagents), `model`, `agent`, `cost`, `tokens_*`,
@@ -238,7 +239,7 @@ Three-pane layout:
 | Open terminal in cwd | M3 | Configurable terminal command (`x-terminal-emulator`, `gnome-terminal`, `kitty`, …; `open -a Terminal` on macOS). |
 | Reveal source file | M1 | `xdg-open` / `open -R`. |
 | Export session | M3 | Markdown, JSON (unified model), HTML. |
-| Delete / archive | M4, opt-in | Destructive. Requires confirmation. Claude and Codex files are moved to the OS trash (not `rm`). OpenCode deletion goes through `opencode` CLI/API if possible rather than direct DB writes. Never run while a session is live. |
+| Delete / archive | M4, opt-in | Destructive. Requires confirmation. Claude files are moved to the OS trash (not `rm`). Codex uses `codex delete`, and OpenCode deletes v2 copies via `opencode session delete` and v1 rows via one SQL transaction; both are permanent and need the separate `allow_permanent_delete` opt-in. Never run while a session is live or recently updated. |
 
 ---
 
@@ -285,7 +286,7 @@ Three-pane layout:
   Centralize them in `internal/paths` with `_darwin.go` / `_linux.go`.
 - Cache at `~/Library/Caches/agent-sessions`, config at `~/Library/Application Support/agent-sessions`.
 - Build a universal binary (arm64 + amd64). Code signing and notarization are needed for distribution.
-- Live-pid check via `kill(pid, 0)` works on both platforms.
+- Live-pid check: Linux reads `/proc/<pid>` and matches the start time to guard pid reuse; macOS needs an equivalent (M5-01/02).
 
 ## 12. Testing
 

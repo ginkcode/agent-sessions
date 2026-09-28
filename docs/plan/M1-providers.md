@@ -397,7 +397,8 @@ func (p *Provider) Load(ctx context.Context, ref model.SessionRef) (*model.Trans
 
 1. Detect generations and scan newest to oldest: v2 → v1 → legacy. Build
    `byID map[string]model.SessionMeta`, keeping the **first** generation of
-   each ID; never add counts across generations. `Load` resolves that same
+   each ID (*as built:* v2 wins unless the v1 row's `time_updated` is
+   strictly newer, because an unmigrated 1.x client can keep writing v1); never add counts across generations. `Load` resolves that same
    priority at call time and tolerates a generation disappearing by trying
    the next available generation. Keep one ID→generation/source map per
    provider instance for `Blob`, or recompute with bounded probes when a
