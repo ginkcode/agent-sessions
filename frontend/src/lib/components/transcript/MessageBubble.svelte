@@ -109,12 +109,8 @@
     border: 1px solid var(--border-color);
   }
 
-  .message-bubble-wrapper.role-system {
-    align-items: center;
-  }
-
   .message-bubble-wrapper.role-system .message-card {
-    max-width: 90%;
+    width: 100%;
     background-color: var(--bg-secondary);
     border: 1px dashed var(--border-color);
   }

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { tick } from 'svelte';
   import type { SessionRef, Message } from '../../types';
   import { appState } from '../../stores/appState.svelte';
   import { manage } from '../../stores/manage.svelte';
@@ -11,6 +12,9 @@
   import DeleteConfirmDialog from '../common/DeleteConfirmDialog.svelte';
 
   const PAGE_SIZE = 50;
+  // Larger pages when jumping to the end, to cut round-trips on long sessions.
+  const JUMP_PAGE_SIZE = 500;
+  const SHOW_BOTTOM_BTN_PX = 400;
 
   let messages = $state<Message[]>([]);
   let isLoading = $state(false);
@@ -21,6 +25,8 @@
   let resumeCopied = $state(false);
   let containerEl: HTMLElement | null = $state(null);
   let showScrollBottomBtn = $state(false);
+  let jumpingToBottom = $state(false);
+  let pendingLoad: Promise<void> | null = null;
 
   let currentRefKey = $derived(
     appState.selectedSessionRef
@@ -68,40 +74,76 @@
     }
   }
 
-  async function loadMoreMessages() {
+  // Returns the in-flight load when one is running so callers can await it.
+  function loadMoreMessages(limit = PAGE_SIZE): Promise<void> {
+    if (pendingLoad) return pendingLoad;
     const ref = appState.selectedSessionRef;
-    if (!ref || isLoadingMore || !hasMore) return;
+    if (!ref || !hasMore) return Promise.resolve();
 
     isLoadingMore = true;
-    try {
-      const page = await api.getMessages(ref, messages.length, PAGE_SIZE);
-      if (
-        appState.selectedSessionRef?.agent === ref.agent &&
-        appState.selectedSessionRef?.id === ref.id
-      ) {
-        messages = [...messages, ...(page.messages || [])];
-        hasMore = page.hasMore;
+    pendingLoad = (async () => {
+      try {
+        const page = await api.getMessages(ref, messages.length, limit);
+        if (
+          appState.selectedSessionRef?.agent === ref.agent &&
+          appState.selectedSessionRef?.id === ref.id
+        ) {
+          messages = [...messages, ...(page.messages || [])];
+          hasMore = page.hasMore;
+        }
+      } catch (err: any) {
+        console.error('Failed to load more messages:', err);
+      } finally {
+        isLoadingMore = false;
+        pendingLoad = null;
       }
-    } catch (err: any) {
-      console.error('Failed to load more messages:', err);
-    } finally {
-      isLoadingMore = false;
-    }
+    })();
+    return pendingLoad;
+  }
+
+  function distanceFromBottom(el: HTMLElement): number {
+    return el.scrollHeight - el.scrollTop - el.clientHeight;
   }
 
   function handleScroll(e: Event) {
-    const el = e.currentTarget as HTMLElement;
-    const scrollBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
-    showScrollBottomBtn = scrollBottom > 400;
+    const scrollBottom = distanceFromBottom(e.currentTarget as HTMLElement);
+    showScrollBottomBtn = scrollBottom > SHOW_BOTTOM_BTN_PX;
 
     if (scrollBottom < 250 && hasMore && !isLoadingMore && !isLoading) {
       loadMoreMessages();
     }
   }
 
-  function scrollToBottom() {
-    if (containerEl) {
-      containerEl.scrollTo({ top: containerEl.scrollHeight, behavior: 'smooth' });
+  // Content can grow without a scroll event (lazy pages, meta toggle), so
+  // re-evaluate the button once the DOM reflects the change.
+  $effect(() => {
+    void messages.length;
+    void showMeta;
+    void tick().then(() => {
+      if (containerEl) {
+        showScrollBottomBtn = distanceFromBottom(containerEl) > SHOW_BOTTOM_BTN_PX;
+      }
+    });
+  });
+
+  // Load the remaining pages first so "Bottom" reaches the real end of the
+  // transcript rather than the end of what happens to be loaded.
+  async function scrollToBottom() {
+    if (jumpingToBottom) return;
+    jumpingToBottom = true;
+    const key = currentRefKey;
+    try {
+      while (hasMore && currentRefKey === key) {
+        const before = messages.length;
+        await loadMoreMessages(JUMP_PAGE_SIZE);
+        if (messages.length === before) break;
+      }
+      await tick();
+      if (containerEl && currentRefKey === key) {
+        containerEl.scrollTo({ top: containerEl.scrollHeight, behavior: 'smooth' });
+      }
+    } finally {
+      jumpingToBottom = false;
     }
   }
 
@@ -208,18 +250,20 @@
           </div>
         {/if}
       </div>
-
-      {#if showScrollBottomBtn}
-        <button
-          type="button"
-          class="scroll-bottom-pill"
-          title="Scroll to bottom"
-          onclick={scrollToBottom}
-        >
-          ↓ Bottom
-        </button>
-      {/if}
     </div>
+
+    <!-- Outside the scroll area so it stays pinned to the pane corner. -->
+    {#if showScrollBottomBtn || jumpingToBottom}
+      <button
+        type="button"
+        class="scroll-bottom-pill"
+        title="Scroll to bottom"
+        disabled={jumpingToBottom}
+        onclick={scrollToBottom}
+      >
+        {jumpingToBottom ? 'Loading…' : '↓ Bottom'}
+      </button>
+    {/if}
   {/if}
 
   <DeleteConfirmDialog
@@ -306,7 +350,11 @@
     z-index: 10;
   }
 
-  .scroll-bottom-pill:hover {
+  .scroll-bottom-pill:disabled {
+    cursor: progress;
+  }
+
+  .scroll-bottom-pill:hover:not(:disabled) {
     transform: translateY(-2px);
     opacity: 0.95;
   }
