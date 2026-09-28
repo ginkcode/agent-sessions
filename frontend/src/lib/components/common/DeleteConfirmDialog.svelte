@@ -1,7 +1,7 @@
 <script lang="ts">
   import {
     summarizePreview,
-    needsTypedDelete,
+    isPermanentDelete,
     formatDeleteResultSummary,
   } from '../../manage';
   import { formatBytes } from '../../format';
@@ -14,16 +14,8 @@
 
   let { open = false, onClose }: Props = $props();
 
-  let typedText = $state('');
-
   let summary = $derived(summarizePreview(manage.preview));
-  let requiresTyped = $derived(needsTypedDelete(manage.preview));
-
-  $effect(() => {
-    if (open) {
-      typedText = '';
-    }
-  });
+  let permanent = $derived(isPermanentDelete(manage.preview));
 
   function handleCancel() {
     manage.dismissDialog();
@@ -33,7 +25,7 @@
   // The dialog stays open after deleting so per-item results are visible;
   // the user closes it with Done.
   async function handleConfirm() {
-    await manage.executeDelete(typedText);
+    await manage.executeDelete();
   }
 </script>
 
@@ -201,21 +193,11 @@
             {formatBytes(manage.preview.totalBytes)} to free
           </p>
 
-          {#if requiresTyped}
-            <div class="typed-confirm">
-              <label for="delete-confirm-input">
-                This action cannot be undone. Type
-                <code>DELETE</code> to confirm:
-              </label>
-              <input
-                id="delete-confirm-input"
-                type="text"
-                autocomplete="off"
-                spellcheck="false"
-                placeholder="DELETE"
-                bind:value={typedText}
-              />
-            </div>
+          {#if permanent}
+            <p class="permanent-note">
+              Sessions without a Trash copy are deleted permanently. This
+              action cannot be undone.
+            </p>
           {:else}
             <p class="soft-confirm-note">
               Confirm to move the selected
@@ -239,16 +221,12 @@
           <button
             type="button"
             class="btn danger-btn"
-            disabled={
-              !summary.canProceed ||
-              manage.deleting ||
-              (requiresTyped && typedText.trim() !== 'DELETE')
-            }
+            disabled={!summary.canProceed || manage.deleting}
             onclick={handleConfirm}
           >
             {manage.deleting
               ? 'Deleting…'
-              : requiresTyped
+              : permanent
                 ? 'Delete Permanently'
                 : 'Move to Trash'}
           </button>
@@ -473,39 +451,11 @@
     font-size: 0.8rem;
   }
 
-  .typed-confirm {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-  }
-
-  .typed-confirm label {
-    font-size: 0.8rem;
-    color: var(--text-primary);
-  }
-
-  .typed-confirm code {
-    font-family: var(--font-mono);
-    background: var(--bg-tertiary);
-    padding: 1px 5px;
-    border-radius: 3px;
-    font-weight: 600;
+  .permanent-note {
+    margin: 0;
     color: #ef4444;
-  }
-
-  .typed-confirm input {
-    border: 1px solid var(--border-color);
-    border-radius: 4px;
-    background: var(--bg-secondary);
-    color: var(--text-primary);
-    padding: 6px 10px;
-    font-family: var(--font-mono);
-    font-size: 0.85rem;
-  }
-
-  .typed-confirm input:focus {
-    outline: none;
-    border-color: #ef4444;
+    font-size: 0.8rem;
+    font-weight: 500;
   }
 
   .dialog-footer {

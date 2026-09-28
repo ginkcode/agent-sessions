@@ -10,7 +10,6 @@ import {
   refKey,
   refsEqual,
   nextSelectionAfterDelete,
-  needsTypedDelete,
   errorText,
 } from '../manage';
 import { appState } from './appState.svelte';
@@ -171,16 +170,8 @@ export class ManageStore {
     }
   }
 
-  async executeDelete(typedText: string = ''): Promise<boolean> {
+  async executeDelete(): Promise<boolean> {
     if (!this.preview) return false;
-
-    // Check if typed confirmation is required
-    const requiresTyped = needsTypedDelete(this.preview);
-
-    if (requiresTyped && typedText.trim() !== 'DELETE') {
-      this.deleteError = 'Please type DELETE exactly to confirm permanent deletion.';
-      return false;
-    }
 
     this.deleting = true;
     this.deleteError = null;

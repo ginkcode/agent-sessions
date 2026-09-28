@@ -46,7 +46,7 @@
           />
           Allow permanent deletion (cannot be undone)
         </label>
-        <p class="hint">Codex and OpenCode sessions have no Trash copy. Deleting them requires typing DELETE.</p>
+        <p class="hint">Codex and OpenCode sessions have no Trash copy. Deleting them is permanent.</p>
       </div>
       <footer><button type="button" onclick={close}>Close</button></footer>
     </div>

@@ -11,7 +11,7 @@ import {
   filterSessionsByAge,
   summarizePreview,
   errorText,
-  needsTypedDelete,
+  isPermanentDelete,
   formatDeleteResultSummary,
 } from '../src/lib/manage.ts';
 import { MockBackendAPI } from '../src/lib/mock/mockApi.ts';
@@ -207,12 +207,12 @@ test('manage helpers filter age, select next neighbour and summarize preview', (
     canProceed: true, warnings: ['Permanent'],
   });
   assert.equal(summarizePreview({ ...preview, items: [preview.items[2]] }).canProceed, false);
-  assert.equal(needsTypedDelete({ ...preview, items: [preview.items[0], preview.items[2]] }), false);
+  assert.equal(isPermanentDelete({ ...preview, items: [preview.items[0], preview.items[2]] }), false);
   assert.equal(errorText('preview is stale; retry the operation', 'x'), 'preview is stale; retry the operation');
   assert.equal(errorText(new Error('boom'), 'x'), 'boom');
   assert.equal(errorText(undefined, 'x'), 'x');
-  assert.equal(needsTypedDelete(preview), true);
-  assert.equal(needsTypedDelete({ ...preview, items: [preview.items[0]] }), false);
+  assert.equal(isPermanentDelete(preview), true);
+  assert.equal(isPermanentDelete({ ...preview, items: [preview.items[0]] }), false);
   assert.equal(formatDeleteResultSummary({ items: [], deleted: 1, failed: 1, freedBytes: 10, forgotten: [a] }), '1 session removed, 1 failed, 1 forgotten');
 });
 

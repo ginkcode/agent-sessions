@@ -142,11 +142,10 @@ export function summarizePreview(preview: DeletePreview | null): {
 }
 
 /**
- * Determines whether a typed "DELETE" confirmation is required.
- * Strict requirement: typing "DELETE" is required when any item in the preview
- * is permanent (irreversible), or when all items are permanently deleted.
+ * True when any actionable item in the preview is deleted permanently (no
+ * Trash copy), so the dialog warns that the action cannot be undone.
  */
-export function needsTypedDelete(preview: DeletePreview | null): boolean {
+export function isPermanentDelete(preview: DeletePreview | null): boolean {
   return Boolean(preview?.items.some((item) => !item.reversible && !item.blocked));
 }
 
