@@ -1,21 +1,23 @@
 /* frontend/src/style.css tokens */
 :root {
+  /* Surfaces, borders and muted text are stepped far enough apart to stay
+     distinguishable on bright displays (muted text meets WCAG AA). */
   --bg-primary: #ffffff;
-  --bg-secondary: #f8fafc;
-  --bg-tertiary: #f1f5f9;
-  --border-color: #e2e8f0;
-  --text-primary: #0f172a;
-  --text-secondary: #475569;
-  --text-muted: #94a3b8;
-  --accent-color: #2563eb;
-  --accent-hover: #1d4ed8;
-  --agent-claude: #d97757;
-  --agent-codex: #10a37f;
-  --agent-opencode: #3b82f6;
-  --badge-bg: #e2e8f0;
-  --hover-bg: rgba(0, 0, 0, 0.04);
-  --active-bg: rgba(37, 99, 235, 0.1);
-  --status-live: #10b981;
+  --bg-secondary: #f1f3f6;
+  --bg-tertiary: #e4e8ee;
+  --border-color: #c9d1dc;
+  --text-primary: #0b1220;
+  --text-secondary: #334155;
+  --text-muted: #5f6b7c;
+  --accent-color: #1d4ed8;
+  --accent-hover: #1e40af;
+  --agent-claude: #b8532f;
+  --agent-codex: #0b7a5e;
+  --agent-opencode: #1d4ed8;
+  --badge-bg: #d9dfe7;
+  --hover-bg: rgba(15, 23, 42, 0.07);
+  --active-bg: rgba(29, 78, 216, 0.14);
+  --status-live: #047857;
   --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
   color-scheme: light;
@@ -35,6 +37,9 @@
   --text-muted: #8f8f8f;
   --accent-color: #3b82f6;
   --accent-hover: #60a5fa;
+  --agent-claude: #d97757;
+  --agent-codex: #10a37f;
+  --agent-opencode: #3b82f6;
   --badge-bg: #454545;
   --hover-bg: rgba(255, 255, 255, 0.05);
   --active-bg: rgba(59, 130, 246, 0.15);
