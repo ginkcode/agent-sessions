@@ -153,6 +153,43 @@ func TestListGroups(t *testing.T) {
 	if len(flat) != 3 {
 		t.Fatalf("flat groups count = %d, want 3", len(flat))
 	}
+	for _, n := range flat {
+		if n.Kind != "session" {
+			t.Errorf("flat node %q kind = %q, want session", n.Key, n.Kind)
+		}
+	}
+
+	// Kind round-trips so the UI can style directories and agent groups.
+	for _, tc := range []struct {
+		mode        GroupMode
+		root, child string
+	}{
+		{GroupModeDirAgent, "directory", "agent"},
+		{GroupModeAgentDir, "agent", "directory"},
+	} {
+		nodes, err := svc.ListGroups(tc.mode, FilterOpts{})
+		if err != nil {
+			t.Fatalf("ListGroups %s: %v", tc.mode, err)
+		}
+		for _, root := range nodes {
+			if root.Kind != tc.root {
+				t.Errorf("%s root %q kind = %q, want %s", tc.mode, root.Key, root.Kind, tc.root)
+			}
+			if len(root.Children) == 0 {
+				t.Fatalf("%s root %q has no children", tc.mode, root.Key)
+			}
+			for _, child := range root.Children {
+				if child.Kind != tc.child {
+					t.Errorf("%s child %q kind = %q, want %s", tc.mode, child.Key, child.Kind, tc.child)
+				}
+				for _, leaf := range child.Children {
+					if leaf.Kind != "session" {
+						t.Errorf("%s leaf %q kind = %q, want session", tc.mode, leaf.Key, leaf.Kind)
+					}
+				}
+			}
+		}
+	}
 }
 
 func TestListSessions(t *testing.T) {

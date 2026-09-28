@@ -34,6 +34,7 @@ type SortOpts struct {
 type GroupNode struct {
 	Key          string             `json:"key"`
 	Label        string             `json:"label"`
+	Kind         string             `json:"kind,omitempty"`
 	Secondary    string             `json:"secondary,omitempty"`
 	Agent        string             `json:"agent,omitempty"`
 	CWD          string             `json:"cwd,omitempty"`

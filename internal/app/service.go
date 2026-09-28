@@ -367,6 +367,7 @@ func convertGroupNode(n group.Node) GroupNode {
 	out := GroupNode{
 		Key:          n.Key,
 		Label:        n.Label,
+		Kind:         string(n.Kind),
 		Agent:        string(n.Agent),
 		CWD:          n.Path,
 		CWDMissing:   n.Missing,

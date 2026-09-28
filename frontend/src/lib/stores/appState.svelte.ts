@@ -7,6 +7,9 @@ import type {
   SessionRef,
 } from '../types';
 import { api } from '../api';
+import { defaultCollapsedKeys, pruneKeys } from '../tree';
+
+const COLLAPSED_STORAGE_KEY = 'agent-sessions:tree-collapsed';
 
 export class AppState {
   groupMode = $state<GroupMode>('dir-agent');
@@ -18,7 +21,10 @@ export class AppState {
   sessions = $state<SessionMeta[]>([]);
   // Catalog-wide per-agent totals, independent of the selected group.
   agentCounts = $state<Record<string, number>>({});
+  // Manual toggles only; each key flips that node's default collapse state.
   collapsedKeys = $state<Set<string>>(new Set());
+  // Large groups that start collapsed, recomputed whenever groups load.
+  defaultCollapsed = $state<Set<string>>(new Set());
 
   filter = $state<FilterOpts>({});
   sort = $state<SortOpts>({ field: 'updated', desc: true });
@@ -28,6 +34,7 @@ export class AppState {
   error = $state<string | null>(null);
 
   async init(): Promise<void> {
+    this.collapsedKeys = loadCollapsedKeys();
     // Backend re-scans on startup; when a later scan finishes it refreshes
     // groups/sessions so new or updated transcripts appear without restart.
     api.onEvent('scan:ready', () => {
@@ -41,6 +48,9 @@ export class AppState {
   async setGroupMode(mode: GroupMode): Promise<void> {
     this.groupMode = mode;
     this.selectedGroupKey = null;
+    // Group keys are mode-specific, so toggles from another mode are stale.
+    this.collapsedKeys = new Set();
+    saveCollapsedKeys(this.collapsedKeys);
     await this.loadGroups();
     await this.loadSessions();
   }
@@ -77,6 +87,7 @@ export class AppState {
       next.add(key);
     }
     this.collapsedKeys = next;
+    saveCollapsedKeys(next);
   }
 
   async setFilter(update: Partial<FilterOpts>): Promise<void> {
@@ -100,6 +111,18 @@ export class AppState {
       ]);
       this.groups = groups;
       this.agentCounts = counts;
+      this.defaultCollapsed = defaultCollapsedKeys(groups);
+      // A narrowing filter hides nodes that still exist, so only prune
+      // toggles for vanished nodes against the unfiltered tree. An empty
+      // tree (e.g. before the first scan) is not evidence that nodes vanished.
+      const f = this.filter;
+      if (groups.length > 0 && !f.agent && !f.query && !f.liveOnly && !f.hasSubagents) {
+        const pruned = pruneKeys(this.collapsedKeys, groups);
+        if (pruned.size !== this.collapsedKeys.size) {
+          this.collapsedKeys = pruned;
+          saveCollapsedKeys(pruned);
+        }
+      }
       this.error = null;
     } catch (err: any) {
       this.error = err?.message || 'Failed to load groups';
@@ -127,6 +150,28 @@ export class AppState {
     } finally {
       this.loadingSessions = false;
     }
+  }
+}
+
+function loadCollapsedKeys(): Set<string> {
+  if (typeof localStorage === 'undefined') return new Set();
+  try {
+    const parsed = JSON.parse(localStorage.getItem(COLLAPSED_STORAGE_KEY) || '[]');
+    if (Array.isArray(parsed)) {
+      return new Set(parsed.filter((k): k is string => typeof k === 'string'));
+    }
+  } catch {
+    // Ignore JSON parse errors and start from defaults
+  }
+  return new Set();
+}
+
+function saveCollapsedKeys(keys: Set<string>): void {
+  if (typeof localStorage === 'undefined') return;
+  try {
+    localStorage.setItem(COLLAPSED_STORAGE_KEY, JSON.stringify([...keys]));
+  } catch {
+    // Storage quota or disabled
   }
 }
 

@@ -1,12 +1,15 @@
 <script lang="ts">
   import type { GroupNode } from '../../types';
   import GroupNodeItem from './GroupNodeItem.svelte';
+  import AgentIcon from '../common/AgentIcon.svelte';
+  import { isCollapsed as isKeyCollapsed, nodeKind } from '../../tree';
 
   interface Props {
     node: GroupNode;
     level?: number;
     selectedKey: string | null;
     collapsedKeys: Set<string>;
+    defaultCollapsed: Set<string>;
     onSelect: (node: GroupNode) => void;
     onToggleCollapse: (key: string) => void;
   }
@@ -16,12 +19,14 @@
     level = 0,
     selectedKey,
     collapsedKeys,
+    defaultCollapsed,
     onSelect,
     onToggleCollapse,
   }: Props = $props();
 
   let hasChildren = $derived(Boolean(node.children && node.children.length > 0));
-  let isCollapsed = $derived(collapsedKeys.has(node.key));
+  let kind = $derived(nodeKind(node));
+  let isCollapsed = $derived(isKeyCollapsed(node.key, collapsedKeys, defaultCollapsed));
   let isSelected = $derived(selectedKey === node.key);
 
   function handleRowClick() {
@@ -50,6 +55,8 @@
 >
   <div
     class="node-row"
+    class:dir={kind === 'directory'}
+    class:group={kind === 'agent'}
     class:selected={isSelected}
     class:missing={node.cwdMissing}
     style="padding-left: {level * 12 + 6}px"
@@ -77,14 +84,14 @@
     {/if}
 
     <div class="icon-area">
-      {#if node.agent && !node.cwd}
+      {#if kind === 'agent'}
         <span class="agent-chip agent-{node.agent}">{formatAgent(node.agent)}</span>
-      {:else if node.cwdMissing}
+      {:else if kind === 'directory' && node.cwdMissing}
         <span class="node-icon missing" title="Directory no longer exists on disk">⚠️</span>
-      {:else if node.cwd}
+      {:else if kind === 'directory'}
         <span class="node-icon folder">📁</span>
       {:else}
-        <span class="node-icon doc">📄</span>
+        <AgentIcon agent={node.agent} />
       {/if}
     </div>
 
@@ -108,6 +115,7 @@
           level={level + 1}
           {selectedKey}
           {collapsedKeys}
+          {defaultCollapsed}
           {onSelect}
           {onToggleCollapse}
         />
@@ -136,6 +144,18 @@
     font-size: 0.825rem;
     color: var(--text-secondary);
     transition: background-color 0.1s ease, color 0.1s ease;
+  }
+
+  /* Directories read as section headers; agent groups sit beneath them. */
+  .node-row.dir {
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+
+  .node-row.group {
+    font-weight: 500;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
   }
 
   .node-row:hover {

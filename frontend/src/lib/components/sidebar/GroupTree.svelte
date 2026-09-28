@@ -56,6 +56,7 @@
           level={0}
           selectedKey={appState.selectedGroupKey}
           collapsedKeys={appState.collapsedKeys}
+          defaultCollapsed={appState.defaultCollapsed}
           onSelect={handleSelect}
           onToggleCollapse={handleToggleCollapse}
         />

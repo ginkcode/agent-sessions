@@ -27,6 +27,7 @@ export class MockBackendAPI {
       return filtered.map((s) => ({
         key: `flat:${s.ref.agent}:${s.ref.id}`,
         label: s.title || s.ref.id,
+        kind: 'session',
         agent: s.ref.agent,
         cwd: s.cwd,
         cwdMissing: s.cwdMissing,
@@ -55,6 +56,7 @@ export class MockBackendAPI {
           children.push({
             key: `agent-dir:${agent}:${cwd}`,
             label: cwd.split('/').pop() || cwd,
+            kind: 'directory',
             secondary: cwd,
             agent,
             cwd,
@@ -65,6 +67,7 @@ export class MockBackendAPI {
         }
         roots.push({
           key: `agent-dir:${agent}`,
+          kind: 'agent',
           label: agent === 'claude-code' ? 'Claude Code' : agent === 'codex' ? 'Codex' : 'OpenCode',
           agent,
           sessionCount: agentSessions.length,
@@ -94,6 +97,7 @@ export class MockBackendAPI {
       for (const [agent, agentSessions] of agentMap) {
         children.push({
           key: `dir-agent:${cwd}:${agent}`,
+          kind: 'agent',
           label: agent === 'claude-code' ? 'Claude Code' : agent === 'codex' ? 'Codex' : 'OpenCode',
           agent,
           cwd,
@@ -103,6 +107,7 @@ export class MockBackendAPI {
       }
       roots.push({
         key: `dir-agent:${cwd}`,
+        kind: 'directory',
         label: cwd.split('/').pop() || cwd,
         secondary: cwd,
         cwd,

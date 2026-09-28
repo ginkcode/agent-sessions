@@ -15,6 +15,13 @@ import {
   formatDeleteResultSummary,
 } from '../src/lib/manage.ts';
 import { MockBackendAPI } from '../src/lib/mock/mockApi.ts';
+import {
+  DEFAULT_COLLAPSE_THRESHOLD,
+  defaultCollapsedKeys,
+  isCollapsed,
+  nodeKind,
+  pruneKeys,
+} from '../src/lib/tree.ts';
 
 test('formatTokens formats numbers into compact string representations', () => {
   assert.equal(formatTokens(0), '0');
@@ -241,4 +248,79 @@ test('mock preview blocks live sessions and excludes them from the token', async
   const preview = await backend.previewDelete([ref]);
   assert.match(preview.items[0].blocked, /live/);
   await assert.rejects(() => backend.deleteSessions([ref], preview.token), /changed/);
+});
+
+function treeNode(key, kind, childCount = 0, childKind = 'session') {
+  const children = Array.from({ length: childCount }, (_, i) => ({
+    key: `${key}/${i}`,
+    label: `${key}/${i}`,
+    kind: childKind,
+    sessionCount: 1,
+  }));
+  return { key, label: key, kind, sessionCount: childCount, children };
+}
+
+test('defaultCollapsedKeys collapses only groups at or above the threshold', () => {
+  assert.equal(defaultCollapsedKeys([]).size, 0);
+
+  const small = treeNode('small', 'directory', DEFAULT_COLLAPSE_THRESHOLD - 1, 'agent');
+  const big = treeNode('big', 'directory', DEFAULT_COLLAPSE_THRESHOLD, 'agent');
+  const bigAgent = treeNode('bigAgent', 'agent', DEFAULT_COLLAPSE_THRESHOLD);
+  const keys = defaultCollapsedKeys([small, big, bigAgent]);
+  assert.deepEqual([...keys].sort(), ['big', 'bigAgent']);
+
+  assert.deepEqual([...defaultCollapsedKeys([small], 2)], ['small']);
+});
+
+test('defaultCollapsedKeys recurses into nested groups', () => {
+  const nestedAgent = treeNode('dir/agent', 'agent', 10);
+  const dir = { ...treeNode('dir', 'directory'), children: [nestedAgent] };
+  assert.deepEqual([...defaultCollapsedKeys([dir])], ['dir/agent']);
+});
+
+test('defaultCollapsedKeys collapses every session with subagents', () => {
+  const withOne = treeNode('sess1', 'session', 1);
+  const withMany = treeNode('sessN', 'session', 7);
+  const leaf = treeNode('leaf', 'session');
+  const agent = { ...treeNode('agent', 'agent'), children: [withOne, withMany, leaf] };
+
+  const keys = defaultCollapsedKeys([agent]);
+  assert.deepEqual([...keys].sort(), ['sess1', 'sessN']);
+});
+
+test('isCollapsed flips the default state for manually toggled keys', () => {
+  const defaults = new Set(['big']);
+  assert.equal(isCollapsed('big', new Set(), defaults), true);
+  assert.equal(isCollapsed('big', new Set(['big']), defaults), false);
+  assert.equal(isCollapsed('small', new Set(), defaults), false);
+  assert.equal(isCollapsed('small', new Set(['small']), defaults), true);
+});
+
+test('nodeKind prefers kind and falls back to field inference', () => {
+  assert.equal(nodeKind({ key: 'a', label: 'a', kind: 'session', agent: 'codex', sessionCount: 1 }), 'session');
+  assert.equal(nodeKind({ key: 'a', label: 'a', agent: 'codex', sessionCount: 1 }), 'agent');
+  assert.equal(nodeKind({ key: 'a', label: 'a', cwd: '/x', sessionCount: 1 }), 'directory');
+  assert.equal(nodeKind({ key: 'a', label: 'a', sessionCount: 1 }), 'session');
+});
+
+test('pruneKeys drops keys whose nodes no longer exist', () => {
+  const tree = [treeNode('dir', 'directory', 2, 'agent')];
+  const pruned = pruneKeys(new Set(['dir', 'dir/1', 'gone']), tree);
+  assert.deepEqual([...pruned].sort(), ['dir', 'dir/1']);
+});
+
+test('MockBackendAPI listGroups emits node kinds', async () => {
+  const backend = new MockBackendAPI();
+  const dirAgent = await backend.listGroups('dir-agent');
+  assert.ok(dirAgent.length > 0);
+  for (const root of dirAgent) {
+    assert.equal(root.kind, 'directory');
+    for (const child of root.children ?? []) assert.equal(child.kind, 'agent');
+  }
+  const agentDir = await backend.listGroups('agent-dir');
+  for (const root of agentDir) {
+    assert.equal(root.kind, 'agent');
+    for (const child of root.children ?? []) assert.equal(child.kind, 'directory');
+  }
+  for (const node of await backend.listGroups('flat')) assert.equal(node.kind, 'session');
 });

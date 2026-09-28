@@ -62,9 +62,12 @@ export interface SortOpts {
   desc: boolean;
 }
 
+export type GroupNodeKind = 'directory' | 'agent' | 'session';
+
 export interface GroupNode {
   key: string;
   label: string;
+  kind?: GroupNodeKind;
   secondary?: string;
   agent?: string;
   cwd?: string;
