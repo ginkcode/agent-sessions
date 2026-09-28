@@ -3,7 +3,10 @@
   import { appState } from '../../stores/appState.svelte';
   import { onDestroy } from 'svelte';
   import VirtualList from './VirtualList.svelte';
+  import SessionListSkeleton from './SessionListSkeleton.svelte';
   import SessionRow from './SessionRow.svelte';
+  import EmptyState from '../common/EmptyState.svelte';
+  import ErrorState from '../common/ErrorState.svelte';
 
   let listEl: HTMLElement | null = $state(null);
 
@@ -41,6 +44,11 @@
 
   function handleSelectSession(session: SessionMeta) {
     appState.selectSession(session.ref);
+  }
+
+  function handleClearFilters() {
+    clearTimeout(searchTimer);
+    appState.setFilter({ query: '', liveOnly: false, archived: false });
   }
 
   function handleKeyDown(e: KeyboardEvent) {
@@ -141,9 +149,21 @@
 
   <div class="list-body">
     {#if appState.loadingSessions}
-      <div class="status-msg">Loading sessions…</div>
+      <SessionListSkeleton />
+    {:else if appState.error}
+      <ErrorState
+        title="Could not load sessions"
+        message={appState.error}
+        onRetry={() => appState.loadSessions()}
+      />
     {:else if appState.sessions.length === 0}
-      <div class="status-msg empty">No matching sessions found</div>
+      <EmptyState
+        icon="🔍"
+        title="No matching sessions"
+        description="No sessions match the current search and filters."
+        actionText="Clear filters"
+        onAction={handleClearFilters}
+      />
     {:else}
       <VirtualList items={appState.sessions} itemHeight={58} overscan={5}>
         {#snippet children(session: SessionMeta)}
@@ -279,12 +299,5 @@
     flex: 1;
     overflow: hidden;
     position: relative;
-  }
-
-  .status-msg {
-    padding: 30px;
-    text-align: center;
-    color: var(--text-muted);
-    font-size: 0.825rem;
   }
 </style>
