@@ -44,3 +44,17 @@ export function formatAbsoluteTime(dateStr: string): string {
 
   return `${year}-${month}-${day} ${hours}:${minutes}:${seconds} UTC`;
 }
+
+// Go serializes an unknown time.Time as year 1; treat that (and invalid or
+// empty strings) as absent rather than rendering "0001-01-01".
+export function isKnownTime(dateStr: string): boolean {
+  if (!dateStr) return false;
+  const date = new Date(dateStr);
+  return !isNaN(date.getTime()) && date.getUTCFullYear() > 1;
+}
+
+// "5m ago", or "just now" without a dangling "ago".
+export function formatAgo(dateStr: string): string {
+  const rel = formatRelativeTime(dateStr);
+  return !rel || rel === 'just now' ? rel : `${rel} ago`;
+}

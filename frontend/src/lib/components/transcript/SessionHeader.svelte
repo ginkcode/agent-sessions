@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { SessionMeta } from '../../types';
   import { formatTokens, formatCost } from '../../format';
+  import { formatAbsoluteTime, formatAgo, isKnownTime } from '../../date';
   import { appState } from '../../stores/appState.svelte';
   import { manage } from '../../stores/manage.svelte';
 
@@ -135,6 +136,15 @@
       <span class="meta-icon">💬</span>
       <span class="count-val">{messageTotal} msgs</span>
     </div>
+
+    {#each [{ label: 'Created', value: meta.createdAt }, { label: 'Updated', value: meta.updatedAt }] as stamp (stamp.label)}
+      {#if isKnownTime(stamp.value)}
+        <div class="meta-item time-item" title="{stamp.label} {formatAgo(stamp.value)}">
+          <span class="stat-label">{stamp.label}:</span>
+          <span class="time-val">{formatAbsoluteTime(stamp.value)}</span>
+        </div>
+      {/if}
+    {/each}
   </div>
 
   <div class="header-stats-row">
@@ -312,8 +322,9 @@
 
   .header-meta-row {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
-    gap: 12px;
+    gap: 4px 12px;
     font-size: 0.75rem;
     color: var(--text-muted);
   }
@@ -359,6 +370,10 @@
 
   .stat-label {
     font-weight: 500;
+  }
+
+  .time-item {
+    white-space: nowrap;
   }
 
   .stat-val {

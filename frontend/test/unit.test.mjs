@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { formatTokens, formatCost, formatBytes } from '../src/lib/format.ts';
-import { formatRelativeTime, formatAbsoluteTime } from '../src/lib/date.ts';
+import { formatRelativeTime, formatAbsoluteTime, isKnownTime, formatAgo } from '../src/lib/date.ts';
 import { highlightCode, detectLanguage } from '../src/lib/highlight.ts';
 import { renderMarkdown } from '../src/lib/markdown.ts';
 import {
@@ -362,4 +362,17 @@ test('sessionToSelect picks the node itself for sessions, else the first visible
   // Session hidden by the age filter falls back to the first visible row.
   assert.deepEqual(sessionToSelect(sessionNode, [{ ref: other }]), other);
   assert.equal(sessionToSelect(group, []), null);
+});
+
+test('isKnownTime rejects Go zero time and invalid strings', () => {
+  assert.equal(isKnownTime('0001-01-01T00:00:00Z'), false);
+  assert.equal(isKnownTime(''), false);
+  assert.equal(isKnownTime('not a date'), false);
+  assert.equal(isKnownTime('2026-09-28T10:00:00Z'), true);
+});
+
+test('formatAgo drops "ago" for just now', () => {
+  assert.equal(formatAgo(new Date().toISOString()), 'just now');
+  assert.equal(formatAgo(new Date(Date.now() - 5 * 60 * 1000).toISOString()), '5m ago');
+  assert.equal(formatAgo(''), '');
 });
