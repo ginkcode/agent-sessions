@@ -9,6 +9,24 @@
   import ErrorState from '../common/ErrorState.svelte';
   import { manage } from '../../stores/manage.svelte';
   import { filterSessionsByAge } from '../../manage';
+  import Dropdown from '../common/Dropdown.svelte';
+
+  const AGE_OPTIONS = [
+    { value: '0', label: 'Any age' },
+    { value: '30', label: 'Older than 30d' },
+    { value: '90', label: 'Older than 90d' },
+    { value: '180', label: 'Older than 180d' },
+    { value: '365', label: 'Older than 1y' },
+  ];
+
+  const SORT_OPTIONS = [
+    { value: 'updated', label: 'Updated' },
+    { value: 'created', label: 'Created' },
+    { value: 'title', label: 'Title' },
+    { value: 'messages', label: 'Messages' },
+    { value: 'tokens', label: 'Tokens' },
+    { value: 'cost', label: 'Cost' },
+  ];
 
   let listEl: HTMLElement | null = $state(null);
 
@@ -43,8 +61,7 @@
     appState.setFilter({ archived: !appState.filter.archived });
   }
 
-  function handleSortChange(e: Event) {
-    const field = (e.target as HTMLSelectElement).value;
+  function handleSortChange(field: string) {
     appState.setSort({ field, desc: appState.sort.desc });
   }
 
@@ -62,8 +79,8 @@
     manage.setAgeFilter(0);
   }
 
-  function handleAgeChange(e: Event) {
-    const days = Number((e.target as HTMLSelectElement).value);
+  function handleAgeChange(value: string) {
+    const days = Number(value);
     manage.setAgeFilter(Number.isFinite(days) ? days : 0);
     manage.clearSelection();
   }
@@ -146,34 +163,22 @@
       </button>
 
       {#if manage.settings.enabled}
-        <select
-          class="age-select"
+        <Dropdown
+          options={AGE_OPTIONS}
           value={String(manage.ageFilterDays)}
-          onchange={handleAgeChange}
-          aria-label="Filter sessions by age"
-        >
-          <option value="0">Any age</option>
-          <option value="30">Older than 30d</option>
-          <option value="90">Older than 90d</option>
-          <option value="180">Older than 180d</option>
-          <option value="365">Older than 1y</option>
-        </select>
+          onChange={handleAgeChange}
+          ariaLabel="Filter sessions by age"
+        />
       {/if}
 
       <div class="sort-wrapper">
-        <select
-          class="sort-select"
+        <Dropdown
+          options={SORT_OPTIONS}
           value={appState.sort.field}
-          onchange={handleSortChange}
-          aria-label="Sort sessions by"
-        >
-          <option value="updated">Updated</option>
-          <option value="created">Created</option>
-          <option value="title">Title</option>
-          <option value="messages">Messages</option>
-          <option value="tokens">Tokens</option>
-          <option value="cost">Cost</option>
-        </select>
+          onChange={handleSortChange}
+          ariaLabel="Sort sessions by"
+          align="right"
+        />
         <button
           type="button"
           class="sort-dir-btn"
@@ -289,14 +294,21 @@
     color: var(--text-primary);
   }
 
+  /* Every control in the row shares one height (also read by Dropdown). */
   .filter-controls {
+    --control-height: 24px;
     display: flex;
     align-items: center;
     gap: 6px;
   }
 
   .filter-btn {
-    padding: 2px 7px;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    height: var(--control-height);
+    padding: 0 7px;
+    white-space: nowrap;
     border-radius: 4px;
     font-size: 0.72rem;
     font-weight: 500;
@@ -327,61 +339,16 @@
     margin-left: auto;
     display: flex;
     align-items: center;
-    gap: 2px;
-  }
-
-  .age-select {
-    max-width: 120px;
-    padding: 2px 4px;
-    font-size: 0.72rem;
-    border-radius: 4px;
-    background: var(--bg-secondary);
-    color: var(--text-secondary);
-    border: 1px solid var(--border-color);
-    cursor: pointer;
-  }
-
-  .age-select option {
-    background-color: var(--bg-secondary);
-    color: var(--text-primary);
-  }
-
-  /* appearance: none stops WebKitGTK painting the GTK (light) menulist, so
-     the theme colors apply; the caret is drawn with two gradients. */
-  .sort-select {
-    appearance: none;
-    -webkit-appearance: none;
-    padding: 2px 18px 2px 6px;
-    font-size: 0.72rem;
-    border-radius: 4px;
-    background-color: var(--bg-secondary);
-    background-image:
-      linear-gradient(45deg, transparent 50%, var(--text-muted) 50%),
-      linear-gradient(135deg, var(--text-muted) 50%, transparent 50%);
-    background-position:
-      calc(100% - 10px) 55%,
-      calc(100% - 6px) 55%;
-    background-size: 4px 4px;
-    background-repeat: no-repeat;
-    border: 1px solid var(--border-color);
-    color: var(--text-secondary);
-    outline: none;
-    cursor: pointer;
-  }
-
-  .sort-select:hover,
-  .sort-select:focus-visible {
-    color: var(--text-primary);
-    border-color: var(--text-muted);
-  }
-
-  .sort-select option {
-    background-color: var(--bg-secondary);
-    color: var(--text-primary);
+    gap: 4px;
   }
 
   .sort-dir-btn {
-    padding: 2px 5px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: var(--control-height);
+    height: var(--control-height);
+    padding: 0;
     font-size: 0.75rem;
     font-weight: bold;
     border-radius: 4px;
