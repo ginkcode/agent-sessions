@@ -200,6 +200,88 @@ func TestListSessions(t *testing.T) {
 	}
 }
 
+// TestListSessionsResolvesEveryTreeKey guards against the sidebar selecting a
+// node whose key ListSessions cannot resolve ("unknown group: session:…").
+func TestListSessionsResolvesEveryTreeKey(t *testing.T) {
+	catalog := scan.NewCatalog()
+	updated := time.Date(2026, 9, 28, 10, 0, 0, 0, time.UTC)
+	parent := model.SessionMeta{
+		Ref:       model.SessionRef{Agent: model.AgentOpenCode, ID: "parent"},
+		Title:     "Parent",
+		CWD:       "/home/user/app",
+		UpdatedAt: updated,
+	}
+	child := model.SessionMeta{
+		Ref:       model.SessionRef{Agent: model.AgentOpenCode, ID: "child"},
+		Title:     "Subagent",
+		CWD:       "/home/user/app",
+		ParentID:  "parent",
+		UpdatedAt: updated.Add(time.Minute),
+	}
+	other := model.SessionMeta{
+		Ref:       model.SessionRef{Agent: model.AgentClaude, ID: "other"},
+		Title:     "Other",
+		CWD:       "/home/user/app",
+		UpdatedAt: updated,
+	}
+	catalog.Apply(provider.ScanResult{Changed: []model.SessionMeta{parent, child, other}})
+	svc := NewService(catalog, nil)
+
+	for _, mode := range []GroupMode{GroupModeDirAgent, GroupModeAgentDir, GroupModeFlat} {
+		groups, err := svc.ListGroups(mode, FilterOpts{})
+		if err != nil {
+			t.Fatalf("ListGroups(%s): %v", mode, err)
+		}
+		for _, node := range flattenGroupNodes(groups) {
+			got, err := svc.ListSessions(node.Key, FilterOpts{}, SortOpts{})
+			if err != nil {
+				t.Errorf("mode %s: ListSessions(%q): %v", mode, node.Key, err)
+				continue
+			}
+			if len(got) == 0 {
+				t.Errorf("mode %s: ListSessions(%q) returned no sessions", mode, node.Key)
+			}
+		}
+	}
+
+	leaf, err := svc.ListSessions("session:"+string(model.AgentOpenCode)+":parent", FilterOpts{}, SortOpts{})
+	if err != nil {
+		t.Fatalf("ListSessions(parent leaf): %v", err)
+	}
+	ids := map[string]bool{}
+	for _, m := range leaf {
+		ids[m.Ref.ID] = true
+	}
+	if len(leaf) != 2 || !ids["parent"] || !ids["child"] {
+		t.Errorf("parent leaf sessions = %v, want parent and child", ids)
+	}
+}
+
+func TestAgentCountsIgnoresAgentFilter(t *testing.T) {
+	svc, _ := setupTestService(t)
+	svc.catalog.Apply(provider.ScanResult{Changed: []model.SessionMeta{{
+		Ref: model.SessionRef{Agent: model.AgentCodex, ID: "c1"},
+		CWD: "/home/user/project1",
+	}}})
+
+	counts, err := svc.AgentCounts(FilterOpts{Agent: string(model.AgentCodex)})
+	if err != nil {
+		t.Fatalf("AgentCounts: %v", err)
+	}
+	// s3 is archived and excluded by default.
+	if counts[string(model.AgentClaude)] != 2 || counts[string(model.AgentCodex)] != 1 {
+		t.Errorf("counts = %v, want claude-code:2 codex:1", counts)
+	}
+
+	counts, err = svc.AgentCounts(FilterOpts{Archived: true, LiveOnly: true})
+	if err != nil {
+		t.Fatalf("AgentCounts live: %v", err)
+	}
+	if counts[string(model.AgentClaude)] != 1 || counts[string(model.AgentCodex)] != 0 {
+		t.Errorf("live counts = %v, want claude-code:1", counts)
+	}
+}
+
 func TestGetSessionMeta(t *testing.T) {
 	svc, _ := setupTestService(t)
 

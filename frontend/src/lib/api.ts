@@ -14,6 +14,7 @@ import { MockBackendAPI } from './mock/mockApi';
 export interface BackendAPI {
   listGroups(mode: GroupMode, filter?: FilterOpts): Promise<GroupNode[]>;
   listSessions(groupKey: string, filter?: FilterOpts, sort?: SortOpts): Promise<SessionMeta[]>;
+  agentCounts(filter?: FilterOpts): Promise<Record<string, number>>;
   getSessionMeta(ref: SessionRef): Promise<SessionMeta>;
   getMessages(ref: SessionRef, offset: number, limit: number): Promise<MessagesPage>;
   getBlob(ref: SessionRef, key: string): Promise<BlobResponse>;
@@ -27,6 +28,7 @@ export interface BackendAPI {
 interface WailsAppBinding {
   ListGroups(mode: string, filter: FilterOpts): Promise<GroupNode[]>;
   ListSessions(groupKey: string, filter: FilterOpts, sort: SortOpts): Promise<SessionMeta[]>;
+  AgentCounts(filter: FilterOpts): Promise<Record<string, number>>;
   GetSessionMeta(ref: SessionRef): Promise<SessionMeta>;
   GetMessages(ref: SessionRef, offset: number, limit: number): Promise<MessagesPage>;
   GetBlob(ref: SessionRef, key: string): Promise<BlobResponse>;
@@ -71,6 +73,14 @@ class WailsBackendAPI implements BackendAPI {
         filter || {},
         sort || { field: 'updated', desc: true }
       );
+    } catch (e) {
+      throw normalizeError(e);
+    }
+  }
+
+  async agentCounts(filter?: FilterOpts): Promise<Record<string, number>> {
+    try {
+      return (await this.binding.AgentCounts(filter || {})) || {};
     } catch (e) {
       throw normalizeError(e);
     }

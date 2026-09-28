@@ -219,6 +219,11 @@ func (a *App) ListGroups(mode GroupMode, filter FilterOpts) ([]GroupNode, error)
 	return a.svc.ListGroups(mode, filter)
 }
 
+// AgentCounts returns per-agent session totals across the filtered catalog.
+func (a *App) AgentCounts(filter FilterOpts) (map[string]int, error) {
+	return a.svc.AgentCounts(filter)
+}
+
 // ListSessions returns session metadata for one group (or all sessions when groupKey is empty).
 func (a *App) ListSessions(groupKey string, filter FilterOpts, sort SortOpts) ([]model.SessionMeta, error) {
 	return a.svc.ListSessions(groupKey, filter, sort)

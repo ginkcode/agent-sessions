@@ -16,6 +16,8 @@ export class AppState {
 
   groups = $state<GroupNode[]>([]);
   sessions = $state<SessionMeta[]>([]);
+  // Catalog-wide per-agent totals, independent of the selected group.
+  agentCounts = $state<Record<string, number>>({});
   collapsedKeys = $state<Set<string>>(new Set());
 
   filter = $state<FilterOpts>({});
@@ -91,7 +93,13 @@ export class AppState {
   async loadGroups(): Promise<void> {
     this.loadingGroups = true;
     try {
-      this.groups = await api.listGroups(this.groupMode, this.filter);
+      // Groups and agent totals change on the same triggers (scan, filter).
+      const [groups, counts] = await Promise.all([
+        api.listGroups(this.groupMode, this.filter),
+        api.agentCounts(this.filter),
+      ]);
+      this.groups = groups;
+      this.agentCounts = counts;
       this.error = null;
     } catch (err: any) {
       this.error = err?.message || 'Failed to load groups';

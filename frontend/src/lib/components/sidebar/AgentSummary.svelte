@@ -1,18 +1,11 @@
 <script lang="ts">
   import { appState } from '../../stores/appState.svelte';
 
-  // Calculate totals per agent from sessions
-  let counts = $derived.by(() => {
-    let claude = 0;
-    let codex = 0;
-    let opencode = 0;
-
-    for (const s of appState.sessions) {
-      if (s.ref.agent === 'claude-code') claude++;
-      else if (s.ref.agent === 'codex') codex++;
-      else if (s.ref.agent === 'opencode') opencode++;
-    }
-    return { claude, codex, opencode, total: appState.sessions.length };
+  // Catalog-wide totals: the selected group must not change these.
+  let counts = $derived({
+    claude: appState.agentCounts['claude-code'] ?? 0,
+    codex: appState.agentCounts['codex'] ?? 0,
+    opencode: appState.agentCounts['opencode'] ?? 0,
   });
 
   function toggleAgentFilter(agent: string) {

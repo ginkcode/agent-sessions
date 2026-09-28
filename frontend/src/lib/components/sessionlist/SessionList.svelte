@@ -262,14 +262,38 @@
     gap: 2px;
   }
 
+  /* appearance: none stops WebKitGTK painting the GTK (light) menulist, so
+     the theme colors apply; the caret is drawn with two gradients. */
   .sort-select {
-    padding: 2px 4px;
+    appearance: none;
+    -webkit-appearance: none;
+    padding: 2px 18px 2px 6px;
     font-size: 0.72rem;
     border-radius: 4px;
     background-color: var(--bg-secondary);
+    background-image:
+      linear-gradient(45deg, transparent 50%, var(--text-muted) 50%),
+      linear-gradient(135deg, var(--text-muted) 50%, transparent 50%);
+    background-position:
+      calc(100% - 10px) 55%,
+      calc(100% - 6px) 55%;
+    background-size: 4px 4px;
+    background-repeat: no-repeat;
     border: 1px solid var(--border-color);
     color: var(--text-secondary);
     outline: none;
+    cursor: pointer;
+  }
+
+  .sort-select:hover,
+  .sort-select:focus-visible {
+    color: var(--text-primary);
+    border-color: var(--text-muted);
+  }
+
+  .sort-select option {
+    background-color: var(--bg-secondary);
+    color: var(--text-primary);
   }
 
   .sort-dir-btn {

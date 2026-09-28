@@ -88,6 +88,18 @@ func (s *Service) ListGroups(mode GroupMode, filter FilterOpts) ([]GroupNode, er
 	return buildGroupNodes(sessions, mode), nil
 }
 
+// AgentCounts returns the number of sessions per agent across the whole
+// catalog. The agent filter is ignored so every agent's total stays visible
+// while one agent is selected; query, live, and archived filters apply.
+func (s *Service) AgentCounts(filter FilterOpts) (map[string]int, error) {
+	filter.Agent = ""
+	counts := make(map[string]int)
+	for _, m := range filterSessions(s.catalog.All(), filter) {
+		counts[string(m.Ref.Agent)]++
+	}
+	return counts, nil
+}
+
 // ListSessions returns session metadata for one group (or every session when
 // groupKey is empty), filtered and sorted for the session list pane.
 func (s *Service) ListSessions(groupKey string, filter FilterOpts, sortOpts SortOpts) ([]model.SessionMeta, error) {
@@ -360,11 +372,14 @@ func convertGroupNode(n group.Node) GroupNode {
 		CWDMissing:   n.Missing,
 		SessionCount: n.Count,
 	}
-	// Group (non-session) nodes list the sessions they contain so the UI can
-	// resolve ListSessions(groupKey) without re-deriving grouping client-side.
+	// Every node lists the sessions it contains so the UI can resolve
+	// ListSessions(groupKey) without re-deriving grouping client-side. A
+	// session leaf resolves to itself plus any nested subagent sessions.
 	if n.Kind != group.Session {
 		out.Sessions = n.SessionRefs
 		out.Secondary = n.Label
+	} else {
+		out.Sessions = sessionSubtreeRefs(n)
 	}
 	if len(n.Children) > 0 {
 		out.Children = make([]GroupNode, 0, len(n.Children))
@@ -373,6 +388,18 @@ func convertGroupNode(n group.Node) GroupNode {
 		}
 	}
 	return out
+}
+
+// sessionSubtreeRefs returns a session node's own ref followed by the refs of
+// its nested child sessions, depth first.
+func sessionSubtreeRefs(n group.Node) []model.SessionRef {
+	refs := append([]model.SessionRef(nil), n.SessionRefs...)
+	for _, child := range n.Children {
+		if child.Kind == group.Session {
+			refs = append(refs, sessionSubtreeRefs(child)...)
+		}
+	}
+	return refs
 }
 
 // sortSessions orders session metadata for the list pane. Unknown fields fall

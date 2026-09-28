@@ -46,9 +46,11 @@ app: check-gui-deps
 
 # Headless equivalent of the GUI compile (without invoking Wails CLI):
 # npm run build must run first so frontend/dist exists for go:embed.
+# The production tag is required at runtime: without it Wails' internal
+# app stub returns "will not build without the correct build tags".
 gui-build: check-gui-deps
 	cd frontend && npm run check && npm run build
-	$(GO) build -tags $(WAILS_TAGS) -o build/bin/agent-sessions ./cmd/agent-sessions
+	$(GO) build -tags "$(WAILS_TAGS),production" -o build/bin/agent-sessions ./cmd/agent-sessions
 
 clean:
 	rm -rf bin build/bin frontend/dist

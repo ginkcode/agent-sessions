@@ -236,6 +236,14 @@ export class MockBackendAPI {
     return () => {};
   }
 
+  async agentCounts(filter?: FilterOpts): Promise<Record<string, number>> {
+    const counts: Record<string, number> = {};
+    for (const s of this.filterSessions(this.sessions, { ...filter, agent: undefined })) {
+      counts[s.ref.agent] = (counts[s.ref.agent] || 0) + 1;
+    }
+    return counts;
+  }
+
   private filterSessions(list: SessionMeta[], f?: FilterOpts): SessionMeta[] {
     if (!f) return list.filter((s) => !s.archived);
     return list.filter((s) => {
