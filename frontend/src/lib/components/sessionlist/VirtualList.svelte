@@ -19,6 +19,16 @@
     if (containerEl) {
       clientHeight = containerEl.clientHeight;
     }
+    // Keep clientHeight fresh when the pane is resized (window or splitter).
+    if (typeof ResizeObserver !== 'undefined' && containerEl) {
+      const ro = new ResizeObserver((entries) => {
+        for (const entry of entries) {
+          clientHeight = entry.contentRect.height;
+        }
+      });
+      ro.observe(containerEl);
+      return () => ro.disconnect();
+    }
   });
 
   function handleScroll(e: Event) {

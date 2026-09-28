@@ -131,3 +131,63 @@ input, select {
 [data-theme="dark"] .hljs-meta {
   color: #79c0ff;
 }
+
+/* Fenced code block container & copy button */
+.code-block-container {
+  margin: 0.8em 0;
+  border-radius: 6px;
+  border: 1px solid var(--border-color);
+  background-color: var(--bg-secondary);
+  overflow: hidden;
+}
+
+.code-block-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 4px 10px;
+  background-color: var(--bg-tertiary);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.code-lang-tag {
+  font-size: 0.68rem;
+  font-family: var(--font-mono);
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+}
+
+.copy-code-btn {
+  font-size: 0.68rem;
+  padding: 2px 6px;
+  border-radius: 3px;
+  background-color: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.copy-code-btn:hover {
+  color: var(--text-primary);
+}
+
+.copy-code-btn.copied {
+  background-color: rgba(16, 185, 129, 0.15);
+  color: var(--status-live);
+  border-color: var(--status-live);
+}
+
+.code-block-container pre {
+  margin: 0;
+  padding: 10px 12px;
+  overflow-x: auto;
+  background-color: var(--bg-primary);
+}
+
+.code-block-container code.hljs {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  line-height: 1.45;
+}

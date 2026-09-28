@@ -1,5 +1,6 @@
 <script lang="ts">
   import { renderMarkdown } from '../../../markdown';
+  import { handleCopyCodeClick } from '../../../copycode';
 
   interface Props {
     text: string;
@@ -8,29 +9,11 @@
   let { text }: Props = $props();
 
   let renderedHtml = $derived(renderMarkdown(text));
-
-  function handleContainerClick(e: MouseEvent) {
-    const target = e.target as HTMLElement;
-    if (target && target.classList.contains('copy-code-btn')) {
-      const code = target.getAttribute('data-code');
-      if (code && typeof navigator !== 'undefined' && navigator.clipboard) {
-        navigator.clipboard.writeText(code).then(() => {
-          const originalText = target.textContent;
-          target.textContent = '✓ Copied';
-          target.classList.add('copied');
-          setTimeout(() => {
-            target.textContent = originalText;
-            target.classList.remove('copied');
-          }, 1500);
-        });
-      }
-    }
-  }
 </script>
 
 <!-- svelte-ignore a11y_click_events_have_key_events -->
 <!-- svelte-ignore a11y_no_static_element_interactions -->
-<div class="text-part-container" onclick={handleContainerClick}>
+<div class="text-part-container" onclick={handleCopyCodeClick}>
   {@html renderedHtml}
 </div>
 

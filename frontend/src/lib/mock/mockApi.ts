@@ -116,8 +116,14 @@ export class MockBackendAPI {
   ): Promise<SessionMeta[]> {
     let result = this.filterSessions(this.sessions, filter);
     if (groupKey) {
-      // Find matching group and its sessions
-      const groups = await this.listGroups('dir-agent', filter);
+      // Extract mode prefix from groupKey ('flat:', 'agent-dir:', 'dir-agent:')
+      let mode: GroupMode = 'dir-agent';
+      if (groupKey.startsWith('flat:')) {
+        mode = 'flat';
+      } else if (groupKey.startsWith('agent-dir:')) {
+        mode = 'agent-dir';
+      }
+      const groups = await this.listGroups(mode, filter);
       const targetRefs = this.findSessionsInGroups(groups, groupKey);
       if (targetRefs) {
         const refKeys = new Set(targetRefs.map((r) => `${r.agent}:${r.id}`));

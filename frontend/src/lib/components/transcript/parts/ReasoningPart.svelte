@@ -1,5 +1,6 @@
 <script lang="ts">
   import { renderMarkdown } from '../../../markdown';
+  import { handleCopyCodeClick } from '../../../copycode';
 
   interface Props {
     text: string;
@@ -17,8 +18,9 @@
     <span class="reasoning-title">Thinking process…</span>
   </summary>
   <div class="reasoning-body">
+    <!-- svelte-ignore a11y_click_events_have_key_events -->
     <!-- svelte-ignore a11y_no_static_element_interactions -->
-    <div class="markdown-content">
+    <div class="markdown-content text-part-container" onclick={handleCopyCodeClick}>
       {@html renderedHtml}
     </div>
   </div>

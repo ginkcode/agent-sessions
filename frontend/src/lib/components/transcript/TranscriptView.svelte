@@ -152,15 +152,17 @@
         }}
       />
     </div>
-  {:else if appState.selectedSessionMeta}
-    <SessionHeader
-      meta={appState.selectedSessionMeta}
-      {showMeta}
-      onToggleMeta={() => (showMeta = !showMeta)}
-      onResume={handleCopyResume}
-      onReveal={handleRevealSource}
-      {resumeCopied}
-    />
+  {:else if appState.selectedSessionRef}
+    {#if appState.selectedSessionMeta}
+      <SessionHeader
+        meta={appState.selectedSessionMeta}
+        {showMeta}
+        onToggleMeta={() => (showMeta = !showMeta)}
+        onResume={handleCopyResume}
+        onReveal={handleRevealSource}
+        {resumeCopied}
+      />
+    {/if}
 
     <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
     <div
@@ -177,7 +179,7 @@
             <span>No messages found in this session transcript.</span>
           </div>
         {:else}
-          {#each messages as msg (msg.id || msg.time)}
+          {#each messages as msg, idx (msg.id || `${msg.role}-${msg.time}-${idx}`)}
             <MessageBubble
               message={msg}
               sessionRef={appState.selectedSessionRef}

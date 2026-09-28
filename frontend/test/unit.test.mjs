@@ -95,3 +95,65 @@ test('renderMarkdown converts markdown and strictly neutralizes XSS vectors', ()
   assert.ok(validLink.includes('href="https://claude.ai"'));
   assert.ok(validLink.includes('target="_blank"'));
 });
+
+test('handleCopyCodeClick copies code from delegated click and ignores other targets', async () => {
+  const { handleCopyCodeClick } = await import('../src/lib/copycode.ts');
+
+  const written = [];
+  const origClipboard = globalThis.navigator?.clipboard;
+  Object.defineProperty(globalThis, 'navigator', {
+    value: { clipboard: { writeText: (t) => { written.push(t); return Promise.resolve(); } } },
+    configurable: true,
+  });
+
+  try {
+    function makeBtn(code) {
+      const classes = new Set(['copy-code-btn']);
+      const btn = {
+        textContent: 'Copy',
+        getAttribute: (k) => (k === 'data-code' ? code : null),
+        closest: (selector) => (selector === '.copy-code-btn' ? btn : null),
+        classList: {
+          contains: (c) => classes.has(c),
+          add: (c) => classes.add(c),
+          remove: (c) => classes.delete(c),
+        },
+      };
+      return btn;
+    }
+
+    const btn = makeBtn('const x = 1;');
+
+    // Click on the button itself
+    handleCopyCodeClick({ target: btn, stopPropagation: () => {} });
+    await new Promise((r) => setTimeout(r, 0));
+    assert.deepEqual(written, ['const x = 1;']);
+
+    // Click on a child inside the button (delegation via closest)
+    written.length = 0;
+    const child = {
+      closest: (sel) => (sel === '.copy-code-btn' ? btn : null),
+    };
+    handleCopyCodeClick({ target: child, stopPropagation: () => {} });
+    await new Promise((r) => setTimeout(r, 0));
+    assert.deepEqual(written, ['const x = 1;']);
+
+    // Click elsewhere (closest returns null) must not copy
+    written.length = 0;
+    const outside = { closest: () => null };
+    handleCopyCodeClick({ target: outside, stopPropagation: () => {} });
+    await new Promise((r) => setTimeout(r, 0));
+    assert.deepEqual(written, []);
+
+    // Button without data-code must not copy
+    written.length = 0;
+    const noData = makeBtn(null);
+    handleCopyCodeClick({ target: noData, stopPropagation: () => {} });
+    await new Promise((r) => setTimeout(r, 0));
+    assert.deepEqual(written, []);
+  } finally {
+    if (origClipboard !== undefined) {
+      Object.defineProperty(globalThis, 'navigator', { value: origClipboard, configurable: true });
+    }
+  }
+});

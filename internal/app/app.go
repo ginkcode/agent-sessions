@@ -14,6 +14,7 @@ import (
 	"github.com/ginkcode/agent-sessions/internal/provider"
 	"github.com/ginkcode/agent-sessions/internal/provider/all"
 	"github.com/ginkcode/agent-sessions/internal/scan"
+	wruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 // App is the desktop application service exposed to the Wails frontend.
@@ -78,6 +79,9 @@ func (a *App) Scan() error {
 	}
 	report := a.runner.Run(ctx, a.svc.states)
 	a.svc.ApplyReport(report)
+	if a.ctx != nil && a.ctx.Value("events") != nil {
+		wruntime.EventsEmit(a.ctx, "scan:ready")
+	}
 	return nil
 }
 

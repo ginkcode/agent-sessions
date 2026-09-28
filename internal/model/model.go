@@ -115,7 +115,7 @@ const (
 type ToolCall struct {
 	ID              string          `json:"id"`
 	Name            string          `json:"name"`
-	Input           json.RawMessage `json:"input,omitempty"`
+	Input           json.RawMessage `json:"input,omitempty" ts_type:"any"`
 	Output          string          `json:"output,omitempty"`
 	OutputTruncated bool            `json:"outputTruncated,omitempty"`
 	OutputRef       string          `json:"outputRef,omitempty"`

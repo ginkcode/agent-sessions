@@ -1,15 +1,26 @@
 <script lang="ts">
   import type { SessionMeta, SortOpts } from '../../types';
   import { appState } from '../../stores/appState.svelte';
+  import { onDestroy } from 'svelte';
   import VirtualList from './VirtualList.svelte';
   import SessionRow from './SessionRow.svelte';
 
   let listEl: HTMLElement | null = $state(null);
 
+  let searchTimer: ReturnType<typeof setTimeout> | undefined;
+
+  // Debounce so fast typing doesn't trigger a backend query per keystroke.
   function handleSearchInput(e: Event) {
     const val = (e.target as HTMLInputElement).value;
-    appState.setFilter({ query: val });
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => {
+      appState.setFilter({ query: val });
+    }, 250);
   }
+
+  onDestroy(() => {
+    clearTimeout(searchTimer);
+  });
 
   function toggleLiveOnly() {
     appState.setFilter({ liveOnly: !appState.filter.liveOnly });

@@ -26,6 +26,12 @@ export class AppState {
   error = $state<string | null>(null);
 
   async init(): Promise<void> {
+    // Backend re-scans on startup; when a later scan finishes it refreshes
+    // groups/sessions so new or updated transcripts appear without restart.
+    api.onEvent('scan:ready', () => {
+      void this.loadGroups();
+      void this.loadSessions();
+    });
     await this.loadGroups();
     await this.loadSessions();
   }
@@ -44,18 +50,20 @@ export class AppState {
 
   async selectSession(ref: SessionRef | null): Promise<void> {
     this.selectedSessionRef = ref;
-    if (!ref) {
-      this.selectedSessionMeta = null;
-      return;
-    }
+    this.selectedSessionMeta = null;
+    if (!ref) return;
+
+    let meta: SessionMeta | null;
     try {
-      this.selectedSessionMeta = await api.getSessionMeta(ref);
+      meta = await api.getSessionMeta(ref);
     } catch {
       // Find in existing list if available
-      this.selectedSessionMeta =
-        this.sessions.find(
-          (s) => s.ref.agent === ref.agent && s.ref.id === ref.id
-        ) || null;
+      meta = this.sessions.find(
+        (s) => s.ref.agent === ref.agent && s.ref.id === ref.id
+      ) || null;
+    }
+    if (this.selectedSessionRef?.agent === ref.agent && this.selectedSessionRef?.id === ref.id) {
+      this.selectedSessionMeta = meta;
     }
   }
 
