@@ -1,0 +1,121 @@
+{
+  "meta": {
+    "ref": {
+      "agent": "claude-code",
+      "id": "compaction"
+    },
+    "sourcePath": "<fixture>",
+    "cwd": "<fixture-cwd>",
+    "title": "Summarize the work",
+    "firstPrompt": "Summarize the work",
+    "model": "claude-sonnet-5",
+    "createdAt": "2026-09-20T12:00:00Z",
+    "updatedAt": "2026-09-20T12:02:10Z",
+    "counts": {
+      "user": 2,
+      "assistant": 2,
+      "toolCalls": 0
+    },
+    "tokens": {
+      "input": 500,
+      "output": 70,
+      "reasoning": 0,
+      "cacheRead": 0,
+      "cacheWrite": 0
+    }
+  },
+  "messages": [
+    {
+      "id": "",
+      "role": "user",
+      "time": "2026-09-20T12:00:00Z",
+      "parts": [
+        {
+          "kind": "text",
+          "text": "Summarize the work"
+        }
+      ],
+      "tokens": {
+        "input": 0,
+        "output": 0,
+        "reasoning": 0,
+        "cacheRead": 0,
+        "cacheWrite": 0
+      }
+    },
+    {
+      "id": "msg-a1",
+      "role": "assistant",
+      "time": "2026-09-20T12:00:10Z",
+      "model": "claude-sonnet-5",
+      "parts": [
+        {
+          "kind": "text",
+          "text": "Working on the feature."
+        }
+      ],
+      "tokens": {
+        "input": 200,
+        "output": 30,
+        "reasoning": 0,
+        "cacheRead": 0,
+        "cacheWrite": 0
+      }
+    },
+    {
+      "id": "",
+      "role": "system",
+      "time": "2026-09-20T12:01:00Z",
+      "parts": [
+        {
+          "kind": "compaction",
+          "text": "Context compacted (auto · 169,569 → 14,495 tokens)\n\nThe previous conversation focused on feature implementation."
+        }
+      ],
+      "tokens": {
+        "input": 0,
+        "output": 0,
+        "reasoning": 0,
+        "cacheRead": 0,
+        "cacheWrite": 0
+      }
+    },
+    {
+      "id": "",
+      "role": "user",
+      "time": "2026-09-20T12:02:00Z",
+      "parts": [
+        {
+          "kind": "text",
+          "text": "Continue with tests"
+        }
+      ],
+      "tokens": {
+        "input": 0,
+        "output": 0,
+        "reasoning": 0,
+        "cacheRead": 0,
+        "cacheWrite": 0
+      }
+    },
+    {
+      "id": "msg-a2",
+      "role": "assistant",
+      "time": "2026-09-20T12:02:10Z",
+      "model": "claude-sonnet-5",
+      "parts": [
+        {
+          "kind": "text",
+          "text": "Tests are complete."
+        }
+      ],
+      "tokens": {
+        "input": 300,
+        "output": 40,
+        "reasoning": 0,
+        "cacheRead": 0,
+        "cacheWrite": 0
+      }
+    }
+  ]
+}

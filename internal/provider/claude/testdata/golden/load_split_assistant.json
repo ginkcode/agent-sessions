@@ -1,0 +1,113 @@
+{
+  "meta": {
+    "ref": {
+      "agent": "claude-code",
+      "id": "split_assistant"
+    },
+    "sourcePath": "<fixture>",
+    "cwd": "<fixture-cwd>",
+    "title": "Explain this function",
+    "firstPrompt": "Explain this function",
+    "model": "claude-sonnet-5",
+    "createdAt": "2026-09-20T11:00:00Z",
+    "updatedAt": "2026-09-20T11:00:06Z",
+    "counts": {
+      "user": 1,
+      "assistant": 1,
+      "toolCalls": 2
+    },
+    "tokens": {
+      "input": 50,
+      "output": 30,
+      "reasoning": 0,
+      "cacheRead": 0,
+      "cacheWrite": 0
+    }
+  },
+  "messages": [
+    {
+      "id": "",
+      "role": "user",
+      "time": "2026-09-20T11:00:00Z",
+      "parts": [
+        {
+          "kind": "text",
+          "text": "Explain this function"
+        }
+      ],
+      "tokens": {
+        "input": 0,
+        "output": 0,
+        "reasoning": 0,
+        "cacheRead": 0,
+        "cacheWrite": 0
+      }
+    },
+    {
+      "id": "msg-split",
+      "role": "assistant",
+      "time": "2026-09-20T11:00:01Z",
+      "model": "claude-sonnet-5",
+      "parts": [
+        {
+          "kind": "reasoning",
+          "text": "I need to inspect the function."
+        },
+        {
+          "kind": "text",
+          "text": "I will read it first."
+        },
+        {
+          "kind": "tool",
+          "tool": {
+            "id": "call-read",
+            "name": "Read",
+            "input": {
+              "file_path": "main.go"
+            },
+            "output": "func hello() {}",
+            "status": "completed"
+          }
+        },
+        {
+          "kind": "tool",
+          "tool": {
+            "id": "call-grep",
+            "name": "Grep",
+            "input": {
+              "pattern": "hello"
+            },
+            "output": "main.go:1",
+            "status": "completed"
+          }
+        }
+      ],
+      "tokens": {
+        "input": 50,
+        "output": 30,
+        "reasoning": 0,
+        "cacheRead": 0,
+        "cacheWrite": 0
+      }
+    },
+    {
+      "id": "",
+      "role": "system",
+      "time": "2026-09-20T11:00:01Z",
+      "parts": [
+        {
+          "kind": "notice",
+          "text": "attachment (file): context snippet"
+        }
+      ],
+      "isMeta": true,
+      "tokens": {
+        "input": 0,
+        "output": 0,
+        "reasoning": 0,
+        "cacheRead": 0,
+        "cacheWrite": 0
+      }
+    }
+  ]
+}

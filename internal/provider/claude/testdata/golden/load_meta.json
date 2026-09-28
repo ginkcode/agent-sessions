@@ -1,0 +1,142 @@
+{
+  "meta": {
+    "ref": {
+      "agent": "claude-code",
+      "id": "meta"
+    },
+    "sourcePath": "<fixture>",
+    "cwd": "<fixture-cwd>",
+    "title": "Review the configuration",
+    "firstPrompt": "Review the configuration",
+    "model": "claude-sonnet-5",
+    "createdAt": "2026-09-20T13:00:00Z",
+    "updatedAt": "2026-09-20T13:01:10Z",
+    "counts": {
+      "user": 1,
+      "assistant": 1,
+      "toolCalls": 0
+    },
+    "tokens": {
+      "input": 80,
+      "output": 12,
+      "reasoning": 0,
+      "cacheRead": 0,
+      "cacheWrite": 0
+    }
+  },
+  "messages": [
+    {
+      "id": "",
+      "role": "user",
+      "time": "2026-09-20T13:00:00Z",
+      "parts": [
+        {
+          "kind": "text",
+          "text": "<system-reminder>Use a safe tool</system-reminder>"
+        }
+      ],
+      "isMeta": true,
+      "tokens": {
+        "input": 0,
+        "output": 0,
+        "reasoning": 0,
+        "cacheRead": 0,
+        "cacheWrite": 0
+      }
+    },
+    {
+      "id": "",
+      "role": "user",
+      "time": "2026-09-20T13:00:01Z",
+      "parts": [
+        {
+          "kind": "text",
+          "text": "<command-name>/help</command-name>"
+        }
+      ],
+      "isMeta": true,
+      "tokens": {
+        "input": 0,
+        "output": 0,
+        "reasoning": 0,
+        "cacheRead": 0,
+        "cacheWrite": 0
+      }
+    },
+    {
+      "id": "",
+      "role": "user",
+      "time": "2026-09-20T13:00:02Z",
+      "parts": [
+        {
+          "kind": "text",
+          "text": "Caveat: avoid external requests"
+        }
+      ],
+      "isMeta": true,
+      "tokens": {
+        "input": 0,
+        "output": 0,
+        "reasoning": 0,
+        "cacheRead": 0,
+        "cacheWrite": 0
+      }
+    },
+    {
+      "id": "",
+      "role": "system",
+      "time": "2026-09-20T13:00:03Z",
+      "parts": [
+        {
+          "kind": "notice",
+          "text": "attachment (file): config excerpt"
+        }
+      ],
+      "isMeta": true,
+      "tokens": {
+        "input": 0,
+        "output": 0,
+        "reasoning": 0,
+        "cacheRead": 0,
+        "cacheWrite": 0
+      }
+    },
+    {
+      "id": "",
+      "role": "user",
+      "time": "2026-09-20T13:01:00Z",
+      "parts": [
+        {
+          "kind": "text",
+          "text": "Review the configuration"
+        }
+      ],
+      "tokens": {
+        "input": 0,
+        "output": 0,
+        "reasoning": 0,
+        "cacheRead": 0,
+        "cacheWrite": 0
+      }
+    },
+    {
+      "id": "msg-meta",
+      "role": "assistant",
+      "time": "2026-09-20T13:01:10Z",
+      "model": "claude-sonnet-5",
+      "parts": [
+        {
+          "kind": "text",
+          "text": "The configuration looks good."
+        }
+      ],
+      "tokens": {
+        "input": 80,
+        "output": 12,
+        "reasoning": 0,
+        "cacheRead": 0,
+        "cacheWrite": 0
+      }
+    }
+  ]
+}

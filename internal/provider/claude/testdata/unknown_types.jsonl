@@ -1,0 +1,5 @@
+{"type":"user","uuid":"u1","timestamp":"2026-09-20T15:00:00Z","cwd":"/home/dev/project","message":{"role":"user","content":"Show unknown records"}}
+{"type":"future-widget","uuid":"future1","timestamp":"2026-09-20T15:00:01Z","futureField":{"nested":42}}
+{"type":"future-widget","uuid":"future2","timestamp":"2026-09-20T15:00:02Z","some":"payload"}
+{"type":"unknown-action","uuid":"future3","timestamp":"2026-09-20T15:00:03Z","message":{"type":"message","content":"nested type is not the record type"}}
+{"type":"assistant","uuid":"a1","timestamp":"2026-09-20T15:00:05Z","cwd":"/home/dev/project","message":{"id":"msg-unknown","role":"assistant","model":"claude-sonnet-5","content":[{"type":"text","text":"Unknown records skipped."}],"usage":{"input_tokens":20,"output_tokens":8}}}

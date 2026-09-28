@@ -1,0 +1,121 @@
+{
+  "meta": {
+    "ref": {
+      "agent": "claude-code",
+      "id": "basic"
+    },
+    "sourcePath": "<fixture>",
+    "cwd": "<fixture-cwd>",
+    "gitBranch": "main",
+    "title": "Fix login token validation",
+    "firstPrompt": "Fix the login bug",
+    "model": "claude-sonnet-5",
+    "createdAt": "2026-09-20T10:00:00Z",
+    "updatedAt": "2026-09-20T10:01:31Z",
+    "counts": {
+      "user": 2,
+      "assistant": 2,
+      "toolCalls": 1
+    },
+    "tokens": {
+      "input": 250,
+      "output": 75,
+      "reasoning": 0,
+      "cacheRead": 30,
+      "cacheWrite": 10
+    },
+    "agentVersion": "2.1.0"
+  },
+  "messages": [
+    {
+      "id": "",
+      "role": "user",
+      "time": "2026-09-20T10:00:00Z",
+      "parts": [
+        {
+          "kind": "text",
+          "text": "Fix the login bug"
+        }
+      ],
+      "tokens": {
+        "input": 0,
+        "output": 0,
+        "reasoning": 0,
+        "cacheRead": 0,
+        "cacheWrite": 0
+      }
+    },
+    {
+      "id": "msg-a1",
+      "role": "assistant",
+      "time": "2026-09-20T10:00:03Z",
+      "model": "claude-sonnet-5",
+      "parts": [
+        {
+          "kind": "reasoning",
+          "text": "I should inspect the code."
+        },
+        {
+          "kind": "tool",
+          "tool": {
+            "id": "tool-1",
+            "name": "Bash",
+            "input": {
+              "command": "grep -n login main.go"
+            },
+            "output": "42:func login() {...}",
+            "status": "completed"
+          }
+        },
+        {
+          "kind": "text",
+          "text": "The login handler lacks a token check."
+        }
+      ],
+      "tokens": {
+        "input": 100,
+        "output": 35,
+        "reasoning": 0,
+        "cacheRead": 30,
+        "cacheWrite": 10
+      }
+    },
+    {
+      "id": "",
+      "role": "user",
+      "time": "2026-09-20T10:01:00Z",
+      "parts": [
+        {
+          "kind": "text",
+          "text": "Please add the token check."
+        }
+      ],
+      "tokens": {
+        "input": 0,
+        "output": 0,
+        "reasoning": 0,
+        "cacheRead": 0,
+        "cacheWrite": 0
+      }
+    },
+    {
+      "id": "msg-a2",
+      "role": "assistant",
+      "time": "2026-09-20T10:01:30Z",
+      "model": "claude-sonnet-5",
+      "parts": [
+        {
+          "kind": "text",
+          "text": "Done, the token is validated now."
+        }
+      ],
+      "tokens": {
+        "input": 150,
+        "output": 40,
+        "reasoning": 0,
+        "cacheRead": 0,
+        "cacheWrite": 0
+      }
+    }
+  ]
+}

@@ -1,0 +1,6 @@
+{"type":"user","uuid":"u1","timestamp":"2026-09-20T12:00:00Z","cwd":"/home/dev/project","message":{"role":"user","content":"Summarize the work"}}
+{"type":"assistant","uuid":"a1","timestamp":"2026-09-20T12:00:10Z","cwd":"/home/dev/project","message":{"id":"msg-a1","role":"assistant","model":"claude-sonnet-5","content":[{"type":"text","text":"Working on the feature."}],"usage":{"input_tokens":200,"output_tokens":30}}}
+{"type":"system","subtype":"compact_boundary","uuid":"sys1","timestamp":"2026-09-20T12:01:00Z","compactMetadata":{"trigger":"auto","preTokens":169569,"postTokens":14495}}
+{"type":"user","uuid":"u2","timestamp":"2026-09-20T12:01:01Z","isCompactSummary":true,"message":{"role":"user","content":"The previous conversation focused on feature implementation."}}
+{"type":"user","uuid":"u3","timestamp":"2026-09-20T12:02:00Z","cwd":"/home/dev/project","message":{"role":"user","content":"Continue with tests"}}
+{"type":"assistant","uuid":"a2","timestamp":"2026-09-20T12:02:10Z","cwd":"/home/dev/project","message":{"id":"msg-a2","role":"assistant","model":"claude-sonnet-5","content":[{"type":"text","text":"Tests are complete."}],"usage":{"input_tokens":300,"output_tokens":40}}}
