@@ -46,8 +46,11 @@ type procEntry struct {
 }
 
 // scanProcs finds running codex and opencode processes by reading
-// /proc/*/cmdline. Daemon/server subcommands are excluded: they host many
+// /proc/*/cmdline. Daemon/server subcommands (including editor-hosted ACP
+// servers such as Zed's `opencode acp`) are excluded: they host many
 // sessions and are not themselves a session being edited in a terminal.
+// Sessions they are actively using stay protected by the per-session
+// recent-activity check.
 func (g *liveGuard) scanProcs() (map[string]procEntry, error) {
 	if g.proc == nil {
 		return nil, errors.New("manage: process table unavailable")
@@ -75,7 +78,7 @@ func (g *liveGuard) scanProcs() (map[string]procEntry, error) {
 			}
 			agent = "codex"
 		case "opencode":
-			if hasArg(argv, "serve") {
+			if hasArg(argv, "serve") || hasArg(argv, "acp") {
 				continue
 			}
 			agent = "opencode"

@@ -6,6 +6,8 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -224,6 +226,112 @@ func opencodeFixtures(t *testing.T, root string, sessions [][3]int64) []model.Se
 	}
 	backdate(t, dbPath)
 	return metas
+}
+
+func addOpenCodeV1(t *testing.T, root string, sessions [][3]int64) {
+	t.Helper()
+	db, err := sql.Open("sqlite", filepath.Join(root, "opencode.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	if _, err := db.Exec(`PRAGMA foreign_keys=ON;
+		CREATE TABLE session (
+			id TEXT PRIMARY KEY,
+			parent_id TEXT,
+			time_updated INTEGER
+		);
+		CREATE TABLE message (
+			id TEXT PRIMARY KEY,
+			session_id TEXT NOT NULL,
+			FOREIGN KEY(session_id) REFERENCES session(id) ON DELETE CASCADE
+		);
+		CREATE TABLE part (
+			id TEXT PRIMARY KEY,
+			message_id TEXT NOT NULL,
+			session_id TEXT NOT NULL,
+			FOREIGN KEY(message_id) REFERENCES message(id) ON DELETE CASCADE
+		);
+		CREATE TABLE todo (
+			session_id TEXT NOT NULL,
+			position INTEGER NOT NULL,
+			PRIMARY KEY(session_id, position),
+			FOREIGN KEY(session_id) REFERENCES session(id) ON DELETE CASCADE
+		);
+		CREATE TABLE event_sequence (aggregate_id TEXT PRIMARY KEY);
+		CREATE TABLE event (
+			id TEXT PRIMARY KEY,
+			aggregate_id TEXT NOT NULL,
+			FOREIGN KEY(aggregate_id) REFERENCES event_sequence(aggregate_id) ON DELETE CASCADE
+		);
+		CREATE TABLE kv (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+		INSERT INTO kv (key, value) VALUES ('migration.v1-v2', '{"phase":"completed"}');`); err != nil {
+		t.Fatal(err)
+	}
+	old := time.Now().Add(-48 * time.Hour).UnixMilli()
+	for _, s := range sessions {
+		parent := sql.NullString{Valid: s[1] >= 0}
+		updated := sql.NullInt64{Int64: old, Valid: s[2] >= 0}
+		if parent.Valid {
+			parent.String = strconv.FormatInt(s[1], 10)
+		}
+		if updated.Valid {
+			updated.Int64 = s[2]
+		}
+		id := strconv.FormatInt(s[0], 10)
+		if _, err := db.Exec(`INSERT INTO session (id,parent_id,time_updated) VALUES (?,?,?)`, id, parent, updated); err != nil {
+			t.Fatal(err)
+		}
+		messageID := "m-" + id
+		if _, err := db.Exec(`INSERT INTO message (id,session_id) VALUES (?,?)`, messageID, id); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := db.Exec(`INSERT INTO part (id,message_id,session_id) VALUES (?,?,?)`, "p-"+id, messageID, id); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := db.Exec(`INSERT INTO todo (session_id,position) VALUES (?,0)`, id); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := db.Exec(`INSERT INTO event_sequence (aggregate_id) VALUES (?)`, id); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := db.Exec(`INSERT INTO event (id,aggregate_id) VALUES (?,?)`, "e-"+id, id); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func v1OnlyOpenCodeFixtures(t *testing.T, root string, sessions [][3]int64) []model.SessionMeta {
+	t.Helper()
+	catalog := opencodeFixtures(t, root, nil)
+	addOpenCodeV1(t, root, sessions)
+	db, err := sql.Open("sqlite", filepath.Join(root, "opencode.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`DROP TABLE session_v2`); err != nil {
+		_ = db.Close()
+		t.Fatal(err)
+	}
+	_ = db.Close()
+	for _, s := range sessions {
+		catalog = append(catalog, opencodeMeta(root, strconv.FormatInt(s[0], 10)))
+	}
+	return catalog
+}
+
+func countRows(t *testing.T, root, table string) int {
+	t.Helper()
+	db, err := sql.Open("sqlite", filepath.Join(root, "opencode.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	var count int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM ` + table).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	return count
 }
 
 func claudeFixtures(t *testing.T, root string) (mainID string, catalog []model.SessionMeta) {
@@ -875,6 +983,198 @@ func TestDelete_OpenCode_ExecutesScopedCLI(t *testing.T) {
 	}
 }
 
+func TestDelete_OpenCode_V1OnlyUsesSQL(t *testing.T) {
+	roots := testRoots(t)
+	catalog := v1OnlyOpenCodeFixtures(t, roots.OpenCodeData, [][3]int64{{1, -1, -1}, {2, 1, -1}})
+	exec := &recordingExec{}
+	m, _ := newTestManager(t, roots, WithExec(exec.exec))
+	enableAll(t, m)
+	ref := model.SessionRef{Agent: model.AgentOpenCode, ID: "1"}
+	preview, err := m.Preview(context.Background(), []model.SessionRef{ref}, catalog)
+	if err != nil {
+		t.Fatal(err)
+	}
+	report, err := m.Delete(context.Background(), []model.SessionRef{ref}, catalog, preview.Token)
+	if err != nil || report.Deleted != 1 {
+		t.Fatalf("delete = %+v, %v", report, err)
+	}
+	if len(exec.all()) != 0 {
+		t.Fatalf("v1-only delete invoked CLI: %v", exec.all())
+	}
+	for _, table := range []string{"session", "message", "part", "todo", "event_sequence", "event"} {
+		if count := countRows(t, roots.OpenCodeData, table); count != 0 {
+			t.Errorf("%s rows = %d", table, count)
+		}
+	}
+}
+
+func TestDelete_OpenCode_BothGenerations(t *testing.T) {
+	roots := testRoots(t)
+	catalog := opencodeFixtures(t, roots.OpenCodeData, [][3]int64{{1, -1, -1}})
+	addOpenCodeV1(t, roots.OpenCodeData, [][3]int64{{1, -1, -1}})
+	exec := &recordingExec{}
+	m, _ := newTestManager(t, roots, WithExec(exec.exec))
+	enableAll(t, m)
+	ref := model.SessionRef{Agent: model.AgentOpenCode, ID: "1"}
+	preview, err := m.Preview(context.Background(), []model.SessionRef{ref}, catalog)
+	if err != nil {
+		t.Fatal(err)
+	}
+	report, err := m.Delete(context.Background(), []model.SessionRef{ref}, catalog, preview.Token)
+	if err != nil || report.Deleted != 1 {
+		t.Fatalf("delete = %+v, %v", report, err)
+	}
+	if calls := exec.all(); len(calls) != 1 || calls[0][len(calls[0])-1] != "1" {
+		t.Fatalf("CLI calls = %v", calls)
+	}
+	if count := countRows(t, roots.OpenCodeData, "session"); count != 0 {
+		t.Fatalf("v1 session rows = %d", count)
+	}
+	// event_sequence is v2 event-sourcing state; the CLI owns it (including
+	// its session.deleted tombstone) for any session that exists in v2.
+	if count := countRows(t, roots.OpenCodeData, "event_sequence"); count != 1 {
+		t.Fatalf("v2-owned event_sequence rows = %d", count)
+	}
+}
+
+func TestPreview_OpenCode_UnfinishedMigrationBlocksCLI(t *testing.T) {
+	roots := testRoots(t)
+	catalog := opencodeFixtures(t, roots.OpenCodeData, [][3]int64{{1, -1, -1}})
+	addOpenCodeV1(t, roots.OpenCodeData, [][3]int64{{1, -1, -1}, {2, -1, -1}})
+	catalog = append(catalog, opencodeMeta(roots.OpenCodeData, "2"))
+	db, err := sql.Open("sqlite", filepath.Join(roots.OpenCodeData, "opencode.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`UPDATE kv SET value='{"phase":"sessions","cursor":"1"}'`); err != nil {
+		_ = db.Close()
+		t.Fatal(err)
+	}
+	_ = db.Close()
+	m, _ := newTestManager(t, roots)
+	enableAll(t, m)
+	preview, err := m.Preview(context.Background(), []model.SessionRef{
+		{Agent: model.AgentOpenCode, ID: "1"}, {Agent: model.AgentOpenCode, ID: "2"},
+	}, catalog)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(preview.Items) != 2 {
+		t.Fatalf("items = %+v", preview.Items)
+	}
+	for _, item := range preview.Items {
+		switch item.Ref.ID {
+		case "1":
+			if !strings.Contains(item.Blocked, "migration is unfinished") {
+				t.Errorf("v2 target not blocked: %+v", item)
+			}
+		case "2":
+			// v1-only deletion needs no CLI, so the migration cannot run.
+			if item.Blocked != "" {
+				t.Errorf("v1-only item blocked: %+v", item)
+			}
+		}
+	}
+}
+
+func TestDelete_OpenCode_V2RootWithV2MemberLinkedThroughV1(t *testing.T) {
+	roots := testRoots(t)
+	// In v2 both sessions are roots; only the v1 copy links 5 under 1.
+	catalog := opencodeFixtures(t, roots.OpenCodeData, [][3]int64{{1, -1, -1}, {5, -1, -1}})
+	addOpenCodeV1(t, roots.OpenCodeData, [][3]int64{{1, -1, -1}, {5, 1, -1}})
+	exec := &recordingExec{}
+	m, _ := newTestManager(t, roots, WithExec(exec.exec))
+	enableAll(t, m)
+	ref := model.SessionRef{Agent: model.AgentOpenCode, ID: "1"}
+	preview, err := m.Preview(context.Background(), []model.SessionRef{ref}, catalog)
+	if err != nil {
+		t.Fatal(err)
+	}
+	report, err := m.Delete(context.Background(), []model.SessionRef{ref}, catalog, preview.Token)
+	if err != nil || report.Deleted != 1 || len(report.Forgotten) != 2 {
+		t.Fatalf("delete = %+v, %v", report, err)
+	}
+	var targets []string
+	for _, call := range exec.all() {
+		targets = append(targets, call[len(call)-1])
+	}
+	sort.Strings(targets)
+	if !reflect.DeepEqual(targets, []string{"1", "5"}) {
+		t.Fatalf("CLI targets = %v", targets)
+	}
+}
+
+func TestDelete_OpenCode_SpanningGenerationDescendants(t *testing.T) {
+	roots := testRoots(t)
+	catalog := opencodeFixtures(t, roots.OpenCodeData, [][3]int64{{2, 1, -1}, {3, 2, -1}})
+	addOpenCodeV1(t, roots.OpenCodeData, [][3]int64{{1, -1, -1}, {4, 1, -1}})
+	catalog = append(catalog, opencodeMeta(roots.OpenCodeData, "1"), opencodeMeta(roots.OpenCodeData, "4"))
+	exec := &recordingExec{}
+	m, _ := newTestManager(t, roots, WithExec(exec.exec))
+	enableAll(t, m)
+	ref := model.SessionRef{Agent: model.AgentOpenCode, ID: "1"}
+	preview, err := m.Preview(context.Background(), []model.SessionRef{ref}, catalog)
+	if err != nil {
+		t.Fatal(err)
+	}
+	report, err := m.Delete(context.Background(), []model.SessionRef{ref}, catalog, preview.Token)
+	if err != nil || report.Deleted != 1 || len(report.Forgotten) != 4 {
+		t.Fatalf("delete = %+v, %v", report, err)
+	}
+	if calls := exec.all(); len(calls) != 1 || calls[0][len(calls[0])-1] != "2" {
+		t.Fatalf("topmost v2 CLI calls = %v", calls)
+	}
+	if countRows(t, roots.OpenCodeData, "session") != 0 {
+		t.Fatal("v1 descendants remain")
+	}
+}
+
+func TestPreview_OpenCode_V1RecencyBlocks(t *testing.T) {
+	roots := testRoots(t)
+	catalog := opencodeFixtures(t, roots.OpenCodeData, [][3]int64{{1, -1, -1}})
+	addOpenCodeV1(t, roots.OpenCodeData, [][3]int64{{1, -1, time.Now().Add(-time.Minute).UnixMilli()}})
+	m, _ := newTestManager(t, roots)
+	enableAll(t, m)
+	preview, err := m.Preview(context.Background(), []model.SessionRef{{Agent: model.AgentOpenCode, ID: "1"}}, catalog)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(preview.Items) != 1 || !strings.Contains(preview.Items[0].Blocked, ErrLive.Error()) {
+		t.Fatalf("recent v1 duplicate not blocked: %+v", preview.Items)
+	}
+}
+
+func TestDelete_OpenCode_V1SQLFailure(t *testing.T) {
+	roots := testRoots(t)
+	catalog := v1OnlyOpenCodeFixtures(t, roots.OpenCodeData, [][3]int64{{1, -1, -1}})
+	m, _ := newTestManager(t, roots)
+	enableAll(t, m)
+	ref := model.SessionRef{Agent: model.AgentOpenCode, ID: "1"}
+	preview, err := m.Preview(context.Background(), []model.SessionRef{ref}, catalog)
+	if err != nil {
+		t.Fatal(err)
+	}
+	db, err := sql.Open("sqlite", filepath.Join(roots.OpenCodeData, "opencode.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`DROP TABLE part`); err != nil {
+		_ = db.Close()
+		t.Fatal(err)
+	}
+	_ = db.Close()
+	report, err := m.Delete(context.Background(), []model.SessionRef{ref}, catalog, preview.Token)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Failed != 1 || report.Deleted != 0 || len(report.Forgotten) != 0 {
+		t.Fatalf("SQL failure report = %+v", report)
+	}
+	if countRows(t, roots.OpenCodeData, "session") != 1 {
+		t.Fatal("failed SQL delete removed the session")
+	}
+}
+
 func TestDelete_OpenCode_InvalidIDRefusedBeforeCLI(t *testing.T) {
 	exec := &recordingExec{}
 	om, err := newOpenCodeManager(filepath.Join(t.TempDir(), "opencode"), exec.exec, nil)
@@ -888,6 +1188,29 @@ func TestDelete_OpenCode_InvalidIDRefusedBeforeCLI(t *testing.T) {
 	}
 	if len(exec.all()) != 0 {
 		t.Fatalf("no CLI call may happen for invalid ids, got %v", exec.all())
+	}
+}
+
+func TestProcLive_OpenCodeServersIgnored(t *testing.T) {
+	g := newLiveGuard(fakeProc{argv: map[int][]string{
+		1: {"/home/u/.opencode/bin/opencode", "serve", "--service"},
+		2: {"/home/u/.local/share/zed/external_agents/registry/opencode/v1/opencode", "acp"},
+	}})
+	live, err := g.procLive(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if live["opencode"] {
+		t.Fatalf("opencode serve/acp must not count as live, got %v", live)
+	}
+
+	g2 := newLiveGuard(fakeProc{argv: map[int][]string{3: {"opencode"}}})
+	live2, err := g2.procLive(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !live2["opencode"] {
+		t.Fatalf("interactive opencode must count as live, got %v", live2)
 	}
 }
 

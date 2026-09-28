@@ -1,0 +1,60 @@
+[
+  {
+    "ref": {
+      "agent": "opencode",
+      "id": "alpha"
+    },
+    "sourcePath": "<fixture>/opencode.db",
+    "cwd": "/source/worktree",
+    "repoRoot": "/source/main",
+    "cwdMissing": true,
+    "title": "First v1 prompt",
+    "firstPrompt": "First v1 prompt",
+    "model": "anthropic/claude-sonnet-4",
+    "agentName": "build",
+    "createdAt": "2023-11-14T22:13:20Z",
+    "updatedAt": "2023-11-14T22:15:00Z",
+    "counts": {
+      "user": 1,
+      "assistant": 1,
+      "toolCalls": 1
+    },
+    "tokens": {
+      "input": 40,
+      "output": 20,
+      "reasoning": 5,
+      "cacheRead": 7,
+      "cacheWrite": 3
+    },
+    "costUsd": 2.5,
+    "agentVersion": "1.18.33"
+  },
+  {
+    "ref": {
+      "agent": "opencode",
+      "id": "child"
+    },
+    "parentId": "alpha",
+    "sourcePath": "<fixture>/opencode.db",
+    "cwd": "/repo/work",
+    "cwdMissing": true,
+    "title": "(untitled)",
+    "agentName": "build",
+    "createdAt": "2023-11-14T22:13:20Z",
+    "updatedAt": "2023-11-14T22:15:00Z",
+    "counts": {
+      "user": 0,
+      "assistant": 0,
+      "toolCalls": 0
+    },
+    "tokens": {
+      "input": 0,
+      "output": 0,
+      "reasoning": 0,
+      "cacheRead": 0,
+      "cacheWrite": 0
+    },
+    "archived": true,
+    "agentVersion": "1.18.33"
+  }
+]

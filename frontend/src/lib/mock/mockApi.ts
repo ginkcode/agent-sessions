@@ -286,7 +286,7 @@ export class MockBackendAPI {
         reversible,
         warning:
           s.ref.agent === 'opencode'
-            ? 'OpenCode will permanently delete this session and its child sessions. It will not go to Trash and cannot be restored.'
+            ? 'OpenCode will permanently delete both OpenCode 1.x and 2.x copies of this session and its child sessions. It will not go to Trash and cannot be restored.'
             : undefined,
         blocked: s.live ? 'session is live: session is currently active' : undefined,
         action: reversible ? 'trash' : 'delete',

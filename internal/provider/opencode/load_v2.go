@@ -18,8 +18,8 @@ import (
 
 const outputBudget = 64 << 10
 
-// Load resolves v2 first. The older generations remain explicitly unsupported
-// until their own loaders land; a v1-only ID is never read as a v2 transcript.
+// Load chooses the same generation as Scan: v2 wins unless a v1 duplicate
+// has a strictly newer update time.
 func (p *Provider) Load(ctx context.Context, ref model.SessionRef) (*model.Transcript, error) {
 	if err := validateV2Ref(ctx, ref); err != nil {
 		return nil, err
@@ -32,36 +32,81 @@ func (p *Provider) Load(ctx context.Context, ref model.SessionRef) (*model.Trans
 		return nil, err
 	}
 	defer func() { _ = db.Close() }()
-	ready, err := p.v2Ready(ctx, db)
+
+	v2Ready, err := p.v2Ready(ctx, db)
 	if err != nil {
 		return nil, err
 	}
-	if !ready {
+	v1Session, err := sqliteread.HasTable(ctx, db, "session")
+	if err != nil {
+		return nil, err
+	}
+	v1Message, err := sqliteread.HasTable(ctx, db, "message")
+	if err != nil {
+		return nil, err
+	}
+	v1Part, err := sqliteread.HasTable(ctx, db, "part")
+	if err != nil {
+		return nil, err
+	}
+	v1Ready := v1Session && v1Message && v1Part
+	if !v2Ready && !v1Ready {
 		return nil, loadUnsupported(ctx)
 	}
 	project, err := sqliteread.HasTable(ctx, db, "project")
 	if err != nil {
 		return nil, err
 	}
+	var v1Columns map[string]bool
+	if v1Ready {
+		v1Columns, err = sqliteread.Columns(ctx, db, "session")
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	tx, err := db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
-		return nil, fmt.Errorf("opencode v2 begin read: %w", err)
+		return nil, fmt.Errorf("opencode begin read: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
-	diag := &provider.Diagnostics{}
-	metas, err := p.v2Metas(ctx, tx, project, 0, false, []string{ref.ID}, diag)
+	v2Updated, inV2, err := sessionUpdated(ctx, tx, "session_v2", ref.ID, v2Ready)
 	if err != nil {
 		return nil, err
 	}
-	if len(metas) == 0 {
-		return nil, p.v2Missing(ctx, tx, ref.ID)
+	v1Updated, inV1, err := sessionUpdated(ctx, tx, "session", ref.ID, v1Ready)
+	if err != nil {
+		return nil, err
 	}
-	transcript, err := p.loadV2(ctx, tx, ref.ID, metas[0], diag)
+	generation := pickGeneration(inV2, v2Updated, inV1, v1Updated)
+	if generation == "" {
+		return nil, fmt.Errorf("opencode session %q not found", ref.ID)
+	}
+
+	diag := &provider.Diagnostics{}
+	var metas []model.SessionMeta
+	if generation == GenV2 {
+		metas, err = p.v2Metas(ctx, tx, project, 0, false, []string{ref.ID}, diag)
+	} else {
+		metas, err = p.v1Metas(ctx, tx, project, v1Columns, 0, false, []string{ref.ID}, diag)
+	}
+	if err != nil {
+		return nil, err
+	}
+	if len(metas) != 1 {
+		return nil, fmt.Errorf("opencode session %q not found", ref.ID)
+	}
+	var transcript *model.Transcript
+	if generation == GenV2 {
+		transcript, err = p.loadV2(ctx, tx, ref.ID, metas[0], diag)
+	} else {
+		transcript, err = p.loadV1(ctx, tx, ref.ID, metas[0], diag)
+	}
 	if err != nil {
 		return nil, err
 	}
 	if err := tx.Commit(); err != nil {
-		return nil, fmt.Errorf("opencode v2 commit read: %w", err)
+		return nil, fmt.Errorf("opencode commit read: %w", err)
 	}
 	return transcript, nil
 }
@@ -100,23 +145,29 @@ func (p *Provider) v2Ready(ctx context.Context, db *sql.DB) (bool, error) {
 	return session && message, nil
 }
 
-func (p *Provider) v2Missing(ctx context.Context, tx *sql.Tx, id string) error {
-	// Only probe the known v1 session table when it exists. Its transcript is
-	// deliberately not inferred from v2 or loaded by this task.
-	var present bool
-	err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='session')`).Scan(&present)
+func sessionUpdated(ctx context.Context, db v2Query, table, id string, ready bool) (int64, bool, error) {
+	if !ready {
+		return 0, false, nil
+	}
+	var updated sql.NullInt64
+	err := db.QueryRowContext(ctx, `SELECT time_updated FROM `+table+` WHERE id=?`, id).Scan(&updated)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, false, nil
+	}
 	if err != nil {
-		return fmt.Errorf("opencode v2 session lookup: %w", err)
+		return 0, false, fmt.Errorf("opencode %s session lookup: %w", table, err)
 	}
-	if present {
-		var exists bool
-		if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM session WHERE id=?)`, id).Scan(&exists); err != nil {
-			return fmt.Errorf("opencode v1 session lookup: %w", err)
-		} else if exists {
-			return loadUnsupported(ctx)
-		}
+	return updated.Int64, true, nil
+}
+
+func pickGeneration(inV2 bool, v2Updated int64, inV1 bool, v1Updated int64) string {
+	if inV2 && (!inV1 || v2Updated >= v1Updated) {
+		return GenV2
 	}
-	return fmt.Errorf("opencode session %q not found in v2 (v1/legacy loading is pending)", id)
+	if inV1 {
+		return GenV1
+	}
+	return ""
 }
 
 type v2Time struct {
@@ -324,19 +375,22 @@ func (p *Provider) loadV2(ctx context.Context, tx *sql.Tx, id string, meta model
 	}
 	// Query child ownership only after closing the streaming rows: the SQLite
 	// helper has a single connection. Never attach a child from an unverified ID.
+	var tables []string
+	if len(children) != 0 {
+		var err error
+		if tables, err = childTables(ctx, tx); err != nil {
+			return nil, err
+		}
+	}
 	for child, tools := range children {
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		var parent sql.NullString
-		err := tx.QueryRowContext(ctx, `SELECT parent_id FROM session_v2 WHERE id=?`, child).Scan(&parent)
-		if errors.Is(err, sql.ErrNoRows) {
-			continue
-		}
+		verified, err := childHasParent(ctx, tx, tables, child, id)
 		if err != nil {
-			return nil, fmt.Errorf("opencode v2 child lookup: %w", err)
+			return nil, err
 		}
-		if parent.String == id {
+		if verified {
 			for _, tool := range tools {
 				tool.Child = &model.SessionRef{Agent: model.AgentOpenCode, ID: child}
 			}

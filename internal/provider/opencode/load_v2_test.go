@@ -218,17 +218,11 @@ func TestLoadV2OnlyFallback(t *testing.T) {
 	}
 	f := newScanFixture(t)
 	p = New(f.root, nil)
-	if _, err := f.db.Exec(`CREATE TABLE session (id TEXT PRIMARY KEY)`); err != nil {
-		t.Fatal(err)
+	if _, err := p.Load(t.Context(), ref); err == nil || !strings.Contains(err.Error(), "not found") {
+		t.Errorf("missing v1 Load = %v", err)
 	}
-	if _, err := f.db.Exec(`INSERT INTO session (id) VALUES ('v1-id')`); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := p.Load(t.Context(), ref); !errors.Is(err, ErrUnsupportedLoad) {
-		t.Errorf("v1-only Load = %v", err)
-	}
-	if _, err := p.Blob(t.Context(), ref, "v1:id:file"); !errors.Is(err, ErrUnsupportedBlob) {
-		t.Errorf("v1 Blob = %v", err)
+	if _, err := p.Blob(t.Context(), ref, "v1:id:file"); err == nil {
+		t.Errorf("invalid v1 Blob = %v", err)
 	}
 	if err := os.Remove(p.dbPath()); err != nil {
 		t.Fatal(err)

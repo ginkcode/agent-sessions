@@ -21,6 +21,8 @@ var schemaTables = map[string]bool{
 	"message":            true,
 	"part":               true,
 	"project":            true,
+	"event_sequence":     true,
+	"kv":                 true,
 	"worktree":           true,
 	"threads":            true,
 	"thread_spawn_edges": true,

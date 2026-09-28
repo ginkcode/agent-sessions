@@ -252,15 +252,17 @@ func (m *Manager) planOpenCode(ctx context.Context, meta model.SessionMeta) (ope
 	if m.opencode == nil {
 		return operation{}, ErrUnsupportedAction
 	}
-	ids, err := m.opencode.plan(ctx, meta)
+	members, err := m.opencode.plan(ctx, meta)
 	if err != nil {
 		return operation{}, err
 	}
-	op := operation{Item: Item{Ref: meta.Ref, Agent: meta.Ref.Agent, Title: meta.Title, Action: ActionDelete, Reversible: false, Warning: OpenCodeWarning}, CLIRefs: []model.SessionRef{meta.Ref}}
-	// The DB is the CLI's read-only source of truth, not a path this app
-	// touches destructively. Paths is intentionally empty for this provider.
-	for _, id := range ids {
-		op.Descendants = append(op.Descendants, model.SessionRef{Agent: model.AgentOpenCode, ID: id})
+	op := operation{Item: Item{Ref: meta.Ref, Agent: meta.Ref.Agent, Title: meta.Title, Action: ActionDelete, Reversible: false, Warning: OpenCodeWarning}, OpenCodeMember: members}
+	// The DB is the provider's source of truth, not a path this app exposes as
+	// a directly deleted file. Paths is intentionally empty for this provider.
+	for _, member := range members {
+		if member.ID != meta.Ref.ID {
+			op.Descendants = append(op.Descendants, model.SessionRef{Agent: model.AgentOpenCode, ID: member.ID})
+		}
 	}
 	sort.Slice(op.Descendants, func(i, j int) bool { return op.Descendants[i].Key() < op.Descendants[j].Key() })
 	return op, nil
@@ -321,14 +323,36 @@ func (m *Manager) execute(ctx context.Context, op operation, all []model.Session
 		res.OK = true
 		return res, forgotten
 	case model.AgentOpenCode:
-		live, lerr := m.procLiveMap(ctx)
-		if lerr != nil || live[string(model.AgentOpenCode)] {
-			res.Error = ErrLive.Error()
-			return res, nil
+		var v1IDs, v1OnlyIDs []string
+		for _, member := range op.OpenCodeMember {
+			if member.V2Target {
+				live, lerr := m.procLiveMap(ctx)
+				if lerr != nil || live[string(model.AgentOpenCode)] {
+					res.Error = ErrLive.Error()
+					return res, nil
+				}
+				if err := m.opencode.deleteSession(ctx, member.ID); err != nil {
+					res.Error = "provider deletion failed"
+					return res, nil
+				}
+			}
+			if member.InV1 {
+				v1IDs = append(v1IDs, member.ID)
+				if !member.InV2 {
+					v1OnlyIDs = append(v1OnlyIDs, member.ID)
+				}
+			}
 		}
-		if err := m.opencode.deleteSession(ctx, op.Item.Ref.ID); err != nil {
-			res.Error = "provider deletion failed"
-			return res, nil
+		if len(v1IDs) != 0 {
+			live, lerr := m.procLiveMap(ctx)
+			if lerr != nil || live[string(model.AgentOpenCode)] {
+				res.Error = ErrLive.Error()
+				return res, nil
+			}
+			if err := m.opencode.deleteV1Rows(ctx, v1IDs, v1OnlyIDs); err != nil {
+				res.Error = "provider deletion failed"
+				return res, nil
+			}
 		}
 		res.OK = true
 		return res, append([]model.SessionRef{op.Item.Ref}, op.Descendants...)
@@ -341,7 +365,7 @@ func (m *Manager) execute(ctx context.Context, op operation, all []model.Session
 func equalOp(a, b operation) bool {
 	// Ignore changing title/size, but reject path, target, action, descendant,
 	// and CLI target drift. Path mode identity is checked by each fresh plan.
-	return a.Item.Ref == b.Item.Ref && a.Item.Action == b.Item.Action && reflect.DeepEqual(a.Item.Paths, b.Item.Paths) && reflect.DeepEqual(a.Descendants, b.Descendants) && reflect.DeepEqual(a.CLIRefs, b.CLIRefs)
+	return a.Item.Ref == b.Item.Ref && a.Item.Action == b.Item.Action && reflect.DeepEqual(a.Item.Paths, b.Item.Paths) && reflect.DeepEqual(a.Descendants, b.Descendants) && reflect.DeepEqual(a.CLIRefs, b.CLIRefs) && reflect.DeepEqual(a.OpenCodeMember, b.OpenCodeMember)
 }
 
 func remainingPaths(files []itemFile, start int) []string {

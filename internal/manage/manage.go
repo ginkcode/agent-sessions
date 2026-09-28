@@ -135,9 +135,9 @@ type operation struct {
 	Item        Item
 	Files       []itemFile
 	Descendants []model.SessionRef
-	// CLIRefs is ordered child-first for Codex; OpenCode deletes the root and
-	// lets its documented cascade handle descendants.
-	CLIRefs []model.SessionRef
+	// CLIRefs is ordered child-first for Codex.
+	CLIRefs        []model.SessionRef
+	OpenCodeMember []openCodeMember
 }
 
 // Preview accepts selected refs and a current catalog snapshot. Selected
@@ -209,17 +209,18 @@ func (m *Manager) Delete(ctx context.Context, selected []model.SessionRef, catal
 // complete descendants/CLI targets; title/byte estimates are deliberately
 // excluded so harmless catalog metadata refreshes do not stale a token.
 type sealedOperation struct {
-	Ref         model.SessionRef
-	Action      Action
-	Paths       []string
-	Descendants []model.SessionRef
-	CLIRefs     []model.SessionRef
+	Ref            model.SessionRef
+	Action         Action
+	Paths          []string
+	Descendants    []model.SessionRef
+	CLIRefs        []model.SessionRef
+	OpenCodeMember []openCodeMember
 }
 
 func (m *Manager) mac(expiry time.Time, ops []operation) []byte {
 	data := make([]sealedOperation, 0, len(ops))
 	for _, op := range ops {
-		data = append(data, sealedOperation{op.Item.Ref, op.Item.Action, op.Item.Paths, op.Descendants, op.CLIRefs})
+		data = append(data, sealedOperation{op.Item.Ref, op.Item.Action, op.Item.Paths, op.Descendants, op.CLIRefs, op.OpenCodeMember})
 	}
 	encoded, _ := json.Marshal(data)
 	h := hmac.New(sha256.New, m.tokenKey)

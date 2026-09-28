@@ -68,6 +68,41 @@ CREATE TABLE session_message (
 	time_created INTEGER,
 	data TEXT
 );
+CREATE TABLE session (
+	id TEXT PRIMARY KEY,
+	project_id TEXT,
+	parent_id TEXT,
+	directory TEXT,
+	title TEXT,
+	version TEXT,
+	agent TEXT,
+	model TEXT,
+	cost REAL,
+	tokens_input INTEGER,
+	tokens_output INTEGER,
+	tokens_reasoning INTEGER,
+	tokens_cache_read INTEGER,
+	tokens_cache_write INTEGER,
+	time_created INTEGER,
+	time_updated INTEGER,
+	time_archived INTEGER
+);
+CREATE TABLE message (
+	id TEXT PRIMARY KEY,
+	session_id TEXT,
+	time_created INTEGER,
+	time_updated INTEGER,
+	data TEXT
+);
+CREATE TABLE part (
+	id TEXT PRIMARY KEY,
+	message_id TEXT,
+	session_id TEXT,
+	time_created INTEGER,
+	time_updated INTEGER,
+	data TEXT
+);
+CREATE TABLE todo (session_id TEXT, content TEXT, status TEXT, priority TEXT, position INTEGER);
 CREATE TABLE project (id TEXT PRIMARY KEY, worktree TEXT);`
 	if _, err := db.Exec(schema); err != nil {
 		t.Fatalf("fixture schema: %v", err)
@@ -101,6 +136,41 @@ func (f *scanFixture) session(id string, overrides map[string]any) {
 	query := "INSERT INTO session_v2 (" + strings.Join(names, ",") + ") VALUES (" + strings.Join(marks, ",") + ")"
 	if _, err := f.db.Exec(query, args...); err != nil {
 		f.t.Fatalf("fixture session %s: %v", id, err)
+	}
+}
+
+func (f *scanFixture) v1Session(id string, overrides map[string]any) {
+	f.t.Helper()
+	columns := map[string]any{
+		"id": id, "project_id": "proj1", "directory": "/repo/work", "title": "Session " + id,
+		"version": "1.18.33", "agent": "build", "model": `{"providerID":"anthropic","id":"claude-sonnet-4"}`,
+		"time_created": int64(1_700_000_000_000), "time_updated": int64(1_700_000_100_000),
+	}
+	for key, value := range overrides {
+		columns[key] = value
+	}
+	var names, marks []string
+	var args []any
+	for name, value := range columns {
+		names, marks, args = append(names, name), append(marks, "?"), append(args, value)
+	}
+	if _, err := f.db.Exec("INSERT INTO session ("+strings.Join(names, ",")+") VALUES ("+strings.Join(marks, ",")+")", args...); err != nil {
+		f.t.Fatalf("fixture v1 session %s: %v", id, err)
+	}
+}
+
+func (f *scanFixture) v1Message(id, sessionID, role string, created int64) {
+	f.t.Helper()
+	data := fmt.Sprintf(`{"role":%q,"time":{"created":%d}}`, role, created)
+	if _, err := f.db.Exec(`INSERT INTO message (id, session_id, time_created, time_updated, data) VALUES (?, ?, ?, ?, ?)`, id, sessionID, created, created, data); err != nil {
+		f.t.Fatalf("fixture v1 message: %v", err)
+	}
+}
+
+func (f *scanFixture) v1Part(id, messageID, sessionID string, created int64, data string) {
+	f.t.Helper()
+	if _, err := f.db.Exec(`INSERT INTO part (id, message_id, session_id, time_created, time_updated, data) VALUES (?, ?, ?, ?, ?, ?)`, id, messageID, sessionID, created, created, data); err != nil {
+		f.t.Fatalf("fixture v1 part: %v", err)
 	}
 }
 
@@ -674,15 +744,19 @@ func TestScanAbsentAndSchemaEdgeCases(t *testing.T) {
 			t.Fatalf("replaced schema published a partial scan: %+v", result)
 		}
 	})
-	t.Run("v1-only store warns but does not fail", func(t *testing.T) {
-		root := t.TempDir()
-		fixtureDB(t, root, "session", "message", "part")
-		p := New(root, nil)
-		result, err := p.Scan(t.Context(), provider.ScanState{})
+	t.Run("v1-only store scans", func(t *testing.T) {
+		f := newScanFixture(t)
+		if _, err := f.db.Exec(`DROP TABLE session_v2; DROP TABLE session_message`); err != nil {
+			t.Fatal(err)
+		}
+		f.v1Session("v1-only", nil)
+		f.v1Message("m1", "v1-only", "user", 1_700_000_000_001)
+		f.v1Part("p1", "m1", "v1-only", 1_700_000_000_002, `{"type":"text","text":"hello"}`)
+		result, err := New(f.root, nil).Scan(t.Context(), provider.ScanState{})
 		if err != nil {
 			t.Fatalf("v1 store scan: %v", err)
 		}
-		if len(result.Changed) != 0 || len(result.Diag.Warnings) == 0 {
+		if len(result.Changed) != 1 || result.Changed[0].Ref.ID != "v1-only" || result.Changed[0].Counts.User != 1 {
 			t.Errorf("v1 store scan = %+v", result)
 		}
 	})

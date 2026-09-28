@@ -5,13 +5,10 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"math"
-	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/ginkcode/agent-sessions/internal/model"
-	"github.com/ginkcode/agent-sessions/internal/pathutil"
 	"github.com/ginkcode/agent-sessions/internal/provider"
 )
 
@@ -22,27 +19,6 @@ const v2BatchSize = 100
 type v2Query interface {
 	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
 	QueryRowContext(context.Context, string, ...any) *sql.Row
-}
-
-// scanV2 returns the selected rows (all rows on full scans, updated rows on
-// incremental scans), a separate complete ID set, and the database's maximum
-// update time. The caller supplies a read-only transaction so backdated-ID
-// lookups also see the same snapshot. project is probed before BeginTx because
-// sqliteread.Open has only one connection.
-func (p *Provider) scanV2(ctx context.Context, tx *sql.Tx, project bool, sinceMs int64, full bool, d *provider.Diagnostics) ([]model.SessionMeta, []string, int64, error) {
-	ids, err := v2IDs(ctx, tx)
-	if err != nil {
-		return nil, nil, 0, err
-	}
-	var maxUpdated sql.NullInt64
-	if err := tx.QueryRowContext(ctx, `SELECT MAX(time_updated) FROM session_v2`).Scan(&maxUpdated); err != nil {
-		return nil, nil, 0, fmt.Errorf("v2 maximum update time: %w", err)
-	}
-	metas, err := p.v2Metas(ctx, tx, project, sinceMs, full, nil, d)
-	if err != nil {
-		return nil, nil, 0, err
-	}
-	return metas, ids, maxUpdated.Int64, nil
 }
 
 func v2IDs(ctx context.Context, db v2Query) ([]string, error) {
@@ -105,6 +81,7 @@ func (p *Provider) v2Metas(ctx context.Context, db v2Query, project bool, sinceM
 		return nil, fmt.Errorf("v2 session rows: %w", err)
 	}
 	var metas []model.SessionMeta
+	origins := make(map[string]metaOrigin)
 	for rows.Next() {
 		if len(metas)%1000 == 0 {
 			if err := ctx.Err(); err != nil {
@@ -126,12 +103,10 @@ func (p *Provider) v2Metas(ctx context.Context, db v2Query, project bool, sinceM
 			d.ParseErrors++
 			d.Warn(p.dbPath(), 0, "session %q has invalid model JSON", id)
 		}
-		cwd := pathutil.NormalizeDir(dir.String)
 		meta := model.SessionMeta{
 			Ref:      model.SessionRef{Agent: model.AgentOpenCode, ID: id},
-			ParentID: parent.String, SourcePath: p.dbPath(), CWD: cwd,
-			CWDMissing: cwd != "" && !pathutil.Exists(cwd),
-			Title:      model.OneLine(title.String), AgentVersion: version.String, AgentName: agent.String,
+			ParentID: parent.String, SourcePath: p.dbPath(), CWD: dir.String,
+			Title: model.OneLine(title.String), AgentVersion: version.String, AgentName: agent.String,
 			Model: modelName, CreatedAt: unixMilli(created), UpdatedAt: unixMilli(updated),
 			CostUSD: cost.Float64, Archived: archived.Valid,
 			Tokens: model.TokenUsage{
@@ -139,17 +114,7 @@ func (p *Provider) v2Metas(ctx context.Context, db v2Query, project bool, sinceM
 				CacheRead: cacheRead.Int64, CacheWrite: cacheWrite.Int64,
 			},
 		}
-		if math.IsInf(meta.CostUSD, 0) || math.IsNaN(meta.CostUSD) {
-			// SQLite can store an infinite cost (9e999). A non-finite float
-			// would break the JSON checkpoint, so keep it out of the metadata.
-			d.Warn(p.dbPath(), 0, "session %q has a non-finite cost", id)
-			meta.CostUSD = 0
-		}
-		if projectID.String != "global" && worktree.Valid && worktree.String != "/" && filepath.IsAbs(worktree.String) {
-			meta.RepoRoot = pathutil.NormalizeDir(worktree.String)
-		} else if repo, ok := p.git.Resolve(cwd); ok {
-			meta.RepoRoot = repo.MainRoot
-		}
+		origins[id] = metaOrigin{projectID: projectID.String, worktree: worktree}
 		metas = append(metas, meta)
 	}
 	if err := rows.Err(); err != nil {
@@ -170,6 +135,7 @@ func (p *Provider) v2Metas(ctx context.Context, db v2Query, project bool, sinceM
 			return nil, err
 		}
 	}
+	p.finishMetas(metas, origins, d)
 	return metas, nil
 }
 
@@ -306,14 +272,6 @@ func (p *Provider) v2Counts(ctx context.Context, db v2Query, metas []model.Sessi
 		return fmt.Errorf("v2 first prompts: %w", err)
 	}
 
-	for i := range metas {
-		if metas[i].Title == "" {
-			metas[i].Title = metas[i].FirstPrompt
-			if metas[i].Title == "" {
-				metas[i].Title = "(untitled)"
-			}
-		}
-	}
 	return nil
 }
 
