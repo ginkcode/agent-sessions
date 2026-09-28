@@ -21,10 +21,12 @@ type Fake struct {
 	Name          string
 	DetectionData provider.Detection
 	Sessions      []model.SessionMeta
+	RemovedRefs   []model.SessionRef
 	Transcripts   map[string]*model.Transcript // key: ref.ID
 	Blobs         map[string][]byte            // key: ref.Key() + ":" + blobKey
 	Watch         []string
 	ScanDelay     time.Duration
+	ScanStarted   chan struct{} // optional buffered entry signal for tests
 	LoadDelay     time.Duration
 	LiveDelay     time.Duration
 	LiveMap       map[string]provider.LiveInfo
@@ -33,6 +35,12 @@ type Fake struct {
 	ScanErr       error
 	LoadErr       error
 	BlobErr       error
+
+	// StateOverride, when non-nil, replaces the ScanState returned by Scan.
+	StateOverride *provider.ScanState
+	// LastPrev records the ScanState passed to the most recent Scan call.
+	LastPrev   provider.ScanState
+	ScanCalled int
 }
 
 // NewFake returns a Fake provider initialized with basic defaults.
@@ -68,6 +76,14 @@ func (f *Fake) Detect(ctx context.Context) (provider.Detection, error) {
 }
 
 func (f *Fake) Scan(ctx context.Context, prev provider.ScanState) (provider.ScanResult, error) {
+	f.ScanCalled++
+	f.LastPrev = prev
+	if f.ScanStarted != nil {
+		select {
+		case f.ScanStarted <- struct{}{}:
+		default:
+		}
+	}
 	if f.ScanDelay > 0 {
 		select {
 		case <-time.After(f.ScanDelay):
@@ -78,11 +94,16 @@ func (f *Fake) Scan(ctx context.Context, prev provider.ScanState) (provider.Scan
 	if f.ScanErr != nil {
 		return provider.ScanResult{}, f.ScanErr
 	}
+	state := provider.ScanState{
+		Sources: make(map[string]provider.SourceState),
+	}
+	if f.StateOverride != nil {
+		state = *f.StateOverride
+	}
 	return provider.ScanResult{
 		Changed: f.Sessions,
-		State: provider.ScanState{
-			Sources: make(map[string]provider.SourceState),
-		},
+		Removed: f.RemovedRefs,
+		State:   state,
 	}, nil
 }
 

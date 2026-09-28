@@ -10,6 +10,7 @@ import (
 
 	wruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 
+	"github.com/ginkcode/agent-sessions/internal/index"
 	"github.com/ginkcode/agent-sessions/internal/model"
 	"github.com/ginkcode/agent-sessions/internal/paths"
 	"github.com/ginkcode/agent-sessions/internal/pathutil"
@@ -20,9 +21,15 @@ import (
 
 // App is the desktop application service exposed to the Wails frontend.
 type App struct {
-	ctx    context.Context
-	svc    *Service
-	runner *scan.Runner
+	ctx              context.Context
+	svc              *Service
+	runner           *scan.Runner
+	refresher        *index.Refresher
+	cacheEnabled     bool
+	cacheDirOverride string // tests only
+
+	cancelBootstrap context.CancelFunc // cancels the startup scan
+	bootstrapDone   chan struct{}      // closed when the startup scan finishes
 }
 
 // NewApp creates a new App service instance with default providers.
@@ -39,8 +46,9 @@ func NewApp() *App {
 		Catalog:   catalog,
 	}
 	return &App{
-		svc:    svc,
-		runner: runner,
+		svc:          svc,
+		runner:       runner,
+		cacheEnabled: true,
 	}
 }
 
@@ -54,36 +62,148 @@ func NewAppWithService(svc *Service) *App {
 		}
 	}
 	return &App{
-		svc:    svc,
-		runner: runner,
+		svc:          svc,
+		runner:       runner,
+		cacheEnabled: false,
 	}
 }
 
 // OnStartup is invoked by Wails when the runtime is ready.
+// It performs the cache-first startup: load persisted metadata, populate the
+// catalog, notify the initial UI snapshot — all synchronously and bounded.
+// Bootstrap scans run asynchronously, NOT in this paint-critical path.
 func (a *App) OnStartup(ctx context.Context) {
 	a.ctx = ctx
-	if a.runner != nil {
-		go func() {
-			_ = a.Scan()
-		}()
+
+	if !a.cacheEnabled {
+		if a.runner != nil {
+			go func() {
+				_ = a.Scan()
+			}()
+		}
+		return
 	}
+
+	if a.svc == nil || len(a.svc.providers) == 0 {
+		return
+	}
+
+	// Cache-first startup path.
+	db, err := index.Open(ctx, a.cacheDir())
+	if err != nil {
+		// A damaged cache directory or database shows an empty snapshot then
+		// rebuilds so the app remains usable.
+		if a.svc.catalog != nil {
+			a.svc.catalog.Reset(nil)
+		}
+		if a.runner != nil {
+			go func() {
+				_ = a.Scan()
+			}()
+		}
+		return
+	}
+
+	metas, err := db.LoadCatalog(ctx)
+	if err != nil {
+		// A damaged cache shows an empty snapshot then rebuilds.
+		_ = db.Rebuild(ctx)
+		metas = nil
+	}
+
+	// Populate the in-memory catalog with cached metas; notify the UI
+	// immediately with the initial snapshot.
+	if a.svc.catalog != nil {
+		a.svc.catalog.Reset(metas)
+	}
+	if a.ctx != nil && a.ctx.Value("events") != nil {
+		wruntime.EventsEmit(a.ctx, "scan:ready")
+	}
+
+	// Set up the Refresher for cache-backed scans.
+	a.refresher = index.NewRefresher(db, a.svc.catalog, a.svc.providers)
+	a.refresher.SetOnChanged(func(agent model.AgentID, changed, removed []model.SessionRef) {
+		if a.ctx != nil && a.ctx.Value("events") != nil {
+			wruntime.EventsEmit(a.ctx, "scan:ready")
+		}
+	})
+
+	// Bootstrap scans asynchronously, not in the paint-critical path.
+	bootCtx, cancel := context.WithCancel(ctx)
+	a.cancelBootstrap = cancel
+	a.bootstrapDone = make(chan struct{})
+
+	go func() {
+		defer close(a.bootstrapDone)
+		_ = a.refresher.Bootstrap(bootCtx)
+		if a.svc != nil {
+			a.svc.ApplyReport(a.refresher.Report())
+		}
+		if a.ctx != nil && a.ctx.Value("events") != nil {
+			wruntime.EventsEmit(a.ctx, "scan:ready")
+		}
+	}()
 }
 
 // Scan triggers a scan across all providers and updates the service state.
 func (a *App) Scan() error {
-	if a.runner == nil || a.svc == nil {
+	if a.refresher == nil && a.runner == nil {
 		return nil
 	}
 	ctx := a.ctx
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	report := a.runner.Run(ctx, a.svc.states)
-	a.svc.ApplyReport(report)
-	if a.ctx != nil && a.ctx.Value("events") != nil {
-		wruntime.EventsEmit(a.ctx, "scan:ready")
+	if a.refresher != nil {
+		err := a.refresher.Bootstrap(ctx)
+		if a.svc != nil {
+			a.svc.ApplyReport(a.refresher.Report())
+		}
+		if a.ctx != nil && a.ctx.Value("events") != nil {
+			wruntime.EventsEmit(a.ctx, "scan:ready")
+		}
+		return err
+	}
+	if a.runner != nil && a.svc != nil {
+		report := a.runner.Run(ctx, a.svc.states)
+		a.svc.ApplyReport(report)
+		if a.ctx != nil && a.ctx.Value("events") != nil {
+			wruntime.EventsEmit(a.ctx, "scan:ready")
+		}
 	}
 	return nil
+}
+
+// OnShutdown is invoked by Wails when the desktop application is terminating.
+func (a *App) OnShutdown(ctx context.Context) {
+	_ = a.Close()
+}
+
+// Close cancels in-flight background scans, waits for workers to complete,
+// and closes the private cache DB.
+func (a *App) Close() error {
+	if a.cancelBootstrap != nil {
+		a.cancelBootstrap()
+	}
+	if a.bootstrapDone != nil {
+		<-a.bootstrapDone
+	}
+	if a.refresher != nil {
+		return a.refresher.Close()
+	}
+	return nil
+}
+
+// cacheDir returns the app's private cache directory.
+func (a *App) cacheDir() string {
+	if a.cacheDirOverride != "" {
+		return a.cacheDirOverride
+	}
+	roots, err := paths.Default()
+	if err != nil || roots.Cache == "" {
+		return ""
+	}
+	return roots.Cache
 }
 
 // Ping returns a greeting confirmation from the backend service.

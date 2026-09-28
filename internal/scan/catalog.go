@@ -27,6 +27,21 @@ func (c *Catalog) Apply(result provider.ScanResult) {
 	c.apply(result)
 }
 
+// Reset clears all sessions from the catalog and replaces them with metas.
+func (c *Catalog) Reset(metas []model.SessionMeta) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.byKey = make(map[string]model.SessionMeta, len(metas))
+	for _, m := range metas {
+		c.byKey[m.Ref.Key()] = m
+	}
+}
+
+// ApplyLive updates the catalog with scan results and overlays live badges.
+func (c *Catalog) ApplyLive(id model.AgentID, result provider.ScanResult, live map[string]provider.LiveInfo, liveErr error, hasLive bool) {
+	c.applyLive(id, result, live, liveErr, hasLive)
+}
+
 func (c *Catalog) apply(result provider.ScanResult) {
 	if c.byKey == nil {
 		c.byKey = make(map[string]model.SessionMeta)

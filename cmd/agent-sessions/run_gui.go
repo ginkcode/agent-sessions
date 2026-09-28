@@ -36,6 +36,7 @@ func run() {
 		MinHeight:   600,
 		AssetServer: &assetserver.Options{Assets: assets},
 		OnStartup:   application.OnStartup,
+		OnShutdown:  application.OnShutdown,
 		Bind:        []interface{}{application},
 		Linux: &linux.Options{
 			WebviewGpuPolicy: linux.WebviewGpuPolicyOnDemand,

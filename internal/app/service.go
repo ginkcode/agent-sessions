@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"unicode/utf8"
 
 	"github.com/ginkcode/agent-sessions/internal/group"
@@ -38,9 +39,13 @@ var ErrUnknownGroup = errors.New("unknown group")
 type Service struct {
 	catalog   *scan.Catalog
 	providers provider.Set
-	diag      map[model.AgentID]provider.Diagnostics
-	scanErrs  map[model.AgentID]error
-	states    map[model.AgentID]provider.ScanState
+
+	// diagMu guards the scan-bookkeeping maps: the asynchronous bootstrap
+	// goroutine writes them while bound calls read them concurrently.
+	diagMu   sync.RWMutex
+	diag     map[model.AgentID]provider.Diagnostics
+	scanErrs map[model.AgentID]error
+	states   map[model.AgentID]provider.ScanState
 
 	transcripts *lru[string, *model.Transcript]
 }
@@ -63,6 +68,8 @@ func NewService(catalog *scan.Catalog, providers provider.Set) *Service {
 // ApplyReport records scan diagnostics, errors, and resume states from the
 // latest scan run so the frontend can display provider health.
 func (s *Service) ApplyReport(report scan.Report) {
+	s.diagMu.Lock()
+	defer s.diagMu.Unlock()
 	for id, d := range report.Diag {
 		s.diag[id] = d
 	}
@@ -205,6 +212,9 @@ func (s *Service) RevealSource(ref model.SessionRef) (string, error) {
 // Diagnostics returns aggregated scanner health, merging per-provider
 // diagnostics and scan errors into one snapshot.
 func (s *Service) Diagnostics() (provider.Diagnostics, error) {
+	s.diagMu.RLock()
+	defer s.diagMu.RUnlock()
+
 	var total provider.Diagnostics
 	for _, d := range s.diag {
 		total.Merge(d)
@@ -214,6 +224,9 @@ func (s *Service) Diagnostics() (provider.Diagnostics, error) {
 
 // DiagnosticsByProvider returns per-provider diagnostics and errors.
 func (s *Service) DiagnosticsByProvider() map[string]provider.Diagnostics {
+	s.diagMu.RLock()
+	defer s.diagMu.RUnlock()
+
 	out := make(map[string]provider.Diagnostics, len(s.diag))
 	for id, d := range s.diag {
 		out[string(id)] = d
@@ -223,6 +236,9 @@ func (s *Service) DiagnosticsByProvider() map[string]provider.Diagnostics {
 
 // ScanErrors returns the last scan error per provider, if any.
 func (s *Service) ScanErrors() map[string]string {
+	s.diagMu.RLock()
+	defer s.diagMu.RUnlock()
+
 	out := make(map[string]string, len(s.scanErrs))
 	for id, err := range s.scanErrs {
 		out[string(id)] = err.Error()

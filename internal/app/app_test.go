@@ -1,6 +1,14 @@
 package app
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/ginkcode/agent-sessions/internal/index"
+	"github.com/ginkcode/agent-sessions/internal/model"
+	"github.com/ginkcode/agent-sessions/internal/provider"
+	"github.com/ginkcode/agent-sessions/internal/provider/providertest"
+	"github.com/ginkcode/agent-sessions/internal/scan"
+)
 
 func TestPing(t *testing.T) {
 	a := NewApp()
@@ -21,5 +29,50 @@ func TestOnStartupStoresContext(t *testing.T) {
 	a.OnStartup(ctx)
 	if a.ctx != ctx {
 		t.Error("OnStartup did not retain the runtime context")
+	}
+}
+
+func TestOnStartupCacheFirstLoadsCatalog(t *testing.T) {
+	// 1. Seed a private cache DB with one session.
+	db, err := index.Open(t.Context(), t.TempDir())
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	seed := model.SessionMeta{
+		Ref:   model.SessionRef{Agent: model.AgentClaude, ID: "cached1"},
+		Title: "Cached Session",
+	}
+	if err := db.CommitScan(t.Context(), model.AgentClaude, provider.ScanResult{
+		Changed: []model.SessionMeta{seed},
+	}); err != nil {
+		t.Fatalf("CommitScan: %v", err)
+	}
+	_ = db.Close()
+
+	// 2. Build an App with a fake provider and the same cache dir.
+	fake := providertest.NewFake(model.AgentClaude, "Claude")
+	fake.DetectionData = provider.Detection{Present: true}
+	fake.Sessions = []model.SessionMeta{{
+		Ref:   model.SessionRef{Agent: model.AgentClaude, ID: "live1"},
+		Title: "Live Session",
+	}}
+
+	catalog := scan.NewCatalog()
+	svc := NewService(catalog, provider.Set{fake})
+	a := NewAppWithService(svc)
+	a.cacheEnabled = true
+	a.cacheDirOverride = db.CacheDir()
+
+	// Cache-first startup must synchronously populate the catalog.
+	a.OnStartup(t.Context())
+
+	if m, ok := a.svc.catalog.Get(model.SessionRef{Agent: model.AgentClaude, ID: "cached1"}); !ok || m.Title != "Cached Session" {
+		t.Errorf("expected cached1 in catalog after OnStartup, got %+v", m)
+	}
+	if a.refresher == nil {
+		t.Fatal("expected refresher to be wired")
+	}
+	if a.refresher.Generation() != 1 {
+		t.Errorf("expected generation 1, got %d", a.refresher.Generation())
 	}
 }

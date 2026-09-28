@@ -103,7 +103,11 @@ func Open(ctx context.Context, cacheDir string) (*DB, error) {
 			if sfi.Mode()&os.ModeSymlink != 0 {
 				return nil, fmt.Errorf("index: sidecar %q is a symlink", sidecar)
 			}
-			_ = os.Chmod(sidecar, 0o600)
+			// A -wal sidecar holds indexed transcript text; a failed
+			// chmod must not leave it world-readable.
+			if err := os.Chmod(sidecar, 0o600); err != nil {
+				return nil, fmt.Errorf("index: chmod sidecar %q: %w", sidecar, err)
+			}
 		}
 	}
 
@@ -176,7 +180,10 @@ func Open(ctx context.Context, cacheDir string) (*DB, error) {
 	// Enforce 0600 permissions on sidecars if created during opening/migrations.
 	for _, sidecar := range []string{dbPath + "-wal", dbPath + "-shm"} {
 		if _, err := os.Lstat(sidecar); err == nil {
-			_ = os.Chmod(sidecar, 0o600)
+			if err := os.Chmod(sidecar, 0o600); err != nil {
+				_ = sqlDB.Close()
+				return nil, fmt.Errorf("index: chmod sidecar %q: %w", sidecar, err)
+			}
 		}
 	}
 
@@ -266,7 +273,11 @@ func (d *DB) Rebuild(ctx context.Context) error {
 
 	for _, sidecar := range []string{d.path + "-wal", d.path + "-shm"} {
 		if _, err := os.Lstat(sidecar); err == nil {
-			_ = os.Chmod(sidecar, 0o600)
+			// A -wal sidecar holds indexed transcript text; a failed
+			// chmod must not leave it world-readable.
+			if err := os.Chmod(sidecar, 0o600); err != nil {
+				return fmt.Errorf("index: chmod sidecar %q: %w", sidecar, err)
+			}
 		}
 	}
 
@@ -393,6 +404,9 @@ ON CONFLICT(ref) DO UPDATE SET
 
 	for _, m := range result.Changed {
 		cleanMeta := m
+		if cleanMeta.Ref.Agent == "" {
+			cleanMeta.Ref.Agent = agent
+		}
 		cleanMeta.Live = false
 		cleanMeta.LiveStatus = ""
 		metaBytes, err := json.Marshal(cleanMeta)
