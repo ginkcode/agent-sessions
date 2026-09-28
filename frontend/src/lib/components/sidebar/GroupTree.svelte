@@ -1,10 +1,20 @@
 <script lang="ts">
   import type { GroupNode } from '../../types';
   import { appState } from '../../stores/appState.svelte';
+  import { manage } from '../../stores/manage.svelte';
+  import { filterSessionsByAge } from '../../manage';
+  import { sessionToSelect } from '../../tree';
   import GroupNodeItem from './GroupNodeItem.svelte';
 
-  function handleSelect(node: GroupNode) {
-    appState.selectGroup(node.key);
+  // Selecting a group also selects the first session shown in the list
+  // (after the age filter), so the transcript follows the tree.
+  async function handleSelect(node: GroupNode) {
+    await appState.selectGroup(node.key);
+    // A later click superseded this one while sessions were loading.
+    if (appState.selectedGroupKey !== node.key) return;
+    const visible = filterSessionsByAge(appState.sessions, manage.ageFilterDays);
+    const ref = sessionToSelect(node, visible);
+    if (ref) await appState.selectSession(ref);
   }
 
   function handleToggleCollapse(key: string) {

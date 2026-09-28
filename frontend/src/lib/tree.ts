@@ -1,4 +1,5 @@
-import type { GroupNode, GroupNodeKind } from './types';
+import type { GroupNode, GroupNodeKind, SessionRef } from './types';
+import { refsEqual } from './manage';
 
 // Threshold: groups with at least this many children start collapsed.
 export const DEFAULT_COLLAPSE_THRESHOLD = 8;
@@ -61,4 +62,18 @@ export function pruneKeys(keys: Set<string>, groups: GroupNode[]): Set<string> {
   };
   walk(groups);
   return live;
+}
+
+/**
+ * Picks the session to select after a tree node is clicked: a session node
+ * selects itself when visible, otherwise the first visible session in the
+ * list. Returns null when the list is empty.
+ */
+export function sessionToSelect(
+  node: GroupNode,
+  visible: { ref: SessionRef }[]
+): SessionRef | null {
+  const own = nodeKind(node) === 'session' ? node.sessions?.[0] : undefined;
+  if (own && visible.some((s) => refsEqual(s.ref, own))) return own;
+  return visible[0]?.ref ?? null;
 }

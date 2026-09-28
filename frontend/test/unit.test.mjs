@@ -21,6 +21,7 @@ import {
   isCollapsed,
   nodeKind,
   pruneKeys,
+  sessionToSelect,
 } from '../src/lib/tree.ts';
 
 test('formatTokens formats numbers into compact string representations', () => {
@@ -323,4 +324,21 @@ test('MockBackendAPI listGroups emits node kinds', async () => {
     for (const child of root.children ?? []) assert.equal(child.kind, 'directory');
   }
   for (const node of await backend.listGroups('flat')) assert.equal(node.kind, 'session');
+});
+
+test('sessionToSelect picks the node itself for sessions, else the first visible', () => {
+  const parent = { agent: 'claude-code', id: 'parent' };
+  const sub = { agent: 'claude-code', id: 'sub' };
+  const other = { agent: 'codex', id: 'x' };
+  // Subagent sorts first (more recently updated) but the session node wins.
+  const visible = [{ ref: sub }, { ref: parent }];
+  const sessionNode = { key: 's', label: 's', kind: 'session', sessionCount: 2, sessions: [parent, sub] };
+  assert.deepEqual(sessionToSelect(sessionNode, visible), parent);
+
+  const group = { key: 'g', label: 'g', kind: 'agent', sessionCount: 2, sessions: [parent, sub] };
+  assert.deepEqual(sessionToSelect(group, visible), sub);
+
+  // Session hidden by the age filter falls back to the first visible row.
+  assert.deepEqual(sessionToSelect(sessionNode, [{ ref: other }]), other);
+  assert.equal(sessionToSelect(group, []), null);
 });
