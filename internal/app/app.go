@@ -19,6 +19,7 @@ import (
 	"github.com/ginkcode/agent-sessions/internal/provider"
 	"github.com/ginkcode/agent-sessions/internal/provider/all"
 	"github.com/ginkcode/agent-sessions/internal/scan"
+	"github.com/ginkcode/agent-sessions/internal/watch"
 )
 
 // App is the desktop application service exposed to the Wails frontend.
@@ -35,6 +36,8 @@ type App struct {
 
 	cancelBootstrap context.CancelFunc // cancels the startup scan
 	bootstrapDone   chan struct{}      // closed when the startup scan finishes
+	indexer         *index.Indexer     // background FTS indexing worker
+	closeWatch      func() error       // stops the filesystem watcher
 }
 
 // NewApp creates a new App service instance with default providers.
@@ -128,10 +131,28 @@ func (a *App) OnStartup(ctx context.Context) {
 	// Set up the Refresher for cache-backed scans.
 	a.refresher = index.NewRefresher(db, a.svc.catalog, a.svc.providers)
 	a.refresher.SetOnChanged(func(agent model.AgentID, changed, removed []model.SessionRef) {
+		if a.indexer != nil {
+			// A scan may have enqueued FTS jobs; wake the background worker.
+			a.indexer.Notify()
+		}
 		if a.ctx != nil && a.ctx.Value("events") != nil {
 			wruntime.EventsEmit(a.ctx, "scan:ready")
 		}
 	})
+
+	// Background FTS indexing: one worker, notified by scan commits and
+	// also polling periodically so restarted jobs resume on their own.
+	emitProgress := func(p index.FTSProgress) {
+		if a.ctx != nil && a.ctx.Value("events") != nil {
+			wruntime.EventsEmit(a.ctx, "index:progress", p)
+		}
+	}
+	a.indexer = index.StartIndexer(ctx, db, a.svc.providers, emitProgress)
+
+	// Filesystem watcher: debounced provider changes trigger an incremental
+	// refresh for the changed agent; the refresher's single-flight lock makes
+	// overlapping notifications safe.
+	a.closeWatch = a.startWatcher(ctx)
 
 	// Bootstrap scans asynchronously, not in the paint-critical path.
 	bootCtx, cancel := context.WithCancel(ctx)
@@ -185,18 +206,49 @@ func (a *App) OnShutdown(ctx context.Context) {
 }
 
 // Close cancels in-flight background scans, waits for workers to complete,
-// and closes the private cache DB.
+// stops the filesystem watcher, and closes the private cache DB.
 func (a *App) Close() error {
+	if a.closeWatch != nil {
+		_ = a.closeWatch()
+		a.closeWatch = nil
+	}
 	if a.cancelBootstrap != nil {
 		a.cancelBootstrap()
 	}
 	if a.bootstrapDone != nil {
 		<-a.bootstrapDone
 	}
+	if a.indexer != nil {
+		a.indexer.Close()
+	}
 	if a.refresher != nil {
 		return a.refresher.Close()
 	}
 	return nil
+}
+
+func (a *App) startWatcher(ctx context.Context) func() error {
+	if a.svc == nil || len(a.svc.providers) == 0 || a.refresher == nil {
+		return nil
+	}
+	onChange := func(c watch.Change) {
+		p, ok := a.svc.providers.Get(c.Agent)
+		if !ok {
+			return
+		}
+		go func() {
+			scanCtx := a.ctx
+			if scanCtx == nil {
+				scanCtx = context.Background()
+			}
+			_, _, _ = a.refresher.Refresh(scanCtx, p)
+		}()
+	}
+	closeWatch, err := watch.Start(ctx, a.svc.providers, onChange)
+	if err != nil {
+		return nil
+	}
+	return closeWatch
 }
 
 // cacheDir returns the app's private cache directory.

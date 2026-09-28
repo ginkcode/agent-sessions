@@ -11,9 +11,74 @@ import type {
   ManageSettings,
   DeletePreview,
   DeleteResult,
+  Message,
+  SearchFilter,
+  SearchHit,
+  SearchHitKind,
+  FTSProgress,
 } from '../types.js';
 import { mockSessions, mockMessages, mockBlobs, mockDiagnostics } from './fixtures.js';
 import { refKey } from '../manage.js';
+
+function searchNeedle(query: string): string {
+  const words = query
+    .replace(/\b(?:agent|dir):(?:"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|\S+)/gi, ' ')
+    .match(/"([^"]+)"|([^\s]+)/g);
+  if (!words) return '';
+  return words
+    .map((word) => word.startsWith('"') ? word.slice(1, -1) : word)
+    .join(' ')
+    .trim()
+    .toLocaleLowerCase();
+}
+
+function normalizeSearchDir(value?: string): string {
+  const trimmed = value?.trim().replace(/\/+$/, '') || '';
+  return trimmed === '' ? '' : trimmed;
+}
+
+function isInsideDir(cwd: string, dir: string): boolean {
+  return cwd === dir || cwd.startsWith(`${dir}/`);
+}
+
+function escapeHTML(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+export function highlightedSnippet(text: string, at: number, length: number): string {
+  const start = Math.max(0, at - 48);
+  const end = Math.min(text.length, at + length + 72);
+  const prefix = start > 0 ? '…' : '';
+  const suffix = end < text.length ? '…' : '';
+  return `${prefix}${escapeHTML(text.slice(start, at))}<mark>${escapeHTML(text.slice(at, at + length))}</mark>${escapeHTML(text.slice(at + length, end))}${suffix}`;
+}
+
+function mockMessageSearchText(message: Message): { text: string; kind: SearchHitKind } {
+  const text: string[] = [];
+  const reasoning: string[] = [];
+  const tools: string[] = [];
+  for (const part of message.parts) {
+    if (part.kind === 'text' && part.text) text.push(part.text);
+    if (part.kind === 'reasoning' && part.text) reasoning.push(part.text);
+    if (part.kind === 'tool' && part.tool) {
+      let input = '';
+      try {
+        input = typeof part.tool.input === 'string'
+          ? part.tool.input
+          : JSON.stringify(part.tool.input ?? '');
+      } catch {}
+      tools.push(`${part.tool.name} ${input}`.trim());
+    }
+  }
+  if (text.length) return { text: [...text, ...reasoning, ...tools].join('\n'), kind: 'text' };
+  if (reasoning.length) return { text: [...reasoning, ...tools].join('\n'), kind: 'reasoning' };
+  return { text: tools.join('\n'), kind: 'tool' };
+}
 
 export class MockBackendAPI {
   private sessions: SessionMeta[] = [...mockSessions];
@@ -207,6 +272,53 @@ export class MockBackendAPI {
       totalCount,
       hasMore: end < totalCount,
     };
+  }
+
+  async search(query: string, filter: SearchFilter = {}): Promise<SearchHit[]> {
+    const needle = searchNeedle(query);
+    if (!needle) return [];
+    const agents = filter.agents?.length ? new Set(filter.agents) : null;
+    const dir = normalizeSearchDir(filter.dir);
+    const limit = Math.max(1, Math.min(100, filter.limit || 30));
+    const hits: SearchHit[] = [];
+
+    for (const session of this.sessions) {
+      if (agents && !agents.has(session.ref.agent)) continue;
+      if (dir && !isInsideDir(session.cwd, dir)) continue;
+
+      const titleAt = session.title.toLocaleLowerCase().indexOf(needle);
+      if (titleAt >= 0) {
+        hits.push({
+          ref: session.ref,
+          messageIndex: -1,
+          snippet: highlightedSnippet(session.title, titleAt, needle.length),
+          score: 100 - titleAt,
+          kind: 'title',
+        });
+      }
+
+      const list = this.messages[session.ref.id] || [];
+      list.forEach((message, messageIndex) => {
+        const searchable = mockMessageSearchText(message);
+        const at = searchable.text.toLocaleLowerCase().indexOf(needle);
+        if (at < 0) return;
+        hits.push({
+          ref: session.ref,
+          messageIndex,
+          snippet: highlightedSnippet(searchable.text, at, needle.length),
+          score: 50 - at / 100,
+          kind: searchable.kind,
+        });
+      });
+    }
+
+    return hits
+      .sort((a, b) => b.score - a.score || a.ref.id.localeCompare(b.ref.id) || a.messageIndex - b.messageIndex)
+      .slice(0, limit);
+  }
+
+  async indexProgress(): Promise<FTSProgress> {
+    return { done: this.sessions.length, pending: 0, failed: 0, running: false };
   }
 
   async getBlob(ref: SessionRef, key: string): Promise<BlobResponse> {

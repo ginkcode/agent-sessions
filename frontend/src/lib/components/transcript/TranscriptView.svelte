@@ -1,7 +1,9 @@
 <script lang="ts">
   import { tick } from 'svelte';
-  import type { SessionRef, Message } from '../../types';
+  import type { SessionRef, Message, MessageJump } from '../../types';
   import { appState } from '../../stores/appState.svelte';
+  import { search } from '../../stores/search.svelte';
+  import { highlightTextNodes, jumpOffset } from '../../search';
   import { manage } from '../../stores/manage.svelte';
   import { api } from '../../api';
   import SessionHeader from './SessionHeader.svelte';
@@ -27,6 +29,17 @@
   let showScrollBottomBtn = $state(false);
   let jumpingToBottom = $state(false);
   let pendingLoad: Promise<void> | null = null;
+  let pageOffset = $state(0);
+  let jumpLoading = $state(false);
+  let jumpNotice = $state<string | null>(null);
+  // The jump this transcript page was loaded for; cleared by normal loads so
+  // a meta target is only force-shown while it is the navigation target.
+  let activeJump = $state<MessageJump | null>(null);
+  let isLoadingEarlier = $state(false);
+  let handledJumpID = 0;
+  let loadGeneration = 0;
+  let clearHighlight: (() => void) | null = null;
+  let highlightTimer: ReturnType<typeof setTimeout> | null = null;
 
   let currentRefKey = $derived(
     appState.selectedSessionRef
@@ -34,43 +47,155 @@
       : null
   );
 
-  // Watch for session selection changes
+  // A search jump owns its initial page load. Normal selection still starts at
+  // zero; guarding by jump id prevents the selection effect racing that load.
+  let lastRef: SessionRef | null = null;
   $effect(() => {
     const ref = appState.selectedSessionRef;
+    const jump = search.jump;
+    const refChanged = ref !== lastRef;
+    lastRef = ref;
     if (ref) {
-      loadInitialMessages(ref);
+      if (jump && jump.id > handledJumpID && refsMatch(ref, jump.ref)) {
+        handledJumpID = jump.id;
+        void loadSearchJump(jump);
+      } else if (refChanged) {
+        void loadInitialMessages(ref);
+      }
     } else {
       messages = [];
+      pageOffset = 0;
       hasMore = false;
       loadError = null;
     }
   });
 
+  function refsMatch(a: SessionRef | null | undefined, b: SessionRef): boolean {
+    return a?.agent === b.agent && a.id === b.id;
+  }
+
   async function loadInitialMessages(ref: SessionRef) {
+    const generation = ++loadGeneration;
     isLoading = true;
+    jumpLoading = false;
+    jumpNotice = null;
+    activeJump = null;
+    clearJumpHighlight();
     loadError = null;
     messages = [];
+    pageOffset = 0;
     hasMore = false;
 
     try {
       const page = await api.getMessages(ref, 0, PAGE_SIZE);
-      // Ensure we are still looking at the same session
-      if (
-        appState.selectedSessionRef?.agent === ref.agent &&
-        appState.selectedSessionRef?.id === ref.id
-      ) {
+      // Ensure we are still looking at the same session and request.
+      if (generation === loadGeneration && refsMatch(appState.selectedSessionRef, ref)) {
         messages = page.messages || [];
+        pageOffset = page.offset;
         hasMore = page.hasMore;
       }
     } catch (err: any) {
-      if (
-        appState.selectedSessionRef?.agent === ref.agent &&
-        appState.selectedSessionRef?.id === ref.id
-      ) {
+      if (generation === loadGeneration && refsMatch(appState.selectedSessionRef, ref)) {
         loadError = err?.message || 'Failed to load session transcript';
       }
     } finally {
+      if (generation === loadGeneration) isLoading = false;
+    }
+  }
+
+  async function loadSearchJump(jump: MessageJump): Promise<void> {
+    const generation = ++loadGeneration;
+    const offset = jump.messageIndex < 0 ? 0 : jumpOffset(jump.messageIndex);
+    isLoading = true;
+    jumpLoading = true;
+    jumpNotice = null;
+    activeJump = jump;
+    clearJumpHighlight();
+    loadError = null;
+    messages = [];
+    pageOffset = offset;
+    hasMore = false;
+
+    try {
+      // Only the page around the target is requested; header metadata is
+      // awaited too so its arrival doesn't shift the scroll after we land.
+      const [page] = await Promise.all([
+        api.getMessages(jump.ref, offset, PAGE_SIZE),
+        jump.ready?.catch(() => undefined),
+      ]);
+      if (generation !== loadGeneration || !refsMatch(appState.selectedSessionRef, jump.ref)) return;
+      messages = page.messages || [];
+      pageOffset = page.offset;
+      hasMore = page.hasMore;
       isLoading = false;
+      await tick();
+      if (generation !== loadGeneration || !refsMatch(appState.selectedSessionRef, jump.ref)) return;
+
+      if (jump.messageIndex < 0) {
+        containerEl?.scrollTo({ top: 0, behavior: 'smooth' });
+        return;
+      }
+
+      const target = containerEl?.querySelector<HTMLElement>(
+        `[data-message-index="${jump.messageIndex}"]`
+      );
+      if (!target) {
+        jumpNotice = 'This search result moved or was removed after it was indexed.';
+        return;
+      }
+      target.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      target.classList.add('search-jump-target');
+      const disposeTextMarks = highlightTextNodes(target, jump.query);
+      clearHighlight = () => {
+        disposeTextMarks();
+        target.classList.remove('search-jump-target');
+      };
+      highlightTimer = setTimeout(clearJumpHighlight, 5000);
+    } catch (err: any) {
+      if (generation === loadGeneration && refsMatch(appState.selectedSessionRef, jump.ref)) {
+        loadError = err?.message || 'Failed to load the search result';
+      }
+    } finally {
+      if (generation === loadGeneration) {
+        isLoading = false;
+        jumpLoading = false;
+      }
+    }
+  }
+
+  function clearJumpHighlight(): void {
+    if (highlightTimer) clearTimeout(highlightTimer);
+    highlightTimer = null;
+    clearHighlight?.();
+    clearHighlight = null;
+  }
+
+  function reopenSearch(): void {
+    jumpNotice = null;
+    search.show();
+    void search.runNow();
+  }
+
+  // A jump starts mid-transcript; earlier pages load on demand, keeping the
+  // visible content anchored while rows are prepended above it.
+  async function loadEarlierMessages(): Promise<void> {
+    const ref = appState.selectedSessionRef;
+    if (!ref || pageOffset <= 0 || isLoadingEarlier) return;
+    const generation = loadGeneration;
+    const start = Math.max(0, pageOffset - PAGE_SIZE);
+    isLoadingEarlier = true;
+    try {
+      const page = await api.getMessages(ref, start, pageOffset - start);
+      if (generation !== loadGeneration || !refsMatch(appState.selectedSessionRef, ref)) return;
+      const before = containerEl ? containerEl.scrollHeight - containerEl.scrollTop : 0;
+      messages = [...(page.messages || []), ...messages];
+      pageOffset = start;
+      await tick();
+      if (containerEl) containerEl.scrollTop = containerEl.scrollHeight - before;
+    } catch (err) {
+      console.error('Failed to load earlier messages:', err);
+    } finally {
+      isLoadingEarlier = false;
     }
   }
 
@@ -79,15 +204,13 @@
     if (pendingLoad) return pendingLoad;
     const ref = appState.selectedSessionRef;
     if (!ref || !hasMore) return Promise.resolve();
+    const generation = loadGeneration;
 
     isLoadingMore = true;
     pendingLoad = (async () => {
       try {
-        const page = await api.getMessages(ref, messages.length, limit);
-        if (
-          appState.selectedSessionRef?.agent === ref.agent &&
-          appState.selectedSessionRef?.id === ref.id
-        ) {
+        const page = await api.getMessages(ref, pageOffset + messages.length, limit);
+        if (generation === loadGeneration && refsMatch(appState.selectedSessionRef, ref)) {
           messages = [...messages, ...(page.messages || [])];
           hasMore = page.hasMore;
         }
@@ -187,7 +310,7 @@
     />
   {:else if isLoading}
     <div class="center-state">
-      <LoadingSpinner size={28} label="Loading transcript…" />
+      <LoadingSpinner size={28} label={jumpLoading ? 'Opening search result…' : 'Loading transcript…'} />
     </div>
   {:else if loadError}
     <div class="center-state">
@@ -214,6 +337,14 @@
       />
     {/if}
 
+    {#if jumpNotice}
+      <div class="jump-notice" role="status">
+        <span>{jumpNotice}</span>
+        <button type="button" onclick={reopenSearch}>Search again</button>
+        <button type="button" class="dismiss-notice" aria-label="Dismiss notice" onclick={() => (jumpNotice = null)}>×</button>
+      </div>
+    {/if}
+
     <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
     <div
       bind:this={containerEl}
@@ -229,12 +360,24 @@
             <span>No messages found in this session transcript.</span>
           </div>
         {:else}
+          {#if pageOffset > 0}
+            <div class="load-earlier-bar">
+              <button type="button" disabled={isLoadingEarlier} onclick={loadEarlierMessages}>
+                {isLoadingEarlier ? 'Loading earlier messages…' : `Load earlier messages (${pageOffset} before)`}
+              </button>
+            </div>
+          {/if}
           {#each messages as msg, idx (msg.id || `${msg.role}-${msg.time}-${idx}`)}
-            <MessageBubble
-              message={msg}
-              sessionRef={appState.selectedSessionRef}
-              {showMeta}
-            />
+            {@const globalIndex = pageOffset + idx}
+            <div class="message-index-anchor" data-message-index={globalIndex}>
+              <MessageBubble
+                message={msg}
+                sessionRef={appState.selectedSessionRef}
+                {showMeta}
+                forceVisible={activeJump?.messageIndex === globalIndex}
+                searchKind={activeJump?.messageIndex === globalIndex ? activeJump.kind : null}
+              />
+            </div>
           {/each}
         {/if}
 
@@ -305,6 +448,62 @@
     display: flex;
     flex-direction: column;
   }
+
+  .message-index-anchor {
+    border-radius: 9px;
+    transition: background-color 0.25s ease, box-shadow 0.25s ease;
+  }
+
+  :global(.message-index-anchor.search-jump-target) {
+    background: rgba(245, 158, 11, 0.09);
+    box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.45);
+  }
+
+  :global(mark.search-jump-match) {
+    padding: 0 1px;
+    border-radius: 2px;
+    background: rgba(245, 158, 11, 0.55);
+    color: inherit;
+  }
+
+  .load-earlier-bar {
+    display: flex;
+    justify-content: center;
+    padding: 0 0 14px;
+  }
+
+  .load-earlier-bar button {
+    padding: 5px 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 14px;
+    background: var(--bg-secondary);
+    color: var(--text-secondary);
+    font-size: 0.75rem;
+  }
+
+  .load-earlier-bar button:hover:not(:disabled) { color: var(--text-primary); background: var(--hover-bg); }
+  .load-earlier-bar button:disabled { cursor: progress; opacity: 0.7; }
+
+  .jump-notice {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 7px 12px;
+    border-bottom: 1px solid rgba(245, 158, 11, 0.4);
+    background: rgba(245, 158, 11, 0.1);
+    color: var(--text-secondary);
+    font-size: 0.75rem;
+  }
+
+  .jump-notice span { flex: 1; }
+  .jump-notice button {
+    padding: 3px 7px;
+    border-radius: 4px;
+    color: var(--accent-color);
+    font-weight: 600;
+  }
+  .jump-notice button:hover { background: var(--hover-bg); }
+  .jump-notice .dismiss-notice { color: var(--text-muted); font-size: 1rem; }
 
   .empty-messages-notice {
     display: flex;

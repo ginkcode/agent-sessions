@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { Message, SessionRef } from '../../types';
+  import type { Message, SessionRef, SearchHitKind } from '../../types';
   import { formatAbsoluteTime } from '../../date';
   import TextPart from './parts/TextPart.svelte';
   import ReasoningPart from './parts/ReasoningPart.svelte';
@@ -12,9 +12,17 @@
     message: Message;
     sessionRef: SessionRef;
     showMeta?: boolean;
+    forceVisible?: boolean;
+    searchKind?: SearchHitKind | null;
   }
 
-  let { message, sessionRef, showMeta = false }: Props = $props();
+  let {
+    message,
+    sessionRef,
+    showMeta = false,
+    forceVisible = false,
+    searchKind = null,
+  }: Props = $props();
 
   let formattedTime = $derived(message.time ? formatAbsoluteTime(message.time) : '');
   let isSystem = $derived(message.role === 'system');
@@ -22,7 +30,7 @@
   let isAssistant = $derived(message.role === 'assistant');
 </script>
 
-{#if !message.isMeta || showMeta}
+{#if !message.isMeta || showMeta || forceVisible}
   <div
     class="message-bubble-wrapper"
     class:role-user={isUser}
@@ -63,9 +71,9 @@
           {#if part.kind === 'text' && part.text}
             <TextPart text={part.text} />
           {:else if part.kind === 'reasoning' && part.text}
-            <ReasoningPart text={part.text} />
+            <ReasoningPart text={part.text} defaultExpanded={searchKind === 'reasoning'} />
           {:else if part.kind === 'tool' && part.tool}
-            <ToolPart tool={part.tool} {sessionRef} />
+            <ToolPart tool={part.tool} {sessionRef} defaultExpanded={searchKind === 'tool'} />
           {:else if part.kind === 'patch'}
             <PatchPart files={part.files} text={part.text} />
           {:else if part.kind === 'compaction'}

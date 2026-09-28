@@ -14,7 +14,15 @@ import {
   isPermanentDelete,
   formatDeleteResultSummary,
 } from '../src/lib/manage.ts';
-import { MockBackendAPI } from '../src/lib/mock/mockApi.ts';
+import { MockBackendAPI, highlightedSnippet } from '../src/lib/mock/mockApi.ts';
+import {
+  LatestRequestGate,
+  jumpOffset,
+  progressIncomplete,
+  safeSnippetHTML,
+  searchFilterFromApp,
+  searchTerms,
+} from '../src/lib/search.ts';
 import {
   DEFAULT_COLLAPSE_THRESHOLD,
   defaultCollapsedKeys,
@@ -338,6 +346,95 @@ test('MockBackendAPI path filter narrows groups and sessions by cwd', async () =
   const groups = await backend.listGroups('dir-agent', { path: needle });
   for (const g of groups) assert.ok(g.cwd.toLowerCase().includes(needle.toLowerCase()));
   assert.deepEqual(await backend.listSessions('', { path: 'no-such-dir-xyz' }), []);
+});
+
+test('MockBackendAPI search finds safe title, text, and tool hits with filters', async () => {
+  const backend = new MockBackendAPI();
+
+  const titles = await backend.search('SQLite', {});
+  assert.equal(titles.length, 1);
+  assert.equal(titles[0].kind, 'title');
+  assert.equal(titles[0].messageIndex, -1);
+  assert.match(titles[0].snippet, /<mark>SQLite<\/mark>/);
+
+  const text = await backend.search('thread-safe', { agents: ['claude-code'] });
+  assert.equal(text.length, 1);
+  assert.equal(text[0].ref.id, 'session-claude-1');
+  assert.equal(text[0].messageIndex, 2);
+  assert.equal(text[0].kind, 'text');
+
+  const tool = await backend.search('git status', { dir: '/home/haith/Workspaces/ginkcode/tools/agent-sessions' });
+  assert.equal(tool.length, 1);
+  assert.equal(tool[0].messageIndex, 1);
+  // A mixed text/tool message is intentionally classified as text.
+  assert.equal(tool[0].kind, 'text');
+
+  assert.deepEqual(await backend.search('scan', { agents: ['codex'] }), []);
+  assert.deepEqual(await backend.search('scan', { dir: '/home/haith/Workspaces/ginkcode/tool' }), []);
+  assert.equal((await backend.search('session', { limit: 1 })).length, 1);
+});
+
+test('mock snippets escape markup and only inject their own mark pair', () => {
+  assert.equal(
+    highlightedSnippet('<img onerror="boom"> needle & tail', 21, 6),
+    '&lt;img onerror=&quot;boom&quot;&gt; <mark>needle</mark> &amp; tail'
+  );
+});
+
+test('search helpers preserve global jump indexes and active filters', () => {
+  assert.equal(jumpOffset(-1), 0);
+  assert.equal(jumpOffset(10), 0);
+  assert.equal(jumpOffset(9000), 8980);
+  assert.deepEqual(searchFilterFromApp('codex', '/repo', 15), {
+    agents: ['codex'], dir: '/repo', limit: 15,
+  });
+  assert.deepEqual(searchTerms('agent:codex "exact phrase" alpha'), ['exact phrase', 'alpha']);
+  assert.equal(progressIncomplete({ done: 4, pending: 1, failed: 0, running: false }), true);
+  assert.equal(progressIncomplete({ done: 5, pending: 0, failed: 0, running: false }), false);
+});
+
+test('safeSnippetHTML keeps only bare mark tags', () => {
+  assert.equal(
+    safeSnippetHTML('a <mark>b</mark> <img src=x onerror=alert(1)> <MARK>c</MARK>'),
+    'a <mark>b</mark> &lt;img src=x onerror=alert(1)> <MARK>c</MARK>'
+  );
+  assert.equal(safeSnippetHTML('<mark onclick=x>b</mark>'), '&lt;mark onclick=x>b</mark>');
+});
+
+test('LatestRequestGate debounces and invalidates stale generations', async () => {
+  const gate = new LatestRequestGate(20);
+  let runs = 0;
+  gate.schedule(() => runs++);
+  gate.schedule(() => runs++);
+  await new Promise((resolve) => setTimeout(resolve, 5));
+  assert.equal(runs, 0);
+  await new Promise((resolve) => setTimeout(resolve, 40));
+  assert.equal(runs, 1);
+
+  const first = gate.begin();
+  const second = gate.begin();
+  assert.equal(gate.isCurrent(first), false);
+  assert.equal(gate.isCurrent(second), true);
+  gate.schedule(() => runs++);
+  assert.equal(gate.isCurrent(second), false);
+  gate.cancel();
+  await new Promise((resolve) => setTimeout(resolve, 40));
+  assert.equal(runs, 1);
+});
+
+test('MockBackendAPI pages a long transcript at the arbitrary requested offset', async () => {
+  const backend = new MockBackendAPI();
+  backend.messages['long-test'] = Array.from({ length: 10_000 }, (_, index) => ({
+    id: `message-${index}`,
+    role: 'assistant',
+    time: '2026-09-28T09:00:00Z',
+    parts: [{ kind: 'text', text: `Message ${index}` }],
+  }));
+  const page = await backend.getMessages({ agent: 'claude-code', id: 'long-test' }, 8980, 50);
+  assert.equal(page.offset, 8980);
+  assert.equal(page.messages.length, 50);
+  assert.equal(page.messages[20].id, 'message-9000');
+  assert.equal(page.hasMore, true);
 });
 
 test('MockBackendAPI scan resolves after a visible delay', async () => {

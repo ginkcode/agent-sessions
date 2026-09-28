@@ -8,10 +8,13 @@
   import SessionList from './lib/components/sessionlist/SessionList.svelte';
   import TranscriptView from './lib/components/transcript/TranscriptView.svelte';
   import ManageSettingsDialog from './lib/components/common/ManageSettingsDialog.svelte';
+  import GlobalSearchDialog from './lib/components/common/GlobalSearchDialog.svelte';
   import { theme } from './lib/stores/theme.svelte';
   import { preferences } from './lib/stores/preferences.svelte';
   import { appState } from './lib/stores/appState.svelte';
   import { manage } from './lib/stores/manage.svelte';
+  import { search } from './lib/stores/search.svelte';
+  import { hasOpenModal, isEditableTarget } from './lib/search';
 
   let isWails = $state(false);
 
@@ -20,7 +23,20 @@
     preferences.init();
     appState.init();
     manage.init();
+    search.init();
     isWails = typeof window !== 'undefined' && Boolean((window as any).go?.app?.App);
+
+    const onKeydown = (event: KeyboardEvent) => {
+      if (event.key !== '/' || event.metaKey || event.ctrlKey || event.altKey) return;
+      if (isEditableTarget(event.target) || hasOpenModal()) return;
+      event.preventDefault();
+      search.show();
+    };
+    window.addEventListener('keydown', onKeydown);
+    return () => {
+      window.removeEventListener('keydown', onKeydown);
+      search.destroy();
+    };
   });
 
   function handleSidebarResize(delta: number) {
@@ -45,6 +61,18 @@
         <h1 class="app-title">Agent Sessions</h1>
       </div>
       <div class="header-actions">
+        <button
+          type="button"
+          class="icon-button search-toggle"
+          title="Search all sessions (/)"
+          aria-label="Search all sessions"
+          onclick={() => search.show()}
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <circle cx="11" cy="11" r="8" />
+            <path d="m21 21-4.35-4.35" />
+          </svg>
+        </button>
         <button
           type="button"
           class="icon-button settings-toggle"
@@ -173,6 +201,7 @@
   </main>
 
   <ManageSettingsDialog />
+  <GlobalSearchDialog />
 </div>
 
 <style>

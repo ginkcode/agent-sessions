@@ -5,6 +5,41 @@ export interface SessionRef {
   id: string;
 }
 
+export interface SearchFilter {
+  agents?: string[];
+  dir?: string;
+  limit?: number;
+}
+
+export type SearchHitKind = 'title' | 'text' | 'reasoning' | 'tool';
+
+export interface SearchHit {
+  ref: SessionRef;
+  /** Global, zero-based transcript index; -1 identifies the session title. */
+  messageIndex: number;
+  /** Backend-escaped HTML containing no elements other than <mark>. */
+  snippet: string;
+  score: number;
+  kind: SearchHitKind;
+}
+
+export interface FTSProgress {
+  done: number;
+  pending: number;
+  failed: number;
+  running: boolean;
+}
+
+export interface MessageJump {
+  id: number;
+  ref: SessionRef;
+  messageIndex: number;
+  kind: SearchHitKind;
+  query: string;
+  /** Resolves once the selected session header metadata has settled. */
+  ready?: Promise<unknown>;
+}
+
 export interface ManageSettings {
   enabled: boolean;
   allowPermanentDelete: boolean;

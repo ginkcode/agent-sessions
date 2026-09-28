@@ -7,9 +7,10 @@
   interface Props {
     tool: ToolCall;
     sessionRef: SessionRef;
+    defaultExpanded?: boolean;
   }
 
-  let { tool, sessionRef }: Props = $props();
+  let { tool, sessionRef, defaultExpanded = false }: Props = $props();
 
   let isFetchingBlob = $state(false);
   let fullOutput = $state<string | null>(null);
@@ -81,7 +82,7 @@
   </div>
 
   {#if formattedInput}
-    <details class="tool-section input-section">
+    <details class="tool-section input-section" open={defaultExpanded}>
       <summary class="section-summary">
         <span>Parameters</span>
         <button

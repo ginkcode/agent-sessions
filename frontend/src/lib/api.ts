@@ -11,6 +11,9 @@ import type {
   ManageSettings,
   DeletePreview,
   DeleteResult,
+  SearchFilter,
+  SearchHit,
+  FTSProgress,
 } from './types';
 import { MockBackendAPI } from './mock/mockApi';
 
@@ -20,6 +23,8 @@ export interface BackendAPI {
   agentCounts(filter?: FilterOpts): Promise<Record<string, number>>;
   getSessionMeta(ref: SessionRef): Promise<SessionMeta>;
   getMessages(ref: SessionRef, offset: number, limit: number): Promise<MessagesPage>;
+  search(query: string, filter?: SearchFilter): Promise<SearchHit[]>;
+  indexProgress(): Promise<FTSProgress>;
   getBlob(ref: SessionRef, key: string): Promise<BlobResponse>;
   copyResumeCommand(ref: SessionRef): Promise<string>;
   revealSource(ref: SessionRef): Promise<void>;
@@ -40,6 +45,8 @@ interface WailsAppBinding {
   AgentCounts(filter: FilterOpts): Promise<Record<string, number>>;
   GetSessionMeta(ref: SessionRef): Promise<SessionMeta>;
   GetMessages(ref: SessionRef, offset: number, limit: number): Promise<MessagesPage>;
+  Search(query: string, filter: SearchFilter): Promise<SearchHit[]>;
+  IndexProgress(): Promise<FTSProgress>;
   GetBlob(ref: SessionRef, key: string): Promise<BlobResponse>;
   CopyResumeCommand(ref: SessionRef): Promise<string>;
   RevealSource(ref: SessionRef): Promise<void>;
@@ -116,6 +123,22 @@ class WailsBackendAPI implements BackendAPI {
   ): Promise<MessagesPage> {
     try {
       return await this.binding.GetMessages(ref, offset, limit);
+    } catch (e) {
+      throw normalizeError(e);
+    }
+  }
+
+  async search(query: string, filter?: SearchFilter): Promise<SearchHit[]> {
+    try {
+      return (await this.binding.Search(query, filter || {})) || [];
+    } catch (e) {
+      throw normalizeError(e);
+    }
+  }
+
+  async indexProgress(): Promise<FTSProgress> {
+    try {
+      return await this.binding.IndexProgress();
     } catch (e) {
       throw normalizeError(e);
     }
