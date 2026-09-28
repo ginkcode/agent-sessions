@@ -297,6 +297,15 @@ func TestListSessionsResolvesEveryTreeKey(t *testing.T) {
 		}
 	}
 
+	// HasSubagents keeps only sessions that have children.
+	parents, err := svc.ListSessions("", FilterOpts{HasSubagents: true}, SortOpts{})
+	if err != nil {
+		t.Fatalf("ListSessions hasSubagents: %v", err)
+	}
+	if len(parents) != 1 || parents[0].Ref != parent.Ref {
+		t.Errorf("hasSubagents sessions = %+v, want only the OpenCode parent", parents)
+	}
+
 	leaf, err := svc.ListSessions("session:"+string(model.AgentOpenCode)+":parent", FilterOpts{}, SortOpts{})
 	if err != nil {
 		t.Fatalf("ListSessions(parent leaf): %v", err)

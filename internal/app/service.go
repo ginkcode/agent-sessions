@@ -90,7 +90,7 @@ func (s *Service) ListGroups(mode GroupMode, filter FilterOpts) ([]GroupNode, er
 
 // AgentCounts returns the number of sessions per agent across the whole
 // catalog. The agent filter is ignored so every agent's total stays visible
-// while one agent is selected; query, live, and archived filters apply.
+// while one agent is selected; every other filter applies.
 func (s *Service) AgentCounts(filter FilterOpts) (map[string]int, error) {
 	filter.Agent = ""
 	counts := make(map[string]int)
@@ -280,6 +280,17 @@ func filterSessions(sessions []model.SessionMeta, f FilterOpts) []model.SessionM
 	query := strings.ToLower(strings.TrimSpace(f.Query))
 	path := strings.ToLower(strings.TrimSpace(f.Path))
 	agent := model.AgentID(f.Agent)
+	// Parents are found from the whole snapshot, before filtering, so a
+	// parent still qualifies when its children are filtered out.
+	var hasChild map[string]bool
+	if f.HasSubagents {
+		hasChild = make(map[string]bool)
+		for _, m := range sessions {
+			if m.ParentID != "" {
+				hasChild[model.SessionRef{Agent: m.Ref.Agent, ID: m.ParentID}.Key()] = true
+			}
+		}
+	}
 	out := make([]model.SessionMeta, 0, len(sessions))
 	for _, m := range sessions {
 		if agent != "" && m.Ref.Agent != agent {
@@ -295,6 +306,9 @@ func filterSessions(sessions []model.SessionMeta, f FilterOpts) []model.SessionM
 			continue
 		}
 		if path != "" && !matchesPath(m, path) {
+			continue
+		}
+		if f.HasSubagents && !hasChild[m.Ref.Key()] {
 			continue
 		}
 		out = append(out, m)

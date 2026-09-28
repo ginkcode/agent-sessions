@@ -142,8 +142,8 @@ func TestStubsReportUnsupported(t *testing.T) {
 	if !errors.Is(err, ErrUnsupportedLoad) {
 		t.Errorf("Load error = %v, expected to match ErrUnsupportedLoad", err)
 	}
-	if !strings.Contains(err.Error(), "M1-04") {
-		t.Errorf("Load error %q should mention M1-04", err.Error())
+	if !strings.Contains(err.Error(), "M1-06") {
+		t.Errorf("Load error %q should mention M1-06", err.Error())
 	}
 
 	// Blob stub

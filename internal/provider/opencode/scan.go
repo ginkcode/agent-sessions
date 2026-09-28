@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"reflect"
 	"slices"
 	"sort"
@@ -61,6 +62,11 @@ func (p *Provider) Scan(ctx context.Context, prev provider.ScanState) (provider.
 	if os.IsNotExist(err) {
 		if len(previous.Metas) != 0 {
 			return provider.ScanResult{}, fmt.Errorf("opencode database %q disappeared; retaining previous sessions", path)
+		}
+		// Detect reports the legacy generation, so say why nothing is listed.
+		if legacy, legacyErr := p.hasLegacySessions(ctx); legacyErr == nil && legacy {
+			result.Diag.Warn(filepath.Join(p.root, storageSubdir, legacySession), 0,
+				"OpenCode legacy JSON storage is not supported yet; its sessions are not listed")
 		}
 		return result, nil
 	}

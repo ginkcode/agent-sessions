@@ -268,3 +268,19 @@ func TestScanV2SchemaDroppedRetainsV2OnlySessions(t *testing.T) {
 		t.Fatalf("generation switch = %+v", second)
 	}
 }
+
+func TestScanLegacyOnlyWarns(t *testing.T) {
+	root := t.TempDir()
+	fixtureLegacy(t, root)
+	result, err := New(root, nil).Scan(t.Context(), provider.ScanState{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Changed) != 0 || len(result.Diag.Warnings) != 1 {
+		t.Fatalf("legacy-only scan = %+v", result)
+	}
+	empty, err := New(t.TempDir(), nil).Scan(t.Context(), provider.ScanState{})
+	if err != nil || len(empty.Diag.Warnings) != 0 {
+		t.Fatalf("empty root scan = %+v, %v", empty, err)
+	}
+}

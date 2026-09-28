@@ -1,5 +1,7 @@
 // Package opencode implements provider.Provider for OpenCode sessions,
-// covering the v2 and v1 SQLite generations and the pre-DB legacy JSON tree.
+// covering the v2 and v1 SQLite generations. The pre-DB legacy JSON tree is
+// detected and watched but not yet read (M1-06); Scan warns when it is the
+// only session store.
 // Detection is strictly read-only and never touches auth.json or any
 // credential/account/control_account table.
 package opencode
@@ -83,7 +85,7 @@ func (p *Provider) ResumeCommand(m model.SessionMeta) provider.Command {
 	}
 }
 
-// unsupportedErr describes a provider surface that a later M1 task owns.
+// unsupportedErr describes a provider surface that a later task owns.
 type unsupportedErr struct {
 	task  string
 	kind  string
@@ -109,13 +111,13 @@ func blobUnsupported(ctx context.Context) error {
 	return &unsupportedErr{task: ErrUnsupportedBlob.task, kind: ErrUnsupportedBlob.kind, cause: cause}
 }
 
-// ErrUnsupportedLoad and ErrUnsupportedBlob let callers (and the temporary
-// stub tests) recognize the not-yet-implemented surfaces until the later M1
-// tasks replace them.
+// ErrUnsupportedLoad and ErrUnsupportedBlob let callers recognize the
+// surfaces that only the legacy JSON reader (M1-06) will provide: loading
+// without a SQLite session schema, and legacy blob keys.
 var (
-	// ErrUnsupportedLoad marks the stubbed Load implementation.
-	ErrUnsupportedLoad = &unsupportedErr{task: "M1-04…M1-06", kind: "Load"}
-	// ErrUnsupportedBlob marks the stubbed Blob implementation.
+	// ErrUnsupportedLoad marks Load without a readable SQLite generation.
+	ErrUnsupportedLoad = &unsupportedErr{task: "M1-06", kind: "Load"}
+	// ErrUnsupportedBlob marks blob keys outside the v1/v2 formats.
 	ErrUnsupportedBlob = &unsupportedErr{task: "M1-06", kind: "Blob"}
 )
 
