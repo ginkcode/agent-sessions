@@ -154,7 +154,7 @@ func (s *Service) GetBlob(ctx context.Context, ref model.SessionRef, key string)
 		return BlobResponse{}, err
 	}
 	resp := BlobResponse{Mime: "application/octet-stream"}
-	if utf8.Valid(raw) && !looksBinary(raw) {
+	if len(raw) <= maxBlobTextBytes && utf8.Valid(raw) && !looksBinary(raw) {
 		resp.Data = string(raw)
 		resp.Mime = "text/plain"
 		return resp, nil

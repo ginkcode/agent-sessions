@@ -6,12 +6,13 @@ import (
 	"io/fs"
 	"log"
 
-	"github.com/ginkcode/agent-sessions/frontend"
-	"github.com/ginkcode/agent-sessions/internal/app"
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
 	"github.com/wailsapp/wails/v2/pkg/options/linux"
+
+	"github.com/ginkcode/agent-sessions/frontend"
+	"github.com/ginkcode/agent-sessions/internal/app"
 )
 
 // run launches the Wails v2 desktop application. It is only compiled with

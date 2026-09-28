@@ -32,14 +32,14 @@ type SortOpts struct {
 
 // GroupNode is a group or session in the navigation tree returned to the UI.
 type GroupNode struct {
-	Key          string        `json:"key"`
-	Label        string        `json:"label"`
-	Secondary    string        `json:"secondary,omitempty"`
-	Agent        string        `json:"agent,omitempty"`
-	CWD          string        `json:"cwd,omitempty"`
-	CWDMissing   bool          `json:"cwdMissing,omitempty"`
-	SessionCount int           `json:"sessionCount"`
-	Children     []GroupNode   `json:"children,omitempty"`
+	Key          string             `json:"key"`
+	Label        string             `json:"label"`
+	Secondary    string             `json:"secondary,omitempty"`
+	Agent        string             `json:"agent,omitempty"`
+	CWD          string             `json:"cwd,omitempty"`
+	CWDMissing   bool               `json:"cwdMissing,omitempty"`
+	SessionCount int                `json:"sessionCount"`
+	Children     []GroupNode        `json:"children,omitempty"`
 	Sessions     []model.SessionRef `json:"sessions,omitempty"`
 }
 

@@ -8,13 +8,14 @@ import (
 	"os/exec"
 	"strings"
 
+	wruntime "github.com/wailsapp/wails/v2/pkg/runtime"
+
 	"github.com/ginkcode/agent-sessions/internal/model"
 	"github.com/ginkcode/agent-sessions/internal/paths"
 	"github.com/ginkcode/agent-sessions/internal/pathutil"
 	"github.com/ginkcode/agent-sessions/internal/provider"
 	"github.com/ginkcode/agent-sessions/internal/provider/all"
 	"github.com/ginkcode/agent-sessions/internal/scan"
-	wruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 // App is the desktop application service exposed to the Wails frontend.
@@ -159,4 +160,3 @@ func (a *App) OpenURL(rawURL string) error {
 	cmd := exec.Command("xdg-open", parsed.String())
 	return cmd.Start()
 }
-
