@@ -1,0 +1,87 @@
+[
+  {
+    "ref": {
+      "agent": "opencode",
+      "id": "alpha"
+    },
+    "sourcePath": "<fixture>/opencode.db",
+    "cwd": "/source/worktree",
+    "repoRoot": "/source/main",
+    "cwdMissing": true,
+    "title": "Please fix this issue.",
+    "firstPrompt": "Please fix this issue.",
+    "model": "anthropic/claude-sonnet-4",
+    "agentName": "build",
+    "createdAt": "2023-11-14T22:13:20Z",
+    "updatedAt": "2023-11-14T22:15:00Z",
+    "counts": {
+      "user": 2,
+      "assistant": 3,
+      "toolCalls": 4
+    },
+    "tokens": {
+      "input": 101,
+      "output": 50,
+      "reasoning": 15,
+      "cacheRead": 20,
+      "cacheWrite": 5
+    },
+    "costUsd": 1.25,
+    "agentVersion": "2.0.18"
+  },
+  {
+    "ref": {
+      "agent": "opencode",
+      "id": "child"
+    },
+    "parentId": "alpha",
+    "sourcePath": "<fixture>/opencode.db",
+    "cwd": "",
+    "title": "(untitled)",
+    "agentName": "build",
+    "createdAt": "2023-11-14T22:13:20Z",
+    "updatedAt": "2023-11-14T22:15:00Z",
+    "counts": {
+      "user": 0,
+      "assistant": 0,
+      "toolCalls": 0
+    },
+    "tokens": {
+      "input": 0,
+      "output": 0,
+      "reasoning": 0,
+      "cacheRead": 0,
+      "cacheWrite": 0
+    },
+    "archived": true,
+    "agentVersion": "2.0.18"
+  },
+  {
+    "ref": {
+      "agent": "opencode",
+      "id": "empty"
+    },
+    "sourcePath": "<fixture>/opencode.db",
+    "cwd": "/source/worktree",
+    "repoRoot": "/source/main",
+    "cwdMissing": true,
+    "title": "(untitled)",
+    "model": "anthropic/claude-sonnet-4",
+    "agentName": "build",
+    "createdAt": "2023-11-14T22:13:20Z",
+    "updatedAt": "2023-11-14T22:15:00Z",
+    "counts": {
+      "user": 0,
+      "assistant": 0,
+      "toolCalls": 0
+    },
+    "tokens": {
+      "input": 0,
+      "output": 0,
+      "reasoning": 0,
+      "cacheRead": 0,
+      "cacheWrite": 0
+    },
+    "agentVersion": "2.0.18"
+  }
+]

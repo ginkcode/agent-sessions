@@ -1,0 +1,150 @@
+[
+  {
+    "id": "1",
+    "role": "user",
+    "time": "2023-11-14T22:13:20.001Z",
+    "parts": [
+      {
+        "kind": "text",
+        "text": "Please read"
+      },
+      {
+        "kind": "file",
+        "file": {
+          "name": "image.png",
+          "mime": "image/png",
+          "ref": "v2:1:file:0"
+        }
+      }
+    ],
+    "tokens": {
+      "input": 0,
+      "output": 0,
+      "reasoning": 0,
+      "cacheRead": 0,
+      "cacheWrite": 0
+    }
+  },
+  {
+    "id": "2",
+    "role": "user",
+    "time": "2023-11-14T22:14:10Z",
+    "parts": [
+      {
+        "kind": "file",
+        "file": {
+          "name": "empty.txt",
+          "mime": "text/plain",
+          "ref": "v2:2:file:0"
+        }
+      }
+    ],
+    "tokens": {
+      "input": 0,
+      "output": 0,
+      "reasoning": 0,
+      "cacheRead": 0,
+      "cacheWrite": 0
+    }
+  },
+  {
+    "id": "3",
+    "role": "assistant",
+    "time": "2023-11-14T22:13:20.003Z",
+    "model": "example/large",
+    "parts": [
+      {
+        "kind": "reasoning",
+        "text": "considering"
+      },
+      {
+        "kind": "text",
+        "text": "answer"
+      },
+      {
+        "kind": "tool",
+        "tool": {
+          "id": "call-1",
+          "name": "task",
+          "input": {
+            "number": 12345678901234567890
+          },
+          "output": "tool result",
+          "status": "completed",
+          "child": {
+            "agent": "opencode",
+            "id": "child"
+          }
+        }
+      },
+      {
+        "kind": "notice",
+        "text": "Assistant error"
+      }
+    ],
+    "tokens": {
+      "input": 5,
+      "output": 6,
+      "reasoning": 2,
+      "cacheRead": 3,
+      "cacheWrite": 4
+    }
+  },
+  {
+    "id": "4",
+    "role": "system",
+    "time": "2023-11-14T22:14:10Z",
+    "parts": [
+      {
+        "kind": "compaction",
+        "text": "Compaction: limit (completed)\nshort recap"
+      }
+    ],
+    "isMeta": true,
+    "tokens": {
+      "input": 0,
+      "output": 0,
+      "reasoning": 0,
+      "cacheRead": 0,
+      "cacheWrite": 0
+    }
+  },
+  {
+    "id": "5",
+    "role": "system",
+    "time": "2023-11-14T22:14:10Z",
+    "parts": [
+      {
+        "kind": "notice",
+        "text": "system note"
+      }
+    ],
+    "isMeta": true,
+    "tokens": {
+      "input": 0,
+      "output": 0,
+      "reasoning": 0,
+      "cacheRead": 0,
+      "cacheWrite": 0
+    }
+  },
+  {
+    "id": "6",
+    "role": "system",
+    "time": "2023-11-14T22:14:10Z",
+    "parts": [
+      {
+        "kind": "notice",
+        "text": "injected"
+      }
+    ],
+    "isMeta": true,
+    "tokens": {
+      "input": 0,
+      "output": 0,
+      "reasoning": 0,
+      "cacheRead": 0,
+      "cacheWrite": 0
+    }
+  }
+]

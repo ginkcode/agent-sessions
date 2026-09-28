@@ -42,16 +42,16 @@ func TestProviderBasics(t *testing.T) {
 		}
 	}
 
-	// Scan/Load/Blob stubs return descriptive errors.
+	// Missing roots have no rollouts. Load/Blob return descriptive not-found errors.
 	ctx := context.Background()
-	if _, err := p.Scan(ctx, provider.ScanState{}); err == nil || !strings.Contains(err.Error(), "Scan") {
-		t.Errorf("Scan() err = %v, want descriptive error mentioning Scan", err)
+	if scan, err := p.Scan(ctx, provider.ScanState{}); err != nil || len(scan.Changed) != 0 || len(scan.Removed) != 0 {
+		t.Errorf("Scan() = %+v, %v, want empty result", scan, err)
 	}
-	if _, err := p.Load(ctx, meta.Ref); err == nil || !strings.Contains(err.Error(), "Load") {
-		t.Errorf("Load() err = %v, want descriptive error mentioning Load", err)
+	if _, err := p.Load(ctx, meta.Ref); err == nil || !strings.Contains(err.Error(), "not found") {
+		t.Errorf("Load() err = %v, want not-found error for missing rollout", err)
 	}
-	if _, err := p.Blob(ctx, meta.Ref, "key"); err == nil || !strings.Contains(err.Error(), "Blob") {
-		t.Errorf("Blob() err = %v, want descriptive error mentioning Blob", err)
+	if _, err := p.Blob(ctx, meta.Ref, "key"); err == nil || !strings.Contains(err.Error(), "unsupported key") {
+		t.Errorf("Blob() err = %v, want unsupported-key error", err)
 	}
 }
 

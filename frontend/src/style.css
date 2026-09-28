@@ -1,0 +1,133 @@
+/* frontend/src/style.css tokens */
+:root {
+  --bg-primary: #ffffff;
+  --bg-secondary: #f8fafc;
+  --bg-tertiary: #f1f5f9;
+  --border-color: #e2e8f0;
+  --text-primary: #0f172a;
+  --text-secondary: #475569;
+  --text-muted: #94a3b8;
+  --accent-color: #2563eb;
+  --accent-hover: #1d4ed8;
+  --agent-claude: #d97757;
+  --agent-codex: #10a37f;
+  --agent-opencode: #3b82f6;
+  --badge-bg: #e2e8f0;
+  --hover-bg: rgba(0, 0, 0, 0.04);
+  --active-bg: rgba(37, 99, 235, 0.1);
+  --status-live: #10b981;
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+}
+
+[data-theme="dark"] {
+  --bg-primary: #0f172a;
+  --bg-secondary: #1e293b;
+  --bg-tertiary: #334155;
+  --border-color: #334155;
+  --text-primary: #f8fafc;
+  --text-secondary: #cbd5e1;
+  --text-muted: #64748b;
+  --accent-color: #3b82f6;
+  --accent-hover: #60a5fa;
+  --badge-bg: #334155;
+  --hover-bg: rgba(255, 255, 255, 0.05);
+  --active-bg: rgba(59, 130, 246, 0.15);
+  --status-live: #34d399;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body, #app {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  font-family: var(--font-sans);
+  color: var(--text-primary);
+  background-color: var(--bg-primary);
+  -webkit-font-smoothing: antialiased;
+}
+
+button {
+  font-family: inherit;
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: inherit;
+}
+
+input, select {
+  font-family: inherit;
+  color: inherit;
+  background: inherit;
+}
+
+/* Syntax highlighting tokens (Light mode) */
+.hljs-keyword, .hljs-selector-tag, .hljs-built_in {
+  color: #d73a49;
+  font-weight: 600;
+}
+.hljs-string, .hljs-attr {
+  color: #032f62;
+}
+.hljs-comment {
+  color: #6a737d;
+  font-style: italic;
+}
+.hljs-number, .hljs-literal {
+  color: #005cc5;
+}
+.hljs-title, .hljs-function {
+  color: #6f42c1;
+}
+.hljs-addition {
+  background-color: rgba(46, 160, 67, 0.15);
+  color: #22863a;
+  display: block;
+}
+.hljs-deletion {
+  background-color: rgba(248, 81, 73, 0.15);
+  color: #b31d28;
+  display: block;
+}
+.hljs-meta {
+  color: #005cc5;
+  font-weight: bold;
+}
+
+/* Syntax highlighting tokens (Dark mode) */
+[data-theme="dark"] .hljs-keyword,
+[data-theme="dark"] .hljs-selector-tag,
+[data-theme="dark"] .hljs-built_in {
+  color: #ff7b72;
+}
+[data-theme="dark"] .hljs-string,
+[data-theme="dark"] .hljs-attr {
+  color: #a5d6ff;
+}
+[data-theme="dark"] .hljs-comment {
+  color: #8b949e;
+}
+[data-theme="dark"] .hljs-number,
+[data-theme="dark"] .hljs-literal {
+  color: #79c0ff;
+}
+[data-theme="dark"] .hljs-title,
+[data-theme="dark"] .hljs-function {
+  color: #d2a8ff;
+}
+[data-theme="dark"] .hljs-addition {
+  background-color: rgba(46, 160, 67, 0.2);
+  color: #7ee787;
+}
+[data-theme="dark"] .hljs-deletion {
+  background-color: rgba(248, 81, 73, 0.2);
+  color: #ffa198;
+}
+[data-theme="dark"] .hljs-meta {
+  color: #79c0ff;
+}

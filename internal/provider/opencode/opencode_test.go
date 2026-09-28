@@ -134,20 +134,8 @@ func TestStubsReportUnsupported(t *testing.T) {
 	p := New(t.TempDir(), nil)
 	ctx := t.Context()
 
-	// Scan stub
-	_, err := p.Scan(ctx, provider.ScanState{})
-	if err == nil {
-		t.Fatalf("Scan expected error, got nil")
-	}
-	if !errors.Is(err, ErrUnsupportedScan) {
-		t.Errorf("Scan error = %v, expected to match ErrUnsupportedScan", err)
-	}
-	if !strings.Contains(err.Error(), "M1-03") {
-		t.Errorf("Scan error %q should mention M1-03", err.Error())
-	}
-
 	// Load stub
-	_, err = p.Load(ctx, model.SessionRef{Agent: model.AgentOpenCode, ID: "123"})
+	_, err := p.Load(ctx, model.SessionRef{Agent: model.AgentOpenCode, ID: "123"})
 	if err == nil {
 		t.Fatalf("Load expected error, got nil")
 	}

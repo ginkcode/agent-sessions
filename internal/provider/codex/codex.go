@@ -135,35 +135,5 @@ func (p *Provider) ResumeCommand(m model.SessionMeta) provider.Command {
 	}
 }
 
-// Scan parses rollout metadata. Implemented in task M1-10 / M1-11.
-func (p *Provider) Scan(ctx context.Context, prev provider.ScanState) (provider.ScanResult, error) {
-	return provider.ScanResult{}, notImplemented("Scan")
-}
-
-// Load builds a transcript from a rollout file. Implemented in task M1-12.
-func (p *Provider) Load(ctx context.Context, ref model.SessionRef) (*model.Transcript, error) {
-	return nil, notImplemented("Load")
-}
-
-// Blob retrieves large tool output or attachment bytes on demand.
-// Implemented in task M1-12.
-func (p *Provider) Blob(ctx context.Context, ref model.SessionRef, key string) ([]byte, error) {
-	return nil, notImplemented("Blob")
-}
-
-// errNotImplemented marks provider methods deferred to later tasks.
-type errNotImplemented struct {
-	method string
-}
-
-func (e *errNotImplemented) Error() string {
-	return fmt.Sprintf("codex: %s is not implemented yet (M1-10/M1-12)", e.method)
-}
-
-func notImplemented(method string) error {
-	return &errNotImplemented{method: method}
-}
-
-// Provider satisfies the full provider contract; Scan/Load/Blob are stubs
-// until M1-10/M1-12 land.
+// Provider satisfies the full provider contract.
 var _ provider.Provider = (*Provider)(nil)

@@ -1,0 +1,13 @@
+{
+  "$schema": "https://wails.io/schemas/config.v2.json",
+  "name": "agent-sessions",
+  "outputfilename": "agent-sessions",
+  "projectdir": "cmd/agent-sessions",
+  "build:dir": "../../build",
+  "frontend:dir": "../../frontend",
+  "wailsjsdir": "../../frontend",
+  "frontend:install": "npm install",
+  "frontend:build": "npm run build",
+  "frontend:dev:watcher": "npm run dev",
+  "frontend:dev:serverUrl": "auto"
+}
