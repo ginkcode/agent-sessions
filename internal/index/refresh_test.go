@@ -404,6 +404,96 @@ func TestRefreshRemovedRefs(t *testing.T) {
 	}
 }
 
+// TestForgetDeletesRows verifies Forget removes sessions from the cache DB
+// and the in-memory catalog while leaving unrelated sessions intact, that
+// removal is idempotent for unknown refs, and that an in-flight Refresh for
+// the same provider cannot commit a forgotten session back afterwards.
+func TestForgetDeletesRows(t *testing.T) {
+	p := providertest.NewFake(model.AgentClaude, "Claude")
+	p.DetectionData = provider.Detection{Present: true}
+	p.Sessions = []model.SessionMeta{
+		refresherMeta(model.AgentClaude, "s1", time.Now().UTC()),
+		refresherMeta(model.AgentClaude, "s2", time.Now().UTC().Add(time.Minute)),
+	}
+	p.StateOverride = &provider.ScanState{Sources: map[string]provider.SourceState{}}
+
+	r, db := newTestRefresher(t, p)
+	ctx := context.Background()
+
+	if _, _, err := r.Refresh(ctx, p); err != nil {
+		t.Fatalf("initial Refresh failed: %v", err)
+	}
+	if _, ok := r.catalog.Get(model.SessionRef{Agent: model.AgentClaude, ID: "s1"}); !ok {
+		t.Fatal("precondition: s1 missing from catalog")
+	}
+
+	// Forget one session and a never-seen one; both must be gone, s2 stays.
+	forgetRefs := []model.SessionRef{
+		{Agent: model.AgentClaude, ID: "s1"},
+		{Agent: model.AgentClaude, ID: "unknown"},
+	}
+	if err := r.Forget(ctx, forgetRefs); err != nil {
+		t.Fatalf("Forget failed: %v", err)
+	}
+
+	if _, ok := r.catalog.Get(model.SessionRef{Agent: model.AgentClaude, ID: "s1"}); ok {
+		t.Error("expected s1 gone from in-memory catalog after Forget")
+	}
+	metas, err := db.LoadCatalog(ctx)
+	if err != nil {
+		t.Fatalf("LoadCatalog failed: %v", err)
+	}
+	if len(metas) != 1 || metas[0].Ref.ID != "s2" {
+		t.Errorf("expected only s2 in cache DB, got %+v", metas)
+	}
+	var count int
+	if err := db.SQLDB().QueryRowContext(ctx,
+		"SELECT count(*) FROM sessions WHERE agent = ? AND id = ?", "claude-code", "s1").Scan(&count); err != nil {
+		t.Fatalf("count s1 rows: %v", err)
+	}
+	if count != 0 {
+		t.Errorf("expected 0 rows for s1, got %d", count)
+	}
+
+	// Forget while a Refresh is in flight: the in-flight scan must not
+	// commit the forgotten session back into the cache.
+	p.ScanDelay = 50 * time.Millisecond
+	p.ScanStarted = make(chan struct{}, 1)
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		if _, _, err := r.Refresh(ctx, p); err != nil {
+			t.Errorf("in-flight Refresh failed: %v", err)
+		}
+	}()
+
+	select {
+	case <-p.ScanStarted:
+	case <-time.After(2 * time.Second):
+		t.Fatal("scan never entered")
+	}
+
+	if err := r.Forget(ctx, []model.SessionRef{{Agent: model.AgentClaude, ID: "s2"}}); err != nil {
+		t.Fatalf("Forget during in-flight Refresh failed: %v", err)
+	}
+	<-done
+
+	if _, ok := r.catalog.Get(model.SessionRef{Agent: model.AgentClaude, ID: "s2"}); ok {
+		t.Error("in-flight Refresh resurrected forgotten session s2 in catalog")
+	}
+	metas, err = db.LoadCatalog(ctx)
+	if err != nil {
+		t.Fatalf("LoadCatalog after in-flight Forget failed: %v", err)
+	}
+	for _, m := range metas {
+		if m.Ref.ID == "s2" {
+			t.Errorf("in-flight Refresh resurrected s2 in cache DB: %+v", metas)
+			break
+		}
+	}
+}
+
 // TestClearCacheInvalidatesInFlight ensures ClearCache prevents a stale
 // in-flight scan from committing afterwards.
 func TestClearCacheInvalidatesInFlight(t *testing.T) {

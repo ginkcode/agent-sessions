@@ -27,6 +27,15 @@ func (c *Catalog) Apply(result provider.ScanResult) {
 	c.apply(result)
 }
 
+// Remove deletes the given sessions without affecting other catalog entries.
+func (c *Catalog) Remove(refs []model.SessionRef) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for _, ref := range refs {
+		delete(c.byKey, ref.Key())
+	}
+}
+
 // Reset clears all sessions from the catalog and replaces them with metas.
 func (c *Catalog) Reset(metas []model.SessionMeta) {
 	c.mu.Lock()

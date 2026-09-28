@@ -7,10 +7,20 @@
   import SessionRow from './SessionRow.svelte';
   import EmptyState from '../common/EmptyState.svelte';
   import ErrorState from '../common/ErrorState.svelte';
+  import { manage } from '../../stores/manage.svelte';
+  import { filterSessionsByAge } from '../../manage';
 
   let listEl: HTMLElement | null = $state(null);
 
   let searchTimer: ReturnType<typeof setTimeout> | undefined;
+
+  let visibleSessions = $derived(
+    filterSessionsByAge(appState.sessions, manage.ageFilterDays)
+  );
+
+  let selectedVisibleCount = $derived(
+    manage.getSelectedRefs(visibleSessions).length
+  );
 
   // Debounce so fast typing doesn't trigger a backend query per keystroke.
   function handleSearchInput(e: Event) {
@@ -49,6 +59,27 @@
   function handleClearFilters() {
     clearTimeout(searchTimer);
     appState.setFilter({ query: '', liveOnly: false, archived: false });
+    manage.setAgeFilter(0);
+  }
+
+  function handleAgeChange(e: Event) {
+    const days = Number((e.target as HTMLSelectElement).value);
+    manage.setAgeFilter(Number.isFinite(days) ? days : 0);
+    manage.clearSelection();
+  }
+
+  function toggleSelectAll() {
+    if (selectedVisibleCount === visibleSessions.length) {
+      manage.clearSelection();
+    } else {
+      manage.selectAll(visibleSessions);
+    }
+  }
+
+  function handleBulkDelete() {
+    const refs = manage.getSelectedRefs(visibleSessions);
+    if (!refs.length) return;
+    void manage.requestDelete(refs);
   }
 
   function handleKeyDown(e: KeyboardEvent) {
@@ -114,6 +145,21 @@
         Archived
       </button>
 
+      {#if manage.settings.enabled}
+        <select
+          class="age-select"
+          value={String(manage.ageFilterDays)}
+          onchange={handleAgeChange}
+          aria-label="Filter sessions by age"
+        >
+          <option value="0">Any age</option>
+          <option value="30">Older than 30d</option>
+          <option value="90">Older than 90d</option>
+          <option value="180">Older than 180d</option>
+          <option value="365">Older than 1y</option>
+        </select>
+      {/if}
+
       <div class="sort-wrapper">
         <select
           class="sort-select"
@@ -143,8 +189,30 @@
 
   <div class="list-subhead">
     <span class="session-count">
-      {appState.sessions.length} {appState.sessions.length === 1 ? 'session' : 'sessions'}
+      {visibleSessions.length} {visibleSessions.length === 1 ? 'session' : 'sessions'}
     </span>
+
+    {#if manage.settings.enabled}
+      <label class="select-all-label">
+        <input
+          type="checkbox"
+          checked={visibleSessions.length > 0 &&
+            selectedVisibleCount === visibleSessions.length}
+          onclick={toggleSelectAll}
+        />
+        Select all
+      </label>
+
+      <button
+        type="button"
+        class="bulk-delete-btn"
+        disabled={selectedVisibleCount === 0 || manage.deleting}
+        title="Delete the selected sessions"
+        onclick={handleBulkDelete}
+      >
+        Delete ({selectedVisibleCount})
+      </button>
+    {/if}
   </div>
 
   <div class="list-body">
@@ -156,7 +224,7 @@
         message={appState.error}
         onRetry={() => appState.loadSessions()}
       />
-    {:else if appState.sessions.length === 0}
+    {:else if visibleSessions.length === 0}
       <EmptyState
         icon="🔍"
         title="No matching sessions"
@@ -165,7 +233,7 @@
         onAction={handleClearFilters}
       />
     {:else}
-      <VirtualList items={appState.sessions} itemHeight={58} overscan={5}>
+      <VirtualList items={visibleSessions} itemHeight={58} overscan={5}>
         {#snippet children(session: SessionMeta)}
           <SessionRow
             {session}
@@ -262,6 +330,22 @@
     gap: 2px;
   }
 
+  .age-select {
+    max-width: 120px;
+    padding: 2px 4px;
+    font-size: 0.72rem;
+    border-radius: 4px;
+    background: var(--bg-secondary);
+    color: var(--text-secondary);
+    border: 1px solid var(--border-color);
+    cursor: pointer;
+  }
+
+  .age-select option {
+    background-color: var(--bg-secondary);
+    color: var(--text-primary);
+  }
+
   /* appearance: none stops WebKitGTK painting the GTK (light) menulist, so
      the theme colors apply; the caret is drawn with two gradients. */
   .sort-select {
@@ -317,6 +401,44 @@
     font-size: 0.7rem;
     color: var(--text-muted);
     font-variant-numeric: tabular-nums;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .select-all-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.7rem;
+    cursor: pointer;
+  }
+
+  .select-all-label input {
+    margin: 0;
+    accent-color: #ef4444;
+  }
+
+  .bulk-delete-btn {
+    margin-left: auto;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 0.7rem;
+    font-weight: 500;
+    background-color: rgba(239, 68, 68, 0.12);
+    color: #ef4444;
+    border: 1px solid rgba(239, 68, 68, 0.4);
+    cursor: pointer;
+  }
+
+  .bulk-delete-btn:hover:not(:disabled) {
+    background-color: rgba(239, 68, 68, 0.2);
+    border-color: #ef4444;
+  }
+
+  .bulk-delete-btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
   }
 
   .list-body {

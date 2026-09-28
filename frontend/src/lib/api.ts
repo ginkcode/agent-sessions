@@ -8,6 +8,9 @@ import type {
   MessagesPage,
   BlobResponse,
   Diagnostics,
+  ManageSettings,
+  DeletePreview,
+  DeleteResult,
 } from './types';
 import { MockBackendAPI } from './mock/mockApi';
 
@@ -23,6 +26,11 @@ export interface BackendAPI {
   getDiagnostics(): Promise<Diagnostics>;
   openURL(url: string): Promise<void>;
   onEvent(name: string, callback: (...data: any[]) => void): () => void;
+  getSettings(): Promise<ManageSettings>;
+  setManageEnabled(enabled: boolean): Promise<ManageSettings>;
+  setAllowPermanentDelete(allow: boolean): Promise<ManageSettings>;
+  previewDelete(refs: SessionRef[]): Promise<DeletePreview>;
+  deleteSessions(refs: SessionRef[], token: string): Promise<DeleteResult>;
 }
 
 interface WailsAppBinding {
@@ -36,6 +44,11 @@ interface WailsAppBinding {
   RevealSource(ref: SessionRef): Promise<void>;
   Diagnostics(): Promise<Diagnostics>;
   OpenURL(url: string): Promise<void>;
+  GetSettings(): Promise<ManageSettings>;
+  SetManageEnabled(enabled: boolean): Promise<ManageSettings>;
+  SetAllowPermanentDelete(allow: boolean): Promise<ManageSettings>;
+  PreviewDelete(refs: SessionRef[]): Promise<DeletePreview>;
+  DeleteSessions(refs: SessionRef[], token: string): Promise<DeleteResult>;
   Ping(name: string): Promise<string>;
 }
 
@@ -133,6 +146,46 @@ class WailsBackendAPI implements BackendAPI {
   async getDiagnostics(): Promise<Diagnostics> {
     try {
       return await this.binding.Diagnostics();
+    } catch (e) {
+      throw normalizeError(e);
+    }
+  }
+
+  async getSettings(): Promise<ManageSettings> {
+    try {
+      return await this.binding.GetSettings();
+    } catch (e) {
+      throw normalizeError(e);
+    }
+  }
+
+  async setManageEnabled(enabled: boolean): Promise<ManageSettings> {
+    try {
+      return await this.binding.SetManageEnabled(enabled);
+    } catch (e) {
+      throw normalizeError(e);
+    }
+  }
+
+  async setAllowPermanentDelete(allow: boolean): Promise<ManageSettings> {
+    try {
+      return await this.binding.SetAllowPermanentDelete(allow);
+    } catch (e) {
+      throw normalizeError(e);
+    }
+  }
+
+  async previewDelete(refs: SessionRef[]): Promise<DeletePreview> {
+    try {
+      return await this.binding.PreviewDelete(refs);
+    } catch (e) {
+      throw normalizeError(e);
+    }
+  }
+
+  async deleteSessions(refs: SessionRef[], token: string): Promise<DeleteResult> {
+    try {
+      return await this.binding.DeleteSessions(refs, token);
     } catch (e) {
       throw normalizeError(e);
     }

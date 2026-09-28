@@ -4,6 +4,17 @@ import { formatTokens, formatCost, formatBytes } from '../src/lib/format.ts';
 import { formatRelativeTime, formatAbsoluteTime } from '../src/lib/date.ts';
 import { highlightCode, detectLanguage } from '../src/lib/highlight.ts';
 import { renderMarkdown } from '../src/lib/markdown.ts';
+import {
+  refKey,
+  refsEqual,
+  nextSelectionAfterDelete,
+  filterSessionsByAge,
+  summarizePreview,
+  errorText,
+  needsTypedDelete,
+  formatDeleteResultSummary,
+} from '../src/lib/manage.ts';
+import { MockBackendAPI } from '../src/lib/mock/mockApi.ts';
 
 test('formatTokens formats numbers into compact string representations', () => {
   assert.equal(formatTokens(0), '0');
@@ -156,4 +167,78 @@ test('handleCopyCodeClick copies code from delegated click and ignores other tar
       Object.defineProperty(globalThis, 'navigator', { value: origClipboard, configurable: true });
     }
   }
+});
+
+test('manage helpers filter age, select next neighbour and summarize preview', () => {
+  const a = { agent: 'claude-code', id: 'one' };
+  const b = { agent: 'claude-code', id: 'two' };
+  const c = { agent: 'codex', id: 'one' };
+  assert.equal(refKey(a), 'claude-code:one');
+  assert.equal(refKey(c), 'codex:one');
+  assert.ok(refsEqual(a, { ...a }));
+  assert.equal(refsEqual(a, c), false);
+  const sessions = [
+    { ref: a, updatedAt: '2026-09-01T00:00:00Z' },
+    { ref: b, updatedAt: '2026-09-20T00:00:00Z' },
+    { ref: c, updatedAt: '2026-09-27T00:00:00Z' },
+  ];
+  assert.deepEqual(filterSessionsByAge(sessions, 7, new Date('2026-09-28T00:00:00Z')).map(s => s.ref), [a, b]);
+  assert.equal(filterSessionsByAge(sessions, 0).length, 3);
+  assert.deepEqual(nextSelectionAfterDelete(sessions, [b], b), c);
+  assert.deepEqual(nextSelectionAfterDelete(sessions, [c], c), b);
+  assert.deepEqual(nextSelectionAfterDelete(sessions, [a], b), b);
+  assert.equal(nextSelectionAfterDelete(sessions, [a, b, c], b), null);
+  const preview = {
+    items: [
+      { ref: a, agent: a.agent, title: 'one', paths: [], bytes: 10, reversible: true, action: 'trash' },
+      { ref: b, agent: b.agent, title: 'two', paths: [], bytes: 20, reversible: false, warning: 'Permanent', action: 'delete' },
+      { ref: c, agent: c.agent, title: 'three', paths: [], bytes: 30, reversible: false, warning: 'Live', blocked: 'session is live', action: 'delete' },
+    ], totalBytes: 60, token: 'token',
+  };
+  assert.deepEqual(summarizePreview(preview), {
+    total: 3, blockedCount: 1, reversibleCount: 1, permanentCount: 1,
+    canProceed: true, warnings: ['Permanent'],
+  });
+  assert.equal(summarizePreview({ ...preview, items: [preview.items[2]] }).canProceed, false);
+  assert.equal(needsTypedDelete({ ...preview, items: [preview.items[0], preview.items[2]] }), false);
+  assert.equal(errorText('preview is stale; retry the operation', 'x'), 'preview is stale; retry the operation');
+  assert.equal(errorText(new Error('boom'), 'x'), 'boom');
+  assert.equal(errorText(undefined, 'x'), 'x');
+  assert.equal(needsTypedDelete(preview), true);
+  assert.equal(needsTypedDelete({ ...preview, items: [preview.items[0]] }), false);
+  assert.equal(formatDeleteResultSummary({ items: [], deleted: 1, failed: 1, freedBytes: 10, forgotten: [a] }), '1 session removed, 1 failed, 1 forgotten');
+});
+
+test('mock settings gate deletion and preview tokens bind to selection', async () => {
+  const backend = new MockBackendAPI();
+  const ref = { agent: 'claude-code', id: 'session-claude-2' };
+  assert.deepEqual(await backend.getSettings(), { enabled: false, allowPermanentDelete: false });
+  await assert.rejects(() => backend.previewDelete([ref]), /disabled/);
+  await assert.rejects(() => backend.setAllowPermanentDelete(true), /enabled first/);
+  await backend.setManageEnabled(true);
+  const preview = await backend.previewDelete([ref]);
+  assert.equal(preview.items[0].blocked, undefined);
+  assert.equal(preview.items[0].reversible, true);
+  assert.ok(preview.totalBytes > 0);
+  await assert.rejects(() => backend.deleteSessions([ref], 'wrong'), /token/);
+  await assert.rejects(() => backend.deleteSessions([{ agent: 'codex', id: 'other' }], preview.token), /changed/);
+  const result = await backend.deleteSessions([ref], preview.token);
+  assert.equal(result.deleted, 1);
+  assert.equal(result.failed, 0);
+  assert.deepEqual(result.forgotten, [ref]);
+  assert.ok(result.freedBytes > 0);
+  assert.equal(result.items[0].moved.length, 1);
+  assert.equal((await backend.listSessions('', {})).some(s => refsEqual(s.ref, ref)), false);
+  await assert.rejects(() => backend.getSessionMeta(ref), /unknown session/);
+  await assert.rejects(() => backend.deleteSessions([ref], preview.token), /token/);
+  assert.deepEqual(await backend.setManageEnabled(false), { enabled: false, allowPermanentDelete: false });
+});
+
+test('mock preview blocks live sessions and excludes them from the token', async () => {
+  const backend = new MockBackendAPI();
+  await backend.setManageEnabled(true);
+  const ref = { agent: 'claude-code', id: 'session-claude-1' };
+  const preview = await backend.previewDelete([ref]);
+  assert.match(preview.items[0].blocked, /live/);
+  await assert.rejects(() => backend.deleteSessions([ref], preview.token), /changed/);
 });

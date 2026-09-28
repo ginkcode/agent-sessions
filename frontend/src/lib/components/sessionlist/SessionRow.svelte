@@ -2,6 +2,7 @@
   import type { SessionMeta } from '../../types';
   import { formatRelativeTime, formatAbsoluteTime } from '../../date';
   import CountTooltip from './CountTooltip.svelte';
+  import { manage } from '../../stores/manage.svelte';
 
   interface Props {
     session: SessionMeta;
@@ -17,15 +18,30 @@
   let displayTitle = $derived(session.title || session.firstPrompt || '(untitled)');
   let relativeTime = $derived(formatRelativeTime(session.updatedAt));
   let absoluteTime = $derived(formatAbsoluteTime(session.updatedAt));
+  let bulkSelected = $derived(manage.isRefSelected(session.ref));
 
   function handleClick() {
     onSelect(session);
+  }
+
+  function handleBulkToggle(e: Event) {
+    e.stopPropagation();
+    manage.toggleRefSelected(session.ref);
+  }
+
+  function handleBulkKeydown(e: KeyboardEvent) {
+    e.stopPropagation();
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      handleBulkToggle(e);
+    }
   }
 </script>
 
 <div
   class="session-row"
   class:selected={isSelected}
+  class:bulk-selected={bulkSelected}
   class:archived={session.archived}
   role="option"
   tabindex="0"
@@ -39,6 +55,16 @@
   }}
 >
   <div class="row-top">
+    {#if manage.settings.enabled}
+      <input
+        type="checkbox"
+        class="bulk-checkbox"
+        checked={bulkSelected}
+        onclick={handleBulkToggle}
+        onkeydown={handleBulkKeydown}
+        aria-label="Select session {session.title || session.ref.id}"
+      />
+    {/if}
     {#if session.live}
       <span class="live-dot" title="Active session"></span>
     {/if}
@@ -113,6 +139,19 @@
     background-color: var(--active-bg);
     border-left: 3px solid var(--accent-color);
     padding-left: 9px;
+  }
+
+  .session-row.bulk-selected:not(.selected) {
+    background-color: rgba(239, 68, 68, 0.06);
+  }
+
+  .bulk-checkbox {
+    width: 13px;
+    height: 13px;
+    margin: 0;
+    accent-color: #ef4444;
+    cursor: pointer;
+    flex-shrink: 0;
   }
 
   .session-row.archived {

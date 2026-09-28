@@ -8,12 +8,18 @@ import type {
   MessagesPage,
   BlobResponse,
   Diagnostics,
+  ManageSettings,
+  DeletePreview,
+  DeleteResult,
 } from '../types.js';
 import { mockSessions, mockMessages, mockBlobs, mockDiagnostics } from './fixtures.js';
+import { refKey } from '../manage.js';
 
 export class MockBackendAPI {
   private sessions: SessionMeta[] = [...mockSessions];
   private messages: Record<string, typeof mockMessages[string]> = { ...mockMessages };
+  private settings: ManageSettings = { enabled: false, allowPermanentDelete: false };
+  private preview: { token: string; refs: string[] } | null = null;
 
   async listGroups(mode: GroupMode, filter?: FilterOpts): Promise<GroupNode[]> {
     const filtered = this.filterSessions(this.sessions, filter);
@@ -225,6 +231,140 @@ export class MockBackendAPI {
   async getDiagnostics(): Promise<Diagnostics> {
     return mockDiagnostics;
   }
+
+  async getSettings(): Promise<ManageSettings> {
+    return { ...this.settings };
+  }
+
+  async setManageEnabled(enabled: boolean): Promise<ManageSettings> {
+    this.settings = { ...this.settings, enabled };
+    if (!enabled) {
+      this.settings = { ...this.settings, allowPermanentDelete: false };
+    }
+    return { ...this.settings };
+  }
+
+  async setAllowPermanentDelete(allow: boolean): Promise<ManageSettings> {
+    if (!this.settings.enabled) {
+      throw new Error('Session management must be enabled first');
+    }
+    this.settings = { ...this.settings, allowPermanentDelete: allow };
+    return { ...this.settings };
+  }
+
+  async previewDelete(refs: SessionRef[]): Promise<DeletePreview> {
+    if (!this.settings.enabled) {
+      throw new Error('Session management is disabled');
+    }
+    if (!refs.length) {
+      throw new Error('no sessions selected');
+    }
+    const items = [];
+    for (const ref of refs) {
+      const s = this.sessions.find(
+        (m) => m.ref.agent === ref.agent && m.ref.id === ref.id
+      );
+      if (!s) {
+        throw new Error(`unknown session: ${ref.agent}:${ref.id}`);
+      }
+      const paths = s.sourcePath ? [s.sourcePath] : [];
+      // Mock heuristics: archived or codex (archive-backed) previews as
+      // permanent (irreversible) unless the path looks Trash-restorable;
+      // live sessions are blocked.
+      const reversible = s.ref.agent !== 'opencode' && !s.archived;
+      items.push({
+        ref: s.ref,
+        agent: s.ref.agent,
+        title: s.title,
+        paths,
+        bytes: paths.length * 4096 + s.tokens.output,
+        reversible,
+        warning:
+          s.ref.agent === 'opencode'
+            ? 'OpenCode will permanently delete this session and its child sessions. It will not go to Trash and cannot be restored.'
+            : undefined,
+        blocked: s.live ? 'session is live: session is currently active' : undefined,
+        action: reversible ? 'trash' : 'delete',
+      });
+    }
+    const token = `preview-${this.previewSeq++}`;
+    // Like the backend, the token binds only the actionable items.
+    this.preview = {
+      token,
+      refs: items.filter((i) => !i.blocked).map((i) => refKey(i.ref)),
+    };
+    return { items, totalBytes: items.reduce((n, i) => n + i.bytes, 0), token };
+  }
+
+  async deleteSessions(refs: SessionRef[], token: string): Promise<DeleteResult> {
+    if (!this.settings.enabled) {
+      throw new Error('Session management is disabled');
+    }
+    if (!this.preview || this.preview.token !== token) {
+      throw new Error('delete preview token missing or expired');
+    }
+    const wanted = new Set(refs.map(refKey));
+    if (
+      wanted.size !== this.preview.refs.length ||
+      refs.some((r) => !this.preview!.refs.includes(refKey(r)))
+    ) {
+      throw new Error('session set changed since preview');
+    }
+    this.preview = null;
+
+    const items = [];
+    let deleted = 0;
+    let failed = 0;
+    let freedBytes = 0;
+    const forgotten: SessionRef[] = [];
+    for (const ref of refs) {
+      const idx = this.sessions.findIndex(
+        (s) => s.ref.agent === ref.agent && s.ref.id === ref.id
+      );
+      const s = idx >= 0 ? this.sessions[idx] : null;
+      if (!s) {
+        items.push({
+          ref,
+          title: ref.id,
+          ok: false,
+          error: `unknown session: ${ref.agent}:${ref.id}`,
+          moved: [],
+          remaining: [],
+        });
+        failed++;
+        continue;
+      }
+      if (s.live) {
+        items.push({
+          ref,
+          title: s.title,
+          ok: false,
+          error: 'session is live',
+          moved: [],
+          remaining: s.sourcePath ? [s.sourcePath] : [],
+        });
+        failed++;
+        continue;
+      }
+      const paths = s.sourcePath ? [s.sourcePath] : [];
+      forgotten.push(ref);
+      this.sessions.splice(idx, 1);
+      delete this.messages[ref.id];
+      items.push({
+        ref,
+        title: s.title,
+        ok: true,
+        error: '',
+        moved: paths,
+        remaining: [],
+      });
+      deleted++;
+      freedBytes += paths.length * 4096 + s.tokens.output;
+    }
+    return { items, deleted, failed, freedBytes, forgotten };
+  }
+
+  private previewSeq = 1;
 
   async openURL(url: string): Promise<void> {
     if (typeof window !== 'undefined') {

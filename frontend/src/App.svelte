@@ -6,9 +6,11 @@
   import AgentSummary from './lib/components/sidebar/AgentSummary.svelte';
   import SessionList from './lib/components/sessionlist/SessionList.svelte';
   import TranscriptView from './lib/components/transcript/TranscriptView.svelte';
+  import ManageSettingsDialog from './lib/components/common/ManageSettingsDialog.svelte';
   import { theme } from './lib/stores/theme.svelte';
   import { preferences } from './lib/stores/preferences.svelte';
   import { appState } from './lib/stores/appState.svelte';
+  import { manage } from './lib/stores/manage.svelte';
 
   let isWails = $state(false);
 
@@ -16,6 +18,7 @@
     theme.init();
     preferences.init();
     appState.init();
+    manage.init();
     isWails = typeof window !== 'undefined' && Boolean((window as any).go?.app?.App);
   });
 
@@ -40,19 +43,45 @@
         <span class="app-icon">⚡</span>
         <h1 class="app-title">Agent Sessions</h1>
       </div>
-      <button
-        type="button"
-        class="icon-button theme-toggle"
-        title="Toggle Theme ({theme.mode} mode, resolved: {theme.resolved})"
-        onclick={() => theme.toggle()}
-        aria-label="Toggle theme"
-      >
-        {#if theme.resolved === 'dark'}
-          <span>🌙</span>
-        {:else}
-          <span>☀️</span>
-        {/if}
-      </button>
+      <div class="header-actions">
+        <button
+          type="button"
+          class="icon-button settings-toggle"
+          title="Session management settings"
+          aria-label="Session management settings"
+          onclick={() => manage.openSettings()}
+        >
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <circle cx="12" cy="12" r="3" />
+            <path
+              d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"
+            />
+          </svg>
+        </button>
+        <button
+          type="button"
+          class="icon-button theme-toggle"
+          title="Toggle Theme ({theme.mode} mode, resolved: {theme.resolved})"
+          onclick={() => theme.toggle()}
+          aria-label="Toggle theme"
+        >
+          {#if theme.resolved === 'dark'}
+            <span>🌙</span>
+          {:else}
+            <span>☀️</span>
+          {/if}
+        </button>
+      </div>
     </header>
 
     <div class="sidebar-mode-section">
@@ -101,6 +130,8 @@
   <main class="pane transcript-container" aria-label="Transcript details">
     <TranscriptView />
   </main>
+
+  <ManageSettingsDialog />
 </div>
 
 <style>

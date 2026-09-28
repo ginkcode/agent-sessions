@@ -369,6 +369,42 @@ func (r *Refresher) ClearCache(ctx context.Context) error {
 	return nil
 }
 
+// Forget deletes the given sessions from the private cache and the
+// in-memory catalog. It holds every provider's single-flight lock for the
+// duration so an in-flight Refresh cannot commit a deleted session back
+// into the cache, and bumps the generation so any scan that already
+// passed its staleness check is discarded before commit.
+//
+// Provider scan state is deliberately left untouched: Forget is used
+// after the underlying source data has been removed, so the next scan
+// reconciles by emitting the session as Removed (whose cache delete is a
+// harmless no-op). Pruning state here would resurrect sessions whose
+// sources still exist.
+func (r *Refresher) Forget(ctx context.Context, refs []model.SessionRef) error {
+	locks := r.providerLocks()
+	for _, mu := range locks {
+		mu.Lock()
+	}
+	defer func() {
+		for _, mu := range locks {
+			mu.Unlock()
+		}
+	}()
+
+	r.BumpGeneration()
+
+	if r.db != nil {
+		if err := r.db.DeleteSessions(ctx, refs); err != nil {
+			return fmt.Errorf("index: delete sessions: %w", err)
+		}
+	}
+
+	if r.catalog != nil {
+		r.catalog.Remove(refs)
+	}
+	return nil
+}
+
 // Report returns an aggregated snapshot of provider diagnostics, errors, and scan states.
 func (r *Refresher) Report() scan.Report {
 	r.stateMu.RLock()

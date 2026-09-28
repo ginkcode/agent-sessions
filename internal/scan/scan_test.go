@@ -444,3 +444,38 @@ func TestConcurrentAllAndApplyRace(t *testing.T) {
 	close(stop)
 	wg.Wait()
 }
+
+func TestCatalogRemove(t *testing.T) {
+	c := scan.NewCatalog()
+	now := time.Now().UTC()
+
+	ref1 := model.SessionRef{Agent: model.AgentClaude, ID: "s1"}
+	ref2 := model.SessionRef{Agent: model.AgentClaude, ID: "s2"}
+	ref3 := model.SessionRef{Agent: model.AgentCodex, ID: "s3"}
+
+	c.Apply(provider.ScanResult{
+		Changed: []model.SessionMeta{
+			meta(model.AgentClaude, "s1", "", now),
+			meta(model.AgentClaude, "s2", "", now.Add(time.Minute)),
+			meta(model.AgentCodex, "s3", "", now.Add(2*time.Minute)),
+		},
+	})
+
+	c.Remove([]model.SessionRef{ref1, ref3})
+
+	all := c.All()
+	if len(all) != 1 || all[0].Ref != ref2 {
+		t.Fatalf("expected only %s remaining, got %+v", ref2.Key(), all)
+	}
+	for _, ref := range []model.SessionRef{ref1, ref3} {
+		if _, ok := c.Get(ref); ok {
+			t.Errorf("expected %s removed", ref.Key())
+		}
+	}
+
+	// Repeated removals and unknown refs are harmless.
+	c.Remove([]model.SessionRef{ref1, {Agent: model.AgentCodex, ID: "missing"}})
+	if len(c.All()) != 1 {
+		t.Errorf("repeated removals changed unrelated entries: %+v", c.All())
+	}
+}

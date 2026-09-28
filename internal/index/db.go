@@ -494,6 +494,42 @@ ON CONFLICT(agent) DO UPDATE SET state_json = excluded.state_json;
 	return nil
 }
 
+// DeleteSessions removes the given sessions from the cache in a single
+// transaction, deleting rows WHERE agent = ? AND id = ?. Cascades and
+// triggers clean the associated fts_jobs, fts_docs, and fts_messages rows.
+// Deleting a ref that has no row is a no-op; refs must be fully qualified.
+func (d *DB) DeleteSessions(ctx context.Context, refs []model.SessionRef) error {
+	for _, ref := range refs {
+		if ref.Agent == "" || ref.ID == "" {
+			return fmt.Errorf("index: delete session %q:%q: agent and id are required", ref.Agent, ref.ID)
+		}
+	}
+
+	d.writeMu.Lock()
+	defer d.writeMu.Unlock()
+	if d.db == nil {
+		return errors.New("index: database closed")
+	}
+
+	tx, err := d.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("index: begin delete tx: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	for _, ref := range refs {
+		if _, err := tx.ExecContext(ctx,
+			"DELETE FROM sessions WHERE agent = ? AND id = ?", string(ref.Agent), ref.ID); err != nil {
+			return fmt.Errorf("index: delete session %s: %w", ref.Key(), err)
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("index: commit delete tx: %w", err)
+	}
+	return nil
+}
+
 func wipeDBFiles(dbPath string) error {
 	for _, path := range []string{dbPath, dbPath + "-wal", dbPath + "-shm"} {
 		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {

@@ -7,10 +7,12 @@ import (
 	"net/url"
 	"os/exec"
 	"strings"
+	"sync"
 
 	wruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 
 	"github.com/ginkcode/agent-sessions/internal/index"
+	"github.com/ginkcode/agent-sessions/internal/manage"
 	"github.com/ginkcode/agent-sessions/internal/model"
 	"github.com/ginkcode/agent-sessions/internal/paths"
 	"github.com/ginkcode/agent-sessions/internal/pathutil"
@@ -25,6 +27,9 @@ type App struct {
 	svc              *Service
 	runner           *scan.Runner
 	refresher        *index.Refresher
+	manageMu         sync.Mutex      // guards manage construction
+	manage           *manage.Manager // destructive actions; lazy-built
+	manageOverride   *manage.Manager // tests only
 	cacheEnabled     bool
 	cacheDirOverride string // tests only
 

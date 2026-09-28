@@ -71,3 +71,13 @@ func (c *lru[K, V]) len() int {
 	defer c.mu.Unlock()
 	return c.order.Len()
 }
+
+// evict removes a key from the cache, if present.
+func (c *lru[K, V]) evict(key K) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if el, ok := c.entries[key]; ok {
+		c.order.Remove(el)
+		delete(c.entries, key)
+	}
+}

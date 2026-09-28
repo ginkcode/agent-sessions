@@ -1,12 +1,14 @@
 <script lang="ts">
   import type { SessionRef, Message } from '../../types';
   import { appState } from '../../stores/appState.svelte';
+  import { manage } from '../../stores/manage.svelte';
   import { api } from '../../api';
   import SessionHeader from './SessionHeader.svelte';
   import MessageBubble from './MessageBubble.svelte';
   import LoadingSpinner from '../common/LoadingSpinner.svelte';
   import EmptyState from '../common/EmptyState.svelte';
   import ErrorState from '../common/ErrorState.svelte';
+  import DeleteConfirmDialog from '../common/DeleteConfirmDialog.svelte';
 
   const PAGE_SIZE = 50;
 
@@ -127,6 +129,11 @@
       console.error('Failed to reveal source file:', err);
     }
   }
+
+  async function handleDelete() {
+    if (!appState.selectedSessionRef || !manage.settings.enabled) return;
+    await manage.requestDelete([appState.selectedSessionRef]);
+  }
 </script>
 
 <div class="transcript-pane">
@@ -160,6 +167,7 @@
         onToggleMeta={() => (showMeta = !showMeta)}
         onResume={handleCopyResume}
         onReveal={handleRevealSource}
+        onDelete={handleDelete}
         {resumeCopied}
       />
     {/if}
@@ -213,6 +221,11 @@
       {/if}
     </div>
   {/if}
+
+  <DeleteConfirmDialog
+    open={manage.confirmDialogOpen}
+    onClose={() => manage.dismissDialog()}
+  />
 </div>
 
 <style>

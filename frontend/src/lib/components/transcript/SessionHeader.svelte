@@ -2,6 +2,7 @@
   import type { SessionMeta } from '../../types';
   import { formatTokens, formatCost } from '../../format';
   import { appState } from '../../stores/appState.svelte';
+  import { manage } from '../../stores/manage.svelte';
 
   interface Props {
     meta: SessionMeta;
@@ -9,6 +10,7 @@
     onToggleMeta: () => void;
     onResume: () => void;
     onReveal: () => void;
+    onDelete: () => void;
     resumeCopied?: boolean;
   }
 
@@ -18,6 +20,7 @@
     onToggleMeta,
     onResume,
     onReveal,
+    onDelete,
     resumeCopied = false,
   }: Props = $props();
 
@@ -79,6 +82,18 @@
           onclick={onReveal}
         >
           Reveal
+        </button>
+      {/if}
+
+      {#if manage.settings.enabled}
+        <button
+          type="button"
+          class="action-btn delete-btn"
+          title={meta.live ? 'Live sessions cannot be deleted' : 'Preview deleting this session'}
+          disabled={meta.live}
+          onclick={onDelete}
+        >
+          Delete…
         </button>
       {/if}
 
@@ -266,6 +281,21 @@
     background-color: var(--active-bg);
     color: var(--accent-color);
     border-color: var(--accent-color);
+  }
+
+  .action-btn.delete-btn {
+    color: #ef4444;
+    border-color: rgba(239, 68, 68, 0.4);
+  }
+
+  .action-btn.delete-btn:hover:not(:disabled) {
+    background-color: rgba(239, 68, 68, 0.1);
+    border-color: #ef4444;
+  }
+
+  .action-btn.delete-btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
   }
 
   .header-title-row {

@@ -606,3 +606,97 @@ func TestCompiledFTS5Smoke(t *testing.T) {
 		t.Errorf("expected 0 hits for replaced word 'implement', got %d (err: %v)", oldHit, err)
 	}
 }
+
+func TestDeleteSessions(t *testing.T) {
+	ctx := context.Background()
+	db, err := Open(ctx, t.TempDir())
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer func() { _ = db.Close() }()
+
+	claude := model.SessionRef{Agent: model.AgentClaude, ID: "same-id"}
+	other := model.SessionRef{Agent: model.AgentCodex, ID: "same-id"}
+	keep := model.SessionRef{Agent: model.AgentClaude, ID: "keep"}
+	for _, tc := range []struct {
+		agent model.AgentID
+		metas []model.SessionMeta
+	}{
+		{model.AgentClaude, []model.SessionMeta{{Ref: claude, Title: "Delete"}, {Ref: keep, Title: "Keep"}}},
+		{model.AgentCodex, []model.SessionMeta{{Ref: other, Title: "Other agent"}}},
+	} {
+		if err := db.CommitScan(ctx, tc.agent, provider.ScanResult{Changed: tc.metas}); err != nil {
+			t.Fatalf("CommitScan: %v", err)
+		}
+	}
+	if _, err := db.SQLDB().ExecContext(ctx,
+		"INSERT INTO fts_docs (ref, message_index, kind, body) VALUES (?, -1, 'title', 'Deletable body')",
+		claude.Key()); err != nil {
+		t.Fatalf("insert fts_docs: %v", err)
+	}
+
+	if err := db.DeleteSessions(ctx, []model.SessionRef{claude, {Agent: model.AgentClaude, ID: "missing"}}); err != nil {
+		t.Fatalf("DeleteSessions: %v", err)
+	}
+	metas, err := db.LoadCatalog(ctx)
+	if err != nil {
+		t.Fatalf("LoadCatalog: %v", err)
+	}
+	if len(metas) != 2 {
+		t.Fatalf("expected only keep and other after delete, got %+v", metas)
+	}
+	found := map[string]bool{}
+	for _, m := range metas {
+		found[m.Ref.Key()] = true
+	}
+	if !found[keep.Key()] || !found[other.Key()] || found[claude.Key()] {
+		t.Errorf("wrong sessions retained after delete: %+v", metas)
+	}
+	for _, tbl := range []string{"fts_jobs", "fts_docs"} {
+		var count int
+		if err := db.SQLDB().QueryRowContext(ctx, "SELECT count(*) FROM "+tbl+" WHERE ref = ?", claude.Key()).Scan(&count); err != nil {
+			t.Fatalf("count %s: %v", tbl, err)
+		}
+		if count != 0 {
+			t.Errorf("expected %s cascaded, got %d", tbl, count)
+		}
+	}
+	var matches int
+	if err := db.SQLDB().QueryRowContext(ctx,
+		"SELECT count(*) FROM fts_messages WHERE fts_messages MATCH 'Deletable'").Scan(&matches); err != nil {
+		t.Fatalf("count FTS matches: %v", err)
+	}
+	if matches != 0 {
+		t.Errorf("expected FTS matches deleted, got %d", matches)
+	}
+}
+
+func TestDeleteSessionsRejectsInvalidRefsAndClosedDB(t *testing.T) {
+	ctx := context.Background()
+	db, err := Open(ctx, t.TempDir())
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer func() { _ = db.Close() }()
+
+	keep := model.SessionRef{Agent: model.AgentClaude, ID: "keep"}
+	if err := db.CommitScan(ctx, model.AgentClaude, provider.ScanResult{Changed: []model.SessionMeta{{Ref: keep}}}); err != nil {
+		t.Fatalf("CommitScan: %v", err)
+	}
+	if err := db.DeleteSessions(ctx, []model.SessionRef{keep, {ID: "unqualified"}}); err == nil {
+		t.Fatal("expected unqualified ref to be rejected")
+	}
+	if err := db.DeleteSessions(ctx, []model.SessionRef{{Agent: model.AgentClaude}}); err == nil {
+		t.Fatal("expected empty session ID to be rejected")
+	}
+	metas, err := db.LoadCatalog(ctx)
+	if err != nil || len(metas) != 1 {
+		t.Fatalf("invalid refs must leave rows intact: %+v, %v", metas, err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	if err := db.DeleteSessions(ctx, nil); err == nil {
+		t.Error("expected closed database error")
+	}
+}

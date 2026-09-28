@@ -5,6 +5,48 @@ export interface SessionRef {
   id: string;
 }
 
+export interface ManageSettings {
+  enabled: boolean;
+  allowPermanentDelete: boolean;
+}
+
+export interface DeletePreviewItem {
+  ref: SessionRef;
+  agent: AgentID;
+  title: string;
+  // Go nil slices and omitempty strings arrive as null / absent.
+  paths: string[] | null;
+  bytes: number;
+  reversible: boolean;
+  warning?: string;
+  /** Reason the item cannot be deleted; absent when actionable. */
+  blocked?: string;
+  action: string;
+}
+
+export interface DeletePreview {
+  items: DeletePreviewItem[];
+  totalBytes: number;
+  token: string;
+}
+
+export interface DeleteResultItem {
+  ref: SessionRef;
+  title: string;
+  ok: boolean;
+  error?: string;
+  moved?: string[] | null;
+  remaining?: string[] | null;
+}
+
+export interface DeleteResult {
+  items: DeleteResultItem[];
+  deleted: number;
+  failed: number;
+  freedBytes: number;
+  forgotten: SessionRef[] | null;
+}
+
 export type GroupMode = 'dir-agent' | 'agent-dir' | 'flat';
 
 export interface FilterOpts {
