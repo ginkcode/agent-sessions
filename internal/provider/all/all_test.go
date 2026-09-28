@@ -10,17 +10,18 @@ import (
 
 func TestProviders(t *testing.T) {
 	roots := paths.Roots{
-		Claude: "/tmp/fake-claude",
+		Claude:       "/tmp/fake-claude",
+		Codex:        "/tmp/fake-codex",
+		OpenCodeData: "/tmp/fake-opencode",
 	}
 	set := all.Providers(roots, nil)
-	if len(set) != 1 {
-		t.Fatalf("expected 1 provider, got %d", len(set))
+	if len(set) != 3 {
+		t.Fatalf("expected 3 providers, got %d", len(set))
 	}
-	p, ok := set.Get(model.AgentClaude)
-	if !ok || p == nil {
-		t.Fatal("expected Claude provider in set")
-	}
-	if p.ID() != model.AgentClaude {
-		t.Fatalf("expected ID %s, got %s", model.AgentClaude, p.ID())
+	for _, id := range []model.AgentID{model.AgentClaude, model.AgentCodex, model.AgentOpenCode} {
+		p, ok := set.Get(id)
+		if !ok || p == nil {
+			t.Fatalf("expected %s provider in set", id)
+		}
 	}
 }

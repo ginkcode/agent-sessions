@@ -87,11 +87,15 @@ func scan(ctx context.Context, args []string, providers provider.Set, stdout, st
 	}
 
 	sessions := make([]model.SessionMeta, 0)
+	failed := 0
 	for _, p := range selected {
 		result, err := p.Scan(ctx, provider.ScanState{}) // empty state requests every session
 		if err != nil {
+			// A provider whose scan is not implemented yet (or that fails for
+			// its own reasons) must not hide the other agents' sessions.
 			_, _ = fmt.Fprintf(stderr, "%s: scan: %v\n", p.ID(), err)
-			return 1
+			failed++
+			continue
 		}
 		for _, m := range result.Changed {
 			if *includeAll || m.ParentID == "" {
@@ -111,7 +115,13 @@ func scan(ctx context.Context, args []string, providers provider.Set, stdout, st
 		return strings.Compare(a.Ref.Key(), b.Ref.Key())
 	})
 	if *asJSON {
-		return writeJSON(stdout, stderr, sessions)
+		if code := writeJSON(stdout, stderr, sessions); code != 0 {
+			return code
+		}
+		if failed > 0 {
+			return 1
+		}
+		return 0
 	}
 	w := tabwriter.NewWriter(stdout, 0, 0, 2, ' ', 0)
 	_, _ = fmt.Fprintln(w, "AGENT\tID\tUPDATED\tMSGS\tCWD\tTITLE")
@@ -120,6 +130,9 @@ func scan(ctx context.Context, args []string, providers provider.Set, stdout, st
 	}
 	if err := w.Flush(); err != nil {
 		_, _ = fmt.Fprintf(stderr, "scan: write output: %v\n", err)
+		return 1
+	}
+	if failed > 0 {
 		return 1
 	}
 	return 0

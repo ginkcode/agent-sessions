@@ -26,7 +26,9 @@ type Fake struct {
 	Watch         []string
 	ScanDelay     time.Duration
 	LoadDelay     time.Duration
+	LiveDelay     time.Duration
 	LiveMap       map[string]provider.LiveInfo
+	LiveErr       error
 	DetectErr     error
 	ScanErr       error
 	LoadErr       error
@@ -125,5 +127,15 @@ func (f *Fake) ResumeCommand(m model.SessionMeta) provider.Command {
 }
 
 func (f *Fake) Live(ctx context.Context) (map[string]provider.LiveInfo, error) {
+	if f.LiveDelay > 0 {
+		select {
+		case <-time.After(f.LiveDelay):
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+	}
+	if f.LiveErr != nil {
+		return nil, f.LiveErr
+	}
 	return f.LiveMap, nil
 }
