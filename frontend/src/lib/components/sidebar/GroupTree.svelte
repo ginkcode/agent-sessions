@@ -22,11 +22,16 @@
   }
 
   let hasFilter = $derived(
-    Boolean(appState.filter.query || appState.filter.liveOnly || appState.filter.archived)
+    Boolean(
+      appState.filter.query ||
+        appState.filter.path ||
+        appState.filter.liveOnly ||
+        appState.filter.archived
+    )
   );
 
   function handleClearFilters() {
-    appState.setFilter({ query: '', liveOnly: false, archived: false });
+    appState.setFilter({ query: '', path: '', liveOnly: false, archived: false });
   }
 </script>
 

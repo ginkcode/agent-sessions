@@ -225,6 +225,22 @@ func TestListSessions(t *testing.T) {
 		t.Errorf("query sessions = %+v, want only s1", querySessions)
 	}
 
+	// Filter by Path (case-insensitive substring of the cwd)
+	pathSessions, err := svc.ListSessions("", FilterOpts{Path: " PROJECT2 ", Archived: true}, SortOpts{})
+	if err != nil {
+		t.Fatalf("ListSessions path: %v", err)
+	}
+	if len(pathSessions) != 1 || pathSessions[0].Ref.ID != "s3" {
+		t.Errorf("path sessions = %+v, want only s3", pathSessions)
+	}
+	groups, err := svc.ListGroups(GroupModeDirAgent, FilterOpts{Path: "project1"})
+	if err != nil {
+		t.Fatalf("ListGroups path: %v", err)
+	}
+	if len(groups) != 1 || groups[0].SessionCount != 2 {
+		t.Errorf("path groups = %+v, want one project1 group with 2 sessions", groups)
+	}
+
 	// Sort by tokens asc
 	sortedTokens, err := svc.ListSessions("", FilterOpts{Archived: true}, SortOpts{Field: "tokens", Desc: false})
 	if err != nil {

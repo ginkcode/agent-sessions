@@ -326,6 +326,27 @@ test('MockBackendAPI listGroups emits node kinds', async () => {
   for (const node of await backend.listGroups('flat')) assert.equal(node.kind, 'session');
 });
 
+test('MockBackendAPI path filter narrows groups and sessions by cwd', async () => {
+  const backend = new MockBackendAPI();
+  const all = await backend.listSessions('');
+  const cwd = all[0].cwd;
+  const needle = cwd.split('/').pop().toUpperCase();
+  const expected = all.filter((s) => s.cwd.toLowerCase().includes(needle.toLowerCase()));
+  const filtered = await backend.listSessions('', { path: ` ${needle} ` });
+  assert.ok(filtered.length > 0);
+  assert.equal(filtered.length, expected.length);
+  const groups = await backend.listGroups('dir-agent', { path: needle });
+  for (const g of groups) assert.ok(g.cwd.toLowerCase().includes(needle.toLowerCase()));
+  assert.deepEqual(await backend.listSessions('', { path: 'no-such-dir-xyz' }), []);
+});
+
+test('MockBackendAPI scan resolves after a visible delay', async () => {
+  const backend = new MockBackendAPI();
+  const start = Date.now();
+  assert.equal(await backend.scan(), undefined);
+  assert.ok(Date.now() - start > 0);
+});
+
 test('sessionToSelect picks the node itself for sessions, else the first visible', () => {
   const parent = { agent: 'claude-code', id: 'parent' };
   const sub = { agent: 'claude-code', id: 'sub' };

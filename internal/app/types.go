@@ -22,6 +22,9 @@ type FilterOpts struct {
 	LiveOnly     bool   `json:"liveOnly,omitempty"`
 	Archived     bool   `json:"archived,omitempty"`
 	HasSubagents bool   `json:"hasSubagents,omitempty"`
+	// Path narrows to sessions whose working directory (or repo root)
+	// contains this case-insensitive substring.
+	Path string `json:"path,omitempty"`
 }
 
 // SortOpts selects the ordering of the session list.

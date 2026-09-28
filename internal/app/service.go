@@ -278,6 +278,7 @@ func (s *Service) loadTranscript(ctx context.Context, ref model.SessionRef) (*mo
 // filterSessions applies the FilterOpts to a metadata snapshot.
 func filterSessions(sessions []model.SessionMeta, f FilterOpts) []model.SessionMeta {
 	query := strings.ToLower(strings.TrimSpace(f.Query))
+	path := strings.ToLower(strings.TrimSpace(f.Path))
 	agent := model.AgentID(f.Agent)
 	out := make([]model.SessionMeta, 0, len(sessions))
 	for _, m := range sessions {
@@ -291,6 +292,9 @@ func filterSessions(sessions []model.SessionMeta, f FilterOpts) []model.SessionM
 			continue
 		}
 		if query != "" && !matchesQuery(m, query) {
+			continue
+		}
+		if path != "" && !matchesPath(m, path) {
 			continue
 		}
 		out = append(out, m)
@@ -316,6 +320,12 @@ func matchesQuery(m model.SessionMeta, query string) bool {
 		}
 	}
 	return false
+}
+
+// matchesPath does a substring match over the session's directories.
+func matchesPath(m model.SessionMeta, path string) bool {
+	return strings.Contains(strings.ToLower(m.CWD), path) ||
+		strings.Contains(strings.ToLower(m.RepoRoot), path)
 }
 
 // groupSessionRefs resolves a group key against a filtered snapshot by

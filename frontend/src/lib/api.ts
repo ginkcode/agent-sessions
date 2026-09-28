@@ -31,6 +31,7 @@ export interface BackendAPI {
   setAllowPermanentDelete(allow: boolean): Promise<ManageSettings>;
   previewDelete(refs: SessionRef[]): Promise<DeletePreview>;
   deleteSessions(refs: SessionRef[], token: string): Promise<DeleteResult>;
+  scan(): Promise<void>;
 }
 
 interface WailsAppBinding {
@@ -49,6 +50,7 @@ interface WailsAppBinding {
   SetAllowPermanentDelete(allow: boolean): Promise<ManageSettings>;
   PreviewDelete(refs: SessionRef[]): Promise<DeletePreview>;
   DeleteSessions(refs: SessionRef[], token: string): Promise<DeleteResult>;
+  Scan(): Promise<void>;
   Ping(name: string): Promise<string>;
 }
 
@@ -186,6 +188,14 @@ class WailsBackendAPI implements BackendAPI {
   async deleteSessions(refs: SessionRef[], token: string): Promise<DeleteResult> {
     try {
       return await this.binding.DeleteSessions(refs, token);
+    } catch (e) {
+      throw normalizeError(e);
+    }
+  }
+
+  async scan(): Promise<void> {
+    try {
+      await this.binding.Scan();
     } catch (e) {
       throw normalizeError(e);
     }

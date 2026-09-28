@@ -377,6 +377,11 @@ export class MockBackendAPI {
     }
   }
 
+  // Fixtures are static; the delay just makes the refreshing state visible.
+  async scan(): Promise<void> {
+    await new Promise((resolve) => setTimeout(resolve, 300));
+  }
+
   onEvent(_name: string, _callback: (...data: any[]) => void): () => void {
     return () => {};
   }
@@ -404,6 +409,8 @@ export class MockBackendAPI {
           (s.model?.toLowerCase().includes(q) ?? false);
         if (!match) return false;
       }
+      const path = f.path?.trim().toLowerCase();
+      if (path && !s.cwd.toLowerCase().includes(path)) return false;
       return true;
     });
   }

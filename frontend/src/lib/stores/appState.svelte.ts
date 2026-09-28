@@ -32,6 +32,7 @@ export class AppState {
   loadingGroups = $state(false);
   loadingSessions = $state(false);
   error = $state<string | null>(null);
+  refreshing = $state(false);
 
   async init(): Promise<void> {
     this.collapsedKeys = loadCollapsedKeys();
@@ -43,6 +44,22 @@ export class AppState {
     });
     await this.loadGroups();
     await this.loadSessions();
+  }
+
+  // User-triggered rescan. Desktop also reloads via scan:ready; reloading
+  // here too keeps the browser mock (no event emitter) in sync.
+  async refresh(): Promise<void> {
+    if (this.refreshing) return;
+    this.refreshing = true;
+    try {
+      await api.scan();
+      await this.loadGroups();
+      await this.loadSessions();
+    } catch (err: any) {
+      this.error = err?.message || 'Failed to refresh sessions';
+    } finally {
+      this.refreshing = false;
+    }
   }
 
   async setGroupMode(mode: GroupMode): Promise<void> {
@@ -116,7 +133,7 @@ export class AppState {
       // toggles for vanished nodes against the unfiltered tree. An empty
       // tree (e.g. before the first scan) is not evidence that nodes vanished.
       const f = this.filter;
-      if (groups.length > 0 && !f.agent && !f.query && !f.liveOnly && !f.hasSubagents) {
+      if (groups.length > 0 && !f.agent && !f.query && !f.path && !f.liveOnly && !f.hasSubagents) {
         const pruned = pruneKeys(this.collapsedKeys, groups);
         if (pruned.size !== this.collapsedKeys.size) {
           this.collapsedKeys = pruned;

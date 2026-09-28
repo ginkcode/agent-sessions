@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import Splitter from './lib/components/common/Splitter.svelte';
   import ModeSelector from './lib/components/sidebar/ModeSelector.svelte';
+  import PathFilter from './lib/components/sidebar/PathFilter.svelte';
   import GroupTree from './lib/components/sidebar/GroupTree.svelte';
   import AgentSummary from './lib/components/sidebar/AgentSummary.svelte';
   import SessionList from './lib/components/sessionlist/SessionList.svelte';
@@ -101,6 +102,7 @@
 
     <div class="sidebar-mode-section">
       <ModeSelector />
+      <PathFilter />
     </div>
 
     <div class="sidebar-content">
@@ -115,6 +117,30 @@
           {isWails ? 'Desktop' : 'Mock (Browser)'}
         </span>
       </div>
+      <button
+        type="button"
+        class="icon-button refresh-button"
+        class:refreshing={appState.refreshing}
+        title={appState.refreshing ? 'Refreshing…' : 'Refresh sessions'}
+        aria-label={appState.refreshing ? 'Refreshing…' : 'Refresh sessions'}
+        disabled={appState.refreshing}
+        onclick={() => void appState.refresh()}
+      >
+        <svg
+          width="16"
+          height="16"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          aria-hidden="true"
+        >
+          <path d="M23 4v6h-6M1 20v-6h6" />
+          <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+        </svg>
+      </button>
     </footer>
   </aside>
 
@@ -227,6 +253,9 @@
   }
 
   .sidebar-mode-section {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
     padding: 6px 8px;
     border-bottom: 1px solid var(--border-color);
   }
@@ -243,8 +272,23 @@
     border-top: 1px solid var(--border-color);
     display: flex;
     align-items: center;
-    padding: 0 10px;
+    justify-content: space-between;
+    padding: 0 6px 0 10px;
     font-size: 0.72rem;
+  }
+
+  .refresh-button:disabled {
+    cursor: default;
+  }
+
+  .refresh-button.refreshing svg {
+    animation: spin 1s linear infinite;
+  }
+
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
+    }
   }
 
   .runtime-badge {

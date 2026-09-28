@@ -55,6 +55,8 @@ export interface FilterOpts {
   liveOnly?: boolean;
   archived?: boolean;
   hasSubagents?: boolean;
+  // Case-insensitive substring of the session's cwd or repo root.
+  path?: string;
 }
 
 export interface SortOpts {
