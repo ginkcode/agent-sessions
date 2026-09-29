@@ -27,3 +27,16 @@ bin/agent-sessions-cli scan            # table of all detected sessions
 bin/agent-sessions-cli show claude-code <session-id>
 bin/agent-sessions-cli detect
 ```
+
+## Release
+
+Pushing to the `release` branch runs `.github/workflows/release.yml`: it
+tests, then builds a universal macOS `.dmg` and Linux `.deb`/`.rpm`
+packages (amd64 and arm64), and attaches them to a draft GitHub Release
+`v<version>`. The version is `info.productVersion` in `wails.json`; publish
+the draft to create the tag, and bump the version before the next release.
+The macOS app is not notarized, so first launch needs right-click → Open.
+
+Local equivalents write to `dist/`: `make package-linux` (needs
+`libgtk-3-dev` and `libwebkit2gtk-4.1-dev`) and `make package-macos`
+(macOS with the Wails CLI).

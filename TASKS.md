@@ -154,10 +154,10 @@ planned task.
 |---|---|---|---|---|---|
 | M5-01 | 🟡 | `paths_darwin.go`: cache in `~/Library/Caches`, config in `~/Library/Application Support`; verify tool roots on macOS | 2 | M0-04 | Path tests pass on macOS. **Open:** paths and table test exist; tool roots not verified on a Mac. |
 | M5-02 | ⬜ | macOS build and fix WKWebView differences (fonts, scrolling, clipboard, `open -R`, terminal launch) | 4 | M5-01, M1-28 | Full MVP checklist passes on macOS. |
-| M5-03 | ⬜ | Universal binary (arm64 + amd64) and `.dmg` packaging | 3 | M5-02 | `.dmg` installs and runs on both architectures. |
+| M5-03 | 🟡 | Universal binary (arm64 + amd64) and `.dmg` packaging | 3 | M5-02 | `.dmg` installs and runs on both architectures. **Open:** `make package-macos` builds an ad-hoc-signed universal `.dmg` in CI; not yet run on Mac hardware. |
 | M5-04 | ⬜ | Code signing and notarization pipeline (credentials stored in CI secrets) | 4 | M5-03 | Gatekeeper opens the app without warnings. |
-| M5-05 | ⬜ | Linux packaging: AppImage and `.deb` (declaring the webkit2gtk-4.1 dependency) | 4 | M1-28 | Installs and runs on a clean Ubuntu VM. |
-| M5-06 | ⬜ | CI (GitHub Actions): lint, test and fuzz-smoke on Linux; build artifacts for Linux and macOS on tag | 3 | M0-01 | CI is green; tagged release produces artifacts. |
+| M5-05 | 🟡 | Linux packaging: AppImage and `.deb` (declaring the webkit2gtk-4.1 dependency) | 4 | M1-28 | Installs and runs on a clean Ubuntu VM. **Open:** `make package-linux` builds `.deb` and `.rpm` via nfpm (amd64, arm64); no AppImage; not verified on a clean VM. |
+| M5-06 | 🟡 | CI (GitHub Actions): lint, test and fuzz-smoke on Linux; build artifacts for Linux and macOS on tag | 3 | M0-01 | CI is green; tagged release produces artifacts. **Open:** `release.yml` tests and packages on pushes to `release` into a draft GitHub Release; no lint, fuzz-smoke or per-PR CI. |
 
 ---
 

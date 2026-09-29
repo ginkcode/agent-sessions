@@ -1,8 +1,12 @@
 GO ?= go
 WAILS ?= wails
 WAILS_TAGS ?= webkit2_41
+# Release version: the single source is info.productVersion in wails.json.
+VERSION ?= $(shell sed -n 's/^ *"productVersion": *"\([^"]*\)".*/\1/p' wails.json)
+ARCH ?= $(shell $(GO) env GOARCH)
+NFPM ?= $(GO) run github.com/goreleaser/nfpm/v2/cmd/nfpm@v2.47.0
 
-.PHONY: test lint fmt cli fuzz-smoke golden build clean dev app gui-build check-gui-deps
+.PHONY: test lint fmt cli fuzz-smoke golden build clean dev app gui-build check-gui-deps package-linux package-macos
 
 test:
 	$(GO) test -race ./...
@@ -50,7 +54,30 @@ app: check-gui-deps
 # app stub returns "will not build without the correct build tags".
 gui-build: check-gui-deps
 	cd frontend && npm run check && npm run build
-	$(GO) build -tags "$(WAILS_TAGS),production" -o build/bin/agent-sessions ./cmd/agent-sessions
+	$(GO) build -tags "$(WAILS_TAGS),production" -trimpath -ldflags "-s -w" -o build/bin/agent-sessions ./cmd/agent-sessions
+
+# Linux .deb and .rpm packages in dist/, wrapping the gui-build binary.
+# Runtime dependencies are declared in packaging/nfpm.yaml.
+package-linux: gui-build
+	mkdir -p dist
+	VERSION=$(VERSION) ARCH=$(ARCH) $(NFPM) pkg --config packaging/nfpm.yaml --packager deb --target dist/
+	VERSION=$(VERSION) ARCH=$(ARCH) $(NFPM) pkg --config packaging/nfpm.yaml --packager rpm --target dist/
+
+# Universal macOS app wrapped in a .dmg in dist/. Runs on macOS only and
+# requires the Wails CLI. The bundle is ad-hoc signed, not notarized.
+# hdiutil intermittently fails with "Resource busy" on CI runners, so the
+# .dmg step retries once.
+package-macos:
+	cd frontend && npm run build
+	$(WAILS) build -platform darwin/universal -tags desktop -clean -s -m -nosyncgomod -skipbindings -trimpath
+	rm -rf "build/bin/Agent Sessions.app" build/dmg
+	mv build/bin/agent-sessions.app "build/bin/Agent Sessions.app"
+	codesign --force --deep --sign - "build/bin/Agent Sessions.app"
+	mkdir -p build/dmg dist
+	cp -R "build/bin/Agent Sessions.app" build/dmg/
+	ln -s /Applications build/dmg/Applications
+	hdiutil create -volname "Agent Sessions" -srcfolder build/dmg -ov -format UDZO dist/agent-sessions_$(VERSION)_macos_universal.dmg || \
+		{ sleep 5; hdiutil create -volname "Agent Sessions" -srcfolder build/dmg -ov -format UDZO dist/agent-sessions_$(VERSION)_macos_universal.dmg; }
 
 clean:
-	rm -rf bin build/bin frontend/dist
+	rm -rf bin build/bin build/dmg dist frontend/dist

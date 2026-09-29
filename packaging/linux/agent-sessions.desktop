@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Agent Sessions
+GenericName=Agent Session Browser
+Comment=Browse and manage Claude Code, Codex CLI and OpenCode sessions
+Exec=agent-sessions
+Icon=agent-sessions
+Terminal=false
+Categories=Development;Utility;
+Keywords=claude;codex;opencode;agent;session;transcript;
+StartupWMClass=agent-sessions

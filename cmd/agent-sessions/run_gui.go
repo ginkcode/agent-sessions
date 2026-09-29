@@ -1,4 +1,4 @@
-//go:build webkit2_41
+//go:build webkit2_41 || desktop
 
 package main
 
@@ -16,8 +16,8 @@ import (
 )
 
 // run launches the Wails v2 desktop application. It is only compiled with
-// the webkit2_41 build tag (Linux WebKitGTK 4.1) so that default builds
-// and tests never require GTK development headers.
+// the webkit2_41 (Linux WebKitGTK 4.1) or desktop (macOS) build tag so that
+// default builds and tests never require GTK development headers.
 func run() {
 	application := app.NewApp()
 

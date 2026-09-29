@@ -1,4 +1,4 @@
-//go:build webkit2_41
+//go:build webkit2_41 || desktop
 
 package frontend
 

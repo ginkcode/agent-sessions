@@ -1,11 +1,13 @@
 // Command agent-sessions is the Wails v2 desktop application entrypoint.
 //
-// The GUI build is gated behind the `webkit2_41` build tag so that plain
-// `go build ./...` and `go test -race ./...` never require the GTK or
-// WebKitGTK development headers:
+// The GUI build is gated behind a build tag so that plain `go build ./...`
+// and `go test -race ./...` never require the GTK or WebKitGTK development
+// headers: `webkit2_41` on Linux (it also selects WebKitGTK 4.1), `desktop`
+// on macOS:
 //
 //	wails build -tags webkit2_41 -clean   # or: make app
 //	wails dev -tags webkit2_41            # or: make dev
+//	wails build -tags desktop -platform darwin/universal   # macOS
 //
 // System build dependencies on Linux: libgtk-3-dev, libwebkit2gtk-4.1-dev
 // (verify with: pkg-config --exists webkit2gtk-4.1 gtk+-3.0).

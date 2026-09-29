@@ -1,5 +1,8 @@
 bin/
-build/
+# build/ holds Wails output; only the app icon source is tracked.
+build/*
+!build/appicon.png
+/dist/
 frontend/node_modules/
 frontend/dist/
 *.test
