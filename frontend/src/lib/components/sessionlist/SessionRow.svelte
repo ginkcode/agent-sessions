@@ -118,12 +118,13 @@
 <style>
   .session-row {
     height: 58px;
+    margin-bottom: 4px;
     box-sizing: border-box;
     display: flex;
     flex-direction: column;
     justify-content: space-between;
     padding: 6px 12px;
-    border-bottom: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
     background-color: var(--bg-primary);
     cursor: pointer;
     user-select: none;
@@ -132,7 +133,7 @@
   }
 
   .session-row:hover {
-    background-color: var(--hover-bg);
+    background-color: var(--bg-secondary);
   }
 
   .session-row.selected {
@@ -149,7 +150,7 @@
     width: 13px;
     height: 13px;
     margin: 0;
-    accent-color: #ef4444;
+    accent-color: var(--danger);
     cursor: pointer;
     flex-shrink: 0;
   }

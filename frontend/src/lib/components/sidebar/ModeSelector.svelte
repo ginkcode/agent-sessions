@@ -37,8 +37,7 @@
     width: 100%;
     background-color: var(--bg-tertiary);
     padding: 2px;
-    border-radius: 6px;
-    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
   }
 
   .segment-button {

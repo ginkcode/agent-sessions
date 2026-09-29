@@ -151,14 +151,10 @@
 <style>
   .tool-card {
     margin: 8px 0;
-    border-radius: 6px;
+    border-radius: var(--radius-sm);
     background-color: var(--bg-secondary);
-    border: 1px solid var(--border-color);
+    box-shadow: var(--shadow-card);
     overflow: hidden;
-  }
-
-  .tool-card.status-error {
-    border-color: rgba(239, 68, 68, 0.4);
   }
 
   .tool-header {
@@ -209,8 +205,8 @@
   }
 
   .tool-status-badge.status-error {
-    background: rgba(239, 68, 68, 0.15);
-    color: #ef4444;
+    background: color-mix(in srgb, var(--danger) 15%, transparent);
+    color: var(--danger);
   }
 
   .tool-status-badge.status-pending {
@@ -277,8 +273,7 @@
     margin: 0;
     padding: 8px;
     border-radius: 4px;
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-color);
+    background: var(--bg-tertiary);
     font-family: var(--font-mono);
     font-size: 0.75rem;
     line-height: 1.4;
@@ -322,7 +317,6 @@
     border-radius: 3px;
     background: var(--bg-tertiary);
     color: var(--text-secondary);
-    border: 1px solid var(--border-color);
     cursor: pointer;
   }
 
@@ -333,7 +327,7 @@
   .blob-error-msg {
     margin-top: 6px;
     font-size: 0.72rem;
-    color: #ef4444;
+    color: var(--danger);
   }
 
   .tool-child-section {

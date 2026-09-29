@@ -1,11 +1,10 @@
 /* frontend/src/style.css tokens */
 :root {
-  /* Surfaces, borders and muted text are stepped far enough apart to stay
-     distinguishable on bright displays (muted text meets WCAG AA). */
+  /* Surfaces separate by tone rather than outlines; borders are hairlines. */
   --bg-primary: #ffffff;
   --bg-secondary: #f1f3f6;
-  --bg-tertiary: #e4e8ee;
-  --border-color: #c9d1dc;
+  --bg-tertiary: #e2e7ef;
+  --border-color: rgba(15, 23, 42, 0.1);
   --text-primary: #0b1220;
   --text-secondary: #334155;
   --text-muted: #5f6b7c;
@@ -18,6 +17,11 @@
   --hover-bg: rgba(15, 23, 42, 0.07);
   --active-bg: rgba(29, 78, 216, 0.14);
   --status-live: #047857;
+  --danger: #dc2626;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --shadow-card: 0 1px 2px rgba(15, 23, 42, 0.06);
   --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
   color-scheme: light;
@@ -27,23 +31,24 @@
    scrollbars, search fields) in the matching palette. */
 [data-theme="dark"] {
   color-scheme: dark;
-  /* Neutral mid-dark grays (no blue tint), kept lighter than near-black. */
-  --bg-primary: #2b2b2b;
-  --bg-secondary: #333333;
-  --bg-tertiary: #3f3f3f;
-  --border-color: #474747;
+  --bg-primary: #1c1c1e;
+  --bg-secondary: #26262a;
+  --bg-tertiary: #323238;
+  --border-color: rgba(255, 255, 255, 0.08);
   --text-primary: #f2f2f2;
   --text-secondary: #cccccc;
-  --text-muted: #8f8f8f;
+  --text-muted: #b0b0b8;
   --accent-color: #3b82f6;
   --accent-hover: #60a5fa;
   --agent-claude: #d97757;
   --agent-codex: #10a37f;
   --agent-opencode: #3b82f6;
   --badge-bg: #454545;
-  --hover-bg: rgba(255, 255, 255, 0.05);
-  --active-bg: rgba(59, 130, 246, 0.15);
+  --hover-bg: rgba(255, 255, 255, 0.06);
+  --active-bg: rgba(59, 130, 246, 0.2);
   --status-live: #34d399;
+  --danger: #f87171;
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.2);
 }
 
 * {

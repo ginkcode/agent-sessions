@@ -227,7 +227,6 @@
   .pane-header {
     height: 48px;
     min-height: 48px;
-    border-bottom: 1px solid var(--border-color);
     padding: 0 12px;
     display: flex;
     align-items: center;
@@ -237,7 +236,6 @@
   /* Sidebar */
   .sidebar {
     background-color: var(--bg-secondary);
-    border-right: 1px solid var(--border-color);
   }
 
   .sidebar-header {
@@ -337,7 +335,6 @@
   /* Session List */
   .session-list-container {
     background-color: var(--bg-primary);
-    border-right: 1px solid var(--border-color);
   }
 
   /* Transcript View */

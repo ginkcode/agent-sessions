@@ -26,8 +26,8 @@
   .skeleton-row {
     padding: 10px 12px;
     height: 58px;
+    margin-bottom: 4px;
     box-sizing: border-box;
-    border-bottom: 1px solid var(--border-color);
     display: flex;
     flex-direction: column;
     justify-content: center;

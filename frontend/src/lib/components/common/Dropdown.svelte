@@ -148,7 +148,7 @@
     font-weight: 500;
     white-space: nowrap;
     background-color: var(--bg-secondary);
-    border: 1px solid var(--border-color);
+    border: none;
     color: var(--text-secondary);
     cursor: pointer;
     transition: all 0.15s ease;
@@ -158,7 +158,7 @@
   .trigger.open,
   .trigger:focus-visible {
     color: var(--text-primary);
-    border-color: var(--text-muted);
+    background-color: var(--hover-bg);
     outline: none;
   }
 

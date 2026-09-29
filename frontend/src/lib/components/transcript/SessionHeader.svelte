@@ -176,12 +176,12 @@
 
 <style>
   .session-header {
+    container-type: inline-size;
     display: flex;
     flex-direction: column;
     gap: 8px;
     padding: 12px 16px;
     background-color: var(--bg-secondary);
-    border-bottom: 1px solid var(--border-color);
   }
 
   .parent-banner {
@@ -210,6 +210,8 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
+    flex-wrap: wrap;
+    row-gap: 8px;
   }
 
   .header-badges {
@@ -262,45 +264,56 @@
     display: flex;
     align-items: center;
     gap: 6px;
+    flex: 1 1 auto;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+  }
+
+  @container (max-width: 460px) {
+    .header-actions {
+      flex-basis: 100%;
+      justify-content: flex-start;
+    }
   }
 
   .action-btn {
     padding: 3px 8px;
-    border-radius: 4px;
+    border-radius: var(--radius-sm, 6px);
     font-size: 0.72rem;
     font-weight: 500;
     cursor: pointer;
-    background-color: var(--bg-tertiary);
+    background-color: transparent;
     color: var(--text-secondary);
-    border: 1px solid var(--border-color);
+    border: none;
     transition: all 0.15s ease;
   }
 
   .action-btn:hover {
     color: var(--text-primary);
-    border-color: var(--text-muted);
+    background-color: var(--bg-tertiary);
   }
 
   .action-btn.resume-btn {
     background-color: var(--accent-color);
     color: white;
-    border-color: var(--accent-color);
+  }
+
+  .action-btn.resume-btn:hover {
+    background-color: var(--accent-hover);
+    color: white;
   }
 
   .action-btn.meta-btn.active {
     background-color: var(--active-bg);
     color: var(--accent-color);
-    border-color: var(--accent-color);
   }
 
   .action-btn.delete-btn {
-    color: #ef4444;
-    border-color: rgba(239, 68, 68, 0.4);
+    color: var(--danger);
   }
 
   .action-btn.delete-btn:hover:not(:disabled) {
-    background-color: rgba(239, 68, 68, 0.1);
-    border-color: #ef4444;
+    background-color: color-mix(in srgb, var(--danger) 12%, transparent);
   }
 
   .action-btn.delete-btn:disabled {
@@ -318,6 +331,9 @@
     font-weight: 600;
     color: var(--text-primary);
     line-height: 1.3;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .header-meta-row {
@@ -344,7 +360,7 @@
   }
 
   .missing-badge {
-    color: #ef4444;
+    color: var(--danger);
     font-weight: 600;
     font-size: 0.7rem;
   }

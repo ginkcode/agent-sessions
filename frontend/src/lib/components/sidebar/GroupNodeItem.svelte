@@ -225,7 +225,7 @@
   .missing-badge {
     margin-left: 4px;
     font-size: 0.7rem;
-    color: #ef4444;
+    color: var(--danger);
     font-weight: 500;
   }
 

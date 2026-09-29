@@ -49,14 +49,14 @@
     display: flex;
     align-items: center;
     gap: 6px;
-    background-color: var(--bg-primary);
-    border: 1px solid var(--border-color);
-    border-radius: 6px;
+    background-color: var(--bg-tertiary);
+    border-radius: var(--radius-sm);
     padding: 4px 8px;
   }
 
   .path-filter:focus-within {
-    border-color: var(--accent-color);
+    outline: 2px solid var(--accent-color);
+    outline-offset: -2px;
   }
 
   .path-icon {

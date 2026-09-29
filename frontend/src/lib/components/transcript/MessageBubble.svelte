@@ -107,14 +107,13 @@
   .message-bubble-wrapper.role-user .message-card {
     max-width: 85%;
     background-color: var(--bg-secondary);
-    border: 1px solid var(--border-color);
     border-left: 3px solid var(--accent-color);
   }
 
   .message-bubble-wrapper.role-assistant .message-card {
     width: 100%;
-    background-color: var(--bg-primary);
-    border: 1px solid var(--border-color);
+    background-color: var(--bg-secondary);
+    box-shadow: var(--shadow-card);
   }
 
   .message-bubble-wrapper.role-system .message-card {
@@ -124,9 +123,8 @@
   }
 
   .message-card {
-    border-radius: 8px;
+    border-radius: var(--radius-md);
     overflow: hidden;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
   }
 
   .message-meta-header {
@@ -135,7 +133,6 @@
     justify-content: space-between;
     padding: 6px 12px;
     background-color: var(--bg-secondary);
-    border-bottom: 1px solid var(--border-color);
     font-size: 0.72rem;
   }
 
