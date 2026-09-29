@@ -1,11 +1,11 @@
-# Runs on every push and pull request: tests, frontend type check, and a
-# Linux desktop build. Pushes to the release branch are skipped because
-# release.yml runs the same checks there before packaging (deb/rpm/dmg).
+# Runs on every branch push and pull request: tests, frontend type check, and
+# a Linux desktop build. Tag pushes are left to release.yml, which runs the
+# same checks before packaging (deb/rpm/dmg).
 name: CI
 
 on:
   push:
-    branches-ignore: [release]
+    branches: ['**']
   pull_request:
 
 permissions:

@@ -30,11 +30,20 @@ bin/agent-sessions-cli detect
 
 ## Release
 
-Pushing to the `release` branch runs `.github/workflows/release.yml`: it
-tests, then builds a universal macOS `.dmg` and Linux `.deb`/`.rpm`
-packages (amd64 and arm64), and attaches them to a draft GitHub Release
-`v<version>`. The version is `info.productVersion` in `wails.json`; publish
-the draft to create the tag, and bump the version before the next release.
+Pushing a `v<version>` tag runs `.github/workflows/release.yml`: it tests,
+then builds a universal macOS `.dmg` and Linux `.deb`/`.rpm` packages (amd64
+and arm64), and publishes them as the GitHub Release for that tag. The tag
+must match `info.productVersion` in `wails.json`. Tags with a suffix
+(`v0.2.0-beta.1`) publish as pre-releases.
+
+```sh
+make version               # current version and whether its tag exists
+make tags                  # release tags, newest first
+make set-version V=0.2.0   # bump wails.json and commit it
+make release               # tag HEAD as v<version> and push the tag
+make untag                 # delete a local tag created by mistake
+```
+
 The macOS app is not notarized, so first launch needs right-click → Open.
 
 Local equivalents write to `dist/`: `make package-linux` (needs

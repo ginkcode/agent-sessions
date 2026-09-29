@@ -1,15 +1,17 @@
-# Builds installable packages on every push to the `release` branch and
-# attaches them to a draft GitHub Release tagged v<version>, where the
-# version is info.productVersion in wails.json. Publishing the draft (by
-# hand) creates the tag. Re-pushing the same version refreshes the draft's
-# assets; once that version is published, bump it before pushing again.
+# Builds installable packages when a v<version> tag is pushed and publishes
+# them as the GitHub Release for that tag. The tag must match
+# info.productVersion in wails.json, so the version shown in the app is the
+# one on the release page:
 #
-# Manual runs (workflow_dispatch) build and upload artifacts only.
+#   git tag v0.1.0 && git push origin v0.1.0
+#
+# Tags with a suffix (v1.2.0-beta.1) publish as pre-releases. Manual runs
+# (workflow_dispatch) build and upload artifacts only.
 name: Release
 
 on:
   push:
-    branches: [release]
+    tags: ['v*']
   workflow_dispatch:
 
 permissions:
@@ -35,6 +37,10 @@ jobs:
           version=$(jq -r '.info.productVersion // empty' wails.json)
           if ! [[ $version =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]]; then
             echo "::error file=wails.json::info.productVersion '$version' is not a semantic version"
+            exit 1
+          fi
+          if [ "$GITHUB_REF_TYPE" = tag ] && [ "$GITHUB_REF_NAME" != "v$version" ]; then
+            echo "::error file=wails.json::tag $GITHUB_REF_NAME does not match info.productVersion $version"
             exit 1
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
@@ -124,15 +130,15 @@ jobs:
           if-no-files-found: error
 
   release:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/release'
-    needs: [version, linux, macos]
+    if: github.ref_type == 'tag'
+    needs: [linux, macos]
     runs-on: ubuntu-latest
     permissions:
       contents: write
     env:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
-      TAG: v${{ needs.version.outputs.version }}
+      TAG: ${{ github.ref_name }}
     steps:
       - uses: actions/download-artifact@v8
         with:
@@ -141,16 +147,21 @@ jobs:
       - name: Write checksums
         working-directory: dist
         run: sha256sum -- * > SHA256SUMS
-      - name: Create or update draft release
+      - name: Publish release
         run: |
-          if is_draft=$(gh release view "$TAG" --json isDraft --jq .isDraft 2>/dev/null); then
-            if [ "$is_draft" != "true" ]; then
-              echo "::error::$TAG is already published; bump info.productVersion in wails.json"
-              exit 1
-            fi
-            gh release edit "$TAG" --target "$GITHUB_SHA"
-            gh release upload "$TAG" dist/* --clobber
+          # Versions with a suffix (1.2.0-beta.1) publish as pre-releases and
+          # never become "Latest".
+          if [[ $TAG == *-* ]]; then
+            channel=(--prerelease --latest=false)
           else
-            gh release create "$TAG" dist/* --draft --target "$GITHUB_SHA" \
-              --title "Agent Sessions ${TAG#v}" --generate-notes
+            channel=(--latest)
+          fi
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            # Re-running the workflow for the same tag, or a draft left by an
+            # earlier run: refresh its assets and publish.
+            gh release upload "$TAG" dist/* --clobber
+            gh release edit "$TAG" --draft=false "${channel[@]}"
+          else
+            gh release create "$TAG" dist/* --verify-tag \
+              --title "Agent Sessions ${TAG#v}" --generate-notes "${channel[@]}"
           fi

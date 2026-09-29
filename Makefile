@@ -6,7 +6,8 @@ VERSION ?= $(shell sed -n 's/^ *"productVersion": *"\([^"]*\)".*/\1/p' wails.jso
 ARCH ?= $(shell $(GO) env GOARCH)
 NFPM ?= $(GO) run github.com/goreleaser/nfpm/v2/cmd/nfpm@v2.47.0
 
-.PHONY: test lint fmt cli fuzz-smoke golden build clean dev app gui-build check-gui-deps package-linux package-macos
+.PHONY: test lint fmt cli fuzz-smoke golden build clean dev app gui-build check-gui-deps package-linux package-macos \
+	version tags set-version tag untag release help
 
 test:
 	$(GO) test -race ./...
@@ -95,6 +96,73 @@ package-macos:
 	ln -s /Applications build/dmg/Applications
 	hdiutil create -volname "Agent Sessions" -srcfolder build/dmg -ov -format UDZO dist/agent-sessions_$(VERSION)_macos_universal.dmg || \
 		{ sleep 5; hdiutil create -volname "Agent Sessions" -srcfolder build/dmg -ov -format UDZO dist/agent-sessions_$(VERSION)_macos_universal.dmg; }
+
+# Release tags (see make help). Pushing v<VERSION> runs
+# .github/workflows/release.yml, which refuses a tag that does not match
+# wails.json.
+TAG := v$(VERSION)
+SEMVER_RE := ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$$
+
+version:
+	@echo "wails.json version: $(VERSION)"
+	@echo "latest tag:         $$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null || echo none)"
+	@if git rev-parse -q --verify "refs/tags/$(TAG)" >/dev/null; then \
+		echo "local tag:          $(TAG) at $$(git rev-list -n1 --abbrev-commit $(TAG)) (HEAD is $$(git rev-parse --short HEAD))"; \
+	else echo "local tag:          $(TAG) not created"; fi
+	@if git ls-remote --exit-code --tags origin "refs/tags/$(TAG)" >/dev/null 2>&1; then \
+		echo "origin tag:         $(TAG) pushed"; \
+	else echo "origin tag:         $(TAG) not pushed"; fi
+
+tags:
+	@git tag -l 'v*' --sort=-v:refname \
+		--format='%(refname:short)%09%(if)%(*objectname)%(then)%(*objectname:short)%(else)%(objectname:short)%(end)%09%(creatordate:short)%09%(subject)'
+
+set-version:
+	@test -n "$(V)" || { echo 'usage: make set-version V=x.y.z' >&2; exit 1; }
+	@echo "$(V)" | grep -Eq '$(SEMVER_RE)' || { echo "$(V) is not a semantic version" >&2; exit 1; }
+	@! git rev-parse -q --verify "refs/tags/v$(V)" >/dev/null || { echo "v$(V) is already tagged" >&2; exit 1; }
+	@git diff --quiet HEAD -- || { echo 'commit or stash your changes first' >&2; exit 1; }
+	sed -i.bak 's/^\( *"productVersion": *"\)[^"]*"/\1$(V)"/' wails.json && rm -f wails.json.bak
+	git commit -m "chore: release v$(V)" -- wails.json
+
+tag:
+	@echo "$(VERSION)" | grep -Eq '$(SEMVER_RE)' || { echo "wails.json version '$(VERSION)' is not a semantic version" >&2; exit 1; }
+	@git diff --quiet HEAD -- || { echo 'commit or stash your changes before tagging' >&2; exit 1; }
+	@! git rev-parse -q --verify "refs/tags/$(TAG)" >/dev/null || { echo "$(TAG) already exists; bump with make set-version V=..." >&2; exit 1; }
+	git tag -a "$(TAG)" -m "Agent Sessions $(VERSION)"
+	@echo "Created $(TAG) at $$(git rev-parse --short HEAD). Publish it with: make release"
+
+untag:
+	git tag -d "$(TAG)"
+	@! git ls-remote --exit-code --tags origin "refs/tags/$(TAG)" >/dev/null 2>&1 || \
+		echo "$(TAG) is still on origin; releases are not withdrawn automatically."
+
+release:
+	@git rev-parse -q --verify "refs/tags/$(TAG)" >/dev/null || $(MAKE) --no-print-directory tag
+	git push origin "$(TAG)"
+
+help:
+	@printf 'Development\n'
+	@printf '  %-22s %s\n' 'test' 'Run Go tests with the race detector'
+	@printf '  %-22s %s\n' 'lint' 'Run golangci-lint'
+	@printf '  %-22s %s\n' 'fmt' 'Format Go code'
+	@printf '  %-22s %s\n' 'cli / build' 'Build bin/agent-sessions-cli'
+	@printf '  %-22s %s\n' 'fuzz-smoke' 'Fuzz the Claude record parser for 60s'
+	@printf '  %-22s %s\n' 'golden' 'Regenerate golden test files'
+	@printf '  %-22s %s\n' 'dev' 'Run the desktop app with live reload (Wails CLI)'
+	@printf '  %-22s %s\n' 'app' 'Build the desktop app with the Wails CLI'
+	@printf '  %-22s %s\n' 'gui-build' 'Build build/bin/agent-sessions without the Wails CLI'
+	@printf '  %-22s %s\n' 'clean' 'Remove build outputs'
+	@printf '\nPackaging (writes dist/)\n'
+	@printf '  %-22s %s\n' 'package-linux' '.deb and .rpm for ARCH (default: host)'
+	@printf '  %-22s %s\n' 'package-macos' 'Universal .dmg (macOS only)'
+	@printf '\nReleases (current: v$(VERSION))\n'
+	@printf '  %-22s %s\n' 'version' 'Show the version and whether its tag exists'
+	@printf '  %-22s %s\n' 'tags' 'List release tags, newest first'
+	@printf '  %-22s %s\n' 'set-version V=x.y.z' 'Bump wails.json and commit it'
+	@printf '  %-22s %s\n' 'tag' 'Create tag v<version> at HEAD (local only)'
+	@printf '  %-22s %s\n' 'untag' 'Delete the local tag'
+	@printf '  %-22s %s\n' 'release' 'Create the tag if needed and push it; CI publishes'
 
 clean:
 	rm -rf bin build/bin build/dmg dist frontend/dist
