@@ -132,6 +132,25 @@ test('renderMarkdown converts markdown and strictly neutralizes XSS vectors', ()
   assert.ok(validLink.includes('target="_blank"'));
 });
 
+test('renderMarkdown leaves intraword underscores, code and URLs literal', () => {
+  const cases = [
+    ['Set API_KEY_NAME first', '<p>Set API_KEY_NAME first</p>'],
+    ['call snake_case_fn()', '<p>call snake_case_fn()</p>'],
+    ['Grüße_und_Tschüss', '<p>Grüße_und_Tschüss</p>'],
+    ['Use `API_KEY_NAME` and `a*b*c`', '<p>Use <code class="inline-code">API_KEY_NAME</code> and <code class="inline-code">a*b*c</code></p>'],
+    ['2 * 3 * 4', '<p>2 * 3 * 4</p>'],
+    ['_it_ (_it_) _foo_bar_', '<p><em>it</em> (<em>it</em>) <em>foo_bar</em></p>'],
+    ['__b__ ___bi___ un*frigging*believable', '<p><strong>b</strong> <strong><em>bi</em></strong> un<em>frigging</em>believable</p>'],
+  ];
+  for (const [input, want] of cases) {
+    assert.equal(renderMarkdown(input), want, input);
+  }
+
+  const link = renderMarkdown('[**docs**](https://x.dev/a_b_c)');
+  assert.ok(link.includes('href="https://x.dev/a_b_c"'), link);
+  assert.ok(link.includes('<strong>docs</strong></a>'), link);
+});
+
 test('handleCopyCodeClick copies code from delegated click and ignores other targets', async () => {
   const { handleCopyCodeClick } = await import('../src/lib/copycode.ts');
 

@@ -23,32 +23,55 @@ function sanitizeHref(url: string): string {
   return '#';
 }
 
-function renderInline(text: string): string {
-  // First escape raw HTML
-  let out = escapeHtml(text);
+// Emphasis must hug its text: "2 * 3 * 4" stays literal. `*` may emphasize
+// inside a word, but `_` only at word boundaries (as in GFM), so identifiers
+// like API_KEY_NAME and snake_case_fn render as written.
+const star = (n: number) => new RegExp(`\\*{${n}}(?!\\s)(.*?\\S)\\*{${n}}`, 'g');
+const underscore = (n: number) =>
+  new RegExp(`(^|[^\\p{L}\\p{N}_])_{${n}}(?!\\s)(.*?\\S)_{${n}}(?![\\p{L}\\p{N}_])`, 'gu');
 
-  // Inline code: `code`
-  out = out.replace(/`([^`]+)`/g, '<code class="inline-code">$1</code>');
+function renderEmphasis(text: string): string {
+  let out = text;
 
   // Bold + Italic: ***text*** or ___text___
-  out = out.replace(/(\*\*\*|___)(.*?)\1/g, '<strong><em>$2</em></strong>');
+  out = out.replace(star(3), '<strong><em>$1</em></strong>');
+  out = out.replace(underscore(3), '$1<strong><em>$2</em></strong>');
 
   // Bold: **text** or __text__
-  out = out.replace(/(\*\*|__)(.*?)\1/g, '<strong>$2</strong>');
+  out = out.replace(star(2), '<strong>$1</strong>');
+  out = out.replace(underscore(2), '$1<strong>$2</strong>');
 
   // Italic: *text* or _text_
-  out = out.replace(/(\*|_)(.*?)\1/g, '<em>$2</em>');
+  out = out.replace(star(1), '<em>$1</em>');
+  out = out.replace(underscore(1), '$1<em>$2</em>');
 
   // Strikethrough: ~~text~~
   out = out.replace(/~~(.*?)~~/g, '<del>$1</del>');
 
+  return out;
+}
+
+function renderInline(text: string): string {
+  // First escape raw HTML
+  let out = escapeHtml(text);
+
+  // Code spans and links are rendered first and set aside, so emphasis never
+  // rewrites code or URLs. Placeholders use NUL, which escaped text lacks.
+  const stashed: string[] = [];
+  const stash = (html: string) => `\u0000${stashed.push(html) - 1}\u0000`;
+
+  // Inline code: `code`
+  out = out.replace(/`([^`]+)`/g, (_match, code) => stash(`<code class="inline-code">${code}</code>`));
+
   // Links: [label](url)
   out = out.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_match, label, url) => {
     const safeUrl = sanitizeHref(url);
-    return `<a href="${safeUrl}" target="_blank" rel="noopener noreferrer">${label}</a>`;
+    return stash(`<a href="${safeUrl}" target="_blank" rel="noopener noreferrer">${renderEmphasis(label)}</a>`);
   });
 
-  return out;
+  out = renderEmphasis(out);
+
+  return out.replace(/\u0000(\d+)\u0000/g, (_match, idx) => stashed[Number(idx)]);
 }
 
 export function renderMarkdown(source: string): string {
