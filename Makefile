@@ -69,7 +69,16 @@ package-linux: gui-build
 # .dmg step retries once.
 package-macos:
 	cd frontend && npm run build
-	$(WAILS) build -platform darwin/universal -tags desktop -clean -s -m -nosyncgomod -skipbindings -trimpath
+	# Build each architecture separately. Wails' darwin/universal path disables
+	# its bin cleanup and then asks lipo to chdir into build/bin before that
+	# directory has been created.
+	$(WAILS) build -platform darwin/arm64 -tags desktop -clean -s -m -nosyncgomod -skipbindings -trimpath
+	mv build/bin/agent-sessions.app/Contents/MacOS/agent-sessions build/bin/agent-sessions-arm64
+	$(WAILS) build -platform darwin/amd64 -tags desktop -clean -s -m -nosyncgomod -skipbindings -trimpath
+	mv build/bin/agent-sessions.app/Contents/MacOS/agent-sessions build/bin/agent-sessions-amd64
+	lipo -create -output build/bin/agent-sessions.app/Contents/MacOS/agent-sessions \
+		build/bin/agent-sessions-arm64 build/bin/agent-sessions-amd64
+	rm -f build/bin/agent-sessions-arm64 build/bin/agent-sessions-amd64
 	rm -rf "build/bin/Agent Sessions.app" build/dmg
 	mv build/bin/agent-sessions.app "build/bin/Agent Sessions.app"
 	codesign --force --deep --sign - "build/bin/Agent Sessions.app"
