@@ -14,6 +14,7 @@ import type {
   SearchFilter,
   SearchHit,
   FTSProgress,
+  CatalogChanged,
 } from './types';
 import { MockBackendAPI } from './mock/mockApi';
 
@@ -241,13 +242,13 @@ class WailsBackendAPI implements BackendAPI {
     }
   }
 
+  // EventsOn returns a per-listener canceller; EventsOff(name) would drop
+  // every listener registered for the event.
   onEvent(name: string, callback: (...data: any[]) => void): () => void {
     const runtime = (window as any).runtime;
     if (runtime?.EventsOn) {
-      runtime.EventsOn(name, callback);
-      return () => {
-        runtime.EventsOff?.(name);
-      };
+      const off = runtime.EventsOn(name, callback);
+      return typeof off === 'function' ? off : () => {};
     }
     return () => {};
   }
@@ -263,3 +264,26 @@ export function createAPI(): BackendAPI {
 }
 
 export const api: BackendAPI = createAPI();
+
+export const CATALOG_CHANGED_EVENT = 'catalog:changed';
+export const INDEX_PROGRESS_EVENT = 'index:progress';
+
+export function subscribeCatalogChanged(
+  fn: (event: CatalogChanged) => void,
+  backend: BackendAPI = api
+): () => void {
+  return backend.onEvent(CATALOG_CHANGED_EVENT, (event: CatalogChanged) => {
+    if (!event || typeof event !== 'object') return;
+    fn(event);
+  });
+}
+
+export function subscribeIndexProgress(
+  fn: (progress: FTSProgress) => void,
+  backend: BackendAPI = api
+): () => void {
+  return backend.onEvent(INDEX_PROGRESS_EVENT, (progress: FTSProgress) => {
+    if (!progress || typeof progress !== 'object') return;
+    fn(progress);
+  });
+}

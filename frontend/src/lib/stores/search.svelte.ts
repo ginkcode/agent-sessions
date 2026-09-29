@@ -1,4 +1,4 @@
-import { api } from '../api';
+import { api, subscribeIndexProgress } from '../api';
 import type {
   FTSProgress,
   MessageJump,
@@ -27,8 +27,7 @@ export class SearchState {
 
   init(): void {
     if (this.unsubscribeProgress) return;
-    this.unsubscribeProgress = api.onEvent('index:progress', (value: FTSProgress) => {
-      if (!value || typeof value !== 'object') return;
+    this.unsubscribeProgress = subscribeIndexProgress((value) => {
       this.progress = value;
     });
     // Seed status before the first event; a later event always wins.

@@ -31,6 +31,15 @@ import {
   pruneKeys,
   sessionToSelect,
 } from '../src/lib/tree.ts';
+import {
+  affectsSessionList,
+  findGroup,
+  groupSessionKeys,
+  hasRef,
+  isFullRefresh,
+  RequestSequence,
+} from '../src/lib/catalog.ts';
+import { subscribeCatalogChanged, subscribeIndexProgress } from '../src/lib/api.ts';
 
 test('formatTokens formats numbers into compact string representations', () => {
   assert.equal(formatTokens(0), '0');
@@ -472,4 +481,111 @@ test('formatAgo drops "ago" for just now', () => {
   assert.equal(formatAgo(new Date().toISOString()), 'just now');
   assert.equal(formatAgo(new Date(Date.now() - 5 * 60 * 1000).toISOString()), '5m ago');
   assert.equal(formatAgo(''), '');
+});
+
+const cref = (id) => ({ agent: 'claude-code', id });
+const catalogTree = [
+  {
+    key: 'dir:/a',
+    label: '/a',
+    kind: 'directory',
+    sessionCount: 2,
+    sessions: [cref('a1'), cref('a2')],
+    children: [
+      { key: 'sess:a1', label: 'a1', kind: 'session', sessionCount: 1, sessions: [cref('a1')] },
+    ],
+  },
+  { key: 'dir:/b', label: '/b', kind: 'directory', sessionCount: 1, sessions: [cref('b1')] },
+];
+
+test('isFullRefresh accepts only groupsDirty events without refs', () => {
+  assert.equal(isFullRefresh({ changed: null, removed: null, groupsDirty: true }), true);
+  assert.equal(isFullRefresh({ changed: [], removed: [], groupsDirty: true }), true);
+  assert.equal(isFullRefresh({ changed: [cref('a1')], removed: [], groupsDirty: true }), false);
+  assert.equal(isFullRefresh({ changed: [], removed: [cref('a1')], groupsDirty: true }), false);
+  assert.equal(isFullRefresh({ changed: [], removed: [], groupsDirty: false }), false);
+});
+
+test('hasRef matches by agent and id and tolerates missing inputs', () => {
+  assert.equal(hasRef([cref('a1')], cref('a1')), true);
+  assert.equal(hasRef([cref('a1')], { agent: 'codex', id: 'a1' }), false);
+  assert.equal(hasRef([cref('a1')], null), false);
+  assert.equal(hasRef(null, cref('a1')), false);
+});
+
+test('findGroup and groupSessionKeys walk the whole tree', () => {
+  assert.equal(findGroup(catalogTree, 'sess:a1')?.label, 'a1');
+  assert.equal(findGroup(catalogTree, 'missing'), null);
+  assert.deepEqual([...groupSessionKeys(catalogTree, 'dir:/b')], ['claude-code:b1']);
+  assert.deepEqual(
+    [...groupSessionKeys(catalogTree, null)].sort(),
+    ['claude-code:a1', 'claude-code:a2', 'claude-code:b1']
+  );
+  assert.equal(groupSessionKeys(catalogTree, 'missing').size, 0);
+});
+
+test('affectsSessionList reloads only for refs listed or placed in the group', () => {
+  const listed = [{ ref: cref('b1') }];
+  const ev = (changed, removed = []) => ({ changed, removed, groupsDirty: true });
+
+  // Full refresh always reloads.
+  assert.equal(affectsSessionList(ev([], []), listed, catalogTree, 'dir:/b'), true);
+  // A listed session updated or removed.
+  assert.equal(affectsSessionList(ev([cref('b1')]), listed, catalogTree, 'dir:/b'), true);
+  assert.equal(affectsSessionList(ev([], [cref('b1')]), listed, catalogTree, 'dir:/b'), true);
+  // A change in another group is ignored.
+  assert.equal(affectsSessionList(ev([cref('a1')]), listed, catalogTree, 'dir:/b'), false);
+  assert.equal(affectsSessionList(ev([], [cref('zz')]), listed, catalogTree, 'dir:/b'), false);
+  // A new session the fresh tree places in the selected group.
+  const grown = [
+    catalogTree[0],
+    { ...catalogTree[1], sessions: [cref('b1'), cref('b2')] },
+  ];
+  assert.equal(affectsSessionList(ev([cref('b2')]), listed, grown, 'dir:/b'), true);
+  // The all-sessions list covers every group.
+  assert.equal(affectsSessionList(ev([cref('a2')]), listed, catalogTree, null), true);
+});
+
+test('RequestSequence drops responses from superseded requests', async () => {
+  const seq = new RequestSequence();
+  let applied = null;
+  const load = async (value, delayMs) => {
+    const id = seq.next();
+    await new Promise((resolve) => setTimeout(resolve, delayMs));
+    if (seq.isCurrent(id)) applied = value;
+  };
+  // The slow first response resolves after the fast second one.
+  await Promise.all([load('stale', 30), load('fresh', 5)]);
+  assert.equal(applied, 'fresh');
+});
+
+test('MockBackendAPI onEvent delivers events and unsubscribes one listener', () => {
+  const mock = new MockBackendAPI();
+  const seen = [];
+  const offA = mock.onEvent('x', (v) => seen.push(`a:${v}`));
+  mock.onEvent('x', (v) => seen.push(`b:${v}`));
+  mock.onEvent('y', (v) => seen.push(`y:${v}`));
+  mock.emit('x', 1);
+  offA();
+  offA();
+  mock.emit('x', 2);
+  assert.deepEqual(seen, ['a:1', 'b:1', 'b:2']);
+});
+
+test('typed subscriptions forward objects and ignore malformed payloads', () => {
+  const mock = new MockBackendAPI();
+  const catalog = [];
+  const progress = [];
+  const offCatalog = subscribeCatalogChanged((e) => catalog.push(e), mock);
+  subscribeIndexProgress((p) => progress.push(p), mock);
+
+  const event = { changed: [cref('a1')], removed: [], groupsDirty: true };
+  mock.emit('catalog:changed', event);
+  mock.emit('catalog:changed', null);
+  mock.emit('index:progress', { done: 1, pending: 0, failed: 0, running: false });
+  offCatalog();
+  mock.emit('catalog:changed', event);
+
+  assert.deepEqual(catalog, [event]);
+  assert.equal(progress.length, 1);
 });

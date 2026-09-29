@@ -207,8 +207,8 @@ export class ManageStore {
       await appState.selectSession(nextRef);
 
       // Refresh catalog groups and sessions
-      await appState.loadGroups();
-      await appState.loadSessions();
+      await appState.loadGroups(true);
+      await appState.loadSessions(true);
 
       return result.failed === 0;
     } catch (err) {

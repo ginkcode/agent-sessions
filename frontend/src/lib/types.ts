@@ -23,6 +23,16 @@ export interface SearchHit {
   kind: SearchHitKind;
 }
 
+/**
+ * Coalesced catalog update from the backend. groupsDirty with no refs is a
+ * full refresh: the catalog was rebuilt and every view must reload.
+ */
+export interface CatalogChanged {
+  changed: SessionRef[] | null;
+  removed: SessionRef[] | null;
+  groupsDirty: boolean;
+}
+
 export interface FTSProgress {
   done: number;
   pending: number;

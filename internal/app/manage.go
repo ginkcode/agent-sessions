@@ -7,8 +7,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	wruntime "github.com/wailsapp/wails/v2/pkg/runtime"
-
 	"github.com/ginkcode/agent-sessions/internal/manage"
 	"github.com/ginkcode/agent-sessions/internal/model"
 	"github.com/ginkcode/agent-sessions/internal/paths"
@@ -225,9 +223,7 @@ func (a *App) forget(refs []model.SessionRef) {
 		}
 	}
 
-	if a.ctx != nil && a.ctx.Value("events") != nil {
-		wruntime.EventsEmit(a.ctx, "scan:ready")
-	}
+	a.events.NoteChanged(nil, refs)
 }
 
 // evictTranscript drops one session's cached transcript.

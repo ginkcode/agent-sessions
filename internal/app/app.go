@@ -38,6 +38,7 @@ type App struct {
 	bootstrapDone   chan struct{}      // closed when the startup scan finishes
 	indexer         *index.Indexer     // background FTS indexing worker
 	closeWatch      func() error       // stops the filesystem watcher
+	events          *catalogBus        // coalesced catalog:changed emitter
 }
 
 // NewApp creates a new App service instance with default providers.
@@ -82,6 +83,7 @@ func NewAppWithService(svc *Service) *App {
 // Bootstrap scans run asynchronously, NOT in this paint-critical path.
 func (a *App) OnStartup(ctx context.Context) {
 	a.ctx = ctx
+	a.events = newCatalogBus(ctx)
 
 	if !a.cacheEnabled {
 		if a.runner != nil {
@@ -124,9 +126,7 @@ func (a *App) OnStartup(ctx context.Context) {
 	if a.svc.catalog != nil {
 		a.svc.catalog.Reset(metas)
 	}
-	if a.ctx != nil && a.ctx.Value("events") != nil {
-		wruntime.EventsEmit(a.ctx, "scan:ready")
-	}
+	a.events.NotifyFullRefresh()
 
 	// Set up the Refresher for cache-backed scans.
 	a.refresher = index.NewRefresher(db, a.svc.catalog, a.svc.providers)
@@ -135,9 +135,7 @@ func (a *App) OnStartup(ctx context.Context) {
 			// A scan may have enqueued FTS jobs; wake the background worker.
 			a.indexer.Notify()
 		}
-		if a.ctx != nil && a.ctx.Value("events") != nil {
-			wruntime.EventsEmit(a.ctx, "scan:ready")
-		}
+		a.events.NoteChanged(changed, removed)
 	})
 
 	// Background FTS indexing: one worker, notified by scan commits and
@@ -165,13 +163,13 @@ func (a *App) OnStartup(ctx context.Context) {
 		if a.svc != nil {
 			a.svc.ApplyReport(a.refresher.Report())
 		}
-		if a.ctx != nil && a.ctx.Value("events") != nil {
-			wruntime.EventsEmit(a.ctx, "scan:ready")
-		}
 	}()
 }
 
 // Scan triggers a scan across all providers and updates the service state.
+// Cache-backed scans notify the UI per committed change via the refresher;
+// the uncached runner replaces the catalog wholesale, so it signals a full
+// refresh.
 func (a *App) Scan() error {
 	if a.refresher == nil && a.runner == nil {
 		return nil
@@ -185,17 +183,12 @@ func (a *App) Scan() error {
 		if a.svc != nil {
 			a.svc.ApplyReport(a.refresher.Report())
 		}
-		if a.ctx != nil && a.ctx.Value("events") != nil {
-			wruntime.EventsEmit(a.ctx, "scan:ready")
-		}
 		return err
 	}
 	if a.runner != nil && a.svc != nil {
 		report := a.runner.Run(ctx, a.svc.states)
 		a.svc.ApplyReport(report)
-		if a.ctx != nil && a.ctx.Value("events") != nil {
-			wruntime.EventsEmit(a.ctx, "scan:ready")
-		}
+		a.events.NotifyFullRefresh()
 	}
 	return nil
 }
@@ -206,8 +199,10 @@ func (a *App) OnShutdown(ctx context.Context) {
 }
 
 // Close cancels in-flight background scans, waits for workers to complete,
-// stops the filesystem watcher, and closes the private cache DB.
+// stops the filesystem watcher, and closes the private cache DB. Catalog
+// events stop first so nothing is emitted during or after shutdown.
 func (a *App) Close() error {
+	a.events.stop()
 	if a.closeWatch != nil {
 		_ = a.closeWatch()
 		a.closeWatch = nil

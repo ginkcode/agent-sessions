@@ -36,6 +36,7 @@
     return () => {
       window.removeEventListener('keydown', onKeydown);
       search.destroy();
+      appState.destroy();
     };
   });
 

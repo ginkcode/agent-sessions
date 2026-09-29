@@ -1,4 +1,5 @@
 import type {
+  CatalogChanged,
   GroupMode,
   FilterOpts,
   SortOpts,
@@ -6,8 +7,10 @@ import type {
   SessionMeta,
   SessionRef,
 } from '../types';
-import { api } from '../api';
+import { api, subscribeCatalogChanged } from '../api';
 import { defaultCollapsedKeys, pruneKeys } from '../tree';
+import { affectsSessionList, findGroup, hasRef, RequestSequence } from '../catalog';
+import { nextSelectionAfterDelete, refsEqual } from '../manage';
 
 const COLLAPSED_STORAGE_KEY = 'agent-sessions:tree-collapsed';
 
@@ -34,27 +37,44 @@ export class AppState {
   error = $state<string | null>(null);
   refreshing = $state(false);
 
+  // Late responses from superseded requests are dropped, never applied.
+  private groupsRequests = new RequestSequence();
+  private sessionsRequests = new RequestSequence();
+  private sessionMetaRequests = new RequestSequence();
+  private unsubscribeCatalog: (() => void) | null = null;
+  // Catalog events apply one at a time so each sees the tree its
+  // predecessor loaded.
+  private catalogQueue: Promise<void> = Promise.resolve();
+
   async init(): Promise<void> {
     this.collapsedKeys = loadCollapsedKeys();
-    // Backend re-scans on startup; when a later scan finishes it refreshes
-    // groups/sessions so new or updated transcripts appear without restart.
-    api.onEvent('scan:ready', () => {
-      void this.loadGroups();
-      void this.loadSessions();
-    });
+    // Subscribe before the first load so a scan committing mid-load is
+    // not missed; request ordering keeps the newer response.
+    if (!this.unsubscribeCatalog) {
+      this.unsubscribeCatalog = subscribeCatalogChanged((event) => {
+        this.catalogQueue = this.catalogQueue
+          .then(() => this.applyCatalogChange(event))
+          .catch(() => {});
+      });
+    }
     await this.loadGroups();
     await this.loadSessions();
   }
 
-  // User-triggered rescan. Desktop also reloads via scan:ready; reloading
-  // here too keeps the browser mock (no event emitter) in sync.
+  destroy(): void {
+    this.unsubscribeCatalog?.();
+    this.unsubscribeCatalog = null;
+  }
+
+  // User-triggered rescan. Desktop also reloads via catalog:changed;
+  // reloading here too keeps the browser mock (no scanner) in sync.
   async refresh(): Promise<void> {
     if (this.refreshing) return;
     this.refreshing = true;
     try {
       await api.scan();
-      await this.loadGroups();
-      await this.loadSessions();
+      await this.loadGroups(true);
+      await this.loadSessions(true);
     } catch (err: any) {
       this.error = err?.message || 'Failed to refresh sessions';
     } finally {
@@ -78,6 +98,7 @@ export class AppState {
   }
 
   async selectSession(ref: SessionRef | null): Promise<void> {
+    const id = this.sessionMetaRequests.next();
     this.selectedSessionRef = ref;
     this.selectedSessionMeta = null;
     if (!ref) return;
@@ -91,8 +112,55 @@ export class AppState {
         (s) => s.ref.agent === ref.agent && s.ref.id === ref.id
       ) || null;
     }
-    if (this.selectedSessionRef?.agent === ref.agent && this.selectedSessionRef?.id === ref.id) {
+    if (this.sessionMetaRequests.isCurrent(id)) {
       this.selectedSessionMeta = meta;
+    }
+  }
+
+  // Re-reads the selected session's header metadata in place, keeping the
+  // current header (and the loaded transcript) mounted meanwhile.
+  private async refreshSelectedMeta(): Promise<void> {
+    const ref = this.selectedSessionRef;
+    if (!ref) return;
+    const id = this.sessionMetaRequests.next();
+    try {
+      const meta = await api.getSessionMeta(ref);
+      if (this.sessionMetaRequests.isCurrent(id) && refsEqual(this.selectedSessionRef, ref)) {
+        this.selectedSessionMeta = meta;
+      }
+    } catch {
+      // Keep the previous header; a removal arrives as its own event.
+    }
+  }
+
+  // Applies one coalesced backend update: reload the tree when it is dirty,
+  // the list only when the update touches it, and the header in place.
+  private async applyCatalogChange(event: CatalogChanged): Promise<void> {
+    const changed = event.changed ?? [];
+    const removed = event.removed ?? [];
+
+    if (hasRef(removed, this.selectedSessionRef)) {
+      void this.selectSession(
+        nextSelectionAfterDelete(this.sessions, removed, this.selectedSessionRef)
+      );
+    }
+
+    // A superseded tree load means another load is in flight; the tree in
+    // hand may predate this event, so reload the list unconditionally.
+    const treeCurrent = event.groupsDirty ? await this.loadGroups(true) : true;
+    if (treeCurrent && this.selectedGroupKey && !findGroup(this.groups, this.selectedGroupKey)) {
+      // Every session in the selected group is gone; fall back to all.
+      this.selectedGroupKey = null;
+      await this.loadSessions(true);
+    } else if (
+      !treeCurrent ||
+      affectsSessionList(event, this.sessions, this.groups, this.selectedGroupKey)
+    ) {
+      await this.loadSessions(true);
+    }
+
+    if (hasRef(changed, this.selectedSessionRef)) {
+      await this.refreshSelectedMeta();
     }
   }
 
@@ -118,14 +186,19 @@ export class AppState {
     await this.loadSessions();
   }
 
-  async loadGroups(): Promise<void> {
-    this.loadingGroups = true;
+  // A background load keeps the populated tree mounted (no loading state,
+  // no error over existing data). Resolves false when superseded.
+  async loadGroups(background = false): Promise<boolean> {
+    const id = this.groupsRequests.next();
+    const quiet = background && this.groups.length > 0;
+    if (!quiet) this.loadingGroups = true;
     try {
       // Groups and agent totals change on the same triggers (scan, filter).
       const [groups, counts] = await Promise.all([
         api.listGroups(this.groupMode, this.filter),
         api.agentCounts(this.filter),
       ]);
+      if (!this.groupsRequests.isCurrent(id)) return false;
       this.groups = groups;
       this.agentCounts = counts;
       this.defaultCollapsed = defaultCollapsedKeys(groups);
@@ -141,21 +214,29 @@ export class AppState {
         }
       }
       this.error = null;
+      return true;
     } catch (err: any) {
-      this.error = err?.message || 'Failed to load groups';
+      if (!this.groupsRequests.isCurrent(id)) return false;
+      if (!quiet) this.error = err?.message || 'Failed to load groups';
+      return true;
     } finally {
-      this.loadingGroups = false;
+      if (this.groupsRequests.isCurrent(id)) this.loadingGroups = false;
     }
   }
 
-  async loadSessions(): Promise<void> {
-    this.loadingSessions = true;
+  // Background loads keep the list mounted so its scroll position survives.
+  async loadSessions(background = false): Promise<void> {
+    const id = this.sessionsRequests.next();
+    const quiet = background && this.sessions.length > 0;
+    if (!quiet) this.loadingSessions = true;
     try {
-      this.sessions = await api.listSessions(
+      const sessions = await api.listSessions(
         this.selectedGroupKey || '',
         this.filter,
         this.sort
       );
+      if (!this.sessionsRequests.isCurrent(id)) return;
+      this.sessions = sessions;
       this.error = null;
 
       // Auto-select first session if none is selected
@@ -163,9 +244,10 @@ export class AppState {
         await this.selectSession(this.sessions[0].ref);
       }
     } catch (err: any) {
-      this.error = err?.message || 'Failed to load sessions';
+      if (!this.sessionsRequests.isCurrent(id)) return;
+      if (!quiet) this.error = err?.message || 'Failed to load sessions';
     } finally {
-      this.loadingSessions = false;
+      if (this.sessionsRequests.isCurrent(id)) this.loadingSessions = false;
     }
   }
 }

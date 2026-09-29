@@ -494,8 +494,27 @@ export class MockBackendAPI {
     await new Promise((resolve) => setTimeout(resolve, 300));
   }
 
-  onEvent(_name: string, _callback: (...data: any[]) => void): () => void {
-    return () => {};
+  private listeners = new Map<string, Set<(...data: any[]) => void>>();
+
+  onEvent(name: string, callback: (...data: any[]) => void): () => void {
+    let set = this.listeners.get(name);
+    if (!set) {
+      set = new Set();
+      this.listeners.set(name, set);
+    }
+    // Wrap so registering one callback twice yields independent listeners.
+    const listener = (...data: any[]) => callback(...data);
+    set.add(listener);
+    return () => {
+      set.delete(listener);
+    };
+  }
+
+  /** Delivers an event to every listener, mimicking the Wails runtime. */
+  emit(name: string, ...data: any[]): void {
+    for (const listener of [...(this.listeners.get(name) ?? [])]) {
+      listener(...data);
+    }
   }
 
   async agentCounts(filter?: FilterOpts): Promise<Record<string, number>> {
