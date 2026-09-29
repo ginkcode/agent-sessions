@@ -234,9 +234,12 @@ func TestScanResumeAtEveryFixtureBoundary(t *testing.T) {
 			// The partial fixture intentionally ends mid-line. The full-scan
 			// comparison uses the same bytes, rather than completing its JSON.
 			baseline := scanOne(t, name)
+			// Cuts are strictly shorter than the file: rewriting the full
+			// content yields the same size and, within one mtime tick, the
+			// same mtime, which the scanner correctly treats as unchanged.
 			var cuts []int
 			for n, b := range content {
-				if b == '\n' {
+				if b == '\n' && n+1 < len(content) {
 					cuts = append(cuts, n+1)
 				}
 			}
