@@ -10,6 +10,7 @@ later milestones build on the contracts defined in M0.
 | [M1-gui.md](M1-gui.md) | Wails v2 + Svelte 5 app: bindings, `api.ts`, layout, session list, transcript viewer, security, QA |
 | [M2.md](M2.md) | Cache index, incremental scans, FTS search, file watching, live updates, diagnostics |
 | [M3-M5.md](M3-M5.md) | Filters, config, export, keyboard, stats; destructive actions; macOS port, packaging, CI |
+| [M6.md](M6.md) | Portable bundles (export, import, opt-in restore) and cross-agent handoff; bundle manifest v1 contract |
 
 Reference: [../formats.md](../formats.md) holds the verified on-disk formats of each tool.
 

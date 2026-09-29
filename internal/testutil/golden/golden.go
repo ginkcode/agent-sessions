@@ -54,6 +54,31 @@ func JSON(t *testing.T, name string, got any) {
 	t.Errorf("golden mismatch for %s:\n%s", path, diff(string(wantJSON), string(gotJSON)))
 }
 
+// Text compares got against testdata/golden/<filename> relative to the calling
+// test's directory. With -update the file is rewritten instead of compared.
+func Text(t *testing.T, filename string, got string) {
+	t.Helper()
+
+	path := filepath.Join("testdata", "golden", filename)
+
+	if *update {
+		if err := write(path, []byte(got)); err != nil {
+			t.Fatalf("golden: write %s: %v", path, err)
+		}
+		return
+	}
+
+	want, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("golden: read %s: %v (run go test -update to create it)", path, err)
+	}
+
+	if string(want) == got {
+		return
+	}
+	t.Errorf("golden mismatch for %s:\n%s", path, diff(string(want), got))
+}
+
 // Marshal indent-marshals v in a canonical form: object keys sorted, HTML
 // escaping off, and a trailing newline.
 func Marshal(v any) ([]byte, error) {

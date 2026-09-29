@@ -163,3 +163,24 @@ Each line is `{"timestamp": "...", "type": "...", "payload": {...}}`:
 Columns (probe at runtime; presence varies by version): `id`, `rollout_path`, `created_at` (seconds) / `created_at_ms`, `updated_at` (seconds) / `updated_at_ms` (nullable), `cwd`, `title`, `first_user_message`, `preview`, `model`, `model_provider`, `tokens_used`, `archived`, `archived_at`, `git_branch`, `git_sha`, `git_origin_url`, `cli_version`, `agent_nickname`, `agent_role`, `name`, `is_pinned`, `source`, `originator`, `has_user_event`, `reasoning_effort`. Prefer `_ms` when non-null.
 
 `thread_spawn_edges(parent_thread_id, child_thread_id, status)` gives parent → child links.
+
+---
+
+## Spike results: export, import, restore (verified 2026-09-29, M6-02)
+
+Verified on Ubuntu 26.04 with Claude Code 2.1.284, Codex CLI 0.158.0, and OpenCode 2.0.18:
+
+### 1. Claude Code
+- **CWD path encoding:** Every character not in ASCII `[a-zA-Z0-9]` is replaced 1:1 with `-` (`re.sub(r'[^a-zA-Z0-9]', '-', cwd)`). Multiple adjacent punctuation marks do not collapse (e.g. `a__b` encodes to `a--b`). Casing is preserved (`/home/haith/Workspaces/...` -> `-home-haith-Workspaces-...`). Tested across all printable ASCII punctuation, spaces, and multi-byte UTF-8 (`ü`), matching 100% of all local project directories.
+- **Resume after copy/remap:** Copying `<session-uuid>.jsonl` to `projects/<encoded-new-cwd>/<session-uuid>.jsonl` and rewriting the `cwd` field in the records allows `claude --resume <session-uuid>` to resume cleanly in the new directory.
+- **Copy as new ID:** Rewriting both the `sessionId` field in records and the `.jsonl` filename to a new UUID also resumes cleanly with `claude --resume <new-uuid>`.
+
+### 2. Codex CLI
+- **Resume from standalone rollout:** Copying a rollout JSONL file into `sessions/YYYY/MM/DD/rollout-*.jsonl` in a fresh `$CODEX_HOME` without any pre-existing SQLite databases works. On startup/resume, Codex automatically detects the rollout file, backfills it into `state_5.sqlite` (`threads` table and `backfill_state`), and allows resume.
+- A Codex rollout file was generated and confirmed.
+
+### 3. OpenCode
+- **Export format:** `opencode session export --standalone <id>` produces a standalone JSON object `{info, messages}` containing session metadata and all message turns with tool calls and states.
+- **Import with directory remap:** `opencode session import --standalone --directory <dir> <file>` imports the session into `session_v2` and `session_message`, preserves the session ID (`ses_...`), and remaps the session `directory` to the requested target path.
+- **Child sessions:** Exporting a parent session includes references to child sessions in tool call payloads, but subagent sessions are stored as distinct rows in OpenCode. Capturing descendants requires exporting each child session separately.
+

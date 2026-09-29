@@ -29,10 +29,13 @@ func FromEnv(getenv func(string) string, home string) Roots {
 
 	dataHome := getenv("XDG_DATA_HOME")
 	var openCodeData string
+	var appData string
 	if !filepath.IsAbs(dataHome) {
 		openCodeData = filepath.Join(home, ".local", "share", "opencode")
+		appData = filepath.Join(home, ".local", "share", "agent-sessions")
 	} else {
 		openCodeData = filepath.Join(filepath.Clean(dataHome), "opencode")
+		appData = filepath.Join(filepath.Clean(dataHome), "agent-sessions")
 	}
 
 	cacheHome := getenv("XDG_CACHE_HOME")
@@ -57,5 +60,6 @@ func FromEnv(getenv func(string) string, home string) Roots {
 		OpenCodeData: openCodeData,
 		Cache:        cache,
 		Config:       config,
+		Data:         appData,
 	}
 }

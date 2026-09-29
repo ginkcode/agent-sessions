@@ -13,6 +13,7 @@ type Roots struct {
 	OpenCodeData string
 	Cache        string
 	Config       string
+	Data         string
 }
 
 // Default resolves roots from the process environment and the current user's home.

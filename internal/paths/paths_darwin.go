@@ -33,5 +33,6 @@ func FromEnv(getenv func(string) string, home string) Roots {
 		OpenCodeData: filepath.Join(dataBase, "opencode"),
 		Cache:        filepath.Join(home, "Library", "Caches", "agent-sessions"),
 		Config:       filepath.Join(home, "Library", "Application Support", "agent-sessions"),
+		Data:         filepath.Join(home, "Library", "Application Support", "agent-sessions"),
 	}
 }

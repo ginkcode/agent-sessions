@@ -6,8 +6,9 @@ coding tools (Claude Code, Codex CLI, OpenCode, …).
 - **Platforms:** Linux first, macOS second. Windows: out of scope.
 - **Language:** Go (backend) + web frontend via Wails.
 - **Principle:** local-only, read-only by default. The app never writes to a
-  tool's own session store unless the user explicitly triggers a destructive
-  action (see §7).
+  tool's own session store unless the user explicitly triggers one of two
+  opt-in actions (see §7): a destructive action, or restoring a session from a
+  portable bundle.
 
 ---
 
@@ -24,8 +25,10 @@ coding tools (Claude Code, Codex CLI, OpenCode, …).
    can be added without touching the core.
 
 ### Non-goals (v1)
-- Starting/driving agents from within the app (only "copy/launch resume command").
-- Syncing sessions across machines or any network access.
+- Starting/driving agents from within the app (only "copy/launch resume command",
+  and a handoff prompt the user pastes or launches themselves).
+- Syncing sessions across machines or any network access. Portable bundles
+  (§7) are files the user moves themselves.
 - Editing transcripts.
 
 ---
@@ -239,6 +242,10 @@ Three-pane layout:
 | Open terminal in cwd | M3 | Configurable terminal command (`x-terminal-emulator`, `gnome-terminal`, `kitty`, …; `open -a Terminal` on macOS). |
 | Reveal source file | M1 | `xdg-open` / `open -R`. |
 | Export session | M3 | Markdown, JSON (unified model), HTML. |
+| Export bundle | M6 | Portable `<title>.agent-session.zip` (manifest v1, see [docs/plan/M6.md](docs/plan/M6.md)). **Complete (private)** is the default and includes the verbatim native records, so it can be restored; **share-safe** is redacted and handoff-only. The dialog warns that a complete bundle can contain secrets. |
+| Continue in… | M6 | Cross-agent handoff: a pre-rendered Markdown context (goal, user messages, working state, recent turns) delivered as the first prompt of the target agent. Native transcripts are not converted. |
+| Import bundle | M6 | Opens a bundle the user picked, shows its summary, and offers restore or "continue in". |
+| Restore | M6, opt-in | Writes the native records back into the target agent's store so its own resume command works. Gated by `allow_restore` (off by default), previewed with a short-lived HMAC token, refused while live, and never overwrites an existing session. |
 | Delete / archive | M4, opt-in | Destructive. Requires confirmation. Claude files are moved to the OS trash (not `rm`). Codex uses `codex delete`, and OpenCode deletes v2 copies via `opencode session delete` and v1 rows via one SQL transaction; both are permanent and need the separate `allow_permanent_delete` opt-in. Never run while a session is live or recently updated. |
 
 ---
@@ -272,6 +279,13 @@ Three-pane layout:
   and allow no script execution in the WebView.
 - The cache DB contains transcript text. Store it with `0600` permissions and
   offer "clear cache".
+- **Bundles can hold secrets.** A complete bundle is a verbatim copy of the
+  native records plus the full transcript, so it may contain credentials the
+  user typed or tools printed. It is written `0600`, the export dialog warns
+  about this, and share-safe bundles run the redaction pass (private keys,
+  known token prefixes, JWTs, `KEY=` assignments, home paths rewritten to `~`)
+  and omit the native records entirely. Redaction is best-effort, not a
+  guarantee; counts per rule are shown before saving.
 
 ## 10. Configuration
 
@@ -295,6 +309,9 @@ Three-pane layout:
   assistant blocks, and Codex with and without the `threads` index.
 - A fuzz test for JSONL parsers (truncated or partially written last line,
   which is normal for live sessions).
+- A fuzz test for the bundle reader (zip-slip, oversize, bad checksums, unsafe
+  IDs) and golden tests for the handoff renderer (per source→target pair,
+  budget trimming, injected markup).
 - The CLI `agent-sessions-cli scan --json` is used in CI without a display.
 
 ## 13. Milestones
@@ -307,6 +324,7 @@ Three-pane layout:
 | M3 | Filters/sort polish, export, open-terminal, repo folding, keyboard nav, stats (tokens/cost per dir/agent). |
 | M4 | Opt-in destructive actions (trash/archive). |
 | M5 | macOS build, signing, packaging (Linux: AppImage/.deb; macOS: .dmg). |
+| M6 | Portable session bundles (export, import, opt-in native restore) and cross-agent handoff. |
 
 ## 14. Open questions
 
