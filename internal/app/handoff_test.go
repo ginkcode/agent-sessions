@@ -86,13 +86,15 @@ func TestBuildHandoff(t *testing.T) {
 	if !strings.Contains(preview.Command, "cd /tmp/work") {
 		t.Errorf("expected cwd in command: %s", preview.Command)
 	}
-	if preview.FilePointer {
-		t.Error("short prompt should not switch to file pointer")
+	if !strings.Contains(preview.Command, "Read "+preview.PromptFile+" completely") {
+		t.Errorf("command should point at the prompt file %s: %s", preview.PromptFile, preview.Command)
 	}
 
 	// Verify no file was written to disk by BuildHandoff
-	if _, err := os.Stat(preview.ContextFile); !os.IsNotExist(err) {
-		t.Errorf("BuildHandoff should not write context file to disk: %s", preview.ContextFile)
+	for _, f := range []string{preview.ContextFile, preview.PromptFile} {
+		if _, err := os.Stat(f); !os.IsNotExist(err) {
+			t.Errorf("BuildHandoff should not write %s to disk", f)
+		}
 	}
 }
 
@@ -149,14 +151,33 @@ func TestHandoffCommand(t *testing.T) {
 		t.Errorf("expected opencode --prompt in command: %s", cmd)
 	}
 
-	// Verify context file WAS written with 0600 mode
+	// Verify both files WERE written with 0600 mode
 	ctxFile, _ := handoff.ContextFilePath(svc.DataDir(), "sess-root")
-	fi, err := os.Stat(ctxFile)
-	if err != nil {
-		t.Fatalf("context file was not written: %v", err)
+	promptFile, _ := handoff.PromptFilePath(svc.DataDir(), "sess-root")
+	for _, f := range []string{ctxFile, promptFile} {
+		fi, err := os.Stat(f)
+		if err != nil {
+			t.Fatalf("handoff file was not written: %v", err)
+		}
+		if fi.Mode().Perm() != 0o600 {
+			t.Errorf("expected 0600 file mode for %s, got %o", f, fi.Mode().Perm())
+		}
 	}
-	if fi.Mode().Perm() != 0o600 {
-		t.Errorf("expected 0600 file mode, got %o", fi.Mode().Perm())
+	if !strings.Contains(cmd, "Read "+promptFile+" completely") {
+		t.Errorf("command should point at the prompt file: %s", cmd)
+	}
+	prompt, _ := os.ReadFile(promptFile)
+	if !strings.Contains(string(prompt), ctxFile) {
+		t.Error("prompt file should reference the full context file")
+	}
+
+	info := svc.HandoffCache()
+	if info.Files != 2 || info.Bytes == 0 {
+		t.Errorf("cache info = %+v", info)
+	}
+	info, err = svc.ClearHandoffCache()
+	if err != nil || info.Files != 0 {
+		t.Errorf("clear = %+v, %v", info, err)
 	}
 }
 

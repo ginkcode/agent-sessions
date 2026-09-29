@@ -68,20 +68,45 @@ export function nextSelectionAfterDelete(
   return remaining[targetIndex]?.ref ?? remaining[0].ref;
 }
 
+const HOUR_MS = 60 * 60 * 1000;
+const DAY_MS = 24 * HOUR_MS;
+
+export type AgeFilter = 'any' | 'within-1h' | 'within-1d' | 'within-7d' | 'within-30d' | 'older-30d';
+
 /**
- * Filter sessions by their updated timestamp age in days.
- * An ageDays of 0 means "all / no filter".
+ * Age filter choices for the session list, in milliseconds. "within" keeps
+ * sessions updated in that window; "older" keeps those updated before it.
+ */
+export const AGE_FILTERS: readonly { id: AgeFilter; label: string; within?: number; older?: number }[] = [
+  { id: 'any', label: 'Any age' },
+  { id: 'within-1h', label: 'In 1 hour', within: HOUR_MS },
+  { id: 'within-1d', label: 'In 1 day', within: DAY_MS },
+  { id: 'within-7d', label: 'In 7 days', within: 7 * DAY_MS },
+  { id: 'within-30d', label: 'In 30 days', within: 30 * DAY_MS },
+  { id: 'older-30d', label: 'Older than 30 days', older: 30 * DAY_MS },
+];
+
+export function isAgeFilter(value: string): value is AgeFilter {
+  return AGE_FILTERS.some((f) => f.id === value);
+}
+
+/**
+ * Filter sessions by the age of their updated timestamp. "any" (or an
+ * unknown id) returns every session.
  */
 export function filterSessionsByAge(
   sessions: SessionMeta[],
-  ageDays: number,
+  filter: AgeFilter,
   now: Date = new Date()
 ): SessionMeta[] {
-  if (!ageDays || ageDays <= 0) return sessions;
-  const cutoffMs = now.getTime() - ageDays * 24 * 60 * 60 * 1000;
+  const rule = AGE_FILTERS.find((f) => f.id === filter);
+  if (!rule || (rule.within === undefined && rule.older === undefined)) return sessions;
+  const nowMs = now.getTime();
   return sessions.filter((s) => {
     const sessionTime = new Date(s.updatedAt || s.createdAt).getTime();
-    return !Number.isNaN(sessionTime) && sessionTime <= cutoffMs;
+    if (Number.isNaN(sessionTime)) return false;
+    const age = nowMs - sessionTime;
+    return rule.within !== undefined ? age <= rule.within : age > rule.older!;
   });
 }
 

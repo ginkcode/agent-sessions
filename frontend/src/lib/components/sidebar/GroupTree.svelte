@@ -12,7 +12,7 @@
     await appState.selectGroup(node.key);
     // A later click superseded this one while sessions were loading.
     if (appState.selectedGroupKey !== node.key) return;
-    const visible = filterSessionsByAge(appState.sessions, manage.ageFilterDays);
+    const visible = filterSessionsByAge(appState.sessions, manage.ageFilter);
     const ref = sessionToSelect(node, visible);
     if (ref) await appState.selectSession(ref);
   }

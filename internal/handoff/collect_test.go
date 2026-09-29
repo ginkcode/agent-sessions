@@ -167,22 +167,52 @@ func TestPruneContextFiles(t *testing.T) {
 	}
 }
 
-func TestLaunchPromptSwitch(t *testing.T) {
+func TestLaunchPromptPointsAtFile(t *testing.T) {
 	short := "Brief prompt"
-	text, pointer := handoff.LaunchPrompt(short, "/path/to/file.md")
-	if pointer || text != short {
-		t.Errorf("short prompt should not switch to pointer: %s, %v", text, pointer)
+	if got := handoff.LaunchPrompt(short, "/path/to/p-handoff.md"); got != "Read /path/to/p-handoff.md completely, then continue the task it describes." {
+		t.Errorf("prompt with a file should point at it: %s", got)
 	}
 
-	long := string(make([]byte, handoff.MaxPromptArgBytes+1))
-	text, pointer = handoff.LaunchPrompt(long, "/path/to/file.md")
-	if !pointer || text != "Read /path/to/file.md completely, then continue with the engineering task." {
-		t.Errorf("long prompt with file should switch to pointer: %s, %v", text, pointer)
+	// Without a prompt file the prompt itself is passed.
+	if got := handoff.LaunchPrompt(short, ""); got != short {
+		t.Errorf("prompt without a file should be inline: %s", got)
+	}
+}
+
+func TestClearFiles(t *testing.T) {
+	temp := t.TempDir()
+	if _, err := handoff.SaveContextFile(temp, "s1", "full"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := handoff.SavePromptFile(temp, "s1", "prompt"); err != nil {
+		t.Fatal(err)
+	}
+	dir := handoff.HandoffDir(temp)
+	stale := filepath.Join(dir, ".handoff-123.tmp")
+	if err := os.WriteFile(stale, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	unrelated := filepath.Join(dir, "notes.md")
+	if err := os.WriteFile(unrelated, []byte("keep"), 0o600); err != nil {
+		t.Fatal(err)
 	}
 
-	// Long prompt without file cannot switch
-	text, pointer = handoff.LaunchPrompt(long, "")
-	if pointer || text != long {
-		t.Errorf("long prompt without file should not switch: %v", pointer)
+	if n, size := handoff.FilesUsage(temp); n != 3 || size != int64(len("full")+len("prompt")+1) {
+		t.Errorf("usage = %d files, %d bytes", n, size)
+	}
+	removed, _, err := handoff.ClearFiles(temp)
+	if err != nil || removed != 3 {
+		t.Fatalf("ClearFiles = %d, %v", removed, err)
+	}
+	if n, _ := handoff.FilesUsage(temp); n != 0 {
+		t.Errorf("files left after clear: %d", n)
+	}
+	if _, err := os.Stat(unrelated); err != nil {
+		t.Errorf("unrelated file was removed: %v", err)
+	}
+
+	// A missing directory is an empty cache, not an error.
+	if removed, _, err := handoff.ClearFiles(filepath.Join(temp, "none")); err != nil || removed != 0 {
+		t.Errorf("clear of missing dir = %d, %v", removed, err)
 	}
 }

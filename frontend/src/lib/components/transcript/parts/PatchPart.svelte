@@ -76,23 +76,23 @@
   }
 
   .patch-icon {
-    font-size: 0.85rem;
+    font-size: 13.6px;
   }
 
   .patch-title {
-    font-size: 0.78rem;
+    font-size: 12.48px;
     font-weight: 600;
     color: var(--text-primary);
   }
 
   .patch-count {
-    font-size: 0.7rem;
+    font-size: 11.2px;
     color: var(--text-muted);
   }
 
   .toggle-diff-btn {
     padding: 2px 8px;
-    font-size: 0.7rem;
+    font-size: 11.2px;
     border-radius: 4px;
     background: var(--bg-secondary);
     border: 1px solid var(--border-color);
@@ -118,13 +118,13 @@
     display: flex;
     align-items: center;
     gap: 6px;
-    font-size: 0.75rem;
+    font-size: 12px;
     font-family: var(--font-mono);
     color: var(--text-secondary);
   }
 
   .file-icon {
-    font-size: 0.75rem;
+    font-size: 12px;
     opacity: 0.7;
   }
 
@@ -139,7 +139,7 @@
   .diff-code {
     margin: 0;
     font-family: var(--font-mono);
-    font-size: 0.72rem;
+    font-size: 11.52px;
     line-height: 1.4;
     white-space: pre-wrap;
     word-break: break-all;

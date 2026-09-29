@@ -17,6 +17,11 @@ import type {
   CatalogChanged,
   HandoffRequest,
   HandoffPreview,
+  HandoffCacheInfo,
+  ExportRequest,
+  ExportPreview,
+  BundleSummary,
+  BundleHandoffRequest,
 } from './types';
 import { MockBackendAPI } from './mock/mockApi';
 
@@ -42,6 +47,15 @@ export interface BackendAPI {
   buildHandoff(req: HandoffRequest): Promise<HandoffPreview>;
   handoffCommand(req: HandoffRequest): Promise<string>;
   saveHandoff(req: HandoffRequest): Promise<string>;
+  previewExport(req: ExportRequest): Promise<ExportPreview>;
+  exportBundle(req: ExportRequest): Promise<string>;
+  openBundle(): Promise<BundleSummary | null>;
+  openBundlePath(path: string): Promise<BundleSummary>;
+  buildBundleHandoff(req: BundleHandoffRequest): Promise<HandoffPreview>;
+  bundleHandoffCommand(req: BundleHandoffRequest): Promise<string>;
+  saveBundleHandoff(req: BundleHandoffRequest): Promise<string>;
+  handoffCache(): Promise<HandoffCacheInfo>;
+  clearHandoffCache(): Promise<HandoffCacheInfo>;
   scan(): Promise<void>;
 }
 
@@ -66,6 +80,15 @@ interface WailsAppBinding {
   BuildHandoff(req: HandoffRequest): Promise<HandoffPreview>;
   HandoffCommand(req: HandoffRequest): Promise<string>;
   SaveHandoff(req: HandoffRequest): Promise<string>;
+  PreviewExport(req: ExportRequest): Promise<ExportPreview>;
+  ExportBundle(req: ExportRequest): Promise<string>;
+  OpenBundle(): Promise<BundleSummary>;
+  OpenBundlePath(path: string): Promise<BundleSummary>;
+  BuildBundleHandoff(req: BundleHandoffRequest): Promise<HandoffPreview>;
+  BundleHandoffCommand(req: BundleHandoffRequest): Promise<string>;
+  SaveBundleHandoff(req: BundleHandoffRequest): Promise<string>;
+  HandoffCache(): Promise<HandoffCacheInfo>;
+  ClearHandoffCache(): Promise<HandoffCacheInfo>;
   Scan(): Promise<void>;
   Ping(name: string): Promise<string>;
 }
@@ -244,6 +267,80 @@ class WailsBackendAPI implements BackendAPI {
   async saveHandoff(req: HandoffRequest): Promise<string> {
     try {
       return await this.binding.SaveHandoff(req);
+    } catch (e) {
+      throw normalizeError(e);
+    }
+  }
+
+  async previewExport(req: ExportRequest): Promise<ExportPreview> {
+    try {
+      return await this.binding.PreviewExport(req);
+    } catch (e) {
+      throw normalizeError(e);
+    }
+  }
+
+  async exportBundle(req: ExportRequest): Promise<string> {
+    try {
+      return await this.binding.ExportBundle(req);
+    } catch (e) {
+      throw normalizeError(e);
+    }
+  }
+
+  async openBundle(): Promise<BundleSummary | null> {
+    try {
+      const summary = await this.binding.OpenBundle();
+      if (!summary || !summary.bundleId) return null;
+      return summary;
+    } catch (e) {
+      throw normalizeError(e);
+    }
+  }
+
+  async openBundlePath(path: string): Promise<BundleSummary> {
+    try {
+      return await this.binding.OpenBundlePath(path);
+    } catch (e) {
+      throw normalizeError(e);
+    }
+  }
+
+  async buildBundleHandoff(req: BundleHandoffRequest): Promise<HandoffPreview> {
+    try {
+      return await this.binding.BuildBundleHandoff(req);
+    } catch (e) {
+      throw normalizeError(e);
+    }
+  }
+
+  async bundleHandoffCommand(req: BundleHandoffRequest): Promise<string> {
+    try {
+      return await this.binding.BundleHandoffCommand(req);
+    } catch (e) {
+      throw normalizeError(e);
+    }
+  }
+
+  async saveBundleHandoff(req: BundleHandoffRequest): Promise<string> {
+    try {
+      return await this.binding.SaveBundleHandoff(req);
+    } catch (e) {
+      throw normalizeError(e);
+    }
+  }
+
+  async handoffCache(): Promise<HandoffCacheInfo> {
+    try {
+      return await this.binding.HandoffCache();
+    } catch (e) {
+      throw normalizeError(e);
+    }
+  }
+
+  async clearHandoffCache(): Promise<HandoffCacheInfo> {
+    try {
+      return await this.binding.ClearHandoffCache();
     } catch (e) {
       throw normalizeError(e);
     }

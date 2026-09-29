@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -241,6 +242,10 @@ func TestExitCodes(t *testing.T) {
 }
 
 func TestHandoffCLI(t *testing.T) {
+	// The handoff files go to the data dir; keep them out of the real one.
+	dataHome := t.TempDir()
+	t.Setenv("XDG_DATA_HOME", dataHome)
+
 	fake := providertest.NewFake(model.AgentClaude, "Claude Code")
 	now := time.Now()
 	rootMeta := model.SessionMeta{
@@ -295,7 +300,7 @@ func TestHandoffCLI(t *testing.T) {
 	var res struct {
 		Prompt      string `json:"prompt"`
 		Command     string `json:"command"`
-		FilePointer bool   `json:"filePointer"`
+		PromptFile  string `json:"promptFile"`
 		PromptBytes int    `json:"promptBytes"`
 	}
 	if err := json.Unmarshal([]byte(out), &res); err != nil {
@@ -303,5 +308,11 @@ func TestHandoffCLI(t *testing.T) {
 	}
 	if res.Prompt == "" || res.Command == "" || res.PromptBytes == 0 {
 		t.Errorf("unexpected empty fields in json: %+v", res)
+	}
+	if !strings.HasPrefix(res.PromptFile, dataHome) || !strings.Contains(res.Command, "Read "+res.PromptFile) {
+		t.Errorf("command should point at a prompt file in the data dir: %+v", res)
+	}
+	if saved, err := os.ReadFile(res.PromptFile); err != nil || string(saved) != res.Prompt {
+		t.Errorf("prompt file does not hold the prompt: %v", err)
 	}
 }

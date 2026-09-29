@@ -58,7 +58,7 @@
     {#if manage.settings.enabled}
       <input
         type="checkbox"
-        class="bulk-checkbox"
+        class="bulk-check"
         checked={bulkSelected}
         onclick={handleBulkToggle}
         onkeydown={handleBulkKeydown}
@@ -117,13 +117,14 @@
 
 <style>
   .session-row {
-    height: 58px;
+    /* Height plus margin must match the itemHeight passed to VirtualList. */
+    height: 80px;
     margin-bottom: 4px;
     box-sizing: border-box;
     display: flex;
     flex-direction: column;
     justify-content: space-between;
-    padding: 6px 12px;
+    padding: 8px 12px;
     border-radius: var(--radius-sm);
     background-color: var(--bg-primary);
     cursor: pointer;
@@ -144,15 +145,6 @@
 
   .session-row.bulk-selected:not(.selected) {
     background-color: rgba(239, 68, 68, 0.06);
-  }
-
-  .bulk-checkbox {
-    width: 13px;
-    height: 13px;
-    margin: 0;
-    accent-color: var(--danger);
-    cursor: pointer;
-    flex-shrink: 0;
   }
 
   .session-row.archived {

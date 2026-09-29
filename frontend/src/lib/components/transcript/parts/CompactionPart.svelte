@@ -58,7 +58,7 @@
     background-color: var(--bg-tertiary);
     border: 1px solid var(--border-color);
     color: var(--text-muted);
-    font-size: 0.72rem;
+    font-size: 11.52px;
     font-weight: 500;
     cursor: pointer;
     transition: all 0.15s ease;
@@ -70,11 +70,11 @@
   }
 
   .pill-icon {
-    font-size: 0.75rem;
+    font-size: 12px;
   }
 
   .pill-chevron {
-    font-size: 0.65rem;
+    font-size: 10.4px;
     opacity: 0.7;
   }
 
@@ -84,7 +84,7 @@
     border-radius: 6px;
     background: var(--bg-secondary);
     border: 1px solid var(--border-color);
-    font-size: 0.78rem;
+    font-size: 12.48px;
     color: var(--text-secondary);
     line-height: 1.45;
   }
@@ -92,7 +92,7 @@
   .summary-header {
     font-weight: 600;
     text-transform: uppercase;
-    font-size: 0.68rem;
+    font-size: 10.88px;
     color: var(--text-muted);
     margin-bottom: 4px;
   }

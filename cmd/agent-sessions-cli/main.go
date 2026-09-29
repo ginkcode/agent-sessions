@@ -531,10 +531,16 @@ func handoffCmd(ctx context.Context, args []string, providers provider.Set, stdo
 	doc, report := handoff.Build(transcripts, opts)
 	doc.Report = report
 
-	// Save context file if data directory is known
+	// With a known data directory the handoff goes through files and the
+	// command points at the prompt file; otherwise the prompt is inline.
+	var promptFile string
 	if roots.Data != "" {
 		if _, err := handoff.SaveContextFile(roots.Data, ref.ID, doc.FullMarkdown); err != nil {
 			_, _ = fmt.Fprintf(stderr, "handoff: save context file: %v\n", err)
+			return 1
+		}
+		if promptFile, err = handoff.SavePromptFile(roots.Data, ref.ID, doc.PromptMarkdown); err != nil {
+			_, _ = fmt.Fprintf(stderr, "handoff: save prompt file: %v\n", err)
 			return 1
 		}
 	}
@@ -544,8 +550,7 @@ func handoffCmd(ctx context.Context, args []string, providers provider.Set, stdo
 		launchCWD = tr.Meta.CWD
 	}
 
-	cmd := handoff.BuildLaunchCommand(target, doc.PromptMarkdown, contextFile, launchCWD)
-	_, filePointer := handoff.LaunchPrompt(doc.PromptMarkdown, contextFile)
+	cmd := handoff.BuildLaunchCommand(target, doc.PromptMarkdown, promptFile, launchCWD)
 
 	if *asJSON {
 		result := struct {
@@ -553,14 +558,14 @@ func handoffCmd(ctx context.Context, args []string, providers provider.Set, stdo
 			Command     string         `json:"command"`
 			Report      handoff.Report `json:"report"`
 			ContextFile string         `json:"contextFile,omitempty"`
-			FilePointer bool           `json:"filePointer"`
+			PromptFile  string         `json:"promptFile,omitempty"`
 			PromptBytes int            `json:"promptBytes"`
 		}{
 			Prompt:      doc.PromptMarkdown,
 			Command:     cmd,
 			Report:      report,
 			ContextFile: contextFile,
-			FilePointer: filePointer,
+			PromptFile:  promptFile,
 			PromptBytes: len(doc.PromptMarkdown),
 		}
 		return writeJSON(stdout, stderr, result)

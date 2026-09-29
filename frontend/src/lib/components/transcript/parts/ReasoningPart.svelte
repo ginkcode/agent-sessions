@@ -41,7 +41,7 @@
     gap: 6px;
     padding: 6px 10px;
     cursor: pointer;
-    font-size: 0.75rem;
+    font-size: 12px;
     font-weight: 500;
     color: var(--text-secondary);
     user-select: none;
@@ -53,13 +53,13 @@
   }
 
   .reasoning-icon {
-    font-size: 0.85rem;
+    font-size: 13.6px;
   }
 
   .reasoning-body {
     padding: 10px 14px;
     border-top: 1px solid var(--border-color);
-    font-size: 0.825rem;
+    font-size: 13.2px;
     color: var(--text-secondary);
     line-height: 1.5;
     background-color: var(--bg-primary);

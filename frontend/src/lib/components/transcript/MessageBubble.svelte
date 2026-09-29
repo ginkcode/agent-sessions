@@ -133,7 +133,7 @@
     justify-content: space-between;
     padding: 6px 12px;
     background-color: var(--bg-secondary);
-    font-size: 0.72rem;
+    font-size: 11.52px;
   }
 
   .meta-left {
@@ -143,7 +143,7 @@
   }
 
   .role-icon {
-    font-size: 0.8rem;
+    font-size: 12.8px;
   }
 
   .role-label {
@@ -154,14 +154,14 @@
   .model-tag {
     font-family: var(--font-mono);
     color: var(--text-muted);
-    font-size: 0.68rem;
+    font-size: 10.88px;
     padding: 1px 4px;
     border-radius: 3px;
     background: var(--bg-tertiary);
   }
 
   .sidechain-tag {
-    font-size: 0.65rem;
+    font-size: 10.4px;
     color: #a855f7;
     font-style: italic;
   }
@@ -182,7 +182,7 @@
     padding: 4px 8px;
     border-radius: 4px;
     background: var(--bg-tertiary);
-    font-size: 0.75rem;
+    font-size: 12px;
     font-family: var(--font-mono);
     margin: 4px 0;
   }

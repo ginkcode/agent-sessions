@@ -10,11 +10,14 @@
   import ManageSettingsDialog from './lib/components/common/ManageSettingsDialog.svelte';
   import GlobalSearchDialog from './lib/components/common/GlobalSearchDialog.svelte';
   import HandoffDialog from './lib/components/common/HandoffDialog.svelte';
+  import ExportDialog from './lib/components/common/ExportDialog.svelte';
+  import ImportDialog from './lib/components/common/ImportDialog.svelte';
   import { theme } from './lib/stores/theme.svelte';
   import { preferences } from './lib/stores/preferences.svelte';
   import { appState } from './lib/stores/appState.svelte';
   import { manage } from './lib/stores/manage.svelte';
   import { search } from './lib/stores/search.svelte';
+  import { importer } from './lib/stores/importer.svelte';
   import { hasOpenModal, isEditableTarget } from './lib/search';
 
   let isWails = $state(false);
@@ -147,30 +150,56 @@
           {isWails ? 'Desktop' : 'Mock (Browser)'}
         </span>
       </div>
-      <button
-        type="button"
-        class="icon-button refresh-button"
-        class:refreshing={appState.refreshing}
-        title={appState.refreshing ? 'Refreshing…' : 'Refresh sessions'}
-        aria-label={appState.refreshing ? 'Refreshing…' : 'Refresh sessions'}
-        disabled={appState.refreshing}
-        onclick={() => void appState.refresh()}
-      >
-        <svg
-          width="16"
-          height="16"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-          aria-hidden="true"
+      <div class="footer-actions">
+        <button
+          type="button"
+          class="icon-button import-button"
+          title="Import session bundle"
+          aria-label="Import session bundle"
+          disabled={importer.opening}
+          onclick={() => void importer.open()}
         >
-          <path d="M23 4v6h-6M1 20v-6h6" />
-          <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
-        </svg>
-      </button>
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+            <polyline points="7 10 12 15 17 10" />
+            <line x1="12" y1="15" x2="12" y2="3" />
+          </svg>
+        </button>
+        <button
+          type="button"
+          class="icon-button refresh-button"
+          class:refreshing={appState.refreshing}
+          title={appState.refreshing ? 'Refreshing…' : 'Refresh sessions'}
+          aria-label={appState.refreshing ? 'Refreshing…' : 'Refresh sessions'}
+          disabled={appState.refreshing}
+          onclick={() => void appState.refresh()}
+        >
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M23 4v6h-6M1 20v-6h6" />
+            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+          </svg>
+        </button>
+      </div>
     </footer>
   </aside>
 
@@ -205,6 +234,8 @@
   <ManageSettingsDialog />
   <GlobalSearchDialog />
   <HandoffDialog />
+  <ExportDialog />
+  <ImportDialog />
 </div>
 
 <style>
@@ -307,8 +338,16 @@
     font-size: 0.72rem;
   }
 
-  .refresh-button:disabled {
+  .footer-actions {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+  }
+
+  .refresh-button:disabled,
+  .import-button:disabled {
     cursor: default;
+    opacity: 0.5;
   }
 
   .refresh-button.refreshing svg {

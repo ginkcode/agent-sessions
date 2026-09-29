@@ -5,6 +5,7 @@ package main
 import (
 	"io/fs"
 	"log"
+	"runtime"
 
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
@@ -28,12 +29,23 @@ func run() {
 		log.Fatal(err)
 	}
 
+	// On Linux, Wails turns a zero max size into a GTK hint equal to the
+	// monitor size seen at startup and never refreshes it. After a scale or
+	// monitor change that stale hint stops maximize short of the screen, so
+	// pass a limit no display reaches.
+	maxSize := 0
+	if runtime.GOOS == "linux" {
+		maxSize = 16384
+	}
+
 	err = wails.Run(&options.App{
 		Title:       "Agent Sessions",
 		Width:       1280,
 		Height:      820,
 		MinWidth:    960,
 		MinHeight:   600,
+		MaxWidth:    maxSize,
+		MaxHeight:   maxSize,
 		AssetServer: &assetserver.Options{Assets: assets},
 		OnStartup:   application.OnStartup,
 		OnShutdown:  application.OnShutdown,

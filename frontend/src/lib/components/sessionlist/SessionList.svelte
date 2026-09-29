@@ -8,16 +8,10 @@
   import EmptyState from '../common/EmptyState.svelte';
   import ErrorState from '../common/ErrorState.svelte';
   import { manage } from '../../stores/manage.svelte';
-  import { filterSessionsByAge } from '../../manage';
+  import { AGE_FILTERS, filterSessionsByAge, isAgeFilter } from '../../manage';
   import Dropdown from '../common/Dropdown.svelte';
 
-  const AGE_OPTIONS = [
-    { value: '0', label: 'Any age' },
-    { value: '30', label: 'Older than 30d' },
-    { value: '90', label: 'Older than 90d' },
-    { value: '180', label: 'Older than 180d' },
-    { value: '365', label: 'Older than 1y' },
-  ];
+  const AGE_OPTIONS = AGE_FILTERS.map((f) => ({ value: f.id, label: f.label }));
 
   const SORT_OPTIONS = [
     { value: 'updated', label: 'Updated' },
@@ -33,7 +27,7 @@
   let searchTimer: ReturnType<typeof setTimeout> | undefined;
 
   let visibleSessions = $derived(
-    filterSessionsByAge(appState.sessions, manage.ageFilterDays)
+    filterSessionsByAge(appState.sessions, manage.ageFilter)
   );
 
   let selectedVisibleCount = $derived(
@@ -76,12 +70,11 @@
   function handleClearFilters() {
     clearTimeout(searchTimer);
     appState.setFilter({ query: '', liveOnly: false, archived: false });
-    manage.setAgeFilter(0);
+    manage.setAgeFilter('any');
   }
 
   function handleAgeChange(value: string) {
-    const days = Number(value);
-    manage.setAgeFilter(Number.isFinite(days) ? days : 0);
+    manage.setAgeFilter(isAgeFilter(value) ? value : 'any');
     manage.clearSelection();
   }
 
@@ -165,7 +158,7 @@
       {#if manage.settings.enabled}
         <Dropdown
           options={AGE_OPTIONS}
-          value={String(manage.ageFilterDays)}
+          value={manage.ageFilter}
           onChange={handleAgeChange}
           ariaLabel="Filter sessions by age"
         />
@@ -201,6 +194,7 @@
       <label class="select-all-label">
         <input
           type="checkbox"
+          class="bulk-check"
           checked={visibleSessions.length > 0 &&
             selectedVisibleCount === visibleSessions.length}
           onclick={toggleSelectAll}
@@ -239,7 +233,7 @@
         onAction={handleClearFilters}
       />
     {:else}
-      <VirtualList items={visibleSessions} itemHeight={62} overscan={5}>
+      <VirtualList items={visibleSessions} itemHeight={84} overscan={5}>
         {#snippet children(session: SessionMeta)}
           <SessionRow
             {session}
@@ -382,14 +376,9 @@
   .select-all-label {
     display: inline-flex;
     align-items: center;
-    gap: 4px;
+    gap: 6px;
     font-size: 0.7rem;
     cursor: pointer;
-  }
-
-  .select-all-label input {
-    margin: 0;
-    accent-color: var(--danger);
   }
 
   .bulk-delete-btn {

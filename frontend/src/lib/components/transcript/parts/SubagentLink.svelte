@@ -41,7 +41,7 @@
     background-color: rgba(168, 85, 247, 0.12);
     border: 1px solid rgba(168, 85, 247, 0.3);
     color: #a855f7;
-    font-size: 0.75rem;
+    font-size: 12px;
     font-weight: 500;
     cursor: pointer;
     transition: all 0.15s ease;

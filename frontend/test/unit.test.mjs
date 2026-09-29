@@ -227,8 +227,13 @@ test('manage helpers filter age, select next neighbour and summarize preview', (
     { ref: b, updatedAt: '2026-09-20T00:00:00Z' },
     { ref: c, updatedAt: '2026-09-27T00:00:00Z' },
   ];
-  assert.deepEqual(filterSessionsByAge(sessions, 7, new Date('2026-09-28T00:00:00Z')).map(s => s.ref), [a, b]);
-  assert.equal(filterSessionsByAge(sessions, 0).length, 3);
+  const now = new Date('2026-10-01T00:00:00Z');
+  assert.deepEqual(filterSessionsByAge(sessions, 'within-7d', now).map(s => s.ref), [c]);
+  assert.deepEqual(filterSessionsByAge(sessions, 'within-30d', now).map(s => s.ref), [a, b, c]);
+  assert.deepEqual(filterSessionsByAge(sessions, 'older-30d', new Date('2026-10-05T00:00:00Z')).map(s => s.ref), [a]);
+  assert.deepEqual(filterSessionsByAge(sessions, 'within-1d', new Date('2026-09-27T12:00:00Z')).map(s => s.ref), [c]);
+  assert.deepEqual(filterSessionsByAge(sessions, 'within-1h', new Date('2026-09-27T00:30:00Z')).map(s => s.ref), [c]);
+  assert.equal(filterSessionsByAge(sessions, 'any').length, 3);
   assert.deepEqual(nextSelectionAfterDelete(sessions, [b], b), c);
   assert.deepEqual(nextSelectionAfterDelete(sessions, [c], c), b);
   assert.deepEqual(nextSelectionAfterDelete(sessions, [a], b), b);
@@ -633,14 +638,18 @@ test('MockBackendAPI buildHandoff, handoffCommand, and saveHandoff produce deliv
   const preview = await mock.buildHandoff(req);
   assert.ok(preview.promptMarkdown.includes('Handoff to codex'));
   assert.ok(preview.fullMarkdown.includes('Timeline'));
-  assert.match(preview.command, /codex 'Handoff prompt'/);
+  assert.ok(preview.command.endsWith(`&& codex 'Read ${preview.promptFile} completely, then continue the task it describes.'`));
   assert.equal(preview.report.estimatedTokens, 1250);
 
   const cmd = await mock.handoffCommand(req);
-  assert.match(cmd, /codex 'Handoff prompt'/);
+  assert.match(cmd, /codex 'Read \/tmp\/handoffs\/session-claude-1-handoff\.md completely/);
 
   const path = await mock.saveHandoff(req);
   assert.match(path, /session-claude-1-handoff\.md$/);
+
+  // The written handoff files show up in the cache and can be cleared.
+  assert.equal((await mock.handoffCache()).files, 2);
+  assert.equal((await mock.clearHandoffCache()).files, 0);
 });
 
 test('portable helpers define budget presets and target agent options', () => {
@@ -654,3 +663,93 @@ test('portable helpers define budget presets and target agent options', () => {
   const allTargets = targetAgentsFor();
   assert.equal(allTargets.length, 3);
 });
+
+test('MockBackendAPI previewExport and exportBundle support complete and share-safe profiles', async () => {
+  const mock = new MockBackendAPI();
+  const ref = { agent: 'claude-code', id: 'session-claude-1' };
+
+  // Complete profile (default): warning present, native files included
+  const completePreview = await mock.previewExport({
+    ref,
+    profile: 'complete',
+    budget: 80000,
+    includeReasoning: false,
+    redactSecrets: false,
+  });
+  assert.equal(completePreview.profile, 'complete');
+  assert.ok(completePreview.nativeFiles > 0);
+  assert.ok(completePreview.nativeBytes > 0);
+  assert.ok(completePreview.warning && completePreview.warning.length > 0);
+  assert.equal(completePreview.redaction?.token ?? 0, 0);
+
+  // Complete profile with redaction enabled
+  const completeRedacted = await mock.previewExport({
+    ref,
+    profile: 'complete',
+    budget: 80000,
+    includeReasoning: false,
+    redactSecrets: true,
+  });
+  assert.ok(completeRedacted.redaction);
+  assert.ok((completeRedacted.redaction.token ?? 0) > 0);
+
+  // Share-safe profile: forces redaction, drops native files and warning
+  const shareSafePreview = await mock.previewExport({
+    ref,
+    profile: 'share-safe',
+    budget: 80000,
+    includeReasoning: false,
+    redactSecrets: false,
+  });
+  assert.equal(shareSafePreview.profile, 'share-safe');
+  assert.equal(shareSafePreview.nativeFiles, 0);
+  assert.equal(shareSafePreview.nativeBytes, 0);
+  assert.equal(shareSafePreview.warning, undefined);
+  assert.ok(shareSafePreview.redaction);
+  assert.ok((shareSafePreview.redaction.token ?? 0) > 0);
+
+  // exportBundle returns zip path
+  const exportPath = await mock.exportBundle({
+    ref,
+    profile: 'complete',
+    budget: 80000,
+    includeReasoning: false,
+    redactSecrets: false,
+  });
+  assert.match(exportPath, /session-claude-1\.agent-session\.zip$/);
+});
+
+test('MockBackendAPI openBundle, buildBundleHandoff, and saveBundleHandoff', async () => {
+  const mock = new MockBackendAPI();
+  const summary = await mock.openBundle();
+  assert.ok(summary);
+  assert.equal(summary.bundleId, 'mock-bundle-1234');
+  assert.equal(summary.profile, 'complete');
+  assert.equal(summary.verified, true);
+  assert.equal(summary.restoreAvailable, true);
+  assert.equal(summary.handoffAvailable, true);
+  assert.equal(summary.sessionsCount, 1);
+  assert.equal(summary.sessions[0].title, 'Imported Mock Session');
+
+  const preview = await mock.buildBundleHandoff({
+    bundleId: summary.bundleId,
+    target: 'codex',
+    budget: 80000,
+  });
+  assert.ok(preview.promptMarkdown.includes('Handoff to codex'));
+  assert.ok(preview.promptMarkdown.includes('Imported Mock Session'));
+  assert.match(preview.command, /codex 'Read \/tmp\/handoffs\/bundle-mock-bundle-1234-handoff\.md completely/);
+
+  const cmd = await mock.bundleHandoffCommand({
+    bundleId: summary.bundleId,
+    target: 'opencode',
+  });
+  assert.match(cmd, /opencode --prompt 'Read /);
+
+  const savePath = await mock.saveBundleHandoff({
+    bundleId: summary.bundleId,
+    target: 'claude-code',
+  });
+  assert.match(savePath, /bundle-mock-bundle-1234-handoff\.md$/);
+});
+

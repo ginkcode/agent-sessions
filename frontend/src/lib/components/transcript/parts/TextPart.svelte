@@ -19,7 +19,7 @@
 
 <style>
   .text-part-container {
-    font-size: 0.875rem;
+    font-size: 14px;
     line-height: 1.6;
     color: var(--text-primary);
     word-break: break-word;
@@ -42,9 +42,9 @@
     color: var(--text-primary);
   }
 
-  :global(.text-part-container h1) { font-size: 1.25rem; }
-  :global(.text-part-container h2) { font-size: 1.1rem; }
-  :global(.text-part-container h3) { font-size: 0.95rem; }
+  :global(.text-part-container h1) { font-size: 20px; }
+  :global(.text-part-container h2) { font-size: 17.6px; }
+  :global(.text-part-container h3) { font-size: 15.2px; }
 
   :global(.text-part-container ul, .text-part-container ol) {
     margin: 0.5em 0;
@@ -93,7 +93,7 @@
   :global(.text-part-container table) {
     width: 100%;
     border-collapse: collapse;
-    font-size: 0.8rem;
+    font-size: 12.8px;
   }
 
   :global(.text-part-container th, .text-part-container td) {
@@ -125,7 +125,7 @@
   }
 
   :global(.text-part-container .code-lang-tag) {
-    font-size: 0.68rem;
+    font-size: 10.88px;
     font-family: var(--font-mono);
     font-weight: 600;
     color: var(--text-muted);
@@ -133,7 +133,7 @@
   }
 
   :global(.text-part-container .copy-code-btn) {
-    font-size: 0.68rem;
+    font-size: 10.88px;
     padding: 2px 6px;
     border-radius: 3px;
     background-color: var(--bg-secondary);
@@ -162,7 +162,7 @@
 
   :global(.text-part-container code.hljs) {
     font-family: var(--font-mono);
-    font-size: 0.8rem;
+    font-size: 12.8px;
     line-height: 1.45;
   }
 </style>

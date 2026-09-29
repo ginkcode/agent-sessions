@@ -471,7 +471,8 @@
   }
 
   .btn {
-    padding: 5px 14px;
+    height: 34px;
+    padding: 0 16px;
     border-radius: var(--radius-sm);
     font-size: 0.8rem;
     font-weight: 500;

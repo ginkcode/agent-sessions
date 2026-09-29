@@ -13,6 +13,7 @@ import (
 	"sync"
 	"unicode/utf8"
 
+	"github.com/ginkcode/agent-sessions/internal/bundle"
 	"github.com/ginkcode/agent-sessions/internal/group"
 	"github.com/ginkcode/agent-sessions/internal/model"
 	"github.com/ginkcode/agent-sessions/internal/paths"
@@ -50,6 +51,7 @@ type Service struct {
 	states   map[model.AgentID]provider.ScanState
 
 	transcripts *lru[string, *model.Transcript]
+	bundles     *lru[string, *bundle.Bundle]
 	dataDir     string
 }
 
@@ -78,6 +80,7 @@ func NewService(catalog *scan.Catalog, providers provider.Set) *Service {
 		scanErrs:    make(map[model.AgentID]error),
 		states:      make(map[model.AgentID]provider.ScanState),
 		transcripts: newLRU[string, *model.Transcript](transcriptLRUCapacity),
+		bundles:     newLRU[string, *bundle.Bundle](8),
 	}
 }
 

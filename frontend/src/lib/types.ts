@@ -273,8 +273,99 @@ export interface HandoffPreview {
   fullMarkdown: string;
   report: HandoffReport;
   contextFile: string;
+  /** File the launch command tells the agent to read. */
+  promptFile: string;
   command: string;
-  filePointer: boolean;
   promptBytes: number;
 }
+
+/** Handoff files kept in the app data directory. */
+export interface HandoffCacheInfo {
+  dir: string;
+  files: number;
+  bytes: number;
+}
+
+export type ExportProfile = 'complete' | 'share-safe';
+
+export interface RedactionCounts {
+  pem?: number;
+  token?: number;
+  jwt?: number;
+  assignment?: number;
+  home?: number;
+}
+
+export interface FidelityReport {
+  resolved: number;
+  resolvedBytes: number;
+  overflow?: string[];
+  unavailable?: string[];
+}
+
+export interface ExportRequest {
+  ref: SessionRef;
+  profile: ExportProfile;
+  budget?: number;
+  includeReasoning?: boolean;
+  redactSecrets?: boolean;
+}
+
+export interface ExportPreview {
+  profile: ExportProfile;
+  sessions: number;
+  nativeFiles: number;
+  nativeBytes: number;
+  redaction: RedactionCounts;
+  fidelity: FidelityReport;
+  handoffTokens: number;
+  warning?: string;
+}
+
+export interface BundleSessionSummary {
+  ref: SessionRef;
+  parentId?: string;
+  nativeFiles: number;
+  nativeBytes: number;
+  title?: string;
+}
+
+export interface BundleSummary {
+  bundleId: string;
+  path: string;
+  format: string;
+  version: number;
+  createdAt: string;
+  appVersion?: string;
+  profile: ExportProfile;
+  source: {
+    agent: AgentID;
+    agentVersion?: string;
+    id: string;
+    cwd: string;
+    repoRoot?: string;
+    gitBranch?: string;
+    title?: string;
+  };
+  sessionsCount: number;
+  nativeFilesCount: number;
+  nativeBytes: number;
+  redactionRules?: Record<string, number>;
+  redactionCounts: number;
+  handoffTokens: number;
+  verified: boolean;
+  restoreAvailable: boolean;
+  handoffAvailable: boolean;
+  sessions: BundleSessionSummary[];
+}
+
+export interface BundleHandoffRequest {
+  bundleId: string;
+  target: AgentID;
+  budget?: number;
+  includeReasoning?: boolean;
+  redactSecrets?: boolean;
+  cwd?: string;
+}
+
 

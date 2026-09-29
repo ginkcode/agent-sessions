@@ -18,7 +18,12 @@ import type {
   FTSProgress,
   HandoffRequest,
   HandoffPreview,
+  HandoffCacheInfo,
   HandoffReport,
+  ExportRequest,
+  ExportPreview,
+  BundleSummary,
+  BundleHandoffRequest,
 } from '../types.js';
 import { mockSessions, mockMessages, mockBlobs, mockDiagnostics } from './fixtures.js';
 import { refKey } from '../manage.js';
@@ -493,10 +498,8 @@ export class MockBackendAPI {
     const meta = await this.getSessionMeta(req.ref);
     const cwd = req.cwd || meta.cwd;
     const target = req.target;
-    let cmd = `claude 'Handoff prompt'`;
-    if (target === 'codex') cmd = `cd '${cwd}' && codex 'Handoff prompt'`;
-    else if (target === 'opencode') cmd = `cd '${cwd}' && opencode --prompt 'Handoff prompt'`;
-    else cmd = `cd '${cwd}' && claude 'Handoff prompt'`;
+    const promptFile = `/tmp/handoffs/${req.ref.id}-handoff.md`;
+    const cmd = mockLaunchCommand(target, cwd, promptFile);
 
     const report: HandoffReport = {
       estimatedTokens: 1250,
@@ -512,20 +515,137 @@ export class MockBackendAPI {
       fullMarkdown: prompt + '\n\n## Timeline\n(Full conversation history)',
       report,
       contextFile: `/tmp/handoffs/${req.ref.id}-full.md`,
+      promptFile,
       command: cmd,
-      filePointer: false,
       promptBytes: prompt.length,
     };
   }
 
   async handoffCommand(req: HandoffRequest): Promise<string> {
     const preview = await this.buildHandoff(req);
+    this.handoffFiles.add(preview.promptFile);
     return preview.command;
+  }
+
+  private handoffFiles = new Set<string>();
+
+  async handoffCache(): Promise<HandoffCacheInfo> {
+    // Each handoff writes a prompt file and a full-context file.
+    const files = this.handoffFiles.size * 2;
+    return { dir: '/tmp/handoffs', files, bytes: files * 2048 };
+  }
+
+  async clearHandoffCache(): Promise<HandoffCacheInfo> {
+    this.handoffFiles.clear();
+    return this.handoffCache();
   }
 
   async saveHandoff(req: HandoffRequest): Promise<string> {
     const meta = await this.getSessionMeta(req.ref);
     return `/mock/downloads/${meta.ref.id}-handoff.md`;
+  }
+
+  async previewExport(req: ExportRequest): Promise<ExportPreview> {
+    const meta = await this.getSessionMeta(req.ref);
+    const shareSafe = req.profile === 'share-safe';
+    return {
+      profile: req.profile,
+      sessions: 1 + (meta.parentId ? 0 : 1),
+      nativeFiles: shareSafe ? 0 : 2,
+      nativeBytes: shareSafe ? 0 : 4096,
+      redaction: shareSafe || req.redactSecrets ? { token: 1, home: 2 } : {},
+      fidelity: { resolved: 1, resolvedBytes: 2048 },
+      handoffTokens: 1250,
+      warning: shareSafe
+        ? undefined
+        : 'A complete bundle contains the session\'s original records and can include secrets such as tokens, keys, and passwords.',
+    };
+  }
+
+  async exportBundle(req: ExportRequest): Promise<string> {
+    await this.previewExport(req);
+    return `/mock/downloads/${req.ref.id}.agent-session.zip`;
+  }
+
+  private mockBundles = new Map<string, BundleSummary>();
+
+  async openBundle(): Promise<BundleSummary | null> {
+    return this.openBundlePath('/mock/downloads/sample.agent-session.zip');
+  }
+
+  async openBundlePath(path: string): Promise<BundleSummary> {
+    const summary: BundleSummary = {
+      bundleId: 'mock-bundle-1234',
+      path,
+      format: 'agent-sessions.bundle',
+      version: 1,
+      createdAt: new Date().toISOString(),
+      appVersion: '0.6.0',
+      profile: 'complete',
+      source: {
+        agent: 'claude-code',
+        id: 'mock-imported-session-id',
+        cwd: '/home/user/work/project',
+        gitBranch: 'main',
+        title: 'Imported Mock Session',
+      },
+      sessionsCount: 1,
+      nativeFilesCount: 2,
+      nativeBytes: 4096,
+      redactionCounts: 0,
+      handoffTokens: 1250,
+      verified: true,
+      restoreAvailable: true,
+      handoffAvailable: true,
+      sessions: [
+        {
+          ref: { agent: 'claude-code', id: 'mock-imported-session-id' },
+          nativeFiles: 2,
+          nativeBytes: 4096,
+          title: 'Imported Mock Session',
+        },
+      ],
+    };
+    this.mockBundles.set(summary.bundleId, summary);
+    return summary;
+  }
+
+  async buildBundleHandoff(req: BundleHandoffRequest): Promise<HandoffPreview> {
+    const bundle = this.mockBundles.get(req.bundleId);
+    const title = bundle?.source?.title || 'Imported Mock Session';
+    const cwd = req.cwd || bundle?.source?.cwd || '/home/user/work/project';
+    const target = req.target;
+    const promptFile = `/tmp/handoffs/bundle-${req.bundleId}-handoff.md`;
+    const cmd = mockLaunchCommand(target, cwd, promptFile);
+
+    const report: HandoffReport = {
+      estimatedTokens: 1250,
+      budgetTokens: req.budget || 80000,
+      trimmed: false,
+      droppedItems: [],
+      redactionCounts: {},
+    };
+
+    const prompt = `# Handoff to ${target}\n\nTask: ${title}\nCWD: ${cwd}\n\nContinue from here.`;
+    return {
+      promptMarkdown: prompt,
+      fullMarkdown: prompt + '\n\n## Timeline\n(Full conversation history)',
+      report,
+      contextFile: `/tmp/handoffs/bundle-${req.bundleId}-full.md`,
+      promptFile,
+      command: cmd,
+      promptBytes: prompt.length,
+    };
+  }
+
+  async bundleHandoffCommand(req: BundleHandoffRequest): Promise<string> {
+    const preview = await this.buildBundleHandoff(req);
+    this.handoffFiles.add(preview.promptFile);
+    return preview.command;
+  }
+
+  async saveBundleHandoff(req: BundleHandoffRequest): Promise<string> {
+    return `/mock/downloads/bundle-${req.bundleId}-handoff.md`;
   }
 
   async openURL(url: string): Promise<void> {
@@ -603,4 +723,11 @@ export class MockBackendAPI {
     }
     return null;
   }
+}
+
+/** Mirrors handoff.BuildLaunchCommand: the prompt is a pointer to the file. */
+function mockLaunchCommand(target: string, cwd: string, promptFile: string): string {
+  const prompt = `'Read ${promptFile} completely, then continue the task it describes.'`;
+  const argv = target === 'opencode' ? `opencode --prompt ${prompt}` : `${target === 'codex' ? 'codex' : 'claude'} ${prompt}`;
+  return `cd '${cwd}' && ${argv}`;
 }

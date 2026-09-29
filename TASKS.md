@@ -177,12 +177,12 @@ QA (M6-17).
 | M6-07 | ✅ | Export service/bindings (`PreviewExport`, `ExportBundle`, save dialog) and CLI `export`/`inspect` | 3 | M6-03, M6-04, M6-05, M6-06 | `export … -o` then `inspect` round-trips; cancel returns an empty path. |
 | M6-08 | ✅ | Handoff core: sections 1–8, working-state extraction, per-agent tool classification | 4 | M6-01 | Text helpers live in `internal/model/text.go`; files/commands/todos/plans/subagents extracted. |
 | M6-09 | ✅ | Handoff budget/trimming, `Report`, target adapters, golden tests per source→target pair | 4 | M6-08, M6-04 | Goldens cover tool pairs, compaction, subagents, trimming and injected markup. |
-| M6-10 | ✅ | Handoff delivery: per-agent argv, 120 KiB threshold, full-context file (0600, pruned after 30 days), bindings, CLI `handoff` | 3 | M6-09 | Command switches to the file pointer above the threshold; old files are pruned. |
+| M6-10 | ✅ | Handoff delivery: per-agent argv, prompt file + full-context file (0600, pruned after 30 days), bindings, CLI `handoff`, settings "Delete cache" | 3 | M6-09 | Command always points at the prompt file; old files are pruned; the cache can be cleared from settings. |
 | M6-11 | ✅ | `HandoffDialog` and the "Continue in ▾" header menu, store, api/mock | 4 | M6-10 | Preview shows the token estimate and dropped-items report; clipboard errors are visible. |
-| M6-12 | ⬜ | `ExportDialog` (two profiles) and the "Export ▾" menu, store, api/mock | 4 | M6-07 | Complete is the default and shows the sensitive-data warning; share-safe forces redaction. |
-| M6-13 | ⬜ | `OpenBundle` and `ImportDialog`: summary, checksums, "Continue in…" from the bundle | 4 | M6-07, M6-11 | A share-safe bundle offers handoff but no restore. |
-| M6-14 | ⬜ | Restore engine: `allow_restore`, preview token, live/collision/path checks, cwd remap, Claude writer with copy-as-new-ID | 4 | M6-05, M6-02 | Token staleness, collisions, live refusal, protected paths and no-overwrite are tested on temp roots. |
-| M6-15 | ⬜ | OpenCode import restore; Codex writer only if M6-02 passed, otherwise the action is hidden with a reason | 4 | M6-14 | Fake `ExecFunc` asserts the OpenCode import argv and env. |
+| M6-12 | ✅ | `ExportDialog` (two profiles) and the "Export ▾" menu, store, api/mock | 4 | M6-07 | Complete is the default and shows the sensitive-data warning; share-safe forces redaction. |
+| M6-13 | ✅ | `OpenBundle` and `ImportDialog`: summary, checksums, "Continue in…" from the bundle | 4 | M6-07, M6-11 | A share-safe bundle offers handoff but no restore. |
+| M6-14 | ✅ | Restore engine: `allow_restore`, preview token, live/collision/path checks, cwd remap, Claude writer with copy-as-new-ID | 4 | M6-05, M6-02 | Token staleness, collisions, live refusal, protected paths and no-overwrite are tested on temp roots. |
+| M6-15 | ✅ | OpenCode import restore; Codex writer only if M6-02 passed, otherwise the action is hidden with a reason | 4 | M6-14 | Fake `ExecFunc` asserts the OpenCode import argv and env. |
 | M6-16 | ⬜ | `Refresher.Reintroduce`, catalog event and selection after restore, restore UI in `ImportDialog`, settings toggle | 3 | M6-14, M6-13 | A restored file with unchanged size and mtime reappears without a cache clear. |
 | M6-17 | ⬜ | QA: round-trips across two temp homes, cross-agent handoff smoke test with real CLIs (manual), security review | 3 | M6-01…16 | Checklist in `docs/plan/M6.md` signed off. |
 
@@ -199,8 +199,8 @@ QA (M6-17).
 | M3 Polish | 14 | 37 | 2 | 6 | 6 |
 | M4 Destructive (opt-in) | 6 | 18 | 5 | 0 | 1 |
 | M5 macOS & distribution | 6 | 20 | 0 | 1 | 5 |
-| M6 Portable sessions | 17 | 60 | 1 | 0 | 16 |
-| **Total** | **102** | **≈ 303 h** | **49** | **18** | **35** |
+| M6 Portable sessions | 17 | 60 | 15 | 0 | 2 |
+| **Total** | **102** | **≈ 303 h** | **63** | **18** | **21** |
 
 **Critical path to the MVP:**
 

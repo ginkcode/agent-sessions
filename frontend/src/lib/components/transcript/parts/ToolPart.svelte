@@ -173,24 +173,24 @@
   }
 
   .tool-icon {
-    font-size: 0.85rem;
+    font-size: 13.6px;
   }
 
   .tool-name {
-    font-size: 0.8rem;
+    font-size: 12.8px;
     font-weight: 600;
     font-family: var(--font-mono);
     color: var(--text-primary);
   }
 
   .tool-call-id {
-    font-size: 0.7rem;
+    font-size: 11.2px;
     font-family: var(--font-mono);
     color: var(--text-muted);
   }
 
   .tool-status-badge {
-    font-size: 0.68rem;
+    font-size: 10.88px;
     font-weight: 600;
     padding: 1px 6px;
     border-radius: 4px;
@@ -227,7 +227,7 @@
     align-items: center;
     justify-content: space-between;
     padding: 4px 10px;
-    font-size: 0.72rem;
+    font-size: 11.52px;
     color: var(--text-secondary);
     font-weight: 500;
     cursor: pointer;
@@ -247,7 +247,7 @@
 
   .code-wrapper pre {
     margin: 0;
-    font-size: 0.75rem;
+    font-size: 12px;
     font-family: var(--font-mono);
   }
 
@@ -264,7 +264,7 @@
   }
 
   .output-label {
-    font-size: 0.72rem;
+    font-size: 11.52px;
     font-weight: 600;
     color: var(--text-secondary);
   }
@@ -275,7 +275,7 @@
     border-radius: 4px;
     background: var(--bg-tertiary);
     font-family: var(--font-mono);
-    font-size: 0.75rem;
+    font-size: 12px;
     line-height: 1.4;
     white-space: pre-wrap;
     word-break: break-all;
@@ -292,13 +292,13 @@
     background: rgba(245, 158, 11, 0.1);
     border: 1px dashed rgba(245, 158, 11, 0.4);
     border-radius: 4px;
-    font-size: 0.72rem;
+    font-size: 11.52px;
     color: var(--text-secondary);
   }
 
   .load-blob-btn {
     padding: 2px 8px;
-    font-size: 0.7rem;
+    font-size: 11.2px;
     font-weight: 500;
     border-radius: 4px;
     background: var(--accent-color);
@@ -313,7 +313,7 @@
 
   .mini-copy-btn {
     padding: 1px 6px;
-    font-size: 0.68rem;
+    font-size: 10.88px;
     border-radius: 3px;
     background: var(--bg-tertiary);
     color: var(--text-secondary);
@@ -326,7 +326,7 @@
 
   .blob-error-msg {
     margin-top: 6px;
-    font-size: 0.72rem;
+    font-size: 11.52px;
     color: var(--danger);
   }
 

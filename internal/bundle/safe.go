@@ -6,8 +6,18 @@ import (
 )
 
 // safeID mirrors internal/manage isSafeID: a conservative charset so an ID
-// can never be a path or an option.
+// can never be a path or an option. A Claude subagent ID is the one exception,
+// exactly "<parent-uuid>/agent-<agent-id>": one slash, in a fixed position,
+// with both halves themselves safe. Anything else containing a slash (extra
+// slashes, a leading slash, "..") is still rejected.
 func safeID(id string) bool {
+	if parent, agent, ok := strings.Cut(id, "/"); ok {
+		return safeIDPart(parent) && strings.HasPrefix(agent, "agent-") && safeIDPart(agent)
+	}
+	return safeIDPart(id)
+}
+
+func safeIDPart(id string) bool {
 	if id == "" || len(id) > 128 || strings.HasPrefix(id, "-") {
 		return false
 	}

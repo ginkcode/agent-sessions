@@ -1,5 +1,6 @@
 <script lang="ts">
   import { manage } from '../../stores/manage.svelte';
+  import { formatBytes } from '../../format';
 
   function close() {
     manage.closeSettings();
@@ -47,6 +48,32 @@
           Allow permanent deletion (cannot be undone)
         </label>
         <p class="hint">Codex and OpenCode sessions have no Trash copy. Deleting them is permanent.</p>
+
+        <section class="cache">
+          <h3>Handoff files</h3>
+          <p class="hint">
+            "Continue in" writes the handoff prompt and full history to files that the launch command points at. Files older than 30 days are removed automatically.
+          </p>
+          {#if manage.handoffCacheError}
+            <p class="error" role="alert">{manage.handoffCacheError}</p>
+          {/if}
+          <div class="cache-row">
+            <span class="cache-usage" title={manage.handoffCache?.dir}>
+              {#if !manage.handoffCache}
+                Checking…
+              {:else if manage.handoffCache.files === 0}
+                No cached files
+              {:else}
+                {manage.handoffCache.files} {manage.handoffCache.files === 1 ? 'file' : 'files'}, {formatBytes(manage.handoffCache.bytes)}
+              {/if}
+            </span>
+            <button
+              type="button"
+              disabled={manage.handoffCacheBusy || !manage.handoffCache || manage.handoffCache.files === 0}
+              onclick={() => manage.clearHandoffCache()}
+            >{manage.handoffCacheBusy ? 'Deleting…' : 'Delete cache'}</button>
+          </div>
+        </section>
       </div>
       <footer><button type="button" onclick={close}>Close</button></footer>
     </div>
@@ -72,4 +99,9 @@
   .warning { padding: 12px; background: rgba(245,158,11,.1); border: 1px solid #f59e0b; border-radius: 4px; }
   .warning p { margin: 6px 0; line-height: 1.5; }
   .actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 10px; }
+  .cache { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--border-color); }
+  h3 { margin: 0 0 6px; font-size: .85rem; }
+  .cache .hint { margin: 0 0 10px; line-height: 1.5; }
+  .cache-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .cache-usage { color: var(--text-secondary); }
 </style>

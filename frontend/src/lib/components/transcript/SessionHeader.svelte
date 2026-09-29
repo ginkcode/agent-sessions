@@ -5,6 +5,7 @@
   import { appState } from '../../stores/appState.svelte';
   import { manage } from '../../stores/manage.svelte';
   import { handoff } from '../../stores/handoff.svelte';
+  import { exporter } from '../../stores/export.svelte';
   import { ALL_AGENTS } from '../../portable';
   import AgentIcon from '../common/AgentIcon.svelte';
 
@@ -30,7 +31,9 @@
 
   let messageTotal = $derived(meta.counts.user + meta.counts.assistant);
   let continueMenuOpen = $state(false);
-  let menuRoot: HTMLDivElement | undefined = $state();
+  let exportMenuOpen = $state(false);
+  let continueMenuRoot: HTMLDivElement | undefined = $state();
+  let exportMenuRoot: HTMLDivElement | undefined = $state();
 
   function handleNavigateToParent() {
     if (meta.parentId) {
@@ -39,8 +42,12 @@
   }
 
   function handleWindowPointerDown(e: PointerEvent) {
-    if (continueMenuOpen && menuRoot && !menuRoot.contains(e.target as Node)) {
+    const target = e.target as Node;
+    if (continueMenuOpen && continueMenuRoot && !continueMenuRoot.contains(target)) {
       continueMenuOpen = false;
+    }
+    if (exportMenuOpen && exportMenuRoot && !exportMenuRoot.contains(target)) {
+      exportMenuOpen = false;
     }
   }
 </script>
@@ -88,7 +95,7 @@
         {resumeCopied ? '✓ Copied' : 'Resume'}
       </button>
 
-      <div class="menu-container" bind:this={menuRoot}>
+      <div class="menu-container" bind:this={continueMenuRoot}>
         <button
           type="button"
           class="action-btn continue-btn"
@@ -96,7 +103,10 @@
           title="Continue this session in another agent"
           aria-haspopup="menu"
           aria-expanded={continueMenuOpen}
-          onclick={() => (continueMenuOpen = !continueMenuOpen)}
+          onclick={() => {
+            continueMenuOpen = !continueMenuOpen;
+            if (continueMenuOpen) exportMenuOpen = false;
+          }}
         >
           Continue in ▾
         </button>
@@ -116,6 +126,49 @@
                 <span>{agent.label}</span>
               </button>
             {/each}
+          </div>
+        {/if}
+      </div>
+
+      <div class="menu-container" bind:this={exportMenuRoot}>
+        <button
+          type="button"
+          class="action-btn export-btn"
+          class:active={exportMenuOpen}
+          title="Export session bundle"
+          aria-haspopup="menu"
+          aria-expanded={exportMenuOpen}
+          onclick={() => {
+            exportMenuOpen = !exportMenuOpen;
+            if (exportMenuOpen) continueMenuOpen = false;
+          }}
+        >
+          Export ▾
+        </button>
+        {#if exportMenuOpen}
+          <div class="action-dropdown-menu" role="menu">
+            <button
+              type="button"
+              class="action-menu-item"
+              role="menuitem"
+              onclick={() => {
+                exportMenuOpen = false;
+                exporter.open(meta, 'complete');
+              }}
+            >
+              <span>Complete (Restorable)…</span>
+            </button>
+            <button
+              type="button"
+              class="action-menu-item"
+              role="menuitem"
+              onclick={() => {
+                exportMenuOpen = false;
+                exporter.open(meta, 'share-safe');
+              }}
+            >
+              <span>Share-safe (Redacted)…</span>
+            </button>
           </div>
         {/if}
       </div>
@@ -353,7 +406,8 @@
     color: var(--accent-color);
   }
 
-  .action-btn.continue-btn.active {
+  .action-btn.continue-btn.active,
+  .action-btn.export-btn.active {
     background-color: var(--bg-tertiary);
     color: var(--text-primary);
   }

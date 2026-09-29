@@ -2,6 +2,7 @@ import { api } from '../api';
 import type {
   DeletePreview,
   DeleteResult,
+  HandoffCacheInfo,
   ManageSettings,
   SessionMeta,
   SessionRef,
@@ -11,6 +12,7 @@ import {
   refsEqual,
   nextSelectionAfterDelete,
   errorText,
+  type AgeFilter,
 } from '../manage';
 import { appState } from './appState.svelte';
 
@@ -25,7 +27,7 @@ export class ManageStore {
 
   // Bulk selection: keys are refKey(ref)
   selectedRefKeys = $state<Set<string>>(new Set());
-  ageFilterDays = $state<number>(0);
+  ageFilter = $state<AgeFilter>('any');
 
   // Delete flow state
   preview = $state<DeletePreview | null>(null);
@@ -39,6 +41,11 @@ export class ManageStore {
   confirmDialogOpen = $state(false);
   settingsDialogOpen = $state(false);
   firstEnableWarningVisible = $state(false);
+
+  // Handoff files written by "Continue in"
+  handoffCache = $state<HandoffCacheInfo | null>(null);
+  handoffCacheBusy = $state(false);
+  handoffCacheError = $state<string | null>(null);
 
   async init(): Promise<void> {
     this.loadingSettings = true;
@@ -55,6 +62,29 @@ export class ManageStore {
   openSettings(): void {
     this.settingsDialogOpen = true;
     this.firstEnableWarningVisible = false;
+    void this.loadHandoffCache();
+  }
+
+  async loadHandoffCache(): Promise<void> {
+    this.handoffCacheError = null;
+    try {
+      this.handoffCache = await api.handoffCache();
+    } catch (err) {
+      this.handoffCacheError = errorText(err, 'Failed to read handoff files');
+    }
+  }
+
+  async clearHandoffCache(): Promise<void> {
+    this.handoffCacheBusy = true;
+    this.handoffCacheError = null;
+    try {
+      this.handoffCache = await api.clearHandoffCache();
+    } catch (err) {
+      this.handoffCacheError = errorText(err, 'Failed to delete handoff files');
+      await this.loadHandoffCache();
+    } finally {
+      this.handoffCacheBusy = false;
+    }
   }
 
   closeSettings(): void {
@@ -130,8 +160,8 @@ export class ManageStore {
     this.selectedRefKeys = new Set();
   }
 
-  setAgeFilter(days: number): void {
-    this.ageFilterDays = days;
+  setAgeFilter(filter: AgeFilter): void {
+    this.ageFilter = filter;
   }
 
   // Get selected SessionRef objects matching currently filtered sessions

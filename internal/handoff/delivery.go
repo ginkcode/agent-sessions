@@ -10,16 +10,17 @@ import (
 	"github.com/ginkcode/agent-sessions/internal/model"
 )
 
-// MaxPromptArgBytes is the prompt length ceiling for CLI argument delivery (120 KiB).
-// Beyond this, the command instructs the agent to read the full context file.
-const MaxPromptArgBytes = 120 * 1024
+// File suffixes name the handoff files this package owns; pruning and
+// clearing never touch anything else in the directory. The prompt file holds
+// the budgeted handoff the launch command points at; the context file holds
+// the untrimmed history the prompt refers to.
+const (
+	promptFileSuffix  = "-handoff.md"
+	contextFileSuffix = "-full.md"
+)
 
-// contextFileSuffix names the full-context files this package owns; pruning
-// never touches anything else in the directory.
-const contextFileSuffix = "-full.md"
-
-// contextFileMaxAge is how long a full-context file is kept.
-const contextFileMaxAge = 30 * 24 * time.Hour
+// fileMaxAge is how long a handoff file is kept.
+const fileMaxAge = 30 * 24 * time.Hour
 
 // HandoffDir returns the directory where full context markdown files are stored.
 func HandoffDir(dataHome string) string {
@@ -27,9 +28,20 @@ func HandoffDir(dataHome string) string {
 }
 
 // ContextFilePath returns where SaveContextFile writes the full context for
-// sessionID. The ID is reduced to a safe file name: Claude subagent IDs
-// contain "/", and no ID may steer the path outside the handoff directory.
+// sessionID.
 func ContextFilePath(dataHome, sessionID string) (string, error) {
+	return handoffFilePath(dataHome, sessionID, contextFileSuffix)
+}
+
+// PromptFilePath returns where SavePromptFile writes the handoff prompt for
+// sessionID.
+func PromptFilePath(dataHome, sessionID string) (string, error) {
+	return handoffFilePath(dataHome, sessionID, promptFileSuffix)
+}
+
+// handoffFilePath reduces the ID to a safe file name: Claude subagent IDs
+// contain "/", and no ID may steer the path outside the handoff directory.
+func handoffFilePath(dataHome, sessionID, suffix string) (string, error) {
 	if dataHome == "" {
 		return "", fmt.Errorf("handoff: no data directory")
 	}
@@ -37,7 +49,7 @@ func ContextFilePath(dataHome, sessionID string) (string, error) {
 	if name == "" {
 		return "", fmt.Errorf("handoff: empty session id")
 	}
-	return filepath.Join(HandoffDir(dataHome), name+contextFileSuffix), nil
+	return filepath.Join(HandoffDir(dataHome), name+suffix), nil
 }
 
 func fileSafeID(id string) string {
@@ -56,20 +68,33 @@ func fileSafeID(id string) string {
 	return strings.Trim(b.String(), "_")
 }
 
-// SaveContextFile writes the untrimmed markdown to ContextFilePath with 0600
-// permissions (temp file, fsync, rename) and prunes context files older than
-// 30 days.
+// SaveContextFile writes the untrimmed markdown to ContextFilePath.
 func SaveContextFile(dataHome string, sessionID string, markdown string) (string, error) {
 	filePath, err := ContextFilePath(dataHome, sessionID)
 	if err != nil {
 		return "", err
 	}
+	return writeHandoffFile(filePath, markdown)
+}
+
+// SavePromptFile writes the handoff prompt to PromptFilePath.
+func SavePromptFile(dataHome string, sessionID string, markdown string) (string, error) {
+	filePath, err := PromptFilePath(dataHome, sessionID)
+	if err != nil {
+		return "", err
+	}
+	return writeHandoffFile(filePath, markdown)
+}
+
+// writeHandoffFile writes markdown with 0600 permissions (temp file, fsync,
+// rename) and prunes handoff files older than 30 days.
+func writeHandoffFile(filePath, markdown string) (string, error) {
 	dir := filepath.Dir(filePath)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return "", fmt.Errorf("handoff: mkdir %s: %w", dir, err)
 	}
 
-	pruneOldFiles(dir, contextFileMaxAge)
+	pruneOldFiles(dir, fileMaxAge)
 
 	tmp, err := os.CreateTemp(dir, ".handoff-*.tmp")
 	if err != nil {
@@ -99,20 +124,55 @@ func SaveContextFile(dataHome string, sessionID string, markdown string) (string
 	return filePath, nil
 }
 
-// pruneOldFiles removes this package's context files (and temp files a
+// pruneOldFiles removes this package's handoff files (and temp files a
 // crashed write left behind) older than maxAge.
 func pruneOldFiles(dir string, maxAge time.Duration) {
+	now := time.Now()
+	walkOwnFiles(dir, func(path string, info os.FileInfo) {
+		if now.Sub(info.ModTime()) > maxAge {
+			_ = os.Remove(path)
+		}
+	})
+}
+
+// FilesUsage reports how many handoff files exist and their total size.
+func FilesUsage(dataHome string) (count int, bytes int64) {
+	walkOwnFiles(HandoffDir(dataHome), func(_ string, info os.FileInfo) {
+		count++
+		bytes += info.Size()
+	})
+	return count, bytes
+}
+
+// ClearFiles removes every handoff file this package wrote and reports how
+// many were removed and their total size. Other files are left alone.
+func ClearFiles(dataHome string) (removed int, bytes int64, err error) {
+	walkOwnFiles(HandoffDir(dataHome), func(path string, info os.FileInfo) {
+		if rmErr := os.Remove(path); rmErr != nil {
+			if err == nil {
+				err = fmt.Errorf("handoff: remove %s: %w", path, rmErr)
+			}
+			return
+		}
+		removed++
+		bytes += info.Size()
+	})
+	return removed, bytes, err
+}
+
+// walkOwnFiles calls fn for each regular file in dir that this package owns.
+func walkOwnFiles(dir string, fn func(path string, info os.FileInfo)) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return
 	}
-	now := time.Now()
 	for _, entry := range entries {
 		name := entry.Name()
 		if !entry.Type().IsRegular() {
 			continue
 		}
 		ours := strings.HasSuffix(name, contextFileSuffix) ||
+			strings.HasSuffix(name, promptFileSuffix) ||
 			(strings.HasPrefix(name, ".handoff-") && strings.HasSuffix(name, ".tmp"))
 		if !ours {
 			continue
@@ -121,26 +181,24 @@ func pruneOldFiles(dir string, maxAge time.Duration) {
 		if err != nil {
 			continue
 		}
-		if now.Sub(info.ModTime()) > maxAge {
-			_ = os.Remove(filepath.Join(dir, name))
-		}
+		fn(filepath.Join(dir, name), info)
 	}
 }
 
-// LaunchPrompt returns the prompt the launch command carries. Above
-// MaxPromptArgBytes, and only when a context file exists to point at, it is
-// replaced by an instruction to read that file; pointer reports the switch.
-func LaunchPrompt(prompt, contextFilePath string) (text string, pointer bool) {
-	if len(prompt) > MaxPromptArgBytes && contextFilePath != "" {
-		return fmt.Sprintf("Read %s completely, then continue with the engineering task.", contextFilePath), true
+// LaunchPrompt returns the prompt the launch command carries: an instruction
+// to read the prompt file, so the command stays one short line whatever the
+// handoff size. Without a prompt file the prompt itself is passed.
+func LaunchPrompt(prompt, promptFilePath string) string {
+	if promptFilePath != "" {
+		return fmt.Sprintf("Read %s completely, then continue the task it describes.", promptFilePath)
 	}
-	return prompt, false
+	return prompt
 }
 
 // BuildLaunchCommand generates the shell command line to start the target agent
 // with the prompt, changing directory to cwd first if specified.
-func BuildLaunchCommand(target model.AgentID, prompt string, contextFilePath string, cwd string) string {
-	actualPrompt, _ := LaunchPrompt(prompt, contextFilePath)
+func BuildLaunchCommand(target model.AgentID, prompt string, promptFilePath string, cwd string) string {
+	actualPrompt := LaunchPrompt(prompt, promptFilePath)
 	argv := LaunchArgv(target, actualPrompt)
 	cmdStr := joinCommand(argv)
 	if cwd == "" {

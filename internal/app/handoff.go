@@ -29,9 +29,52 @@ type HandoffPreview struct {
 	FullMarkdown   string         `json:"fullMarkdown"`
 	Report         handoff.Report `json:"report"`
 	ContextFile    string         `json:"contextFile"`
+	PromptFile     string         `json:"promptFile"`
 	Command        string         `json:"command"`
-	FilePointer    bool           `json:"filePointer"`
 	PromptBytes    int            `json:"promptBytes"`
+}
+
+// handoffFiles returns where the prompt and full-context files for id go.
+func (s *Service) handoffFiles(id string) (promptFile, contextFile string, err error) {
+	if promptFile, err = handoff.PromptFilePath(s.DataDir(), id); err != nil {
+		return "", "", err
+	}
+	if contextFile, err = handoff.ContextFilePath(s.DataDir(), id); err != nil {
+		return "", "", err
+	}
+	return promptFile, contextFile, nil
+}
+
+// saveHandoffFiles writes the full context and the prompt for id and returns
+// the prompt file the launch command points at.
+func (s *Service) saveHandoffFiles(id string, doc handoff.Doc) (string, error) {
+	if _, err := handoff.SaveContextFile(s.DataDir(), id, doc.FullMarkdown); err != nil {
+		return "", fmt.Errorf("handoff: save context file: %w", err)
+	}
+	promptFile, err := handoff.SavePromptFile(s.DataDir(), id, doc.PromptMarkdown)
+	if err != nil {
+		return "", fmt.Errorf("handoff: save prompt file: %w", err)
+	}
+	return promptFile, nil
+}
+
+// HandoffCacheInfo describes the handoff files kept in the data directory.
+type HandoffCacheInfo struct {
+	Dir   string `json:"dir"`
+	Files int    `json:"files"`
+	Bytes int64  `json:"bytes"`
+}
+
+// HandoffCache reports the handoff files on disk.
+func (s *Service) HandoffCache() HandoffCacheInfo {
+	n, size := handoff.FilesUsage(s.DataDir())
+	return HandoffCacheInfo{Dir: handoff.HandoffDir(s.DataDir()), Files: n, Bytes: size}
+}
+
+// ClearHandoffCache deletes the handoff files and reports what remains.
+func (s *Service) ClearHandoffCache() (HandoffCacheInfo, error) {
+	_, _, err := handoff.ClearFiles(s.DataDir())
+	return s.HandoffCache(), err
 }
 
 // SetDataDir overrides the data directory used for handoff context files.
@@ -94,9 +137,10 @@ func (s *Service) buildHandoffDoc(ctx context.Context, req HandoffRequest, conte
 	return doc, meta, nil
 }
 
-// BuildHandoff renders the handoff without modifying any files on disk.
+// BuildHandoff renders the handoff without modifying any files on disk. The
+// command it shows points at the prompt file HandoffCommand will write.
 func (s *Service) BuildHandoff(ctx context.Context, req HandoffRequest) (HandoffPreview, error) {
-	contextFile, err := handoff.ContextFilePath(s.DataDir(), req.Ref.ID)
+	promptFile, contextFile, err := s.handoffFiles(req.Ref.ID)
 	if err != nil {
 		return HandoffPreview{}, err
 	}
@@ -110,25 +154,22 @@ func (s *Service) BuildHandoff(ctx context.Context, req HandoffRequest) (Handoff
 	if cwd == "" {
 		cwd = meta.CWD
 	}
-
-	cmd := handoff.BuildLaunchCommand(req.Target, doc.PromptMarkdown, contextFile, cwd)
-	_, filePointer := handoff.LaunchPrompt(doc.PromptMarkdown, contextFile)
 
 	return HandoffPreview{
 		PromptMarkdown: doc.PromptMarkdown,
 		FullMarkdown:   doc.FullMarkdown,
 		Report:         doc.Report,
 		ContextFile:    contextFile,
-		Command:        cmd,
-		FilePointer:    filePointer,
+		PromptFile:     promptFile,
+		Command:        handoff.BuildLaunchCommand(req.Target, doc.PromptMarkdown, promptFile, cwd),
 		PromptBytes:    len(doc.PromptMarkdown),
 	}, nil
 }
 
-// HandoffCommand writes the full context file to disk (0600, pruned) and returns
-// the launch command line.
+// HandoffCommand writes the prompt and full context files (0600, pruned) and
+// returns the launch command line, which points at the prompt file.
 func (s *Service) HandoffCommand(ctx context.Context, req HandoffRequest) (string, error) {
-	contextFile, err := handoff.ContextFilePath(s.DataDir(), req.Ref.ID)
+	_, contextFile, err := s.handoffFiles(req.Ref.ID)
 	if err != nil {
 		return "", err
 	}
@@ -138,9 +179,9 @@ func (s *Service) HandoffCommand(ctx context.Context, req HandoffRequest) (strin
 		return "", err
 	}
 
-	savedFile, err := handoff.SaveContextFile(s.DataDir(), req.Ref.ID, doc.FullMarkdown)
+	promptFile, err := s.saveHandoffFiles(req.Ref.ID, doc)
 	if err != nil {
-		return "", fmt.Errorf("handoff: save context file: %w", err)
+		return "", err
 	}
 
 	cwd := req.CWD
@@ -148,7 +189,7 @@ func (s *Service) HandoffCommand(ctx context.Context, req HandoffRequest) (strin
 		cwd = meta.CWD
 	}
 
-	return handoff.BuildLaunchCommand(req.Target, doc.PromptMarkdown, savedFile, cwd), nil
+	return handoff.BuildLaunchCommand(req.Target, doc.PromptMarkdown, promptFile, cwd), nil
 }
 
 // SaveHandoff writes a self-contained full handoff document (with no context file
@@ -205,7 +246,7 @@ func (a *App) BuildHandoff(req HandoffRequest) (HandoffPreview, error) {
 	return a.svc.BuildHandoff(ctx, req)
 }
 
-// HandoffCommand generates the launch command and writes the full context file.
+// HandoffCommand writes the handoff files and returns the launch command.
 func (a *App) HandoffCommand(req HandoffRequest) (string, error) {
 	ctx := a.ctx
 	if ctx == nil {
@@ -233,8 +274,9 @@ func (a *App) SaveHandoff(req HandoffRequest) (string, error) {
 		destPath, err = a.saveDialogOverride(ctx, defaultName)
 	} else {
 		destPath, err = wruntime.SaveFileDialog(ctx, wruntime.SaveDialogOptions{
-			Title:           "Save Handoff Document",
-			DefaultFilename: defaultName,
+			Title:            "Save Handoff Document",
+			DefaultDirectory: dialogDefaultDir(),
+			DefaultFilename:  defaultName,
 			Filters: []wruntime.FileFilter{
 				{DisplayName: "Markdown Files (*.md)", Pattern: "*.md"},
 				{DisplayName: "All Files (*.*)", Pattern: "*.*"},
@@ -249,4 +291,14 @@ func (a *App) SaveHandoff(req HandoffRequest) (string, error) {
 	}
 
 	return a.svc.SaveHandoff(ctx, req, destPath)
+}
+
+// HandoffCache reports the handoff files kept in the data directory.
+func (a *App) HandoffCache() HandoffCacheInfo {
+	return a.svc.HandoffCache()
+}
+
+// ClearHandoffCache deletes the handoff files kept in the data directory.
+func (a *App) ClearHandoffCache() (HandoffCacheInfo, error) {
+	return a.svc.ClearHandoffCache()
 }

@@ -232,13 +232,14 @@ func TestHandoffDelivery(t *testing.T) {
 		t.Errorf("unexpected opencode launch command: %s", cmdOpenCode)
 	}
 
-	// 120 KiB threshold test
-	longPrompt := strings.Repeat("A", 130*1024)
-	contextFile := "/data/handoffs/sess-123-full.md"
-	cmdLong := handoff.BuildLaunchCommand(model.AgentCodex, longPrompt, contextFile, "/tmp/dir")
-	expected := "cd /tmp/dir && codex 'Read /data/handoffs/sess-123-full.md completely, then continue with the engineering task.'"
-	if cmdLong != expected {
-		t.Errorf("expected threshold command fallback, got: %s", cmdLong)
+	// With a prompt file the command points at it whatever the prompt size.
+	promptFile := "/data/handoffs/sess-123-handoff.md"
+	for _, prompt := range []string{"Short prompt", strings.Repeat("A", 130*1024)} {
+		cmdFile := handoff.BuildLaunchCommand(model.AgentCodex, prompt, promptFile, "/tmp/dir")
+		expected := "cd /tmp/dir && codex 'Read /data/handoffs/sess-123-handoff.md completely, then continue the task it describes.'"
+		if cmdFile != expected {
+			t.Errorf("expected pointer command, got: %.200s", cmdFile)
+		}
 	}
 
 	// Save context file test

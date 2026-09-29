@@ -177,9 +177,9 @@
               </div>
             {/if}
 
-            {#if handoff.preview.filePointer}
-              <div class="stat-pill notice-pill" title="Exceeds 120 KiB CLI argument limit">
-                <span>📄 Full file pointer active (&gt;120 KiB)</span>
+            {#if handoff.preview.promptFile}
+              <div class="stat-pill notice-pill" title={handoff.preview.promptFile}>
+                <span>📄 Delivered via handoff file</span>
               </div>
             {/if}
           </div>
@@ -681,7 +681,8 @@
   }
 
   .btn {
-    padding: 6px 14px;
+    height: 34px;
+    padding: 0 16px;
     border-radius: var(--radius-sm);
     font-size: 0.8rem;
     font-weight: 500;

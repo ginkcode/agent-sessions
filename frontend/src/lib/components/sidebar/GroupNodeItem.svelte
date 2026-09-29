@@ -135,9 +135,10 @@
     display: flex;
     align-items: center;
     gap: 6px;
-    padding-top: 4px;
-    padding-bottom: 4px;
+    padding-top: 7px;
+    padding-bottom: 7px;
     padding-right: 8px;
+    margin-bottom: 2px;
     border-radius: 4px;
     cursor: pointer;
     user-select: none;

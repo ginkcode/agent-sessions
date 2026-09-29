@@ -61,6 +61,54 @@ func contained(root, target string) bool {
 	return err == nil && rel != "." && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
+// ensureWithinRoot checks that a path that may not exist yet will land inside
+// the provider root. Existing ancestors are walked and refused when they are
+// symlinks, protected names, or escape the resolved root. Missing components
+// are checked lexically only, since restore creates them.
+func (ps *pathSafety) ensureWithinRoot(path string) error {
+	if path == "" || !filepath.IsAbs(path) {
+		return ErrPathOutsideRoot
+	}
+	root, err := ps.resolvedRoot()
+	if err != nil {
+		return err
+	}
+	path = filepath.Clean(path)
+	if !contained(ps.root, path) {
+		return ErrPathOutsideRoot
+	}
+	rel, err := filepath.Rel(ps.root, path)
+	if err != nil {
+		return ErrPathOutsideRoot
+	}
+	current := ps.root
+	for _, part := range strings.Split(rel, string(filepath.Separator)) {
+		if isProtectedName(part) {
+			return errors.New("manage: protected path refused")
+		}
+		current = filepath.Join(current, part)
+		stat, err := os.Lstat(current)
+		if err != nil {
+			if os.IsNotExist(err) {
+				// Nothing below exists yet. The lexical check above is enough.
+				return nil
+			}
+			return errors.New("manage: target is unavailable")
+		}
+		if stat.Mode()&os.ModeSymlink != 0 {
+			return errors.New("manage: symlink path refused")
+		}
+	}
+	parent, err := filepath.EvalSymlinks(filepath.Dir(path))
+	if err != nil {
+		return errors.New("manage: target parent is unavailable")
+	}
+	if !contained(root, filepath.Join(parent, filepath.Base(path))) {
+		return ErrPathOutsideRoot
+	}
+	return nil
+}
+
 func (ps *pathSafety) classify(path string) (os.FileMode, error) {
 	if path == "" || !filepath.IsAbs(path) {
 		return 0, ErrPathOutsideRoot

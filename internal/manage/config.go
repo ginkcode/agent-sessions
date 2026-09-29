@@ -10,11 +10,13 @@ import (
 	"sync"
 )
 
-// Config holds the user's opt-in settings for destructive session management.
+// Config holds the user's opt-in settings for destructive session management
+// and session restoration.
 // Persisted in ~/.config/agent-sessions/config.toml under the [manage] table.
 type Config struct {
 	Enabled              bool `json:"enabled"`
 	AllowPermanentDelete bool `json:"allowPermanentDelete"`
+	AllowRestore         bool `json:"allowRestore"`
 }
 
 // ConfigStore loads and updates the manage settings from a TOML file.
@@ -96,6 +98,8 @@ func loadConfig(path string) (Config, error) {
 			cfg.Enabled = parseBool(val)
 		case "allow_permanent_delete":
 			cfg.AllowPermanentDelete = parseBool(val)
+		case "allow_restore":
+			cfg.AllowRestore = parseBool(val)
 		}
 	}
 	if err := scanner.Err(); err != nil {
@@ -164,6 +168,7 @@ func updateManageSection(data []byte, cfg Config) []byte {
 		buf.WriteString("[manage]\n")
 		fmt.Fprintf(&buf, "enabled = %t\n", cfg.Enabled)
 		fmt.Fprintf(&buf, "allow_permanent_delete = %t\n", cfg.AllowPermanentDelete)
+		fmt.Fprintf(&buf, "allow_restore = %t\n", cfg.AllowRestore)
 		return buf.Bytes()
 	}
 
@@ -174,6 +179,7 @@ func updateManageSection(data []byte, cfg Config) []byte {
 	manageSeen := false
 	enabledWritten := false
 	permWritten := false
+	restoreWritten := false
 
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -187,6 +193,9 @@ func updateManageSection(data []byte, cfg Config) []byte {
 				}
 				if !permWritten {
 					fmt.Fprintf(&out, "allow_permanent_delete = %t\n", cfg.AllowPermanentDelete)
+				}
+				if !restoreWritten {
+					fmt.Fprintf(&out, "allow_restore = %t\n", cfg.AllowRestore)
 				}
 				inManage = false
 			}
@@ -213,6 +222,10 @@ func updateManageSection(data []byte, cfg Config) []byte {
 					fmt.Fprintf(&out, "allow_permanent_delete = %t\n", cfg.AllowPermanentDelete)
 					permWritten = true
 					continue
+				case "allow_restore":
+					fmt.Fprintf(&out, "allow_restore = %t\n", cfg.AllowRestore)
+					restoreWritten = true
+					continue
 				}
 			}
 		}
@@ -228,6 +241,9 @@ func updateManageSection(data []byte, cfg Config) []byte {
 		if !permWritten {
 			fmt.Fprintf(&out, "allow_permanent_delete = %t\n", cfg.AllowPermanentDelete)
 		}
+		if !restoreWritten {
+			fmt.Fprintf(&out, "allow_restore = %t\n", cfg.AllowRestore)
+		}
 	} else if !manageSeen {
 		if out.Len() > 0 && !bytes.HasSuffix(out.Bytes(), []byte("\n\n")) {
 			out.WriteByte('\n')
@@ -235,6 +251,7 @@ func updateManageSection(data []byte, cfg Config) []byte {
 		out.WriteString("[manage]\n")
 		fmt.Fprintf(&out, "enabled = %t\n", cfg.Enabled)
 		fmt.Fprintf(&out, "allow_permanent_delete = %t\n", cfg.AllowPermanentDelete)
+		fmt.Fprintf(&out, "allow_restore = %t\n", cfg.AllowRestore)
 	}
 
 	return out.Bytes()

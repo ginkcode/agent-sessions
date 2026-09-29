@@ -218,6 +218,30 @@ func TestUnknownVersionRejected(t *testing.T) {
 	}
 }
 
+func TestClaudeSubagentIDRoundTrips(t *testing.T) {
+	req := sampleRequest()
+	sub := "cc439e78-7b55-4083-910d-e1ebe675fae6/agent-ae4ed874d982947f6"
+	req.Sessions = append(req.Sessions, bundle.SessionInput{
+		Agent:    "claude-code",
+		ID:       sub,
+		ParentID: req.Source.ID,
+		Native: []bundle.NativeInput{
+			{Agent: "claude-code", Rel: "projects/-home-dev/" + sub + ".jsonl", Data: []byte("{}\n")},
+		},
+	})
+	var buf bytes.Buffer
+	if err := bundle.Write(&buf, req); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	got, err := bundle.ReadBytes(buf.Bytes())
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	if got.Manifest.Sessions[2].Ref.ID != sub {
+		t.Fatalf("subagent id = %q", got.Manifest.Sessions[2].Ref.ID)
+	}
+}
+
 func TestUnsafeIDRejected(t *testing.T) {
 	data := tamper(t, "manifest.json", func(body []byte) []byte {
 		return bytes.Replace(body,

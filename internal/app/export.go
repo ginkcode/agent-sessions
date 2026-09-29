@@ -329,8 +329,9 @@ func (a *App) ExportBundle(req ExportRequest) (string, error) {
 		dest, err = a.saveDialogOverride(ctx, name)
 	} else {
 		dest, err = wruntime.SaveFileDialog(ctx, wruntime.SaveDialogOptions{
-			Title:           "Export Session",
-			DefaultFilename: name,
+			Title:            "Export Session",
+			DefaultDirectory: dialogDefaultDir(),
+			DefaultFilename:  name,
 			Filters: []wruntime.FileFilter{
 				{DisplayName: "Agent Session Bundles (*.agent-session.zip)", Pattern: "*.agent-session.zip"},
 			},
@@ -364,6 +365,16 @@ func (a *App) exportCtx() context.Context {
 		return a.ctx
 	}
 	return context.Background()
+}
+
+// dialogDefaultDir is the folder the export and import file dialogs open in.
+// An empty result leaves the choice to the platform dialog.
+func dialogDefaultDir() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	return home
 }
 
 func exportFileName(id string) string {

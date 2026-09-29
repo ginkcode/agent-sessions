@@ -9,7 +9,7 @@
     children: Snippet<[item: T, index: number]>;
   }
 
-  let { items, itemHeight = 62, overscan = 5, children }: Props = $props();
+  let { items, itemHeight = 84, overscan = 5, children }: Props = $props();
 
   let containerEl: HTMLElement | null = $state(null);
   let scrollTop = $state(0);
