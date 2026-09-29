@@ -45,6 +45,10 @@ export class AppState {
   // Catalog events apply one at a time so each sees the tree its
   // predecessor loaded.
   private catalogQueue: Promise<void> = Promise.resolve();
+  // Set by loadGroups when it cleared a stale group selection and reloaded
+  // the full list itself, so callers skip their own list load and a
+  // vanished group costs one fetch instead of two.
+  private staleGroupReloaded = false;
 
   async init(): Promise<void> {
     this.collapsedKeys = loadCollapsedKeys();
@@ -73,8 +77,7 @@ export class AppState {
     this.refreshing = true;
     try {
       await api.scan();
-      await this.loadGroups(true);
-      await this.loadSessions(true);
+      await this.reload(true);
     } catch (err: any) {
       this.error = err?.message || 'Failed to refresh sessions';
     } finally {
@@ -148,12 +151,15 @@ export class AppState {
     // A superseded tree load means another load is in flight; the tree in
     // hand may predate this event, so reload the list unconditionally.
     const treeCurrent = event.groupsDirty ? await this.loadGroups(true) : true;
-    if (treeCurrent && this.selectedGroupKey && !findGroup(this.groups, this.selectedGroupKey)) {
+    if (!treeCurrent) {
+      await this.loadSessions(true);
+    } else if (event.groupsDirty && this.staleGroupReloaded) {
+      // The selected group vanished; loadGroups already fell back to the
+      // full list.
+    } else if (this.dropStaleGroup()) {
       // Every session in the selected group is gone; fall back to all.
-      this.selectedGroupKey = null;
       await this.loadSessions(true);
     } else if (
-      !treeCurrent ||
       affectsSessionList(event, this.sessions, this.groups, this.selectedGroupKey)
     ) {
       await this.loadSessions(true);
@@ -177,8 +183,7 @@ export class AppState {
 
   async setFilter(update: Partial<FilterOpts>): Promise<void> {
     this.filter = { ...this.filter, ...update };
-    await this.loadGroups();
-    await this.loadSessions();
+    await this.reload();
   }
 
   async setSort(sort: SortOpts): Promise<void> {
@@ -186,10 +191,19 @@ export class AppState {
     await this.loadSessions();
   }
 
+  // Reloads the tree, then the list unless the tree load already did:
+  // loadGroups falls back to the full list when the selected group
+  // vanished, so a dead group key never reaches the list request.
+  async reload(background = false): Promise<void> {
+    if (!(await this.loadGroups(background))) return;
+    if (!this.staleGroupReloaded) await this.loadSessions(background);
+  }
+
   // A background load keeps the populated tree mounted (no loading state,
   // no error over existing data). Resolves false when superseded.
   async loadGroups(background = false): Promise<boolean> {
     const id = this.groupsRequests.next();
+    this.staleGroupReloaded = false;
     const quiet = background && this.groups.length > 0;
     if (!quiet) this.loadingGroups = true;
     try {
@@ -214,6 +228,14 @@ export class AppState {
         }
       }
       this.error = null;
+      // Only an authoritative, non-empty tree can prove a node vanished.
+      // An empty one means "nothing loaded yet" or "the filter matched
+      // nothing", and clearing the key would discard a selection that is
+      // still valid.
+      if (groups.length > 0 && this.dropStaleGroup()) {
+        this.staleGroupReloaded = true;
+        await this.loadSessions(background);
+      }
       return true;
     } catch (err: any) {
       if (!this.groupsRequests.isCurrent(id)) return false;
@@ -222,6 +244,18 @@ export class AppState {
     } finally {
       if (this.groupsRequests.isCurrent(id)) this.loadingGroups = false;
     }
+  }
+
+  // Clears the selection when the freshly loaded tree no longer contains
+  // it, so the next list load falls back to every session instead of asking
+  // the backend for a group it just removed. A key that survived — a group
+  // that still holds other sessions — is left alone.
+  private dropStaleGroup(): boolean {
+    if (this.selectedGroupKey && !findGroup(this.groups, this.selectedGroupKey)) {
+      this.selectedGroupKey = null;
+      return true;
+    }
+    return false;
   }
 
   // Background loads keep the list mounted so its scroll position survives.

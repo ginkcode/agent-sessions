@@ -250,7 +250,7 @@
   .dialog {
     background: var(--bg-primary);
     border: 1px solid var(--border-color);
-    border-radius: 8px;
+    border-radius: var(--radius-lg);
     width: min(560px, 92vw);
     max-height: 80vh;
     display: flex;
@@ -265,6 +265,7 @@
     padding: 12px 16px;
     border-bottom: 1px solid var(--border-color);
     background: var(--bg-secondary);
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
   }
 
   .dialog-header h2 {
@@ -275,7 +276,7 @@
 
   .dialog-close {
     padding: 2px 8px;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     font-size: 0.9rem;
   }
 
@@ -300,7 +301,7 @@
   .warn-banner,
   .danger-banner {
     padding: 8px 12px;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     font-size: 0.8rem;
     display: flex;
     flex-direction: column;
@@ -308,9 +309,9 @@
   }
 
   .error-banner {
-    background: rgba(239, 68, 68, 0.1);
-    border: 1px solid rgba(239, 68, 68, 0.4);
-    color: #ef4444;
+    background: color-mix(in srgb, var(--danger) 10%, transparent);
+    border: 1px solid color-mix(in srgb, var(--danger) 40%, transparent);
+    color: var(--danger);
   }
 
   .warn-banner {
@@ -320,15 +321,15 @@
   }
 
   .danger-banner {
-    background: rgba(239, 68, 68, 0.08);
-    border: 1px solid rgba(239, 68, 68, 0.35);
-    color: #ef4444;
+    background: color-mix(in srgb, var(--danger) 8%, transparent);
+    border: 1px solid color-mix(in srgb, var(--danger) 35%, transparent);
+    color: var(--danger);
   }
 
   .reversible-note {
     margin: 0;
     padding: 8px 12px;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     background: rgba(16, 185, 129, 0.08);
     border: 1px solid rgba(16, 185, 129, 0.3);
     color: var(--status-live);
@@ -342,7 +343,7 @@
     max-height: 220px;
     overflow-y: auto;
     border: 1px solid var(--border-color);
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
   }
 
   .preview-item {
@@ -397,8 +398,8 @@
   }
 
   .action-kind.permanent {
-    background: rgba(239, 68, 68, 0.15);
-    color: #ef4444;
+    background: color-mix(in srgb, var(--danger) 15%, transparent);
+    color: var(--danger);
   }
 
   .result-ok {
@@ -413,7 +414,7 @@
   }
 
   .permanent-tag {
-    color: #ef4444;
+    color: var(--danger);
     font-weight: 500;
   }
 
@@ -453,7 +454,7 @@
 
   .permanent-note {
     margin: 0;
-    color: #ef4444;
+    color: var(--danger);
     font-size: 0.8rem;
     font-weight: 500;
   }
@@ -466,11 +467,12 @@
     padding: 12px 16px;
     border-top: 1px solid var(--border-color);
     background: var(--bg-secondary);
+    border-radius: 0 0 var(--radius-lg) var(--radius-lg);
   }
 
   .btn {
     padding: 5px 14px;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     font-size: 0.8rem;
     font-weight: 500;
     background: var(--bg-tertiary);
@@ -485,14 +487,14 @@
   }
 
   .danger-btn {
-    background: #ef4444;
-    border-color: #ef4444;
+    background: var(--danger);
+    border-color: var(--danger);
     color: white;
   }
 
   .danger-btn:hover:not(:disabled) {
-    background: #dc2626;
-    border-color: #dc2626;
+    background: color-mix(in srgb, var(--danger) 85%, black);
+    border-color: color-mix(in srgb, var(--danger) 85%, black);
     color: white;
   }
 

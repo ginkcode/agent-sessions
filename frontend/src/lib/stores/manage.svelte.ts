@@ -206,9 +206,11 @@ export class ManageStore {
       // Select next session or clear
       await appState.selectSession(nextRef);
 
-      // Refresh catalog groups and sessions
-      await appState.loadGroups(true);
-      await appState.loadSessions(true);
+      // Refresh the tree; loadGroups clears a stale group key and reloads
+      // the session list itself when the deleted session was the last in
+      // the group.  Otherwise the catalog:changed event that follows
+      // (~100ms later) reloads the list through applyCatalogChange.
+      await appState.reload(true);
 
       return result.failed === 0;
     } catch (err) {

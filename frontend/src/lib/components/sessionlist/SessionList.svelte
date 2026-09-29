@@ -226,8 +226,9 @@
     {:else if appState.error}
       <ErrorState
         title="Could not load sessions"
-        message={appState.error}
-        onRetry={() => appState.loadSessions()}
+        message="The session list could not be loaded."
+        details={appState.error}
+        onRetry={() => appState.reload()}
       />
     {:else if visibleSessions.length === 0}
       <EmptyState
@@ -238,7 +239,7 @@
         onAction={handleClearFilters}
       />
     {:else}
-      <VirtualList items={visibleSessions} itemHeight={58} overscan={5}>
+      <VirtualList items={visibleSessions} itemHeight={62} overscan={5}>
         {#snippet children(session: SessionMeta)}
           <SessionRow
             {session}
@@ -276,9 +277,13 @@
     align-items: center;
     gap: 6px;
     background-color: var(--bg-secondary);
-    border: 1px solid var(--border-color);
-    border-radius: 6px;
+    border-radius: var(--radius-sm);
     padding: 4px 8px;
+  }
+
+  .search-input-wrapper:focus-within {
+    outline: 2px solid var(--accent-color);
+    outline-offset: -2px;
   }
 
   .search-icon {
@@ -309,24 +314,23 @@
     height: var(--control-height);
     padding: 0 7px;
     white-space: nowrap;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     font-size: 0.72rem;
     font-weight: 500;
     background-color: var(--bg-secondary);
-    border: 1px solid var(--border-color);
+    border: none;
     color: var(--text-secondary);
     transition: all 0.15s ease;
   }
 
   .filter-btn:hover {
     color: var(--text-primary);
-    border-color: var(--text-muted);
+    background-color: var(--hover-bg);
   }
 
   .filter-btn.active {
     background-color: var(--active-bg);
     color: var(--accent-color);
-    border-color: var(--accent-color);
     font-weight: 600;
   }
 
@@ -351,14 +355,16 @@
     padding: 0;
     font-size: 0.75rem;
     font-weight: bold;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     background-color: var(--bg-secondary);
-    border: 1px solid var(--border-color);
+    border: none;
     color: var(--text-secondary);
+    transition: all 0.15s ease;
   }
 
   .sort-dir-btn:hover {
     color: var(--text-primary);
+    background-color: var(--hover-bg);
   }
 
   .list-subhead {
@@ -383,24 +389,23 @@
 
   .select-all-label input {
     margin: 0;
-    accent-color: #ef4444;
+    accent-color: var(--danger);
   }
 
   .bulk-delete-btn {
     margin-left: auto;
     padding: 2px 8px;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     font-size: 0.7rem;
     font-weight: 500;
-    background-color: rgba(239, 68, 68, 0.12);
-    color: #ef4444;
-    border: 1px solid rgba(239, 68, 68, 0.4);
+    background-color: color-mix(in srgb, var(--danger) 12%, transparent);
+    color: var(--danger);
+    border: none;
     cursor: pointer;
   }
 
   .bulk-delete-btn:hover:not(:disabled) {
-    background-color: rgba(239, 68, 68, 0.2);
-    border-color: #ef4444;
+    background-color: color-mix(in srgb, var(--danger) 20%, transparent);
   }
 
   .bulk-delete-btn:disabled {
