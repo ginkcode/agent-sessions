@@ -89,7 +89,7 @@ func New(roots paths.Roots, configPath string, opts ...Option) (*Manager, error)
 		m.now = defaultNow
 	}
 	if m.proc == nil {
-		m.proc = procDirFS{dir: "/proc"}
+		m.proc = defaultProcFS()
 	}
 	if m.trash == nil {
 		m.trash, _ = platformTrash()

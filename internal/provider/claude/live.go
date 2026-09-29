@@ -71,30 +71,6 @@ func (p *Provider) Live(ctx context.Context) (map[string]provider.LiveInfo, erro
 	return out, nil
 }
 
-// processStartTime reads /proc/<pid>/stat and returns field 22 (starttime).
-// The comm field may contain spaces and parentheses, so we split after the
-// last ')'. Returns 0 when the process does not exist or the field is absent.
-func processStartTime(procFS string, pid int) int64 {
-	data, err := os.ReadFile(filepath.Join(procFS, strconv.Itoa(pid), "stat"))
-	if err != nil {
-		return 0
-	}
-	s := string(data)
-	idx := strings.LastIndex(s, ")")
-	if idx < 0 || idx+2 > len(s) {
-		return 0
-	}
-	fields := strings.Fields(s[idx+2:]) // fields[0] is state (field 3)
-	if len(fields) < 20 {
-		return 0
-	}
-	starttime, err := strconv.ParseInt(fields[19], 10, 64) // field 22
-	if err != nil {
-		return 0
-	}
-	return starttime
-}
-
 // pidMatchesProcStart verifies the pid is alive with the expected start time.
 // An empty procStart falls back to "pid exists".
 func (p *Provider) pidMatchesProcStart(pid int, procStart string) bool {
@@ -107,10 +83,4 @@ func (p *Provider) pidMatchesProcStart(pid int, procStart string) bool {
 		return p.pidExists(pid)
 	}
 	return expected > 0 && processStartTime(p.procFS, pid) == expected
-}
-
-// pidExists reports whether a process with the given pid exists.
-func (p *Provider) pidExists(pid int) bool {
-	_, err := os.Stat(filepath.Join(p.procFS, strconv.Itoa(pid)))
-	return err == nil
 }
