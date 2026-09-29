@@ -71,37 +71,83 @@ func (om *opencodeManager) plan(ctx context.Context, m model.SessionMeta) ([]ope
 	if !om.canTargetRoot() {
 		return nil, errors.New("opencode root is non-standard; refusing to target via XDG_DATA_HOME")
 	}
+	found, migrated, err := om.sessionRows(ctx, m.Ref.ID)
+	if err != nil {
+		return nil, err
+	}
 
+	now := om.now()
+	for _, item := range found {
+		if item.updated.Valid && now.Sub(time.UnixMilli(item.updated.Int64).UTC()) < recentWindow {
+			if item.member.ID == m.Ref.ID {
+				return nil, fmt.Errorf("%w: session was updated within 10 minutes", ErrLive)
+			}
+			return nil, fmt.Errorf("%w: child session was active within 10 minutes", ErrLive)
+		}
+	}
+	return om.membersFrom(m.Ref.ID, found, migrated)
+}
+
+// members is the capture form of plan: the same descendant set and safety
+// checks, without the recency gate. Exporting a session does not modify it.
+func (om *opencodeManager) members(ctx context.Context, m model.SessionMeta) ([]openCodeMember, error) {
+	if m.Ref.Agent != model.AgentOpenCode {
+		return nil, ErrUnsupportedAction
+	}
+	if !isSafeID(m.Ref.ID) {
+		return nil, errors.New("invalid opencode session id")
+	}
+	if !om.canTargetRoot() {
+		return nil, errors.New("opencode root is non-standard; refusing to target via XDG_DATA_HOME")
+	}
+	found, migrated, err := om.sessionRows(ctx, m.Ref.ID)
+	if err != nil {
+		return nil, err
+	}
+	return om.membersFrom(m.Ref.ID, found, migrated)
+}
+
+// sessionRow is one session in the root's descendant closure, across both
+// OpenCode generations.
+type sessionRow struct {
+	member             openCodeMember
+	updated            sql.NullInt64
+	v2Parent, v1Parent sql.NullString
+}
+
+// sessionRows reads the descendant closure of id. migrated reports whether a
+// present v1 table has finished migrating; it is true when no v1 table exists.
+func (om *opencodeManager) sessionRows(ctx context.Context, id string) ([]sessionRow, bool, error) {
 	dbFile := om.dbPath()
 	fi, err := os.Lstat(dbFile)
 	if err != nil {
-		return nil, errors.New("opencode database is unavailable")
+		return nil, false, errors.New("opencode database is unavailable")
 	}
 	if !fi.Mode().IsRegular() {
-		return nil, errors.New("opencode database is not a regular file")
+		return nil, false, errors.New("opencode database is not a regular file")
 	}
 	db, err := sqliteread.Open(ctx, dbFile)
 	if err != nil {
-		return nil, errors.New("cannot open opencode database read-only")
+		return nil, false, errors.New("cannot open opencode database read-only")
 	}
 	defer func() { _ = db.Close() }()
 
 	hasV2, err := sqliteread.HasTable(ctx, db, "session_v2")
 	if err != nil {
-		return nil, errors.New("cannot inspect opencode database")
+		return nil, false, errors.New("cannot inspect opencode database")
 	}
 	hasV1, err := sqliteread.HasTable(ctx, db, "session")
 	if err != nil {
-		return nil, errors.New("cannot inspect opencode database")
+		return nil, false, errors.New("cannot inspect opencode database")
 	}
 	if !hasV2 && !hasV1 {
-		return nil, errors.New("opencode database missing session tables")
+		return nil, false, errors.New("opencode database missing session tables")
 	}
 	migrated := true
 	if hasV1 {
 		migrated, err = v1MigrationCompleted(ctx, db)
 		if err != nil {
-			return nil, errors.New("cannot inspect opencode migration state")
+			return nil, false, errors.New("cannot inspect opencode migration state")
 		}
 	}
 
@@ -133,45 +179,41 @@ func (om *opencodeManager) plan(ctx context.Context, m model.SessionMeta) ([]ope
 	SELECT d.id, ` + v2Exists + `, ` + v1Exists + `, ` + v2Updated + `, ` + v1Updated + `,
 		` + v2Parent + `, ` + v1Parent + `
 	FROM descendants AS d ORDER BY d.id`
-	rows, err := db.QueryContext(ctx, query, m.Ref.ID, m.Ref.ID)
+	rows, err := db.QueryContext(ctx, query, id, id)
 	if err != nil {
-		return nil, errors.New("cannot query opencode descendants")
+		return nil, false, errors.New("cannot query opencode descendants")
 	}
 	defer func() { _ = rows.Close() }()
 
-	type rowInfo struct {
-		member             openCodeMember
-		v2Parent, v1Parent sql.NullString
-	}
-	var found []rowInfo
-	now := om.now()
+	var found []sessionRow
 	for rows.Next() {
-		var item rowInfo
+		var item sessionRow
 		var v2Updated, v1Updated sql.NullInt64
 		if err := rows.Scan(&item.member.ID, &item.member.InV2, &item.member.InV1, &v2Updated, &v1Updated, &item.v2Parent, &item.v1Parent); err != nil {
-			return nil, errors.New("cannot read opencode descendants")
+			return nil, false, errors.New("cannot read opencode descendants")
 		}
 		if !isSafeID(item.member.ID) {
-			return nil, errors.New("invalid opencode descendant id")
+			return nil, false, errors.New("invalid opencode descendant id")
 		}
-		newest := v2Updated
-		if v1Updated.Valid && (!newest.Valid || v1Updated.Int64 > newest.Int64) {
-			newest = v1Updated
-		}
-		if newest.Valid && now.Sub(time.UnixMilli(newest.Int64).UTC()) < recentWindow {
-			if item.member.ID == m.Ref.ID {
-				return nil, fmt.Errorf("%w: session was updated within 10 minutes", ErrLive)
-			}
-			return nil, fmt.Errorf("%w: child session was active within 10 minutes", ErrLive)
+		item.updated = v2Updated
+		if v1Updated.Valid && (!item.updated.Valid || v1Updated.Int64 > item.updated.Int64) {
+			item.updated = v1Updated
 		}
 		found = append(found, item)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, errors.New("cannot iterate opencode descendants")
+		return nil, false, errors.New("cannot iterate opencode descendants")
 	}
 	if len(found) == 0 {
-		return nil, errors.New("session not found in opencode database")
+		return nil, false, errors.New("session not found in opencode database")
 	}
+	return found, migrated, nil
+}
+
+// membersFrom turns the descendant closure into the membership execution and
+// capture both consume. An unfinished migration blocks any plan that would
+// start the CLI, since the CLI resumes that migration.
+func (om *opencodeManager) membersFrom(rootID string, found []sessionRow, migrated bool) ([]openCodeMember, error) {
 
 	present := make(map[string]openCodeMember, len(found))
 	children := make(map[string][]string)
@@ -187,7 +229,7 @@ func (om *opencodeManager) plan(ctx context.Context, m model.SessionMeta) ([]ope
 			}
 		}
 	}
-	if graphHasCycle(m.Ref.ID, children) {
+	if graphHasCycle(rootID, children) {
 		return nil, errors.New("session graph contains a cycle")
 	}
 

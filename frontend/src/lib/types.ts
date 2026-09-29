@@ -243,3 +243,38 @@ export interface Diagnostics {
   warnings?: Warning[];
   errors?: string[];
 }
+
+export interface HandoffReport {
+  estimatedTokens: number;
+  budgetTokens: number;
+  trimmed: boolean;
+  droppedItems: string[];
+  redactionCounts: {
+    emails?: number;
+    ipv4?: number;
+    apiKeys?: number;
+    sshKeys?: number;
+    tokens?: number;
+    passwords?: number;
+  };
+}
+
+export interface HandoffRequest {
+  ref: SessionRef;
+  target: AgentID;
+  budget?: number;
+  includeReasoning?: boolean;
+  redactSecrets?: boolean;
+  cwd?: string;
+}
+
+export interface HandoffPreview {
+  promptMarkdown: string;
+  fullMarkdown: string;
+  report: HandoffReport;
+  contextFile: string;
+  command: string;
+  filePointer: boolean;
+  promptBytes: number;
+}
+

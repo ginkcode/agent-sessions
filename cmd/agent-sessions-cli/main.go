@@ -8,12 +8,15 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"text/tabwriter"
 	"time"
 	"unicode/utf8"
 
+	"github.com/ginkcode/agent-sessions/internal/handoff"
 	"github.com/ginkcode/agent-sessions/internal/model"
 	"github.com/ginkcode/agent-sessions/internal/paths"
 	"github.com/ginkcode/agent-sessions/internal/pathutil"
@@ -42,6 +45,12 @@ func run(ctx context.Context, args []string, providers provider.Set, stdout, std
 		return scan(ctx, args[1:], providers, stdout, stderr)
 	case "show":
 		return show(ctx, args[1:], providers, stdout, stderr)
+	case "handoff":
+		return handoffCmd(ctx, args[1:], providers, stdout, stderr)
+	case "export":
+		return exportCmd(ctx, args[1:], providers, stdout, stderr)
+	case "inspect":
+		return inspectCmd(args[1:], stdout, stderr)
 	case "detect":
 		if len(args) != 1 {
 			usage(stderr)
@@ -59,6 +68,9 @@ func usage(w io.Writer) {
 	_, _ = fmt.Fprintln(w, "Usage:")
 	_, _ = fmt.Fprintln(w, "  agent-sessions-cli scan [--agent claude-code] [--json] [--all]")
 	_, _ = fmt.Fprintln(w, "  agent-sessions-cli show <agent> <id> [--json] [--meta] [--max-output 2000]")
+	_, _ = fmt.Fprintln(w, "  agent-sessions-cli handoff <agent> <id> --target <agent> [--budget compact|detailed|full|unlimited|N] [--reasoning] [--redact] [--cwd <dir>] [--command] [--json]")
+	_, _ = fmt.Fprintln(w, "  agent-sessions-cli export <agent> <id> [--profile complete|share-safe] [--budget compact|detailed|full|unlimited|N] [--reasoning] [--redact] -o <file>")
+	_, _ = fmt.Fprintln(w, "  agent-sessions-cli inspect <bundle> [--json]")
 	_, _ = fmt.Fprintln(w, "  agent-sessions-cli detect")
 }
 
@@ -370,5 +382,195 @@ func detect(ctx context.Context, providers provider.Set, stdout, stderr io.Write
 		_, _ = fmt.Fprintf(stderr, "detect: write output: %v\n", err)
 		return 1
 	}
+	return 0
+}
+
+func parseBudget(s string) (int, error) {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "", "detailed":
+		return handoff.BudgetDetailed, nil
+	case "compact":
+		return handoff.BudgetCompact, nil
+	case "full":
+		return handoff.BudgetFull, nil
+	case "unlimited":
+		return handoff.BudgetUnlimited, nil
+	default:
+		n, err := strconv.Atoi(s)
+		if err != nil || n < 0 {
+			return 0, fmt.Errorf("invalid budget %q: must be compact, detailed, full, unlimited, or non-negative integer", s)
+		}
+		return n, nil
+	}
+}
+
+func parseTarget(s string) (model.AgentID, error) {
+	switch s {
+	case string(model.AgentClaude), "claude":
+		return model.AgentClaude, nil
+	case string(model.AgentCodex):
+		return model.AgentCodex, nil
+	case string(model.AgentOpenCode):
+		return model.AgentOpenCode, nil
+	default:
+		return "", fmt.Errorf("unknown target agent %q (expected claude-code, codex, or opencode)", s)
+	}
+}
+
+func handoffArgs(args []string) (options, positional []string) {
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		if a == "--" {
+			positional = append(positional, args[i+1:]...)
+			break
+		}
+		if strings.HasPrefix(a, "-") && a != "-" {
+			options = append(options, a)
+			if !strings.Contains(a, "=") {
+				name := strings.TrimLeft(a, "-")
+				if name == "target" || name == "budget" || name == "cwd" {
+					if i+1 < len(args) {
+						i++
+						options = append(options, args[i])
+					}
+				}
+			}
+			continue
+		}
+		positional = append(positional, a)
+	}
+	return options, positional
+}
+
+func handoffCmd(ctx context.Context, args []string, providers provider.Set, stdout, stderr io.Writer) int {
+	fs := flag.NewFlagSet("handoff", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	targetStr := fs.String("target", "", "target agent (claude-code, codex, opencode)")
+	budgetStr := fs.String("budget", "detailed", "token budget (compact, detailed, full, unlimited, or token count)")
+	reasoning := fs.Bool("reasoning", false, "include reasoning in handoff")
+	redact := fs.Bool("redact", false, "redact secrets")
+	cwd := fs.String("cwd", "", "working directory for the launch command")
+	asCommand := fs.Bool("command", false, "output the launch command line")
+	asJSON := fs.Bool("json", false, "output as JSON")
+
+	options, positional := handoffArgs(args)
+	if err := fs.Parse(options); err != nil {
+		return 2
+	}
+
+	if len(positional) != 2 || *targetStr == "" {
+		usage(stderr)
+		return 2
+	}
+
+	target, err := parseTarget(*targetStr)
+	if err != nil {
+		_, _ = fmt.Fprintln(stderr, err)
+		return 2
+	}
+
+	budget, err := parseBudget(*budgetStr)
+	if err != nil {
+		_, _ = fmt.Fprintln(stderr, err)
+		return 2
+	}
+
+	if *cwd != "" && !filepath.IsAbs(*cwd) {
+		_, _ = fmt.Fprintf(stderr, "cwd %q must be an absolute path\n", *cwd)
+		return 2
+	}
+
+	sourceAgent := model.AgentID(positional[0])
+	if positional[0] == "claude" {
+		sourceAgent = model.AgentClaude
+	}
+	p, ok := providers.Get(sourceAgent)
+	if !ok {
+		_, _ = fmt.Fprintf(stderr, "unknown agent %q\n", positional[0])
+		return 2
+	}
+
+	ref := model.SessionRef{Agent: p.ID(), ID: positional[1]}
+	tr, err := p.Load(ctx, ref)
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "%s: load %s: %v\n", p.ID(), ref.ID, err)
+		return 1
+	}
+	if tr == nil {
+		_, _ = fmt.Fprintf(stderr, "%s: load %s: empty transcript\n", p.ID(), ref.ID)
+		return 1
+	}
+
+	// Discover descendants from provider scan if available
+	allSessions := []model.SessionMeta{tr.Meta}
+	if scanRes, err := p.Scan(ctx, provider.ScanState{}); err == nil {
+		allSessions = scanRes.Changed
+	}
+
+	transcripts, err := handoff.Collect(ctx, tr.Meta, allSessions, p.Load)
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "%s: collect: %v\n", p.ID(), err)
+		return 1
+	}
+
+	roots, _ := paths.Default()
+	var contextFile string
+	if roots.Data != "" {
+		contextFile, _ = handoff.ContextFilePath(roots.Data, ref.ID)
+	}
+
+	opts := handoff.Options{
+		TargetAgent:      target,
+		BudgetTokens:     budget,
+		IncludeReasoning: *reasoning,
+		RedactSecrets:    *redact,
+		RemappedCWD:      *cwd,
+		ContextFilePath:  contextFile,
+	}
+
+	doc, report := handoff.Build(transcripts, opts)
+	doc.Report = report
+
+	// Save context file if data directory is known
+	if roots.Data != "" {
+		if _, err := handoff.SaveContextFile(roots.Data, ref.ID, doc.FullMarkdown); err != nil {
+			_, _ = fmt.Fprintf(stderr, "handoff: save context file: %v\n", err)
+			return 1
+		}
+	}
+
+	launchCWD := *cwd
+	if launchCWD == "" {
+		launchCWD = tr.Meta.CWD
+	}
+
+	cmd := handoff.BuildLaunchCommand(target, doc.PromptMarkdown, contextFile, launchCWD)
+	_, filePointer := handoff.LaunchPrompt(doc.PromptMarkdown, contextFile)
+
+	if *asJSON {
+		result := struct {
+			Prompt      string         `json:"prompt"`
+			Command     string         `json:"command"`
+			Report      handoff.Report `json:"report"`
+			ContextFile string         `json:"contextFile,omitempty"`
+			FilePointer bool           `json:"filePointer"`
+			PromptBytes int            `json:"promptBytes"`
+		}{
+			Prompt:      doc.PromptMarkdown,
+			Command:     cmd,
+			Report:      report,
+			ContextFile: contextFile,
+			FilePointer: filePointer,
+			PromptBytes: len(doc.PromptMarkdown),
+		}
+		return writeJSON(stdout, stderr, result)
+	}
+
+	if *asCommand {
+		_, _ = fmt.Fprintln(stdout, cmd)
+		return 0
+	}
+
+	_, _ = fmt.Fprint(stdout, doc.PromptMarkdown)
 	return 0
 }

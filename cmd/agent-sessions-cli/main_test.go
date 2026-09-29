@@ -226,6 +226,10 @@ func TestExitCodes(t *testing.T) {
 		{"unknown show flag", []string{"show", "claude-code", "id", "--bogus"}, 2},
 		{"detect extra argument", []string{"detect", "extra"}, 2},
 		{"missing transcript", []string{"show", "claude-code", "missing"}, 1},
+		{"missing handoff target", []string{"handoff", "claude-code", "s1"}, 2},
+		{"unknown handoff target", []string{"handoff", "claude-code", "s1", "--target", "unknown"}, 2},
+		{"invalid handoff budget", []string{"handoff", "claude-code", "s1", "--target", "codex", "--budget", "bad"}, 2},
+		{"relative handoff cwd", []string{"handoff", "claude-code", "s1", "--target", "codex", "--cwd", "relative/path"}, 2},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			code, _, _ := runFake(tc.args, provider.Set{fake})
@@ -233,5 +237,71 @@ func TestExitCodes(t *testing.T) {
 				t.Errorf("exit=%d, want=%d", code, tc.want)
 			}
 		})
+	}
+}
+
+func TestHandoffCLI(t *testing.T) {
+	fake := providertest.NewFake(model.AgentClaude, "Claude Code")
+	now := time.Now()
+	rootMeta := model.SessionMeta{
+		Ref:         model.SessionRef{Agent: model.AgentClaude, ID: "s1"},
+		Title:       "Root Session",
+		CWD:         "/repo/root",
+		FirstPrompt: "Initial prompt for feature",
+		CreatedAt:   now,
+		UpdatedAt:   now,
+	}
+	fake.Sessions = []model.SessionMeta{rootMeta}
+	fake.Transcripts["s1"] = &model.Transcript{
+		Meta: rootMeta,
+		Messages: []model.Message{
+			{Role: model.RoleUser, Parts: []model.Part{{Kind: model.PartText, Text: "Initial prompt for feature"}}},
+			{Role: model.RoleAssistant, Parts: []model.Part{{Kind: model.PartText, Text: "Understood, working on it."}}},
+		},
+	}
+
+	// 1. Default output: prints prompt markdown
+	code, out, diag := runFake([]string{"handoff", "claude-code", "s1", "--target", "codex"}, provider.Set{fake})
+	if code != 0 {
+		t.Fatalf("handoff failed: exit=%d, diag=%s", code, diag)
+	}
+	if !strings.Contains(out, "Initial prompt for feature") && !strings.Contains(out, "Understood, working on it.") {
+		t.Errorf("prompt output missing session content: %s", out)
+	}
+
+	// 2. --command output
+	code, out, diag = runFake([]string{"handoff", "claude-code", "s1", "--target", "codex", "--command"}, provider.Set{fake})
+	if code != 0 {
+		t.Fatalf("handoff --command failed: exit=%d, diag=%s", code, diag)
+	}
+	if !strings.HasPrefix(strings.TrimSpace(out), "cd /repo/root && codex") {
+		t.Errorf("unexpected command output: %s", out)
+	}
+
+	// 3. --cwd override
+	code, out, diag = runFake([]string{"handoff", "claude-code", "s1", "--target", "opencode", "--cwd", "/custom/workdir", "--command"}, provider.Set{fake})
+	if code != 0 {
+		t.Fatalf("handoff with --cwd failed: exit=%d, diag=%s", code, diag)
+	}
+	if !strings.HasPrefix(strings.TrimSpace(out), "cd /custom/workdir && opencode --prompt") {
+		t.Errorf("unexpected cwd command output: %s", out)
+	}
+
+	// 4. --json output
+	code, out, diag = runFake([]string{"handoff", "claude-code", "s1", "--target", "codex", "--budget", "compact", "--json"}, provider.Set{fake})
+	if code != 0 {
+		t.Fatalf("handoff --json failed: exit=%d, diag=%s", code, diag)
+	}
+	var res struct {
+		Prompt      string `json:"prompt"`
+		Command     string `json:"command"`
+		FilePointer bool   `json:"filePointer"`
+		PromptBytes int    `json:"promptBytes"`
+	}
+	if err := json.Unmarshal([]byte(out), &res); err != nil {
+		t.Fatalf("bad json: %v (%q)", err, out)
+	}
+	if res.Prompt == "" || res.Command == "" || res.PromptBytes == 0 {
+		t.Errorf("unexpected empty fields in json: %+v", res)
 	}
 }

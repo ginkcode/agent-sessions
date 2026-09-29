@@ -15,6 +15,8 @@ import type {
   SearchHit,
   FTSProgress,
   CatalogChanged,
+  HandoffRequest,
+  HandoffPreview,
 } from './types';
 import { MockBackendAPI } from './mock/mockApi';
 
@@ -37,6 +39,9 @@ export interface BackendAPI {
   setAllowPermanentDelete(allow: boolean): Promise<ManageSettings>;
   previewDelete(refs: SessionRef[]): Promise<DeletePreview>;
   deleteSessions(refs: SessionRef[], token: string): Promise<DeleteResult>;
+  buildHandoff(req: HandoffRequest): Promise<HandoffPreview>;
+  handoffCommand(req: HandoffRequest): Promise<string>;
+  saveHandoff(req: HandoffRequest): Promise<string>;
   scan(): Promise<void>;
 }
 
@@ -58,6 +63,9 @@ interface WailsAppBinding {
   SetAllowPermanentDelete(allow: boolean): Promise<ManageSettings>;
   PreviewDelete(refs: SessionRef[]): Promise<DeletePreview>;
   DeleteSessions(refs: SessionRef[], token: string): Promise<DeleteResult>;
+  BuildHandoff(req: HandoffRequest): Promise<HandoffPreview>;
+  HandoffCommand(req: HandoffRequest): Promise<string>;
+  SaveHandoff(req: HandoffRequest): Promise<string>;
   Scan(): Promise<void>;
   Ping(name: string): Promise<string>;
 }
@@ -212,6 +220,30 @@ class WailsBackendAPI implements BackendAPI {
   async deleteSessions(refs: SessionRef[], token: string): Promise<DeleteResult> {
     try {
       return await this.binding.DeleteSessions(refs, token);
+    } catch (e) {
+      throw normalizeError(e);
+    }
+  }
+
+  async buildHandoff(req: HandoffRequest): Promise<HandoffPreview> {
+    try {
+      return await this.binding.BuildHandoff(req);
+    } catch (e) {
+      throw normalizeError(e);
+    }
+  }
+
+  async handoffCommand(req: HandoffRequest): Promise<string> {
+    try {
+      return await this.binding.HandoffCommand(req);
+    } catch (e) {
+      throw normalizeError(e);
+    }
+  }
+
+  async saveHandoff(req: HandoffRequest): Promise<string> {
+    try {
+      return await this.binding.SaveHandoff(req);
     } catch (e) {
       throw normalizeError(e);
     }

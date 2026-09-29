@@ -24,15 +24,16 @@ import (
 
 // App is the desktop application service exposed to the Wails frontend.
 type App struct {
-	ctx              context.Context
-	svc              *Service
-	runner           *scan.Runner
-	refresher        *index.Refresher
-	manageMu         sync.Mutex      // guards manage construction
-	manage           *manage.Manager // destructive actions; lazy-built
-	manageOverride   *manage.Manager // tests only
-	cacheEnabled     bool
-	cacheDirOverride string // tests only
+	ctx                context.Context
+	svc                *Service
+	runner             *scan.Runner
+	refresher          *index.Refresher
+	manageMu           sync.Mutex      // guards manage construction
+	manage             *manage.Manager // destructive actions; lazy-built
+	manageOverride     *manage.Manager // tests only
+	cacheEnabled       bool
+	cacheDirOverride   string                                                        // tests only
+	saveDialogOverride func(ctx context.Context, defaultName string) (string, error) // tests only
 
 	cancelBootstrap context.CancelFunc // cancels the startup scan
 	bootstrapDone   chan struct{}      // closed when the startup scan finishes

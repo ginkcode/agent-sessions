@@ -40,6 +40,7 @@ import {
   RequestSequence,
 } from '../src/lib/catalog.ts';
 import { subscribeCatalogChanged, subscribeIndexProgress } from '../src/lib/api.ts';
+import { BUDGET_PRESETS, ALL_AGENTS, targetAgentsFor } from '../src/lib/portable.ts';
 
 test('formatTokens formats numbers into compact string representations', () => {
   assert.equal(formatTokens(0), '0');
@@ -607,4 +608,49 @@ test('typed subscriptions forward objects and ignore malformed payloads', () => 
 
   assert.deepEqual(catalog, [event]);
   assert.equal(progress.length, 1);
+});
+
+test('MockBackendAPI copyResumeCommand formats provider-specific resume commands', async () => {
+  const mock = new MockBackendAPI();
+  const claudeCmd = await mock.copyResumeCommand({ agent: 'claude-code', id: 'session-claude-1' });
+  assert.match(claudeCmd, /claude --resume 'session-claude-1'/);
+
+  const codexCmd = await mock.copyResumeCommand({ agent: 'codex', id: '01a0e61e-e703-75a2-bc1d-6349e32f6dd4' });
+  assert.match(codexCmd, /codex resume '01a0e61e-e703-75a2-bc1d-6349e32f6dd4'/);
+
+  const opencodeCmd = await mock.copyResumeCommand({ agent: 'opencode', id: 'opencode-sess-101' });
+  assert.match(opencodeCmd, /opencode --session 'opencode-sess-101'/);
+});
+
+test('MockBackendAPI buildHandoff, handoffCommand, and saveHandoff produce deliverables', async () => {
+  const mock = new MockBackendAPI();
+  const req = {
+    ref: { agent: 'claude-code', id: 'session-claude-1' },
+    target: 'codex',
+    budget: 80000,
+  };
+
+  const preview = await mock.buildHandoff(req);
+  assert.ok(preview.promptMarkdown.includes('Handoff to codex'));
+  assert.ok(preview.fullMarkdown.includes('Timeline'));
+  assert.match(preview.command, /codex 'Handoff prompt'/);
+  assert.equal(preview.report.estimatedTokens, 1250);
+
+  const cmd = await mock.handoffCommand(req);
+  assert.match(cmd, /codex 'Handoff prompt'/);
+
+  const path = await mock.saveHandoff(req);
+  assert.match(path, /session-claude-1-handoff\.md$/);
+});
+
+test('portable helpers define budget presets and target agent options', () => {
+  assert.equal(BUDGET_PRESETS.length, 4);
+  const ids = BUDGET_PRESETS.map((b) => b.id);
+  assert.deepEqual(ids, ['compact', 'detailed', 'full', 'unlimited']);
+
+  const targets = targetAgentsFor('claude-code');
+  assert.deepEqual(targets.map((t) => t.id), ['codex', 'opencode']);
+
+  const allTargets = targetAgentsFor();
+  assert.equal(allTargets.length, 3);
 });

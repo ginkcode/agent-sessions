@@ -16,6 +16,9 @@ import type {
   SearchHit,
   SearchHitKind,
   FTSProgress,
+  HandoffRequest,
+  HandoffPreview,
+  HandoffReport,
 } from '../types.js';
 import { mockSessions, mockMessages, mockBlobs, mockDiagnostics } from './fixtures.js';
 import { refKey } from '../manage.js';
@@ -335,10 +338,13 @@ export class MockBackendAPI {
 
   async copyResumeCommand(ref: SessionRef): Promise<string> {
     const meta = await this.getSessionMeta(ref);
-    let bin = 'claude';
-    if (ref.agent === 'codex') bin = 'codex';
-    else if (ref.agent === 'opencode') bin = 'opencode';
-    return `cd '${meta.cwd}' && ${bin} --resume '${ref.id}'`;
+    if (ref.agent === 'codex') {
+      return `cd '${meta.cwd}' && codex resume '${ref.id}'`;
+    }
+    if (ref.agent === 'opencode') {
+      return `cd '${meta.cwd}' && opencode --session '${ref.id}'`;
+    }
+    return `cd '${meta.cwd}' && claude --resume '${ref.id}'`;
   }
 
   async revealSource(ref: SessionRef): Promise<void> {
@@ -482,6 +488,45 @@ export class MockBackendAPI {
   }
 
   private previewSeq = 1;
+
+  async buildHandoff(req: HandoffRequest): Promise<HandoffPreview> {
+    const meta = await this.getSessionMeta(req.ref);
+    const cwd = req.cwd || meta.cwd;
+    const target = req.target;
+    let cmd = `claude 'Handoff prompt'`;
+    if (target === 'codex') cmd = `cd '${cwd}' && codex 'Handoff prompt'`;
+    else if (target === 'opencode') cmd = `cd '${cwd}' && opencode --prompt 'Handoff prompt'`;
+    else cmd = `cd '${cwd}' && claude 'Handoff prompt'`;
+
+    const report: HandoffReport = {
+      estimatedTokens: 1250,
+      budgetTokens: req.budget || 80000,
+      trimmed: false,
+      droppedItems: [],
+      redactionCounts: {},
+    };
+
+    const prompt = `# Handoff to ${target}\n\nTask: ${meta.title}\nCWD: ${cwd}\n\nContinue from here.`;
+    return {
+      promptMarkdown: prompt,
+      fullMarkdown: prompt + '\n\n## Timeline\n(Full conversation history)',
+      report,
+      contextFile: `/tmp/handoffs/${req.ref.id}-full.md`,
+      command: cmd,
+      filePointer: false,
+      promptBytes: prompt.length,
+    };
+  }
+
+  async handoffCommand(req: HandoffRequest): Promise<string> {
+    const preview = await this.buildHandoff(req);
+    return preview.command;
+  }
+
+  async saveHandoff(req: HandoffRequest): Promise<string> {
+    const meta = await this.getSessionMeta(req.ref);
+    return `/mock/downloads/${meta.ref.id}-handoff.md`;
+  }
 
   async openURL(url: string): Promise<void> {
     if (typeof window !== 'undefined') {

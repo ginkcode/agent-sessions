@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/ginkcode/agent-sessions/internal/group"
 	"github.com/ginkcode/agent-sessions/internal/model"
+	"github.com/ginkcode/agent-sessions/internal/paths"
 	"github.com/ginkcode/agent-sessions/internal/provider"
 	"github.com/ginkcode/agent-sessions/internal/scan"
 )
@@ -48,6 +50,20 @@ type Service struct {
 	states   map[model.AgentID]provider.ScanState
 
 	transcripts *lru[string, *model.Transcript]
+	dataDir     string
+}
+
+// DataDir returns the base directory for handoffs and app data.
+func (s *Service) DataDir() string {
+	if s.dataDir != "" {
+		return s.dataDir
+	}
+	roots, err := paths.Default()
+	if err == nil && roots.Data != "" {
+		return roots.Data
+	}
+	home, _ := os.UserHomeDir()
+	return filepath.Join(home, ".local", "share", "agent-sessions")
 }
 
 // NewService wires a Service onto an existing catalog and provider set.

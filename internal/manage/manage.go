@@ -52,17 +52,18 @@ type Report struct {
 }
 
 type Manager struct {
-	roots    paths.Roots
-	config   *ConfigStore
-	claude   *claudeManager
-	codex    *codexManager
-	opencode *opencodeManager
-	trash    Trash
-	proc     ProcFS
-	live     LiveFunc
-	now      NowFunc
-	exec     ExecFunc
-	tokenKey []byte
+	roots          paths.Roots
+	config         *ConfigStore
+	claude         *claudeManager
+	codex          *codexManager
+	opencode       *opencodeManager
+	trash          Trash
+	proc           ProcFS
+	live           LiveFunc
+	now            NowFunc
+	exec           ExecFunc
+	opencodeExport OpenCodeExportFunc
+	tokenKey       []byte
 	// Serialize previews/deletes through this manager. This also prevents two
 	// simultaneous deletes from racing over the same file and stale plan.
 	mu sync.Mutex
@@ -74,6 +75,12 @@ func WithLiveFunc(fn LiveFunc) Option { return func(m *Manager) { m.live = fn } 
 func WithNow(fn NowFunc) Option       { return func(m *Manager) { m.now = fn } }
 func WithTrash(t Trash) Option        { return func(m *Manager) { m.trash = t } }
 func WithExec(fn ExecFunc) Option     { return func(m *Manager) { m.exec = fn } }
+
+// WithOpenCodeExport replaces the OpenCode session-export command. Capture
+// uses it; deletion keeps using ExecFunc.
+func WithOpenCodeExport(fn OpenCodeExportFunc) Option {
+	return func(m *Manager) { m.opencodeExport = fn }
+}
 
 // New does not require data roots to exist yet: provider roots are validated
 // lazily so the application starts normally before any provider is installed.

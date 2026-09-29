@@ -9,6 +9,7 @@
   import TranscriptView from './lib/components/transcript/TranscriptView.svelte';
   import ManageSettingsDialog from './lib/components/common/ManageSettingsDialog.svelte';
   import GlobalSearchDialog from './lib/components/common/GlobalSearchDialog.svelte';
+  import HandoffDialog from './lib/components/common/HandoffDialog.svelte';
   import { theme } from './lib/stores/theme.svelte';
   import { preferences } from './lib/stores/preferences.svelte';
   import { appState } from './lib/stores/appState.svelte';
@@ -203,6 +204,7 @@
 
   <ManageSettingsDialog />
   <GlobalSearchDialog />
+  <HandoffDialog />
 </div>
 
 <style>

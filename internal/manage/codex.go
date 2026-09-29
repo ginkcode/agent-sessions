@@ -211,18 +211,51 @@ func runStandalone(ctx context.Context, argv []string, dir string, env []string)
 	return nil
 }
 
+// runCapture is runStandalone that keeps stdout. Capture uses it for
+// `opencode session export`, whose payload is the command's standard output.
+func runCapture(ctx context.Context, argv []string, dir string, env []string) ([]byte, error) {
+	if len(argv) == 0 {
+		return nil, errors.New("empty command")
+	}
+	name := argv[0]
+	bin, err := resolveCLI(name)
+	if err != nil {
+		return nil, err
+	}
+	cmd := exec.CommandContext(ctx, bin, argv[1:]...) //nolint:gosec
+	cmd.Dir = dir
+	cmd.Env = withPathPrefix(append(os.Environ(), env...), filepath.Dir(bin))
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &limitWriter{w: &stdout, limit: 64 << 20, reject: true}
+	cmd.Stderr = &limitWriter{w: &stderr, limit: 4096}
+	if err := cmd.Run(); err != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			err = ctxErr
+		}
+		return nil, cliFailure(name, err, stderr.Bytes())
+	}
+	return stdout.Bytes(), nil
+}
+
 type limitWriter struct {
-	w     io.Writer
-	limit int64
-	n     int64
+	w      io.Writer
+	limit  int64
+	n      int64
+	reject bool // report an error past limit instead of discarding
 }
 
 func (l *limitWriter) Write(p []byte) (int, error) {
 	if l.n >= l.limit {
+		if l.reject {
+			return 0, errors.New("command output exceeded capture limit")
+		}
 		return len(p), nil
 	}
 	remaining := l.limit - l.n
 	if int64(len(p)) > remaining {
+		if l.reject {
+			return 0, errors.New("command output exceeded capture limit")
+		}
 		p = p[:remaining]
 	}
 	n, err := l.w.Write(p)

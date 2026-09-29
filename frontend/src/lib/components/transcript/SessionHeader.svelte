@@ -4,6 +4,9 @@
   import { formatAbsoluteTime, formatAgo, isKnownTime } from '../../date';
   import { appState } from '../../stores/appState.svelte';
   import { manage } from '../../stores/manage.svelte';
+  import { handoff } from '../../stores/handoff.svelte';
+  import { ALL_AGENTS } from '../../portable';
+  import AgentIcon from '../common/AgentIcon.svelte';
 
   interface Props {
     meta: SessionMeta;
@@ -26,13 +29,23 @@
   }: Props = $props();
 
   let messageTotal = $derived(meta.counts.user + meta.counts.assistant);
+  let continueMenuOpen = $state(false);
+  let menuRoot: HTMLDivElement | undefined = $state();
 
   function handleNavigateToParent() {
     if (meta.parentId) {
       appState.selectSession({ agent: meta.ref.agent, id: meta.parentId });
     }
   }
+
+  function handleWindowPointerDown(e: PointerEvent) {
+    if (continueMenuOpen && menuRoot && !menuRoot.contains(e.target as Node)) {
+      continueMenuOpen = false;
+    }
+  }
 </script>
+
+<svelte:window onpointerdown={handleWindowPointerDown} />
 
 <header class="session-header">
   {#if meta.parentId}
@@ -74,6 +87,38 @@
       >
         {resumeCopied ? '✓ Copied' : 'Resume'}
       </button>
+
+      <div class="menu-container" bind:this={menuRoot}>
+        <button
+          type="button"
+          class="action-btn continue-btn"
+          class:active={continueMenuOpen}
+          title="Continue this session in another agent"
+          aria-haspopup="menu"
+          aria-expanded={continueMenuOpen}
+          onclick={() => (continueMenuOpen = !continueMenuOpen)}
+        >
+          Continue in ▾
+        </button>
+        {#if continueMenuOpen}
+          <div class="action-dropdown-menu" role="menu">
+            {#each ALL_AGENTS as agent (agent.id)}
+              <button
+                type="button"
+                class="action-menu-item"
+                role="menuitem"
+                onclick={() => {
+                  continueMenuOpen = false;
+                  handoff.open(meta, agent.id);
+                }}
+              >
+                <AgentIcon agent={agent.id} size={14} />
+                <span>{agent.label}</span>
+              </button>
+            {/each}
+          </div>
+        {/if}
+      </div>
 
       {#if meta.sourcePath}
         <button
@@ -306,6 +351,54 @@
   .action-btn.meta-btn.active {
     background-color: var(--active-bg);
     color: var(--accent-color);
+  }
+
+  .action-btn.continue-btn.active {
+    background-color: var(--bg-tertiary);
+    color: var(--text-primary);
+  }
+
+  .menu-container {
+    position: relative;
+    display: inline-flex;
+  }
+
+  .action-dropdown-menu {
+    position: absolute;
+    top: calc(100% + 4px);
+    right: 0;
+    z-index: 100;
+    min-width: 140px;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm, 6px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+    padding: 4px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .action-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px;
+    border: none;
+    background: transparent;
+    border-radius: var(--radius-sm, 4px);
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: var(--text-secondary);
+    cursor: pointer;
+    text-align: left;
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  .action-menu-item:hover {
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
   }
 
   .action-btn.delete-btn {
