@@ -4,13 +4,16 @@
  * Completely zero-dependency and XSS-safe.
  */
 
+const HTML_ESCAPES: Record<string, string> = {
+  '&': '&amp;',
+  '<': '&lt;',
+  '>': '&gt;',
+  '"': '&quot;',
+  "'": '&#39;',
+};
+
 function escapeHtml(text: string): string {
-  return text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
+  return text.replace(/[&<>"']/g, (ch) => HTML_ESCAPES[ch]);
 }
 
 const LANGUAGE_ALIASES: Record<string, string> = {
@@ -132,6 +135,24 @@ function highlightDiff(code: string): string {
   return highlighted.join('\n');
 }
 
+const NUMBER_BOUNDARY = /[\s,([\]{}:;=+\-*/%<>&|^~!]/;
+const NUMBER_CHAR = /[\d.xXa-fA-F_]/;
+
+function isDigit(ch: string): boolean {
+  return ch >= '0' && ch <= '9';
+}
+
+function isWordStart(ch: string): boolean {
+  return (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || ch === '_' || ch === '$';
+}
+
+function isWordChar(ch: string): boolean {
+  return isWordStart(ch) || isDigit(ch);
+}
+
+// Scans one line at a time. Tokens are sliced out of the line rather than
+// built char by char, and punctuation is escaped through a lookup, since
+// this runs over every code block in a transcript page.
 function highlightGenericCode(code: string, keywords: Set<string>, commentPrefix: string): string {
   const lines = code.split('\n');
   const result: string[] = [];
@@ -148,59 +169,49 @@ function highlightGenericCode(code: string, keywords: Set<string>, commentPrefix
         break;
       }
 
-      // Check strings (single or double quoted or backticks)
+      const start = i;
       const ch = line[i];
+
+      // Check strings (single or double quoted or backticks)
       if (ch === '"' || ch === '\'' || ch === '`') {
-        const quote = ch;
-        let str = quote;
         i++;
         while (i < len) {
           const c = line[i];
-          str += c;
           if (c === '\\' && i + 1 < len) {
             i++;
-            str += line[i];
-          } else if (c === quote) {
+          } else if (c === ch) {
             i++;
             break;
           }
           i++;
         }
-        out += `<span class="hljs-string">${escapeHtml(str)}</span>`;
+        out += `<span class="hljs-string">${escapeHtml(line.slice(start, i))}</span>`;
         continue;
       }
 
       // Check numbers
-      if (/\d/.test(ch) && (i === 0 || /[\s,([\]{}:;=+\-*/%<>&|^~!]/.test(line[i - 1]))) {
-        let num = '';
-        while (i < len && /[\d.xXa-fA-F_]/.test(line[i])) {
-          num += line[i];
-          i++;
-        }
-        out += `<span class="hljs-number">${escapeHtml(num)}</span>`;
+      if (isDigit(ch) && (i === 0 || NUMBER_BOUNDARY.test(line[i - 1]))) {
+        while (i < len && NUMBER_CHAR.test(line[i])) i++;
+        out += `<span class="hljs-number">${escapeHtml(line.slice(start, i))}</span>`;
         continue;
       }
 
       // Check words / identifiers / keywords
-      if (/[a-zA-Z_$]/.test(ch)) {
-        let word = '';
-        while (i < len && /[a-zA-Z0-9_$]/.test(line[i])) {
-          word += line[i];
-          i++;
-        }
-        const lowerWord = word.toLowerCase();
-        if (keywords.has(word) || keywords.has(lowerWord)) {
-          out += `<span class="hljs-keyword">${escapeHtml(word)}</span>`;
+      if (isWordStart(ch)) {
+        while (i < len && isWordChar(line[i])) i++;
+        const word = line.slice(start, i);
+        if (keywords.has(word) || keywords.has(word.toLowerCase())) {
+          out += `<span class="hljs-keyword">${word}</span>`;
         } else if (i < len && line[i] === '(') {
-          out += `<span class="hljs-title hljs-function">${escapeHtml(word)}</span>`;
+          out += `<span class="hljs-title hljs-function">${word}</span>`;
         } else {
-          out += escapeHtml(word);
+          out += word;
         }
         continue;
       }
 
       // Operators and punctuation
-      out += escapeHtml(ch);
+      out += HTML_ESCAPES[ch] ?? ch;
       i++;
     }
     result.push(out);

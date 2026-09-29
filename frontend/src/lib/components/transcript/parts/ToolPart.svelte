@@ -1,8 +1,15 @@
 <script lang="ts">
   import type { ToolCall, SessionRef } from '../../../types';
   import { highlightCode } from '../../../highlight';
+  import { reachesLineCount } from '../../../layout';
   import { api } from '../../../api';
   import SubagentLink from './SubagentLink.svelte';
+
+  // An output this long always fills .output-content's max-height (350px at
+  // 12px/1.4 lines), so its height is known without laying the text out. 160
+  // columns is more than the 900px transcript fits in any monospace font.
+  const FULL_BOX_LINES = 24;
+  const MAX_COLUMNS = 160;
 
   interface Props {
     tool: ToolCall;
@@ -31,6 +38,7 @@
   let highlightedInput = $derived(highlightCode(formattedInput, 'json'));
 
   let displayOutput = $derived(fullOutput !== null ? fullOutput : (tool.output || ''));
+  let fillsOutputBox = $derived(reachesLineCount(displayOutput, FULL_BOX_LINES, MAX_COLUMNS));
 
   async function handleLoadFullOutput() {
     if (!tool.outputRef || isFetchingBlob) return;
@@ -118,7 +126,7 @@
       </div>
 
       {#if displayOutput}
-        <pre class="output-content"><code>{displayOutput}</code></pre>
+        <pre class="output-content" class:fills-box={fillsOutputBox}><code>{displayOutput}</code></pre>
       {/if}
 
       {#if tool.outputTruncated && fullOutput === null}
@@ -281,6 +289,16 @@
     word-break: break-all;
     max-height: 350px;
     overflow-y: auto;
+    /* Monospace output needs no kerning or ligatures; skipping them lets
+       WebKit lay out large outputs about three times faster. */
+    text-rendering: optimizeSpeed;
+  }
+
+  /* Off-screen outputs skip layout. The placeholder height is clamped by
+     max-height, so it matches the real height and nothing shifts. */
+  .output-content.fills-box {
+    content-visibility: auto;
+    contain-intrinsic-block-size: 350px;
   }
 
   .truncated-banner {

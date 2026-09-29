@@ -4,6 +4,7 @@ import { formatTokens, formatCost, formatBytes } from '../src/lib/format.ts';
 import { formatRelativeTime, formatAbsoluteTime, isKnownTime, formatAgo } from '../src/lib/date.ts';
 import { highlightCode, detectLanguage } from '../src/lib/highlight.ts';
 import { renderMarkdown } from '../src/lib/markdown.ts';
+import { reachesLineCount } from '../src/lib/layout.ts';
 import {
   refKey,
   refsEqual,
@@ -100,6 +101,32 @@ test('highlightCode highlights JSON, diff, and Go safely', () => {
   const go = highlightCode('func Run() error { return nil }', 'go');
   assert.ok(go.includes('hljs-keyword'));
   assert.ok(go.includes('hljs-title'));
+});
+
+test('highlightCode generic scanner escapes markup and keeps token boundaries', () => {
+  const ts = highlightCode('if (a <= 0x1F && s === "<b>") { x = 1.5e3; } // it\'s & done', 'typescript');
+  assert.equal(
+    ts,
+    '<span class="hljs-keyword">if</span> (a &lt;= <span class="hljs-number">0x1F</span> &amp;&amp; s === ' +
+      '<span class="hljs-string">&quot;&lt;b&gt;&quot;</span>) { x = <span class="hljs-number">1.5e3</span>; } ' +
+      '<span class="hljs-comment">// it&#39;s &amp; done</span>'
+  );
+  assert.ok(!/<(?!\/?span)/.test(highlightCode('<script>alert(1)</script>', 'go')));
+});
+
+test('reachesLineCount counts wrapped visual lines without overcounting', () => {
+  assert.equal(reachesLineCount('', 24, 160), false);
+  assert.equal(reachesLineCount('x\n'.repeat(24), 24, 160), true);
+  assert.equal(reachesLineCount('x\n'.repeat(23), 24, 160), false);
+  // A trailing newline adds no visible line; an empty line in between does.
+  assert.equal(reachesLineCount('x\n'.repeat(23) + '\n', 24, 160), true);
+  assert.equal(reachesLineCount('\n'.repeat(24), 24, 160), true);
+  assert.equal(reachesLineCount('\n'.repeat(23), 24, 160), false);
+  // Long lines wrap at maxCols.
+  assert.equal(reachesLineCount('y'.repeat(23 * 160 + 1), 24, 160), true);
+  assert.equal(reachesLineCount('y'.repeat(23 * 160), 24, 160), false);
+  assert.equal(reachesLineCount(('z'.repeat(161) + '\n').repeat(12), 24, 160), true);
+  assert.equal(reachesLineCount('short', 24, 160), false);
 });
 
 test('renderMarkdown converts markdown and strictly neutralizes XSS vectors', () => {
