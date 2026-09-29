@@ -983,6 +983,30 @@ func TestDelete_OpenCode_ExecutesScopedCLI(t *testing.T) {
 	}
 }
 
+func TestDelete_OpenCode_CLIFailureIsReported(t *testing.T) {
+	roots := testRoots(t)
+	catalog := opencodeFixtures(t, roots.OpenCodeData, [][3]int64{{1, -1, -1}})
+	exec := &recordingExec{fail: map[string]bool{"opencode": true}}
+	m, _ := newTestManager(t, roots, WithExec(exec.exec))
+	enableAll(t, m)
+
+	refs := []model.SessionRef{{Agent: model.AgentOpenCode, ID: "1"}}
+	p, err := m.Preview(context.Background(), refs, catalog)
+	if err != nil {
+		t.Fatalf("Preview: %v", err)
+	}
+	rep, err := m.Delete(context.Background(), refs, catalog, p.Token)
+	if err != nil {
+		t.Fatalf("Delete: %v", err)
+	}
+	if rep.Failed != 1 || rep.Items[0].OK {
+		t.Fatalf("want 1 failure, got %+v", rep)
+	}
+	if got, want := rep.Items[0].Error, "OpenCode 2.x deletion failed: provider command failed"; got != want {
+		t.Fatalf("error = %q, want %q", got, want)
+	}
+}
+
 func TestDelete_OpenCode_V1OnlyUsesSQL(t *testing.T) {
 	roots := testRoots(t)
 	catalog := v1OnlyOpenCodeFixtures(t, roots.OpenCodeData, [][3]int64{{1, -1, -1}, {2, 1, -1}})

@@ -23,9 +23,9 @@ var uuidPattern = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]
 // argv[0] is the executable name and argv[1:] its args.
 type ExecFunc func(ctx context.Context, argv []string, dir string, env []string) error
 
-// defaultExec invokes a command without a shell. Combined output is captured
-// and reduced to a generic failure: provider CLI output can embed absolute
-// paths, user names, and API keys, so it is never echoed back.
+// defaultExec invokes a command without a shell. Provider CLI output can
+// embed absolute paths, user names, and API keys, so a failure reports only
+// the exit status and the last stderr line after redaction (see cliFailure).
 func defaultExec(ctx context.Context, argv []string, dir string, env []string) error {
 	if len(argv) == 0 {
 		return errors.New("manage: empty command")
@@ -35,10 +35,7 @@ func defaultExec(ctx context.Context, argv []string, dir string, env []string) e
 		return ctx.Err()
 	default:
 	}
-	if err := runStandalone(ctx, argv, dir, env); err != nil {
-		return errors.New("manage: provider command failed")
-	}
-	return nil
+	return runStandalone(ctx, argv, dir, env)
 }
 
 // codexManager handles permanent deletion via the codex CLI.
@@ -187,19 +184,29 @@ func idFromRolloutPath(path string) string {
 	return name
 }
 
-// runStandalone runs argv with no shell and bounded stderr.
+// runStandalone runs argv with no shell and bounded stderr. argv[0] is
+// resolved with resolveCLI, so a CLI installed outside the launcher's PATH
+// is still found.
 func runStandalone(ctx context.Context, argv []string, dir string, env []string) error {
 	if len(argv) == 0 {
 		return errors.New("empty command")
 	}
-	cmd := exec.CommandContext(ctx, argv[0], argv[1:]...) //nolint:gosec
+	name := argv[0]
+	bin, err := resolveCLI(name)
+	if err != nil {
+		return err
+	}
+	cmd := exec.CommandContext(ctx, bin, argv[1:]...) //nolint:gosec
 	cmd.Dir = dir
-	cmd.Env = append(os.Environ(), env...)
+	cmd.Env = withPathPrefix(append(os.Environ(), env...), filepath.Dir(bin))
 	var buf bytes.Buffer
 	cmd.Stdout = io.Discard
 	cmd.Stderr = &limitWriter{w: &buf, limit: 4096}
 	if err := cmd.Run(); err != nil {
-		return errors.New("execution failed")
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			err = ctxErr
+		}
+		return cliFailure(name, err, buf.Bytes())
 	}
 	return nil
 }

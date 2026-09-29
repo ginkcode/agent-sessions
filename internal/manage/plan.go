@@ -314,7 +314,7 @@ func (m *Manager) execute(ctx context.Context, op operation, all []model.Session
 				return res, forgotten
 			}
 			if err := m.codex.deleteSession(ctx, ref.ID); err != nil {
-				res.Error = "provider deletion failed"
+				res.Error = "Codex deletion failed: " + err.Error()
 				res.Remaining = remainingPaths(op.Files, i)
 				return res, forgotten
 			}
@@ -332,7 +332,7 @@ func (m *Manager) execute(ctx context.Context, op operation, all []model.Session
 					return res, nil
 				}
 				if err := m.opencode.deleteSession(ctx, member.ID); err != nil {
-					res.Error = "provider deletion failed"
+					res.Error = "OpenCode 2.x deletion failed: " + err.Error()
 					return res, nil
 				}
 			}
@@ -350,7 +350,7 @@ func (m *Manager) execute(ctx context.Context, op operation, all []model.Session
 				return res, nil
 			}
 			if err := m.opencode.deleteV1Rows(ctx, v1IDs, v1OnlyIDs); err != nil {
-				res.Error = "provider deletion failed"
+				res.Error = "OpenCode 1.x deletion failed: " + err.Error()
 				return res, nil
 			}
 		}

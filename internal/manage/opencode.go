@@ -331,7 +331,7 @@ func (om *opencodeManager) deleteV1Rows(ctx context.Context, ids, eventIDs []str
 	db.SetMaxOpenConns(1)
 	db.SetMaxIdleConns(1)
 	if err := db.PingContext(ctx); err != nil {
-		return errors.New("cannot open opencode database writable")
+		return sqliteFailure("cannot open opencode database writable", err)
 	}
 	var foreignKeys int
 	if err := db.QueryRowContext(ctx, `PRAGMA foreign_keys`).Scan(&foreignKeys); err != nil || foreignKeys != 1 {
@@ -343,7 +343,7 @@ func (om *opencodeManager) deleteV1Rows(ctx context.Context, ids, eventIDs []str
 	}
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
-		return errors.New("cannot begin opencode v1 deletion")
+		return sqliteFailure("cannot begin opencode v1 deletion", err)
 	}
 	defer func() { _ = tx.Rollback() }()
 	in := placeholders(len(ids))
@@ -352,11 +352,11 @@ func (om *opencodeManager) deleteV1Rows(ctx context.Context, ids, eventIDs []str
 		args[i] = id
 	}
 	if _, err := tx.ExecContext(ctx, `DELETE FROM part WHERE session_id IN (`+in+`)`, args...); err != nil {
-		return errors.New("cannot delete opencode v1 parts")
+		return sqliteFailure("cannot delete opencode v1 parts", err)
 	}
 	result, err := tx.ExecContext(ctx, `DELETE FROM session WHERE id IN (`+in+`)`, args...)
 	if err != nil {
-		return errors.New("cannot delete opencode v1 sessions")
+		return sqliteFailure("cannot delete opencode v1 sessions", err)
 	}
 	affected, err := result.RowsAffected()
 	if err != nil || affected != int64(len(ids)) {
@@ -368,13 +368,23 @@ func (om *opencodeManager) deleteV1Rows(ctx context.Context, ids, eventIDs []str
 			eventArgs[i] = id
 		}
 		if _, err := tx.ExecContext(ctx, `DELETE FROM event_sequence WHERE aggregate_id IN (`+placeholders(len(eventIDs))+`)`, eventArgs...); err != nil {
-			return errors.New("cannot delete opencode v1 events")
+			return sqliteFailure("cannot delete opencode v1 events", err)
 		}
 	}
 	if err := tx.Commit(); err != nil {
-		return errors.New("cannot commit opencode v1 deletion")
+		return sqliteFailure("cannot commit opencode v1 deletion", err)
 	}
 	return nil
+}
+
+// sqliteFailure appends SQLite's reason (for example "database is locked")
+// to a step description. Driver errors name the failing statement, not paths
+// or row values, but the home directory is shortened to ~ regardless.
+func sqliteFailure(step string, err error) error {
+	if detail := cliMessage([]byte(err.Error())); detail != "" {
+		return fmt.Errorf("%s: %s", step, detail)
+	}
+	return errors.New(step)
 }
 
 // placeholders returns n positional SQL parameters. The caller validates that
