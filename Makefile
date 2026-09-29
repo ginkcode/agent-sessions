@@ -69,16 +69,24 @@ package-linux: gui-build
 # .dmg step retries once.
 package-macos:
 	cd frontend && npm run build
-	# Build each architecture separately. Wails' darwin/universal path disables
-	# its bin cleanup and then asks lipo to chdir into build/bin before that
-	# directory has been created.
-	$(WAILS) build -platform darwin/arm64 -tags desktop -clean -s -m -nosyncgomod -skipbindings -trimpath
-	mv build/bin/agent-sessions.app/Contents/MacOS/agent-sessions build/bin/agent-sessions-arm64
-	$(WAILS) build -platform darwin/amd64 -tags desktop -clean -s -m -nosyncgomod -skipbindings -trimpath
-	mv build/bin/agent-sessions.app/Contents/MacOS/agent-sessions build/bin/agent-sessions-amd64
+	# wails.json keeps projectdir relative so the checked-in file is portable,
+	# but Wails resolves its relative -o path from projectdir and then checks
+	# that same path from the repository root. An absolute projectdir makes
+	# both operations use one path.
+	@set -e; \
+	root=$$(pwd); \
+	backup=$$(mktemp ./wails.json.release.XXXXXX); \
+	cp -p wails.json "$$backup"; \
+	trap 'mv "$$backup" wails.json' EXIT; \
+	jq --arg root "$$root" '.projectdir = ($$root + "/cmd/agent-sessions") | .["build:dir"] = ($$root + "/build")' \
+		"$$backup" > wails.json; \
+	$(WAILS) build -platform darwin/arm64 -tags desktop -clean -s -m -nosyncgomod -skipbindings -trimpath; \
+	mv build/bin/agent-sessions.app/Contents/MacOS/agent-sessions build/agent-sessions-arm64; \
+	$(WAILS) build -platform darwin/amd64 -tags desktop -clean -s -m -nosyncgomod -skipbindings -trimpath; \
+	mv build/bin/agent-sessions.app/Contents/MacOS/agent-sessions build/agent-sessions-amd64
 	lipo -create -output build/bin/agent-sessions.app/Contents/MacOS/agent-sessions \
-		build/bin/agent-sessions-arm64 build/bin/agent-sessions-amd64
-	rm -f build/bin/agent-sessions-arm64 build/bin/agent-sessions-amd64
+		build/agent-sessions-arm64 build/agent-sessions-amd64
+	rm -f build/agent-sessions-arm64 build/agent-sessions-amd64
 	rm -rf "build/bin/Agent Sessions.app" build/dmg
 	mv build/bin/agent-sessions.app "build/bin/Agent Sessions.app"
 	codesign --force --deep --sign - "build/bin/Agent Sessions.app"
