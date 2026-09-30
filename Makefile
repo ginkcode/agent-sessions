@@ -38,8 +38,8 @@ cli:
 # Gzipped headless servers in $(REMOTE_DIR), plus SHA256SUMS of those archives.
 # The checksum covers the .gz bytes: the remote deploy verifies that file.
 remote-servers:
-	mkdir -p $(REMOTE_DIR)
-	rm -f $(REMOTE_DIR)/SHA256SUMS $(REMOTE_DIR)/*.gz
+	mkdir -p "$(REMOTE_DIR)"
+	rm -f "$(REMOTE_DIR)"/SHA256SUMS "$(REMOTE_DIR)"/*.gz
 	@set -e; \
 	platforms='$(REMOTE_PLATFORMS)'; \
 	if [ "$(HOST)" = 1 ]; then platforms="$$($(GO) env GOOS)/$$($(GO) env GOARCH)"; fi; \
@@ -48,17 +48,17 @@ remote-servers:
 		name="agent-sessions-cli-$$os-$$arch"; \
 		echo "building $$name"; \
 		CGO_ENABLED=0 GOOS=$$os GOARCH=$$arch \
-			$(GO) build -trimpath -ldflags "$(LDFLAGS)" -o $(REMOTE_DIR)/$$name ./cmd/agent-sessions-cli; \
-		gzip -c -n $(REMOTE_DIR)/$$name > $(REMOTE_DIR)/$$name.gz; \
-		rm -f $(REMOTE_DIR)/$$name; \
+			$(GO) build -trimpath -ldflags "$(LDFLAGS)" -o "$(REMOTE_DIR)/$$name" ./cmd/agent-sessions-cli; \
+		gzip -c -n "$(REMOTE_DIR)/$$name" > "$(REMOTE_DIR)/$$name.gz"; \
+		rm -f "$(REMOTE_DIR)/$$name"; \
 	done; \
 	if command -v sha256sum >/dev/null 2>&1; then \
-		(cd $(REMOTE_DIR) && sha256sum -- *.gz > SHA256SUMS); \
+		(cd "$(REMOTE_DIR)" && sha256sum -- *.gz > SHA256SUMS); \
 	else \
-		(cd $(REMOTE_DIR) && shasum -a 256 -- *.gz > SHA256SUMS); \
+		(cd "$(REMOTE_DIR)" && shasum -a 256 -- *.gz > SHA256SUMS); \
 	fi; \
 	echo "remote servers in $(REMOTE_DIR):"; \
-	cat $(REMOTE_DIR)/SHA256SUMS
+	cat "$(REMOTE_DIR)/SHA256SUMS"
 
 fuzz-smoke:
 	$(GO) test ./internal/provider/claude -run='^$$' -fuzz=FuzzRecord -fuzztime=60s
