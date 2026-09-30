@@ -100,3 +100,22 @@ export function nextLink(
 export function isStale(link: LinkState): boolean {
   return link.dataHost !== undefined && link.phase !== 'connected';
 }
+
+/**
+ * A host is selected but not serving. Whatever the panes show is not that
+ * host's live data: a dropped host's last data (stale), or Local's data
+ * while a connect from Local is pending or failing. The panes stay inert
+ * and mutations are refused, so nothing on screen passes for the host's.
+ */
+export function isLocked(link: LinkState): boolean {
+  return link.phase !== 'local' && link.phase !== 'connected';
+}
+
+/** Why a mutation is refused right now, or null when it may run. */
+export function blockedReason(link: LinkState, host: string | undefined): string | null {
+  if (!isLocked(link)) return null;
+  if (isStale(link)) {
+    return `Not connected to ${link.dataHost}. Changes are disabled until it reconnects.`;
+  }
+  return `Not connected to ${host}. The sessions shown are Local; changes are disabled until ${host} connects or you switch back to Local.`;
+}

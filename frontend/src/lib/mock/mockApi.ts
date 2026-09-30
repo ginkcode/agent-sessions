@@ -690,7 +690,7 @@ export class MockBackendAPI {
     return { ...this.connState };
   }
 
-  async connect(alias: string): Promise<void> {
+  async connect(alias: string, succeed: boolean = true): Promise<void> {
     this.connState.generation++;
     const gen = this.connState.generation;
     this.connState = {
@@ -706,6 +706,8 @@ export class MockBackendAPI {
       },
     };
     this.emit('connection:state', { ...this.connState });
+
+    if (!succeed) return;
 
     const caps: HostCapabilities = {
       trash: alias !== 'prod-server',

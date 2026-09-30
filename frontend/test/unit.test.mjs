@@ -18,8 +18,10 @@ import {
 import { MockBackendAPI, highlightedSnippet } from '../src/lib/mock/mockApi.ts';
 import {
   StaleReplyError,
+  blockedReason,
   guardEpoch,
   isDisconnectedError,
+  isLocked,
   isStale,
   isStaleReply,
   nextLink,
@@ -864,20 +866,30 @@ test('MockBackendAPI remote hosts and connection lifecycle', async () => {
   const states = [];
   mock.onEvent('connection:state', (s) => states.push({ ...s }));
 
+  // Successful connect emits connecting then connected.
   await mock.connect('dev-box');
   assert.equal(states.length, 2);
   assert.equal(states[0].phase, 'connecting');
   assert.equal(states[0].host, 'dev-box');
-  assert.equal(states[0].generation, 1);
   assert.equal(states[1].phase, 'connected');
   assert.equal(states[1].host, 'dev-box');
-  assert.equal(states[1].generation, 1);
-  assert.equal(states[1].capabilities.trash, true);
+
+  // Failed connect emits connecting and then nothing else.
+  states.length = 0;
+  await mock.connect('prod-server', false);
+  assert.equal(states.length, 1);
+  assert.equal(states[0].phase, 'connecting');
+  assert.equal(states[0].generation, 2); // gen was already 1 after dev-box
+
+  // Set a failed state explicitly for the remaining assertions.
+  mock.setMockConnectionState({ phase: 'connected', host: 'dev-box' });
 
   await mock.disconnect();
   assert.equal(states.length, 3);
+  assert.equal(states[1].phase, 'connected');
+  assert.equal(states[1].host, 'dev-box');
   assert.equal(states[2].phase, 'local');
-  assert.equal(states[2].generation, 2);
+  assert.equal(states[2].generation, 3);
   assert.equal(states[2].host, undefined);
 });
 
@@ -991,22 +1003,29 @@ test('nextLink reloads only when a host connects or the app returns to Local', (
   let link = { dataHost: undefined, phase: 'local' };
   let r;
 
-  // First connect from Local: Local data stays live until the host is up.
+  // First connect from Local: Local data stays on screen but is locked inert
+  // so nothing on screen passes for the host's sessions.
   r = step(link, 'connecting', 'a');
   assert.deepEqual(r, { link: { dataHost: undefined, phase: 'connecting' }, reload: false });
   assert.equal(isStale(r.link), false);
+  assert.equal(isLocked(r.link), true);
+  assert.equal(blockedReason(r.link, 'a'), 'Not connected to a. The sessions shown are Local; changes are disabled until a connects or you switch back to Local.');
   r = step(r.link, 'connected', 'a');
   assert.equal(r.reload, true);
   assert.equal(r.link.dataHost, 'a');
   assert.equal(isStale(r.link), false);
+  assert.equal(isLocked(r.link), false);
 
   // A drop keeps a's data, marked stale, and reconnecting reloads it.
   r = step(r.link, 'disconnected', 'a');
   assert.equal(r.reload, false);
   assert.equal(isStale(r.link), true);
+  assert.equal(isLocked(r.link), true);
+  assert.equal(blockedReason(r.link, 'a'), 'Not connected to a. Changes are disabled until it reconnects.');
   r = step(r.link, 'reconnecting', 'a');
   assert.equal(r.reload, false);
   assert.equal(isStale(r.link), true);
+  assert.equal(isLocked(r.link), true);
   r = step(r.link, 'connected', 'a');
   assert.equal(r.reload, true);
   assert.equal(isStale(r.link), false);
@@ -1018,6 +1037,7 @@ test('nextLink reloads only when a host connects or the app returns to Local', (
   r = step(r.link, 'connecting', 'b');
   assert.equal(r.link.dataHost, 'a');
   assert.equal(isStale(r.link), true);
+  assert.equal(isLocked(r.link), true);
   r = step(r.link, 'connected', 'b');
   assert.equal(r.reload, true);
   assert.equal(r.link.dataHost, 'b');
@@ -1026,10 +1046,14 @@ test('nextLink reloads only when a host connects or the app returns to Local', (
   r = step(r.link, 'local', undefined);
   assert.deepEqual(r, { link: { dataHost: undefined, phase: 'local' }, reload: true });
   assert.equal(isStale(r.link), false);
+  assert.equal(isLocked(r.link), false);
+  assert.equal(blockedReason(r.link, undefined), null);
 
-  // A failed first connect never touches the Local data.
-  r = step(r.link, 'reconnecting', 'c');
+  // A failed first connect never touches the Local data, but is still locked.
+  r = step(r.link, 'connecting', 'c');
   assert.equal(r.reload, false);
   assert.equal(isStale(r.link), false);
+  assert.equal(isLocked(r.link), true);
+  assert.equal(blockedReason(r.link, 'c'), 'Not connected to c. The sessions shown are Local; changes are disabled until c connects or you switch back to Local.');
   assert.equal(step(r.link, 'local', undefined).reload, false);
 });

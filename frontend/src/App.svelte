@@ -26,9 +26,10 @@
   import { hasOpenModal, isEditableTarget } from './lib/search';
 
   let isWails = $state(false);
-  // The panes show a host's last data while it is not serving; they stay
-  // visible but inert, and only the host selector and banner stay live.
-  let stale = $derived(link.stale);
+  // The panes show a host's last data while it is not serving, or stay
+  // inert during a first connect so nothing on screen passes for the
+  // host's sessions.
+  let stale = $derived(link.stale || link.locked);
 
   onMount(() => {
     theme.init();
@@ -251,8 +252,11 @@
 
   {#if stale}
     <div class="stale-overlay" role="status">
-      Showing data last loaded from <strong>{link.dataHost}</strong>. Changes are disabled until it
-      reconnects.
+      {#if link.locked && !link.stale}
+        Connecting to <strong>{link.host}</strong>… Changes are disabled until the connection is established or you switch back to Local.
+      {:else}
+        Showing data last loaded from <strong>{link.dataHost}</strong>. Changes are disabled until it reconnects.
+      {/if}
     </div>
   {/if}
 
