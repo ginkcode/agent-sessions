@@ -190,7 +190,7 @@ func walkOwnFiles(dir string, fn func(path string, info os.FileInfo)) {
 // handoff size. Without a prompt file the prompt itself is passed.
 func LaunchPrompt(prompt, promptFilePath string) string {
 	if promptFilePath != "" {
-		return fmt.Sprintf("Read %s completely, then continue the task it describes.", promptFilePath)
+		return fmt.Sprintf("Read %s completely to restore the context of an earlier session, then follow its instructions and wait for my next request.", promptFilePath)
 	}
 	return prompt
 }

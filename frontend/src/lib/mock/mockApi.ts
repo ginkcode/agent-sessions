@@ -528,7 +528,7 @@ export class MockBackendAPI {
       redactionCounts: {},
     };
 
-    const prompt = `# Handoff to ${target}\n\nTask: ${meta.title}\nCWD: ${cwd}\n\nContinue from here.`;
+    const prompt = `# Handoff to ${target}\n\nTask: ${meta.title}\nCWD: ${cwd}\n\nWait for the user to confirm or give the next request.`;
     return {
       promptMarkdown: prompt,
       fullMarkdown: prompt + '\n\n## Timeline\n(Full conversation history)',
@@ -645,7 +645,7 @@ export class MockBackendAPI {
       redactionCounts: {},
     };
 
-    const prompt = `# Handoff to ${target}\n\nTask: ${title}\nCWD: ${cwd}\n\nContinue from here.`;
+    const prompt = `# Handoff to ${target}\n\nTask: ${title}\nCWD: ${cwd}\n\nWait for the user to confirm or give the next request.`;
     return {
       promptMarkdown: prompt,
       fullMarkdown: prompt + '\n\n## Timeline\n(Full conversation history)',
@@ -835,7 +835,7 @@ export class MockBackendAPI {
 
 /** Mirrors handoff.BuildLaunchCommand: the prompt is a pointer to the file. */
 function mockLaunchCommand(target: string, cwd: string, promptFile: string): string {
-  const prompt = `'Read ${promptFile} completely, then continue the task it describes.'`;
+  const prompt = `'Read ${promptFile} completely to restore the context of an earlier session, then follow its instructions and wait for my next request.'`;
   const argv = target === 'opencode' ? `opencode --prompt ${prompt}` : `${target === 'codex' ? 'codex' : 'claude'} ${prompt}`;
   return `cd '${cwd}' && ${argv}`;
 }

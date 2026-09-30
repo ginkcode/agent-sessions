@@ -686,7 +686,7 @@ test('MockBackendAPI buildHandoff, handoffCommand, and saveHandoff produce deliv
   const preview = await mock.buildHandoff(req);
   assert.ok(preview.promptMarkdown.includes('Handoff to codex'));
   assert.ok(preview.fullMarkdown.includes('Timeline'));
-  assert.ok(preview.command.endsWith(`&& codex 'Read ${preview.promptFile} completely, then continue the task it describes.'`));
+  assert.ok(preview.command.endsWith(`&& codex 'Read ${preview.promptFile} completely to restore the context of an earlier session, then follow its instructions and wait for my next request.'`));
   assert.equal(preview.report.estimatedTokens, 1250);
 
   const cmd = await mock.handoffCommand(req);

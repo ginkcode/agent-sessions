@@ -163,9 +163,10 @@ func buildPreamble(meta model.SessionMeta, adapter TargetAdapter, opts Options) 
 	src := sourceName(meta.Ref.Agent)
 	b.WriteString(fmt.Sprintf("# Continuation Context\n\n> Target Agent: **%s**\n> You are continuing an engineering session started in **%s**.\n>\n", adapter.Name, src))
 	b.WriteString("> **Instructions:**\n")
-	b.WriteString("> 1. Do NOT redo completed work listed under Working State.\n")
-	b.WriteString("> 2. Inspect the repository first (`git status` and `git diff`) to verify local working tree state.\n")
-	b.WriteString("> 3. Continue directly from the last request.\n")
+	b.WriteString("> 1. This document restores context only. The last request below may already be complete.\n")
+	b.WriteString("> 2. Do NOT redo completed work listed under Working State.\n")
+	b.WriteString("> 3. Inspect the repository first (`git status` and `git diff`) to verify local working tree state.\n")
+	b.WriteString("> 4. Do not change files or run state-changing commands yet. Briefly summarize where the work stands, then wait for the user to confirm or give the next request.\n")
 
 	if len(adapter.ToolMapping) > 0 {
 		b.WriteString(fmt.Sprintf(">\n> **Tool mapping for %s:**\n", adapter.Name))
@@ -433,13 +434,13 @@ func buildClosing(turns []model.Message, opts Options) string {
 	}
 
 	if lastUser != "" {
-		b.WriteString(fmt.Sprintf("**Latest User Request:**\n> %s\n\n", strings.ReplaceAll(strings.TrimSpace(lastUser), "\n", "\n> ")))
+		b.WriteString(fmt.Sprintf("**Last User Request:**\n> %s\n\n", strings.ReplaceAll(strings.TrimSpace(lastUser), "\n", "\n> ")))
 	}
 	if lastAssistant != "" {
 		b.WriteString(fmt.Sprintf("**Last Assistant State:**\n> %s\n\n", strings.ReplaceAll(strings.TrimSpace(lastAssistant), "\n", "\n> ")))
 	}
 
-	b.WriteString("**Continue from here:** Proceed with the user's latest request above, adhering to existing working files and state.\n")
+	b.WriteString("**Before continuing:** The request above may already be done; do not resume it on your own. Reply with a short summary of the current state and anything left unfinished, then wait for the user to confirm or give the next request.\n")
 	return b.String()
 }
 

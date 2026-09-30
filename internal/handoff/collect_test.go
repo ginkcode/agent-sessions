@@ -169,7 +169,7 @@ func TestPruneContextFiles(t *testing.T) {
 
 func TestLaunchPromptPointsAtFile(t *testing.T) {
 	short := "Brief prompt"
-	if got := handoff.LaunchPrompt(short, "/path/to/p-handoff.md"); got != "Read /path/to/p-handoff.md completely, then continue the task it describes." {
+	if got := handoff.LaunchPrompt(short, "/path/to/p-handoff.md"); got != "Read /path/to/p-handoff.md completely to restore the context of an earlier session, then follow its instructions and wait for my next request." {
 		t.Errorf("prompt with a file should point at it: %s", got)
 	}
 

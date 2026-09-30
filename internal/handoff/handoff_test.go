@@ -236,7 +236,7 @@ func TestHandoffDelivery(t *testing.T) {
 	promptFile := "/data/handoffs/sess-123-handoff.md"
 	for _, prompt := range []string{"Short prompt", strings.Repeat("A", 130*1024)} {
 		cmdFile := handoff.BuildLaunchCommand(model.AgentCodex, prompt, promptFile, "/tmp/dir")
-		expected := "cd /tmp/dir && codex 'Read /data/handoffs/sess-123-handoff.md completely, then continue the task it describes.'"
+		expected := "cd /tmp/dir && codex 'Read /data/handoffs/sess-123-handoff.md completely to restore the context of an earlier session, then follow its instructions and wait for my next request.'"
 		if cmdFile != expected {
 			t.Errorf("expected pointer command, got: %.200s", cmdFile)
 		}

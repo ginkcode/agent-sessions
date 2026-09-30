@@ -4,9 +4,10 @@
 > You are continuing an engineering session started in **Claude Code**.
 >
 > **Instructions:**
-> 1. Do NOT redo completed work listed under Working State.
-> 2. Inspect the repository first (`git status` and `git diff`) to verify local working tree state.
-> 3. Continue directly from the last request.
+> 1. This document restores context only. The last request below may already be complete.
+> 2. Do NOT redo completed work listed under Working State.
+> 3. Inspect the repository first (`git status` and `git diff`) to verify local working tree state.
+> 4. Do not change files or run state-changing commands yet. Briefly summarize where the work stands, then wait for the user to confirm or give the next request.
 >
 > **Tool mapping for Codex CLI:**
 > - `Bash` ≈ `shell / local_shell_call`
@@ -121,10 +122,10 @@ I am ready to implement expired token handling and tests.
 
 ## Next Steps & Continuation
 
-**Latest User Request:**
+**Last User Request:**
 > Can you also add tests for expired tokens?
 
 **Last Assistant State:**
 > I am ready to implement expired token handling and tests.
 
-**Continue from here:** Proceed with the user's latest request above, adhering to existing working files and state.
+**Before continuing:** The request above may already be done; do not resume it on your own. Reply with a short summary of the current state and anything left unfinished, then wait for the user to confirm or give the next request.
