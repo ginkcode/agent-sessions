@@ -335,8 +335,40 @@ func TestNoWailsDependency(t *testing.T) {
 }
 
 func TestDesktopDoesNotLinkTestHarness(t *testing.T) {
+	// Listing the desktop package type-checks frontend/embed.go, whose
+	// //go:embed all:dist needs the built frontend to exist. dist/ is a
+	// gitignored build output, so on a fresh checkout (CI) the test has to
+	// satisfy the directive itself, with a placeholder it removes after.
+	restoreDist(t)
 	assertNoDeps(t, []string{"-tags", "webkit2_41,production", "../agent-sessions"},
 		"github.com/ginkcode/agent-sessions/internal/remote/sshtest")
+}
+
+// restoreDist makes frontend/dist embeddable for the duration of the test:
+// if nothing was built yet, it drops a placeholder file and removes it (and
+// the now-empty dist) afterwards; a real dist is left untouched.
+func restoreDist(t *testing.T) {
+	t.Helper()
+	// The test runs with cmd/agent-sessions-cli as its working directory, two
+	// levels below the module root.
+	dist, err := filepath.Abs(filepath.Join("..", "..", "frontend", "dist"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(dist, "index.html")); err == nil {
+		return // the frontend was already built here
+	}
+	if err := os.MkdirAll(dist, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	placeholder := filepath.Join(dist, ".embed-placeholder")
+	if err := os.WriteFile(placeholder, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_ = os.Remove(placeholder)
+		_ = os.Remove(dist) // fails silently if a real build arrived meanwhile
+	})
 }
 
 func assertNoDeps(t *testing.T, args []string, forbidden ...string) {
