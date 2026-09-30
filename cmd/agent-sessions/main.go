@@ -14,7 +14,11 @@
 package main
 
 import (
+	"context"
+	"fmt"
 	"os"
+
+	"github.com/ginkcode/agent-sessions/internal/remote"
 )
 
 // init applies the WebKitGTK DMA-BUF renderer workaround before any GTK
@@ -30,5 +34,17 @@ func init() {
 }
 
 func main() {
+	if sock := os.Getenv("AGENT_SESSIONS_ASKPASS_SOCK"); sock != "" {
+		prompt := ""
+		if len(os.Args) > 1 {
+			prompt = os.Args[1]
+		}
+		token := os.Getenv("AGENT_SESSIONS_ASKPASS_TOKEN")
+		if err := remote.RunAskpassHelper(context.Background(), sock, token, prompt, os.Stdout, os.Stderr); err != nil {
+			_, _ = fmt.Fprintf(os.Stderr, "agent-sessions askpass: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
 	run()
 }

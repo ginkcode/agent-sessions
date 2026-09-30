@@ -96,6 +96,12 @@ export class ImporterStore {
     this.savedPath = null;
   }
 
+  reset(): void {
+    if (this.copyPromptTimer) clearTimeout(this.copyPromptTimer);
+    if (this.copyCommandTimer) clearTimeout(this.copyCommandTimer);
+    this.close();
+  }
+
   setTab(tab: 'summary' | 'handoff'): void {
     this.activeTab = tab;
     if (tab === 'handoff' && !this.preview && !this.loadingPreview) {

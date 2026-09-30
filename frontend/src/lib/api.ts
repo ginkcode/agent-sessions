@@ -22,6 +22,9 @@ import type {
   ExportPreview,
   BundleSummary,
   BundleHandoffRequest,
+  ConnectionState,
+  HostEntry,
+  AskpassPrompt,
 } from './types';
 import { MockBackendAPI } from './mock/mockApi';
 
@@ -57,6 +60,13 @@ export interface BackendAPI {
   handoffCache(): Promise<HandoffCacheInfo>;
   clearHandoffCache(): Promise<HandoffCacheInfo>;
   scan(): Promise<void>;
+  listHosts(): Promise<HostEntry[]>;
+  connect(alias: string): Promise<void>;
+  disconnect(): Promise<void>;
+  connectionState(): Promise<ConnectionState>;
+  askpassReply(id: string, answer: string): Promise<boolean>;
+  setHostEnv(env: Record<string, string>): Promise<void>;
+  getHostEnv(): Promise<Record<string, string>>;
 }
 
 interface WailsAppBinding {
@@ -91,6 +101,13 @@ interface WailsAppBinding {
   ClearHandoffCache(): Promise<HandoffCacheInfo>;
   Scan(): Promise<void>;
   Ping(name: string): Promise<string>;
+  ListHosts(): Promise<HostEntry[]>;
+  Connect(alias: string): Promise<void>;
+  Disconnect(): Promise<void>;
+  ConnectionState(): Promise<ConnectionState>;
+  AskpassReply(id: string, answer: string): Promise<boolean>;
+  SetHostEnv(env: Record<string, string>): Promise<void>;
+  GetHostEnv(): Promise<Record<string, string>>;
 }
 
 function normalizeError(err: unknown): Error {
@@ -354,6 +371,62 @@ class WailsBackendAPI implements BackendAPI {
     }
   }
 
+  async listHosts(): Promise<HostEntry[]> {
+    try {
+      return (await this.binding.ListHosts()) || [];
+    } catch (e) {
+      throw normalizeError(e);
+    }
+  }
+
+  async connect(alias: string): Promise<void> {
+    try {
+      await this.binding.Connect(alias);
+    } catch (e) {
+      throw normalizeError(e);
+    }
+  }
+
+  async disconnect(): Promise<void> {
+    try {
+      await this.binding.Disconnect();
+    } catch (e) {
+      throw normalizeError(e);
+    }
+  }
+
+  async connectionState(): Promise<ConnectionState> {
+    try {
+      return await this.binding.ConnectionState();
+    } catch (e) {
+      throw normalizeError(e);
+    }
+  }
+
+  async askpassReply(id: string, answer: string): Promise<boolean> {
+    try {
+      return await this.binding.AskpassReply(id, answer);
+    } catch (e) {
+      throw normalizeError(e);
+    }
+  }
+
+  async setHostEnv(env: Record<string, string>): Promise<void> {
+    try {
+      await this.binding.SetHostEnv(env);
+    } catch (e) {
+      throw normalizeError(e);
+    }
+  }
+
+  async getHostEnv(): Promise<Record<string, string>> {
+    try {
+      return (await this.binding.GetHostEnv()) || {};
+    } catch (e) {
+      throw normalizeError(e);
+    }
+  }
+
   async openURL(url: string): Promise<void> {
     try {
       if (this.binding.OpenURL) {
@@ -396,6 +469,28 @@ export const api: BackendAPI = createAPI();
 
 export const CATALOG_CHANGED_EVENT = 'catalog:changed';
 export const INDEX_PROGRESS_EVENT = 'index:progress';
+export const CONNECTION_STATE_EVENT = 'connection:state';
+export const ASKPASS_PROMPT_EVENT = 'askpass:prompt';
+
+export function subscribeConnectionState(
+  fn: (state: ConnectionState) => void,
+  backend: BackendAPI = api
+): () => void {
+  return backend.onEvent(CONNECTION_STATE_EVENT, (state: ConnectionState) => {
+    if (!state || typeof state !== 'object') return;
+    fn(state);
+  });
+}
+
+export function subscribeAskpassPrompt(
+  fn: (prompt: AskpassPrompt) => void,
+  backend: BackendAPI = api
+): () => void {
+  return backend.onEvent(ASKPASS_PROMPT_EVENT, (prompt: AskpassPrompt) => {
+    if (!prompt || typeof prompt !== 'object') return;
+    fn(prompt);
+  });
+}
 
 export function subscribeCatalogChanged(
   fn: (event: CatalogChanged) => void,

@@ -258,6 +258,20 @@ export class ManageStore {
     this.deleteError = null;
     this.lastResult = null;
   }
+
+  reset(): void {
+    this.selectedRefKeys = new Set();
+    this.preview = null;
+    this.previewError = null;
+    this.deleteError = null;
+    this.lastResult = null;
+    this.confirmDialogOpen = false;
+    this.settingsDialogOpen = false;
+    this.firstEnableWarningVisible = false;
+    this.handoffCache = null;
+    this.handoffCacheError = null;
+    void this.init();
+  }
 }
 
 export const manage = new ManageStore();

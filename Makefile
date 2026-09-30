@@ -3,6 +3,8 @@ WAILS ?= wails
 WAILS_TAGS ?= webkit2_41
 # Release version: the single source is info.productVersion in wails.json.
 VERSION ?= $(shell sed -n 's/^ *"productVersion": *"\([^"]*\)".*/\1/p' wails.json)
+VERSION_PKG ?= github.com/ginkcode/agent-sessions/internal/version
+LDFLAGS ?= -s -w -X $(VERSION_PKG).Version=$(VERSION)
 ARCH ?= $(shell $(GO) env GOARCH)
 NFPM ?= $(GO) run github.com/goreleaser/nfpm/v2/cmd/nfpm@v2.47.0
 
@@ -20,7 +22,7 @@ fmt:
 	$(GO) tool golangci-lint fmt
 
 cli:
-	$(GO) build -o bin/agent-sessions-cli ./cmd/agent-sessions-cli
+	$(GO) build -trimpath -ldflags "$(LDFLAGS)" -o bin/agent-sessions-cli ./cmd/agent-sessions-cli
 
 fuzz-smoke:
 	$(GO) test ./internal/provider/claude -run='^$$' -fuzz=FuzzRecord -fuzztime=60s
@@ -47,7 +49,7 @@ dev: check-gui-deps
 
 # Compile a standalone desktop binary at build/bin/agent-sessions.
 app: check-gui-deps
-	$(WAILS) build -tags $(WAILS_TAGS) -clean
+	$(WAILS) build -tags $(WAILS_TAGS) -clean -ldflags "$(LDFLAGS)"
 
 # Headless equivalent of the GUI compile (without invoking Wails CLI):
 # npm run build must run first so frontend/dist exists for go:embed.
@@ -55,7 +57,7 @@ app: check-gui-deps
 # app stub returns "will not build without the correct build tags".
 gui-build: check-gui-deps
 	cd frontend && npm run check && npm run build
-	$(GO) build -tags "$(WAILS_TAGS),production" -trimpath -ldflags "-s -w" -o build/bin/agent-sessions ./cmd/agent-sessions
+	$(GO) build -tags "$(WAILS_TAGS),production" -trimpath -ldflags "$(LDFLAGS)" -o build/bin/agent-sessions ./cmd/agent-sessions
 
 # Linux .deb and .rpm packages in dist/, wrapping the gui-build binary.
 # Runtime dependencies are declared in packaging/nfpm.yaml.
@@ -81,9 +83,9 @@ package-macos:
 	trap 'mv "$$backup" wails.json' EXIT; \
 	jq --arg root "$$root" '.projectdir = ($$root + "/cmd/agent-sessions") | .["build:dir"] = ($$root + "/build")' \
 		"$$backup" > wails.json; \
-	$(WAILS) build -platform darwin/arm64 -tags desktop -clean -s -m -nosyncgomod -skipbindings -trimpath; \
+	$(WAILS) build -platform darwin/arm64 -tags desktop -clean -s -m -nosyncgomod -skipbindings -trimpath -ldflags "$(LDFLAGS)"; \
 	mv build/bin/agent-sessions.app/Contents/MacOS/agent-sessions build/agent-sessions-arm64; \
-	$(WAILS) build -platform darwin/amd64 -tags desktop -clean -s -m -nosyncgomod -skipbindings -trimpath; \
+	$(WAILS) build -platform darwin/amd64 -tags desktop -clean -s -m -nosyncgomod -skipbindings -trimpath -ldflags "$(LDFLAGS)"; \
 	mv build/bin/agent-sessions.app/Contents/MacOS/agent-sessions build/agent-sessions-amd64
 	lipo -create -output build/bin/agent-sessions.app/Contents/MacOS/agent-sessions \
 		build/agent-sessions-arm64 build/agent-sessions-amd64

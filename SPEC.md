@@ -27,8 +27,10 @@ coding tools (Claude Code, Codex CLI, OpenCode, …).
 ### Non-goals (v1)
 - Starting/driving agents from within the app (only "copy/launch resume command",
   and a handoff prompt the user pastes or launches themselves).
-- Syncing sessions across machines or any network access. Portable bundles
-  (§7) are files the user moves themselves.
+- Syncing sessions across machines or general background network access. Remote
+  browsing over SSH (M7) uses only the user's existing system `ssh` and
+  `~/.ssh/config` to connect directly to hosts they choose; the app never opens
+  listening ports, connects to telemetry services, or makes unprompted network calls.
 - Editing transcripts.
 
 ---
@@ -272,7 +274,9 @@ Three-pane layout:
 
 ## 9. Privacy & security
 
-- No network calls and no telemetry.
+- Network use only through the user's own system `ssh`, to hosts they explicitly
+  pick. No listening ports, no telemetry, and no network calls on the remote
+  beyond the ssh session stdio process.
 - Never read credential files (`.credentials.json`, `auth.json`, OpenCode
   `credential`/`account` tables).
 - Treat transcript content as untrusted when rendering: sanitize markdown/HTML
@@ -325,6 +329,7 @@ Three-pane layout:
 | M4 | Opt-in destructive actions (trash/archive). |
 | M5 | macOS build, signing, packaging (Linux: AppImage/.deb; macOS: .dmg). |
 | M6 | Portable session bundles (export, import, opt-in native restore) and cross-agent handoff. |
+| M7 | Remote over SSH (VS Code Remote-SSH style): headless server via system SSH, browse, search, and manage remote sessions with full local UI fidelity. |
 
 ## 14. Open questions
 

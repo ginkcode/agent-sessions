@@ -57,6 +57,12 @@ export class HandoffStore {
     this.clipboardError = null;
   }
 
+  reset(): void {
+    if (this.copyPromptTimer) clearTimeout(this.copyPromptTimer);
+    if (this.copyCommandTimer) clearTimeout(this.copyCommandTimer);
+    this.close();
+  }
+
   async setTarget(t: AgentID): Promise<void> {
     if (this.target === t) return;
     this.target = t;

@@ -8,8 +8,8 @@ import (
 	"io"
 	"strings"
 
-	"github.com/ginkcode/agent-sessions/internal/app"
 	"github.com/ginkcode/agent-sessions/internal/bundle"
+	"github.com/ginkcode/agent-sessions/internal/engine"
 	"github.com/ginkcode/agent-sessions/internal/manage"
 	"github.com/ginkcode/agent-sessions/internal/model"
 	"github.com/ginkcode/agent-sessions/internal/paths"
@@ -50,13 +50,13 @@ func exportCmd(ctx context.Context, args []string, providers provider.Set, stdou
 	if result, err := p.Scan(ctx, provider.ScanState{}); err == nil {
 		catalog.Apply(result)
 	}
-	svc := app.NewService(catalog, provider.Set{p})
+	svc := engine.NewService(catalog, provider.Set{p})
 	mgr, err := captureManager()
 	if err != nil && *profile != string(bundle.ProfileShareSafe) {
 		_, _ = fmt.Fprintf(stderr, "export: %v\n", err)
 		return 1
 	}
-	req := app.ExportRequest{
+	req := engine.ExportRequest{
 		Ref:              ref,
 		Profile:          *profile,
 		Budget:           budget,

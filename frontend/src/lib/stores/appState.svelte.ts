@@ -8,13 +8,17 @@ import type {
   SessionRef,
 } from '../types';
 import { api, subscribeCatalogChanged } from '../api';
-import { defaultCollapsedKeys, pruneKeys } from '../tree';
+import {
+  defaultCollapsedKeys,
+  pruneKeys,
+  loadCollapsedKeys,
+  saveCollapsedKeys,
+} from '../tree';
 import { affectsSessionList, findGroup, hasRef, RequestSequence } from '../catalog';
 import { nextSelectionAfterDelete, refsEqual } from '../manage';
 
-const COLLAPSED_STORAGE_KEY = 'agent-sessions:tree-collapsed';
-
 export class AppState {
+  targetHost = $state<string | undefined>(undefined);
   groupMode = $state<GroupMode>('dir-agent');
   selectedGroupKey = $state<string | null>(null);
   selectedSessionRef = $state<SessionRef | null>(null);
@@ -51,7 +55,7 @@ export class AppState {
   private staleGroupReloaded = false;
 
   async init(): Promise<void> {
-    this.collapsedKeys = loadCollapsedKeys();
+    this.collapsedKeys = loadCollapsedKeys(this.targetHost);
     // Subscribe before the first load so a scan committing mid-load is
     // not missed; request ordering keeps the newer response.
     if (!this.unsubscribeCatalog) {
@@ -90,7 +94,7 @@ export class AppState {
     this.selectedGroupKey = null;
     // Group keys are mode-specific, so toggles from another mode are stale.
     this.collapsedKeys = new Set();
-    saveCollapsedKeys(this.collapsedKeys);
+    saveCollapsedKeys(this.collapsedKeys, this.targetHost);
     await this.loadGroups();
     await this.loadSessions();
   }
@@ -178,7 +182,7 @@ export class AppState {
       next.add(key);
     }
     this.collapsedKeys = next;
-    saveCollapsedKeys(next);
+    saveCollapsedKeys(next, this.targetHost);
   }
 
   async setFilter(update: Partial<FilterOpts>): Promise<void> {
@@ -224,7 +228,7 @@ export class AppState {
         const pruned = pruneKeys(this.collapsedKeys, groups);
         if (pruned.size !== this.collapsedKeys.size) {
           this.collapsedKeys = pruned;
-          saveCollapsedKeys(pruned);
+          saveCollapsedKeys(pruned, this.targetHost);
         }
       }
       this.error = null;
@@ -284,27 +288,20 @@ export class AppState {
       if (this.sessionsRequests.isCurrent(id)) this.loadingSessions = false;
     }
   }
-}
 
-function loadCollapsedKeys(): Set<string> {
-  if (typeof localStorage === 'undefined') return new Set();
-  try {
-    const parsed = JSON.parse(localStorage.getItem(COLLAPSED_STORAGE_KEY) || '[]');
-    if (Array.isArray(parsed)) {
-      return new Set(parsed.filter((k): k is string => typeof k === 'string'));
-    }
-  } catch {
-    // Ignore JSON parse errors and start from defaults
-  }
-  return new Set();
-}
-
-function saveCollapsedKeys(keys: Set<string>): void {
-  if (typeof localStorage === 'undefined') return;
-  try {
-    localStorage.setItem(COLLAPSED_STORAGE_KEY, JSON.stringify([...keys]));
-  } catch {
-    // Storage quota or disabled
+  async reset(host?: string): Promise<void> {
+    this.targetHost = host;
+    this.collapsedKeys = loadCollapsedKeys(host);
+    this.defaultCollapsed = new Set();
+    this.selectedGroupKey = null;
+    this.selectedSessionRef = null;
+    this.selectedSessionMeta = null;
+    this.sessions = [];
+    this.groups = [];
+    this.agentCounts = {};
+    this.error = null;
+    await this.loadGroups();
+    await this.loadSessions();
   }
 }
 

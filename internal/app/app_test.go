@@ -66,7 +66,7 @@ func TestOnStartupCacheFirstLoadsCatalog(t *testing.T) {
 	// Cache-first startup must synchronously populate the catalog.
 	a.OnStartup(t.Context())
 
-	if m, ok := a.svc.catalog.Get(model.SessionRef{Agent: model.AgentClaude, ID: "cached1"}); !ok || m.Title != "Cached Session" {
+	if m, ok := a.svc.Catalog().Get(model.SessionRef{Agent: model.AgentClaude, ID: "cached1"}); !ok || m.Title != "Cached Session" {
 		t.Errorf("expected cached1 in catalog after OnStartup, got %+v", m)
 	}
 	if a.refresher == nil {

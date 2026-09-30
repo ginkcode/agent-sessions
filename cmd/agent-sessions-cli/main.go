@@ -22,6 +22,7 @@ import (
 	"github.com/ginkcode/agent-sessions/internal/pathutil"
 	"github.com/ginkcode/agent-sessions/internal/provider"
 	"github.com/ginkcode/agent-sessions/internal/provider/all"
+	"github.com/ginkcode/agent-sessions/internal/version"
 )
 
 func main() {
@@ -35,12 +36,33 @@ func main() {
 
 // run returns 0 on success, 1 on an operational error, and 2 on invalid usage.
 func run(ctx context.Context, args []string, providers provider.Set, stdout, stderr io.Writer) int {
+	return runWithStdin(ctx, args, providers, stdout, stderr, os.Stdin)
+}
+
+func runWithStdin(ctx context.Context, args []string, providers provider.Set, stdout, stderr io.Writer, stdin io.Reader) int {
 	if len(args) == 0 {
 		usage(stderr)
 		return 2
 	}
 
 	switch args[0] {
+	case "version":
+		_, _ = fmt.Fprintln(stdout, version.Current())
+		return 0
+	case "serve":
+		roots, err := paths.Default()
+		if err != nil {
+			_, _ = fmt.Fprintf(stderr, "resolve roots: %v\n", err)
+			return 1
+		}
+		return serveCmd(ctx, args[1:], roots, stdout, stderr, stdin)
+	case "transfer":
+		roots, err := paths.Default()
+		if err != nil {
+			_, _ = fmt.Fprintf(stderr, "resolve roots: %v\n", err)
+			return 1
+		}
+		return transferCmd(args[1:], roots, stdout, stderr, stdin)
 	case "scan":
 		return scan(ctx, args[1:], providers, stdout, stderr)
 	case "show":
@@ -66,6 +88,9 @@ func run(ctx context.Context, args []string, providers provider.Set, stdout, std
 
 func usage(w io.Writer) {
 	_, _ = fmt.Fprintln(w, "Usage:")
+	_, _ = fmt.Fprintln(w, "  agent-sessions-cli version")
+	_, _ = fmt.Fprintln(w, "  agent-sessions-cli serve --stdio [--nonce <nonce>]")
+	_, _ = fmt.Fprintln(w, "  agent-sessions-cli transfer <get|put> <token> [--remove]")
 	_, _ = fmt.Fprintln(w, "  agent-sessions-cli scan [--agent claude-code] [--json] [--all]")
 	_, _ = fmt.Fprintln(w, "  agent-sessions-cli show <agent> <id> [--json] [--meta] [--max-output 2000]")
 	_, _ = fmt.Fprintln(w, "  agent-sessions-cli handoff <agent> <id> --target <agent> [--budget compact|detailed|full|unlimited|N] [--reasoning] [--redact] [--cwd <dir>] [--command] [--json]")

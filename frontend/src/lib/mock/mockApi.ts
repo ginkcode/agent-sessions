@@ -24,6 +24,9 @@ import type {
   ExportPreview,
   BundleSummary,
   BundleHandoffRequest,
+  ConnectionState,
+  HostCapabilities,
+  HostEntry,
 } from '../types.js';
 import { mockSessions, mockMessages, mockBlobs, mockDiagnostics } from './fixtures.js';
 import { refKey } from '../manage.js';
@@ -93,6 +96,22 @@ export class MockBackendAPI {
   private messages: Record<string, typeof mockMessages[string]> = { ...mockMessages };
   private settings: ManageSettings = { enabled: false, allowPermanentDelete: false };
   private preview: { token: string; refs: string[] } | null = null;
+  private hosts: HostEntry[] = [
+    { name: 'dev-box', hostName: '192.168.1.50', user: 'dev', port: 22 },
+    { name: 'prod-server', hostName: 'prod.example.com', user: 'admin', port: 22 },
+  ];
+  private connState: ConnectionState = {
+    phase: 'local',
+    generation: 0,
+    capabilities: {
+      trash: true,
+      manage: true,
+      export: true,
+      import: true,
+      search: true,
+    },
+  };
+  private askpassReplies: Record<string, string> = {};
 
   async listGroups(mode: GroupMode, filter?: FilterOpts): Promise<GroupNode[]> {
     const filtered = this.filterSessions(this.sessions, filter);
@@ -657,6 +676,93 @@ export class MockBackendAPI {
   // Fixtures are static; the delay just makes the refreshing state visible.
   async scan(): Promise<void> {
     await new Promise((resolve) => setTimeout(resolve, 300));
+  }
+
+  async listHosts(): Promise<HostEntry[]> {
+    return [...this.hosts];
+  }
+
+  setMockHosts(hosts: HostEntry[]): void {
+    this.hosts = [...hosts];
+  }
+
+  async connectionState(): Promise<ConnectionState> {
+    return { ...this.connState };
+  }
+
+  async connect(alias: string): Promise<void> {
+    this.connState.generation++;
+    const gen = this.connState.generation;
+    this.connState = {
+      phase: 'connecting',
+      host: alias,
+      generation: gen,
+      capabilities: {
+        trash: true,
+        manage: true,
+        export: true,
+        import: true,
+        search: true,
+      },
+    };
+    this.emit('connection:state', { ...this.connState });
+
+    const caps: HostCapabilities = {
+      trash: alias !== 'prod-server',
+      manage: true,
+      export: true,
+      import: true,
+      search: true,
+    };
+    this.connState = {
+      phase: 'connected',
+      host: alias,
+      generation: gen,
+      capabilities: caps,
+      appVersion: 'v0.2.4',
+    };
+    this.emit('connection:state', { ...this.connState });
+  }
+
+  async disconnect(): Promise<void> {
+    this.connState.generation++;
+    this.connState = {
+      phase: 'local',
+      host: undefined,
+      generation: this.connState.generation,
+      capabilities: {
+        trash: true,
+        manage: true,
+        export: true,
+        import: true,
+        search: true,
+      },
+    };
+    this.emit('connection:state', { ...this.connState });
+  }
+
+  async askpassReply(id: string, answer: string): Promise<boolean> {
+    this.askpassReplies[id] = answer;
+    return true;
+  }
+
+  simulateAskpass(id: string, prompt: string): void {
+    this.emit('askpass:prompt', { id, prompt });
+  }
+
+  setMockConnectionState(state: Partial<ConnectionState>): void {
+    this.connState = { ...this.connState, ...state };
+    this.emit('connection:state', { ...this.connState });
+  }
+
+  private hostEnv: Record<string, string> = {};
+
+  async setHostEnv(env: Record<string, string>): Promise<void> {
+    this.hostEnv = { ...env };
+  }
+
+  async getHostEnv(): Promise<Record<string, string>> {
+    return { ...this.hostEnv };
   }
 
   private listeners = new Map<string, Set<(...data: any[]) => void>>();

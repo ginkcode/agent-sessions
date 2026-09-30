@@ -321,7 +321,7 @@ func TestListSessionsResolvesEveryTreeKey(t *testing.T) {
 
 func TestAgentCountsIgnoresAgentFilter(t *testing.T) {
 	svc, _ := setupTestService(t)
-	svc.catalog.Apply(provider.ScanResult{Changed: []model.SessionMeta{{
+	svc.Catalog().Apply(provider.ScanResult{Changed: []model.SessionMeta{{
 		Ref: model.SessionRef{Agent: model.AgentCodex, ID: "c1"},
 		CWD: "/home/user/project1",
 	}}})

@@ -176,7 +176,7 @@ func TestCatalogBus_FullRefreshSentinel(t *testing.T) {
 func TestCatalogBus_StopStopsEmission(t *testing.T) {
 	bus, ft, rec := newTestBus()
 	bus.NoteChanged([]model.SessionRef{busRef("a")}, nil)
-	bus.stop()
+	bus.Stop()
 	if !ft.pending[0].stopped {
 		t.Error("stop did not cancel the pending timer")
 	}
@@ -195,7 +195,7 @@ func TestCatalogBus_NilSafe(t *testing.T) {
 	var bus *catalogBus
 	bus.NoteChanged([]model.SessionRef{busRef("a")}, nil)
 	bus.NotifyFullRefresh()
-	bus.stop()
+	bus.Stop()
 }
 
 func TestCatalogBus_RealTimerEmits(t *testing.T) {
@@ -203,7 +203,7 @@ func TestCatalogBus_RealTimerEmits(t *testing.T) {
 	bus := newCatalogBusWith(func(ev CatalogChanged) { done <- ev }, func(d time.Duration, f func()) stopper {
 		return time.AfterFunc(d, f)
 	}, time.Millisecond)
-	defer bus.stop()
+	defer bus.Stop()
 
 	bus.NoteChanged([]model.SessionRef{busRef("a")}, nil)
 	select {

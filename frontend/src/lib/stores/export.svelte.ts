@@ -39,6 +39,11 @@ export class ExportStore {
     this.error = null;
   }
 
+  reset(): void {
+    this.savedPath = null;
+    this.close();
+  }
+
   async setProfile(profile: ExportProfile): Promise<void> {
     if (this.profile === profile) return;
     this.profile = profile;

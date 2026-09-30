@@ -139,7 +139,7 @@ func TestDeleteSessions_Guards(t *testing.T) {
 	if len(f.trash.calls) != 0 {
 		t.Errorf("guard failure trashed %v", f.trash.calls)
 	}
-	if _, ok := f.app.svc.catalog.Get(f.ref); !ok {
+	if _, ok := f.app.svc.Catalog().Get(f.ref); !ok {
 		t.Error("guard failure removed session from catalog")
 	}
 }
@@ -169,7 +169,7 @@ func TestDeleteSessions_TrashesAndForgets(t *testing.T) {
 	if len(f.trash.calls) != 1 || f.trash.calls[0] != f.source {
 		t.Errorf("trash calls = %v, want [%s]", f.trash.calls, f.source)
 	}
-	if _, ok := f.app.svc.catalog.Get(f.ref); ok {
+	if _, ok := f.app.svc.Catalog().Get(f.ref); ok {
 		t.Error("deleted session still in catalog")
 	}
 }
@@ -219,7 +219,7 @@ func TestSettingsRoundTrip(t *testing.T) {
 func TestForget_CatalogEviction(t *testing.T) {
 	f := newManageTestApp(t, notLive)
 	f.app.forget([]model.SessionRef{f.ref})
-	if _, ok := f.app.svc.catalog.Get(f.ref); ok {
+	if _, ok := f.app.svc.Catalog().Get(f.ref); ok {
 		t.Error("forget did not evict the session from the catalog")
 	}
 }

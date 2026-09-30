@@ -31,6 +31,12 @@ import {
   nodeKind,
   pruneKeys,
   sessionToSelect,
+  hashHost,
+  targetKey,
+  storageKeyForCollapsed,
+  BASE_COLLAPSED_STORAGE_KEY,
+  loadCollapsedKeys,
+  saveCollapsedKeys,
 } from '../src/lib/tree.ts';
 import {
   affectsSessionList,
@@ -40,7 +46,12 @@ import {
   isFullRefresh,
   RequestSequence,
 } from '../src/lib/catalog.ts';
-import { subscribeCatalogChanged, subscribeIndexProgress } from '../src/lib/api.ts';
+import {
+  subscribeCatalogChanged,
+  subscribeIndexProgress,
+  subscribeConnectionState,
+  subscribeAskpassPrompt,
+} from '../src/lib/api.ts';
 import { BUDGET_PRESETS, ALL_AGENTS, targetAgentsFor } from '../src/lib/portable.ts';
 
 test('formatTokens formats numbers into compact string representations', () => {
@@ -779,4 +790,125 @@ test('MockBackendAPI openBundle, buildBundleHandoff, and saveBundleHandoff', asy
   });
   assert.match(savePath, /bundle-mock-bundle-1234-handoff\.md$/);
 });
+
+test('hashHost and targetKey provide deterministic namespaces per host', () => {
+  assert.equal(targetKey(undefined), 'local');
+  assert.equal(targetKey(''), 'local');
+  assert.equal(targetKey('local'), 'local');
+
+  const devHash = hashHost('dev-box');
+  assert.equal(typeof devHash, 'string');
+  assert.equal(devHash.length, 8);
+  assert.equal(targetKey('dev-box'), devHash);
+
+  const prodHash = hashHost('prod-server');
+  assert.notEqual(devHash, prodHash);
+
+  // Deterministic
+  assert.equal(hashHost('dev-box'), devHash);
+});
+
+test('storageKeyForCollapsed namespaces keys and migrates legacy un-namespaced key', () => {
+  // Mock localStorage for node test environment
+  const store = new Map();
+  globalThis.localStorage = {
+    getItem: (k) => store.get(k) ?? null,
+    setItem: (k, v) => store.set(k, String(v)),
+    removeItem: (k) => store.delete(k),
+    clear: () => store.clear(),
+  };
+
+  try {
+    // 1. Remote host uses hashed namespace
+    const remoteKey = storageKeyForCollapsed('dev-box');
+    assert.equal(remoteKey, `${BASE_COLLAPSED_STORAGE_KEY}:${hashHost('dev-box')}`);
+
+    // 2. Legacy key migration to local
+    store.set(BASE_COLLAPSED_STORAGE_KEY, JSON.stringify(['group:1', 'group:2']));
+    assert.equal(store.has(`${BASE_COLLAPSED_STORAGE_KEY}:local`), false);
+
+    const localKey = storageKeyForCollapsed();
+    assert.equal(localKey, `${BASE_COLLAPSED_STORAGE_KEY}:local`);
+    assert.equal(store.has(BASE_COLLAPSED_STORAGE_KEY), false); // Cleaned up
+    assert.deepEqual(JSON.parse(store.get(localKey)), ['group:1', 'group:2']);
+
+    // 3. loadCollapsedKeys and saveCollapsedKeys per target host
+    saveCollapsedKeys(new Set(['remote:node']), 'dev-box');
+    assert.deepEqual([...loadCollapsedKeys('dev-box')], ['remote:node']);
+    assert.deepEqual([...loadCollapsedKeys()], ['group:1', 'group:2']); // Local untouched
+  } finally {
+    delete globalThis.localStorage;
+  }
+});
+
+test('MockBackendAPI remote hosts and connection lifecycle', async () => {
+  const mock = new MockBackendAPI();
+
+  const hosts = await mock.listHosts();
+  assert.ok(hosts.length >= 2);
+  assert.equal(hosts[0].name, 'dev-box');
+
+  const initial = await mock.connectionState();
+  assert.equal(initial.phase, 'local');
+  assert.equal(initial.generation, 0);
+  assert.equal(initial.capabilities.trash, true);
+
+  const states = [];
+  mock.onEvent('connection:state', (s) => states.push({ ...s }));
+
+  await mock.connect('dev-box');
+  assert.equal(states.length, 2);
+  assert.equal(states[0].phase, 'connecting');
+  assert.equal(states[0].host, 'dev-box');
+  assert.equal(states[0].generation, 1);
+  assert.equal(states[1].phase, 'connected');
+  assert.equal(states[1].host, 'dev-box');
+  assert.equal(states[1].generation, 1);
+  assert.equal(states[1].capabilities.trash, true);
+
+  await mock.disconnect();
+  assert.equal(states.length, 3);
+  assert.equal(states[2].phase, 'local');
+  assert.equal(states[2].generation, 2);
+  assert.equal(states[2].host, undefined);
+});
+
+test('MockBackendAPI askpass event simulation and reply', async () => {
+  const mock = new MockBackendAPI();
+  const prompts = [];
+  mock.onEvent('askpass:prompt', (p) => prompts.push(p));
+
+  mock.simulateAskpass('ask-1', 'Password for dev@192.168.1.50:');
+  assert.equal(prompts.length, 1);
+  assert.equal(prompts[0].id, 'ask-1');
+  assert.equal(prompts[0].prompt, 'Password for dev@192.168.1.50:');
+
+  const ok = await mock.askpassReply('ask-1', 'secret123');
+  assert.equal(ok, true);
+});
+
+test('subscribeConnectionState and subscribeAskpassPrompt handle events correctly', () => {
+  const mock = new MockBackendAPI();
+  const connEvents = [];
+  const askpassEvents = [];
+
+  const unsubConn = subscribeConnectionState((s) => connEvents.push(s), mock);
+  const unsubAsk = subscribeAskpassPrompt((p) => askpassEvents.push(p), mock);
+
+  mock.emit('connection:state', { phase: 'connecting', generation: 1 });
+  mock.emit('connection:state', null); // Invalid, ignored
+  mock.emit('askpass:prompt', { id: 'p1', prompt: 'Passphrase:' });
+  mock.emit('askpass:prompt', 'not-an-object'); // Invalid, ignored
+
+  assert.equal(connEvents.length, 1);
+  assert.equal(connEvents[0].phase, 'connecting');
+  assert.equal(askpassEvents.length, 1);
+  assert.equal(askpassEvents[0].id, 'p1');
+
+  unsubConn();
+  unsubAsk();
+  mock.emit('connection:state', { phase: 'connected', generation: 1 });
+  assert.equal(connEvents.length, 1);
+});
+
 

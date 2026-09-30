@@ -12,12 +12,16 @@
   import HandoffDialog from './lib/components/common/HandoffDialog.svelte';
   import ExportDialog from './lib/components/common/ExportDialog.svelte';
   import ImportDialog from './lib/components/common/ImportDialog.svelte';
+  import AskpassDialog from './lib/components/common/AskpassDialog.svelte';
+  import ReconnectBanner from './lib/components/common/ReconnectBanner.svelte';
+  import HostSelector from './lib/components/sidebar/HostSelector.svelte';
   import { theme } from './lib/stores/theme.svelte';
   import { preferences } from './lib/stores/preferences.svelte';
   import { appState } from './lib/stores/appState.svelte';
   import { manage } from './lib/stores/manage.svelte';
   import { search } from './lib/stores/search.svelte';
   import { importer } from './lib/stores/importer.svelte';
+  import { connectionStore } from './lib/stores/connection.svelte';
   import { hasOpenModal, isEditableTarget } from './lib/search';
 
   let isWails = $state(false);
@@ -25,6 +29,7 @@
   onMount(() => {
     theme.init();
     preferences.init();
+    connectionStore.init();
     appState.init();
     manage.init();
     search.init();
@@ -41,6 +46,7 @@
       window.removeEventListener('keydown', onKeydown);
       search.destroy();
       appState.destroy();
+      connectionStore.destroy();
     };
   });
 
@@ -53,13 +59,15 @@
   }
 </script>
 
-<div class="shell">
-  <!-- Pane 1: Sidebar -->
-  <aside
-    class="pane sidebar"
-    style="width: {preferences.widths.sidebar}px"
-    aria-label="Navigation and grouping"
-  >
+<div class="app-layout">
+  <ReconnectBanner />
+  <div class="shell">
+    <!-- Pane 1: Sidebar -->
+    <aside
+      class="pane sidebar"
+      style="width: {preferences.widths.sidebar}px"
+      aria-label="Navigation and grouping"
+    >
     <header class="pane-header sidebar-header">
       <div class="brand">
         <span class="app-icon">⚡</span>
@@ -146,6 +154,7 @@
 
     <footer class="sidebar-footer">
       <div class="footer-status">
+        <HostSelector />
         <span class="runtime-badge" class:wails={isWails}>
           {isWails ? 'Desktop' : 'Mock (Browser)'}
         </span>
@@ -236,14 +245,25 @@
   <HandoffDialog />
   <ExportDialog />
   <ImportDialog />
+  <AskpassDialog />
+  </div>
 </div>
 
 <style>
+  .app-layout {
+    display: flex;
+    flex-direction: column;
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
+  }
+
   .shell {
     display: flex;
     flex-direction: row;
-    width: 100vw;
-    height: 100vh;
+    flex: 1;
+    min-height: 0;
+    width: 100%;
     overflow: hidden;
     background-color: var(--bg-primary);
     color: var(--text-primary);
@@ -336,6 +356,12 @@
     justify-content: space-between;
     padding: 0 6px 0 10px;
     font-size: 0.72rem;
+  }
+
+  .footer-status {
+    display: flex;
+    align-items: center;
+    gap: 6px;
   }
 
   .footer-actions {

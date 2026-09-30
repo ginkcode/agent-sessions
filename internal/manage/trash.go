@@ -64,6 +64,12 @@ func NewGioTrash() (GioTrash, error) {
 	return GioTrash{Exec: runExec}, nil
 }
 
+// PlatformTrashSupported returns true if the platform has working trash support.
+func PlatformTrashSupported() bool {
+	t, err := platformTrash()
+	return err == nil && t != nil
+}
+
 // runExec runs argv without a shell.
 func runExec(ctx context.Context, argv []string) error {
 	if len(argv) == 0 {

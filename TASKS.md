@@ -188,6 +188,37 @@ QA (M6-17).
 
 ---
 
+## M7 — Remote over SSH (≈ 65 h)
+
+Design: [docs/plan/M7.md](docs/plan/M7.md). Order: docs and engine extraction
+(M7-01…07), RPC and server (M7-08…10), SSH/askpass/deploy (M7-11…14),
+flows/UI (M7-15…17), packaging (M7-18), and QA (M7-19…20).
+
+| ID | St | Task | Est | Deps | Done when |
+|---|---|---|---|---|---|
+| M7-01 | ✅ | SPEC §1/§9/§13, `docs/plan/M7.md`, this table | 2 | – | Docs describe SSH model, architecture, and task breakdown. |
+| M7-02 | ✅ | `internal/version` plus ldflags in Makefile and release.yml; replace `appVersion` | 2 | M7-01 | Stamped version package available across modules and build scripts. |
+| M7-03 | ✅ | `Emitter` interface; move the catalog bus into the engine; Wails emitter in app | 3 | M7-01 | Catalog bus is engine-side and emits via decoupled interface. |
+| M7-04 | ✅ | Move Service, DTOs, actions and LRUs (now synchronized) to `internal/engine`, with aliases in app | 4 | M7-03 | Core service logic compiles in `internal/engine` with backwards-compatible aliases in `internal/app`. |
+| M7-05 | ✅ | Move the Wails-free handoff/export/import/manage/search logic | 4 | M7-04 | Engine houses provider-facing and file operations without GUI dependencies. |
+| M7-06 | ✅ | Engine lifecycle (Start/Scan/Close, watcher diagnostics fix); App becomes a facade over the local engine | 4 | M7-05 | Engine encapsulates lifecycle; App delegates local backend operations to Engine. |
+| M7-07 | ✅ | `Backend` contract and local adapter; reflection coverage test | 3 | M7-06 | Unified `Backend` interface covers all RPC/local operations with reflection verification. |
+| M7-08 | ✅ | `internal/rpc`: framing, preface, caps, cancel, error registry | 4 | M7-07 | JSON-RPC 2.0 NDJSON transport with frame limits, preface scanner, and error mappings. |
+| M7-09 | ✅ | RPC dispatcher, notifications and client backend (pipe tests) | 4 | M7-08 | Full client/server roundtrip over in-memory pipes with notification and cancellation support. |
+| M7-10 | ✅ | `serve --stdio`, initialize handshake, cache lock, EOF exit, staging and `transfer` subcommands | 4 | M7-09 | Headless CLI `serve --stdio` and artifact transfer commands functional. |
+| M7-11 | ✅ | `internal/remote` hosts parser, argv builder, ControlMaster, quoting (temp `-F` configs only) | 4 | M7-01 | SSH config parser and sanitized subprocess launcher with safe quoting. |
+| M7-12 | ✅ | Askpass helper branch in main, secure broker, Wails prompt event and reply | 4 | M7-11 | ASKPASS socket broker prompts local UI for SSH credentials and replies securely. |
+| M7-13 | ✅ | Probe, OS/arch mapping, server locator, atomic deploy and version verification | 4 | M7-02, M7-11 | Remote host environment probed, compatible binary staged, unpacked, and verified. |
+| M7-14 | ✅ | Remote session supervisor (login shell, preface, stderr drain) and the connection state machine in App | 4 | M7-09, M7-10, M7-12, M7-13 | Robust connection lifecycle in App managing disconnects, state transitions, and streams. |
+| M7-15 | ✅ | Artifact transfer; remote export/import/save flows; `ssh -t` command wrapping; capabilities, RevealSource and OpenURL | 4 | M7-14 | Remote bundle export/import, SSH-wrapped resume/handoff commands, and capability handling. |
+| M7-16 | ✅ | Frontend api/types/mock/connection store; store resets by generation | 4 | M7-14 | Frontend connection store, generation gating, and store resets. |
+| M7-17 | ✅ | Host chip and menu, banners, host-aware confirmations, AskpassDialog, per-host env override UI | 4 | M7-16 | Status bar host switcher, reconnect overlays, and credentials prompt dialog in UI. |
+| M7-18 | ⬜ | `make remote-servers` (4 × gz plus SHA256SUMS); nfpm contents; macOS Resources before codesign; release.yml | 3 | M7-02, M7-10 | Pre-compiled headless server bundles built for linux/darwin × amd64/arm64. |
+| M7-19 | ⬜ | Opt-in SSH integration harness (sshd in a container or on localhost with temp keys, known_hosts, HOME, and synthetic fixtures) | 4 | M7-15, M7-18 | End-to-end integration tests over local ephemeral SSH daemon. |
+| M7-20 | ⬜ | QA and security review (race tests, package inspection, no-Wails check, no listening sockets) | 3 | all | Comprehensive verification suite confirming clean architecture, safety, and race freedom. |
+
+---
+
 
 ## Summary
 
@@ -200,7 +231,8 @@ QA (M6-17).
 | M4 Destructive (opt-in) | 6 | 18 | 5 | 0 | 1 |
 | M5 macOS & distribution | 6 | 20 | 0 | 1 | 5 |
 | M6 Portable sessions | 17 | 60 | 15 | 0 | 2 |
-| **Total** | **102** | **≈ 303 h** | **63** | **18** | **21** |
+| M7 Remote over SSH | 20 | 65 | 1 | 0 | 19 |
+| **Total** | **122** | **≈ 368 h** | **64** | **18** | **40** |
 
 **Critical path to the MVP:**
 

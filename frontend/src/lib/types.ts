@@ -368,4 +368,41 @@ export interface BundleHandoffRequest {
   cwd?: string;
 }
 
+export type ConnectionPhase =
+  | 'local'
+  | 'connecting'
+  | 'connected'
+  | 'disconnected'
+  | 'reconnecting';
+
+export interface HostCapabilities {
+  trash: boolean;
+  manage: boolean;
+  export: boolean;
+  import: boolean;
+  search: boolean;
+}
+
+export interface ConnectionState {
+  phase: ConnectionPhase;
+  host?: string;
+  generation: number;
+  error?: string;
+  capabilities: HostCapabilities;
+  appVersion?: string;
+}
+
+export interface HostEntry {
+  name: string;
+  hostName?: string;
+  user?: string;
+  port?: number;
+}
+
+export interface AskpassPrompt {
+  id: string;
+  prompt: string;
+}
+
+
 

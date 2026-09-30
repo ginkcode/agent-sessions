@@ -6,6 +6,7 @@
   } from '../../manage';
   import { formatBytes } from '../../format';
   import { manage } from '../../stores/manage.svelte';
+  import { connectionStore } from '../../stores/connection.svelte';
 
   interface Props {
     open: boolean;
@@ -16,6 +17,16 @@
 
   let summary = $derived(summarizePreview(manage.preview));
   let permanent = $derived(isPermanentDelete(manage.preview));
+  let isRemote = $derived(connectionStore.isRemote);
+  let remoteHost = $derived(connectionStore.currentHost);
+  let trashSupported = $derived(connectionStore.canTrash);
+  let trashDisabledOnRemote = $derived(isRemote && !trashSupported);
+  let blockedByTrashPolicy = $derived(
+    trashDisabledOnRemote && !manage.settings.allowPermanentDelete
+  );
+  let canConfirm = $derived(
+    summary.canProceed && !manage.deleting && !blockedByTrashPolicy
+  );
 
   function handleCancel() {
     manage.dismissDialog();
@@ -48,7 +59,12 @@
       aria-labelledby="delete-confirm-title"
     >
       <header class="dialog-header">
-        <h2 id="delete-confirm-title">Delete Sessions</h2>
+        <div class="header-title-container">
+          <h2 id="delete-confirm-title">Delete Sessions</h2>
+          {#if isRemote}
+            <span class="host-pill">{remoteHost}</span>
+          {/if}
+        </div>
         <button
           type="button"
           class="dialog-close"
@@ -130,7 +146,20 @@
             </div>
           {/if}
 
-          {#if summary.permanentCount > 0}
+          {#if trashDisabledOnRemote}
+            <div class="danger-banner" role="alert">
+              <strong>Trash is not supported on {remoteHost}.</strong>
+              {#if manage.settings.allowPermanentDelete}
+                <span>
+                  Trashing is unavailable on this host. Confirming will permanently delete files from {remoteHost}.
+                </span>
+              {:else}
+                <span>
+                  Trashing is unavailable on this host and permanent deletion is disabled in Settings. To delete sessions on {remoteHost}, enable "Allow permanent deletion" in Settings.
+                </span>
+              {/if}
+            </div>
+          {:else if summary.permanentCount > 0}
             <div class="danger-banner" role="alert">
               <strong>
                 {summary.permanentCount}
@@ -144,7 +173,7 @@
             </div>
           {:else if summary.reversibleCount > 0}
             <p class="reversible-note">
-              Selected sessions move to Trash. You can restore them from
+              Selected sessions move to Trash{isRemote ? ` on ${remoteHost}` : ''}. You can restore them from
               Trash.
             </p>
           {/if}
@@ -193,16 +222,16 @@
             {formatBytes(manage.preview.totalBytes)} to free
           </p>
 
-          {#if permanent}
+          {#if permanent || trashDisabledOnRemote}
             <p class="permanent-note">
-              Sessions without a Trash copy are deleted permanently. This
+              Sessions deleted without Trash are removed permanently from {isRemote ? remoteHost : 'disk'}. This
               action cannot be undone.
             </p>
           {:else}
             <p class="soft-confirm-note">
               Confirm to move the selected
               {summary.reversibleCount === 1 ? 'session' : 'sessions'} to
-              Trash.
+              Trash{isRemote ? ` on ${remoteHost}` : ''}.
             </p>
           {/if}
 
@@ -221,12 +250,12 @@
           <button
             type="button"
             class="btn danger-btn"
-            disabled={!summary.canProceed || manage.deleting}
+            disabled={!canConfirm}
             onclick={handleConfirm}
           >
             {manage.deleting
               ? 'Deleting…'
-              : permanent
+              : (permanent || trashDisabledOnRemote)
                 ? 'Delete Permanently'
                 : 'Move to Trash'}
           </button>
@@ -266,6 +295,22 @@
     border-bottom: 1px solid var(--border-color);
     background: var(--bg-secondary);
     border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  }
+
+  .header-title-container {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .host-pill {
+    font-size: 0.72rem;
+    font-family: var(--font-mono, monospace);
+    background: var(--bg-tertiary);
+    color: var(--text-secondary);
+    padding: 2px 6px;
+    border-radius: 4px;
+    border: 1px solid var(--border-color);
   }
 
   .dialog-header h2 {

@@ -129,6 +129,18 @@ export class SearchState {
     this.error = null;
     this.activeIndex = -1;
   }
+
+  reset(): void {
+    this.gate.cancel();
+    this.clearResults();
+    this.progress = null;
+    void api.indexProgress().then(
+      (value) => {
+        if (!this.progress) this.progress = value;
+      },
+      () => {}
+    );
+  }
 }
 
 export const search = new SearchState();

@@ -3,14 +3,15 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/url"
 	"os/exec"
+	"runtime"
 	"strings"
 	"sync"
 
-	wruntime "github.com/wailsapp/wails/v2/pkg/runtime"
-
+	"github.com/ginkcode/agent-sessions/internal/engine"
 	"github.com/ginkcode/agent-sessions/internal/index"
 	"github.com/ginkcode/agent-sessions/internal/manage"
 	"github.com/ginkcode/agent-sessions/internal/model"
@@ -18,28 +19,30 @@ import (
 	"github.com/ginkcode/agent-sessions/internal/pathutil"
 	"github.com/ginkcode/agent-sessions/internal/provider"
 	"github.com/ginkcode/agent-sessions/internal/provider/all"
+	"github.com/ginkcode/agent-sessions/internal/remote"
 	"github.com/ginkcode/agent-sessions/internal/scan"
-	"github.com/ginkcode/agent-sessions/internal/watch"
 )
 
 // App is the desktop application service exposed to the Wails frontend.
 type App struct {
 	ctx                context.Context
+	localEngine        *engine.Engine
+	backendMu          sync.RWMutex
+	backend            engine.Backend
 	svc                *Service
 	runner             *scan.Runner
 	refresher          *index.Refresher
-	manageMu           sync.Mutex      // guards manage construction
-	manage             *manage.Manager // destructive actions; lazy-built
-	manageOverride     *manage.Manager // tests only
+	manageMu           sync.Mutex
+	manage             *manage.Manager
+	manageOverride     *manage.Manager
 	cacheEnabled       bool
-	cacheDirOverride   string                                                        // tests only
-	saveDialogOverride func(ctx context.Context, defaultName string) (string, error) // tests only
+	cacheDirOverride   string
+	saveDialogOverride func(ctx context.Context, defaultName string) (string, error)
 
-	cancelBootstrap context.CancelFunc // cancels the startup scan
-	bootstrapDone   chan struct{}      // closed when the startup scan finishes
-	indexer         *index.Indexer     // background FTS indexing worker
-	closeWatch      func() error       // stops the filesystem watcher
-	events          *catalogBus        // coalesced catalog:changed emitter
+	events            *catalogBus
+	wailsEvents       engine.Emitter
+	conn              *connection
+	transportOverride remote.ArtifactTransport
 }
 
 // NewApp creates a new App service instance with default providers.
@@ -55,7 +58,15 @@ func NewApp() *App {
 		Providers: provs,
 		Catalog:   catalog,
 	}
+	eng := engine.NewEngine(
+		engine.WithRoots(roots),
+		engine.WithService(svc),
+		engine.WithRunner(runner),
+		engine.WithCacheEnabled(true),
+	)
 	return &App{
+		localEngine:  eng,
+		backend:      eng,
 		svc:          svc,
 		runner:       runner,
 		cacheEnabled: true,
@@ -67,129 +78,124 @@ func NewAppWithService(svc *Service) *App {
 	var runner *scan.Runner
 	if svc != nil {
 		runner = &scan.Runner{
-			Providers: svc.providers,
-			Catalog:   svc.catalog,
+			Providers: svc.Providers(),
+			Catalog:   svc.Catalog(),
 		}
 	}
+	eng := engine.NewEngine(
+		engine.WithService(svc),
+		engine.WithRunner(runner),
+		engine.WithCacheEnabled(false),
+	)
 	return &App{
+		localEngine:  eng,
+		backend:      eng,
 		svc:          svc,
 		runner:       runner,
 		cacheEnabled: false,
 	}
 }
 
+func (a *App) appCtx() context.Context {
+	if a.ctx != nil {
+		return a.ctx
+	}
+	return context.Background()
+}
+
+func (a *App) activeBackend() engine.Backend {
+	if a.conn != nil {
+		if b := a.conn.backend(nil); b != nil {
+			return b
+		}
+	}
+	a.backendMu.RLock()
+	defer a.backendMu.RUnlock()
+
+	if a.backend != nil {
+		if a.manageOverride != nil && a.localEngine != nil {
+			a.localEngine.SetManageOverride(a.manageOverride)
+		}
+		return a.backend
+	}
+	if a.localEngine != nil {
+		if a.manageOverride != nil {
+			a.localEngine.SetManageOverride(a.manageOverride)
+		}
+		return a.localEngine
+	}
+	a.localEngine = engine.NewEngine(
+		engine.WithService(a.svc),
+		engine.WithRunner(a.runner),
+		engine.WithCacheEnabled(a.cacheEnabled),
+		engine.WithCacheDir(a.cacheDirOverride),
+		engine.WithManage(a.manageOverride),
+	)
+	return a.localEngine
+}
+
+func (a *App) isRemote() bool {
+	return a.remoteHost() != ""
+}
+
+func (a *App) remoteHost() string {
+	if a.conn == nil {
+		return ""
+	}
+	return a.conn.host()
+}
+
+func (a *App) artifactTransport() remote.ArtifactTransport {
+	if a.transportOverride != nil {
+		return a.transportOverride
+	}
+	if a.conn == nil {
+		return nil
+	}
+	return a.conn.transport()
+}
+
+// SetArtifactTransportOverride sets an artifact transport override (used in tests).
+func (a *App) SetArtifactTransportOverride(t remote.ArtifactTransport) {
+	a.transportOverride = t
+}
+
 // OnStartup is invoked by Wails when the runtime is ready.
-// It performs the cache-first startup: load persisted metadata, populate the
-// catalog, notify the initial UI snapshot — all synchronously and bounded.
-// Bootstrap scans run asynchronously, NOT in this paint-critical path.
+// It starts the local engine and sets up desktop event routing.
 func (a *App) OnStartup(ctx context.Context) {
 	a.ctx = ctx
+	wailsEmitter := NewWailsEmitter(ctx)
+	a.wailsEvents = wailsEmitter
+	a.ensureConn()
+	a.conn.setEmitter(wailsEmitter)
 	a.events = newCatalogBus(ctx)
 
-	if !a.cacheEnabled {
-		if a.runner != nil {
-			go func() {
-				_ = a.Scan()
-			}()
-		}
-		return
+	a.localEngine = engine.NewEngine(
+		engine.WithService(a.svc),
+		engine.WithRunner(a.runner),
+		engine.WithCacheEnabled(a.cacheEnabled),
+		engine.WithCacheDir(a.cacheDirOverride),
+		engine.WithManage(a.manageOverride),
+		engine.WithEmitter(wailsEmitter),
+	)
+	a.backendMu.Lock()
+	a.backend = a.localEngine
+	a.backendMu.Unlock()
+
+	_ = a.localEngine.Start(ctx)
+	a.refresher = a.localEngine.Refresher()
+	if a.localEngine.Events() != nil {
+		a.events = a.localEngine.Events()
 	}
-
-	if a.svc == nil || len(a.svc.providers) == 0 {
-		return
-	}
-
-	// Cache-first startup path.
-	db, err := index.Open(ctx, a.cacheDir())
-	if err != nil {
-		// A damaged cache directory or database shows an empty snapshot then
-		// rebuilds so the app remains usable.
-		if a.svc.catalog != nil {
-			a.svc.catalog.Reset(nil)
-		}
-		if a.runner != nil {
-			go func() {
-				_ = a.Scan()
-			}()
-		}
-		return
-	}
-
-	metas, err := db.LoadCatalog(ctx)
-	if err != nil {
-		// A damaged cache shows an empty snapshot then rebuilds.
-		_ = db.Rebuild(ctx)
-		metas = nil
-	}
-
-	// Populate the in-memory catalog with cached metas; notify the UI
-	// immediately with the initial snapshot.
-	if a.svc.catalog != nil {
-		a.svc.catalog.Reset(metas)
-	}
-	a.events.NotifyFullRefresh()
-
-	// Set up the Refresher for cache-backed scans.
-	a.refresher = index.NewRefresher(db, a.svc.catalog, a.svc.providers)
-	a.refresher.SetOnChanged(func(agent model.AgentID, changed, removed []model.SessionRef) {
-		if a.indexer != nil {
-			// A scan may have enqueued FTS jobs; wake the background worker.
-			a.indexer.Notify()
-		}
-		a.events.NoteChanged(changed, removed)
-	})
-
-	// Background FTS indexing: one worker, notified by scan commits and
-	// also polling periodically so restarted jobs resume on their own.
-	emitProgress := func(p index.FTSProgress) {
-		if a.ctx != nil && a.ctx.Value("events") != nil {
-			wruntime.EventsEmit(a.ctx, "index:progress", p)
-		}
-	}
-	a.indexer = index.StartIndexer(ctx, db, a.svc.providers, emitProgress)
-
-	// Filesystem watcher: debounced provider changes trigger an incremental
-	// refresh for the changed agent; the refresher's single-flight lock makes
-	// overlapping notifications safe.
-	a.closeWatch = a.startWatcher(ctx)
-
-	// Bootstrap scans asynchronously, not in the paint-critical path.
-	bootCtx, cancel := context.WithCancel(ctx)
-	a.cancelBootstrap = cancel
-	a.bootstrapDone = make(chan struct{})
-
-	go func() {
-		defer close(a.bootstrapDone)
-		_ = a.refresher.Bootstrap(bootCtx)
-		if a.svc != nil {
-			a.svc.ApplyReport(a.refresher.Report())
-		}
-	}()
 }
 
 // Scan triggers a scan across all providers and updates the service state.
-// Cache-backed scans notify the UI per committed change via the refresher;
-// the uncached runner replaces the catalog wholesale, so it signals a full
-// refresh.
 func (a *App) Scan() error {
-	if a.refresher == nil && a.runner == nil {
-		return nil
-	}
-	ctx := a.ctx
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	if a.refresher != nil {
-		err := a.refresher.Bootstrap(ctx)
-		if a.svc != nil {
-			a.svc.ApplyReport(a.refresher.Report())
-		}
+	ctx := a.appCtx()
+	if a.localEngine != nil {
+		err := a.localEngine.Scan(ctx)
+		a.refresher = a.localEngine.Refresher()
 		return err
-	}
-	if a.runner != nil && a.svc != nil {
-		report := a.runner.Run(ctx, a.svc.states)
-		a.svc.ApplyReport(report)
-		a.events.NotifyFullRefresh()
 	}
 	return nil
 }
@@ -199,130 +205,92 @@ func (a *App) OnShutdown(ctx context.Context) {
 	_ = a.Close()
 }
 
-// Close cancels in-flight background scans, waits for workers to complete,
-// stops the filesystem watcher, and closes the private cache DB. Catalog
-// events stop first so nothing is emitted during or after shutdown.
+// Close gracefully terminates background scans, watchers, indexers, and the database.
 func (a *App) Close() error {
-	a.events.stop()
-	if a.closeWatch != nil {
-		_ = a.closeWatch()
-		a.closeWatch = nil
+	if a.conn != nil {
+		a.conn.Shutdown()
 	}
-	if a.cancelBootstrap != nil {
-		a.cancelBootstrap()
+	if a.events != nil {
+		a.events.Stop()
 	}
-	if a.bootstrapDone != nil {
-		<-a.bootstrapDone
-	}
-	if a.indexer != nil {
-		a.indexer.Close()
-	}
-	if a.refresher != nil {
-		return a.refresher.Close()
+	if a.localEngine != nil {
+		return a.localEngine.Close()
 	}
 	return nil
 }
 
-func (a *App) startWatcher(ctx context.Context) func() error {
-	if a.svc == nil || len(a.svc.providers) == 0 || a.refresher == nil {
-		return nil
-	}
-	onChange := func(c watch.Change) {
-		p, ok := a.svc.providers.Get(c.Agent)
-		if !ok {
-			return
-		}
-		go func() {
-			scanCtx := a.ctx
-			if scanCtx == nil {
-				scanCtx = context.Background()
-			}
-			_, _, _ = a.refresher.Refresh(scanCtx, p)
-		}()
-	}
-	closeWatch, err := watch.Start(ctx, a.svc.providers, onChange)
-	if err != nil {
-		return nil
-	}
-	return closeWatch
-}
-
-// cacheDir returns the app's private cache directory.
-func (a *App) cacheDir() string {
-	if a.cacheDirOverride != "" {
-		return a.cacheDirOverride
-	}
-	roots, err := paths.Default()
-	if err != nil || roots.Cache == "" {
-		return ""
-	}
-	return roots.Cache
-}
-
 // Ping returns a greeting confirmation from the backend service.
 func (a *App) Ping(name string) string {
-	if name == "" {
+	resp, err := a.activeBackend().Ping(a.appCtx(), name)
+	if err != nil {
 		return "Hello from agent-sessions backend!"
 	}
-	return "Hello " + name + ", welcome to agent-sessions!"
+	return resp
 }
 
 // ListGroups returns the grouped navigation tree for the filtered snapshot.
 func (a *App) ListGroups(mode GroupMode, filter FilterOpts) ([]GroupNode, error) {
-	return a.svc.ListGroups(mode, filter)
+	return a.activeBackend().ListGroups(a.appCtx(), mode, filter)
 }
 
 // AgentCounts returns per-agent session totals across the filtered catalog.
 func (a *App) AgentCounts(filter FilterOpts) (map[string]int, error) {
-	return a.svc.AgentCounts(filter)
+	return a.activeBackend().AgentCounts(a.appCtx(), filter)
 }
 
 // ListSessions returns session metadata for one group (or all sessions when groupKey is empty).
 func (a *App) ListSessions(groupKey string, filter FilterOpts, sort SortOpts) ([]model.SessionMeta, error) {
-	return a.svc.ListSessions(groupKey, filter, sort)
+	return a.activeBackend().ListSessions(a.appCtx(), groupKey, filter, sort)
 }
 
 // GetSessionMeta returns the catalog metadata for one session.
 func (a *App) GetSessionMeta(ref model.SessionRef) (model.SessionMeta, error) {
-	return a.svc.GetSessionMeta(ref)
+	return a.activeBackend().GetSessionMeta(a.appCtx(), ref)
 }
 
 // GetMessages returns one page of a session transcript.
 func (a *App) GetMessages(ref model.SessionRef, offset int, limit int) (MessagesPage, error) {
-	ctx := a.ctx
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	return a.svc.GetMessages(ctx, ref, offset, limit)
+	return a.activeBackend().GetMessages(a.appCtx(), ref, offset, limit)
 }
 
 // GetBlob returns provider-attached content referenced by a message part.
 func (a *App) GetBlob(ref model.SessionRef, key string) (BlobResponse, error) {
-	ctx := a.ctx
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	return a.svc.GetBlob(ctx, ref, key)
+	return a.activeBackend().GetBlob(a.appCtx(), ref, key)
 }
 
 // CopyResumeCommand builds the provider resume command for a session.
 func (a *App) CopyResumeCommand(ref model.SessionRef) (string, error) {
-	return a.svc.CopyResumeCommand(ref)
+	cmd, err := a.activeBackend().CopyResumeCommand(a.appCtx(), ref)
+	if err != nil {
+		return "", err
+	}
+	if host := a.remoteHost(); host != "" {
+		return remote.WrapSSHCommand(host, cmd), nil
+	}
+	return cmd, nil
 }
 
 // RevealSource reveals the session's source directory in the system file manager.
 func (a *App) RevealSource(ref model.SessionRef) error {
-	dir, err := a.svc.RevealSource(ref)
+	if a.isRemote() {
+		return errors.New("reveal source is not supported on remote hosts")
+	}
+	dir, err := a.activeBackend().RevealSource(a.appCtx(), ref)
 	if err != nil {
 		return err
 	}
-	cmd := exec.Command("xdg-open", dir)
+	var cmd *exec.Cmd
+	if runtime.GOOS == "darwin" {
+		cmd = exec.Command("open", dir)
+	} else {
+		cmd = exec.Command("xdg-open", dir)
+	}
 	return cmd.Start()
 }
 
 // Diagnostics returns aggregated scanner health across providers.
 func (a *App) Diagnostics() (provider.Diagnostics, error) {
-	return a.svc.Diagnostics()
+	return a.activeBackend().Diagnostics(a.appCtx())
 }
 
 // OpenURL validates and opens an external HTTP/HTTPS URL in the default browser.
@@ -335,6 +303,11 @@ func (a *App) OpenURL(rawURL string) error {
 	if scheme != "http" && scheme != "https" {
 		return fmt.Errorf("unsupported url scheme: %s", scheme)
 	}
-	cmd := exec.Command("xdg-open", parsed.String())
+	var cmd *exec.Cmd
+	if runtime.GOOS == "darwin" {
+		cmd = exec.Command("open", parsed.String())
+	} else {
+		cmd = exec.Command("xdg-open", parsed.String())
+	}
 	return cmd.Start()
 }
