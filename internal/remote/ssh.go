@@ -30,17 +30,34 @@ type SSHOptions struct {
 // expands it; every other element is single-quoted.
 const LoginShell = "$SHELL"
 
-// ControlDir returns a private 0700 directory for ControlMaster sockets.
+// maxControlDirLen keeps ControlPath sockets bindable. sun_path holds 104
+// bytes on macOS (108 on Linux) including the NUL, and the ssh master first
+// binds "<ControlPath>.<16 random chars>" with ControlPath "<dir>/cm-%C"
+// (%C is 40 hex chars).
+const maxControlDirLen = 104 - 1 - len("/cm-") - 40 - len(".0123456789abcdef")
+
+// ControlDir returns a private 0700 directory for ControlMaster sockets:
+// $XDG_RUNTIME_DIR/agent-sessions, else as-ssh-<uid> in the temp dir, else
+// /tmp/as-ssh-<uid> when that path is too long for a socket (macOS $TMPDIR).
+// An existing directory must be ours, private and not a symlink: another
+// local user who pre-creates it could otherwise plant a fake mux socket.
 func ControlDir() (string, error) {
 	var base string
 	if runtimeDir := os.Getenv("XDG_RUNTIME_DIR"); runtimeDir != "" {
 		base = filepath.Join(runtimeDir, "agent-sessions")
-	} else {
+	}
+	if base == "" || len(base) > maxControlDirLen {
 		base = filepath.Join(os.TempDir(), fmt.Sprintf("as-ssh-%d", os.Getuid()))
+	}
+	if len(base) > maxControlDirLen {
+		base = fmt.Sprintf("/tmp/as-ssh-%d", os.Getuid())
 	}
 
 	if err := os.MkdirAll(base, 0700); err != nil {
 		return "", fmt.Errorf("create ssh control dir: %w", err)
+	}
+	if err := checkPrivateDir(base); err != nil {
+		return "", fmt.Errorf("ssh control dir %s: %w", base, err)
 	}
 	return base, nil
 }

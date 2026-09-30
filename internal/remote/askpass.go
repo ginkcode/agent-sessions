@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"crypto/rand"
+	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -68,8 +69,9 @@ func NewAskpassBroker(handler AskpassPromptHandler) (*AskpassBroker, error) {
 	if err != nil {
 		return nil, err
 	}
-	sockDir := filepath.Join(baseDir, "ap-"+token[:8])
-	if err := os.MkdirAll(sockDir, 0700); err != nil {
+	// A random name of its own, so the path reveals nothing of the token.
+	sockDir, err := os.MkdirTemp(baseDir, "ap-")
+	if err != nil {
 		return nil, fmt.Errorf("create askpass dir: %w", err)
 	}
 
@@ -188,6 +190,9 @@ func (b *AskpassBroker) handleConn(conn net.Conn) {
 		}
 	}
 
+	// The helper sends its request at once; a client that stalls must not
+	// hold a goroutine forever. Only the read is bounded, not the reply.
+	_ = conn.SetReadDeadline(time.Now().Add(10 * time.Second))
 	// Limit reader to avoid denial of service
 	r := io.LimitReader(conn, maxAskpassPayload)
 	var req AskpassRequest
@@ -197,7 +202,7 @@ func (b *AskpassBroker) handleConn(conn net.Conn) {
 	}
 
 	// Authenticate token
-	if req.Token != b.token {
+	if subtle.ConstantTimeCompare([]byte(req.Token), []byte(b.token)) != 1 {
 		_ = sendAskpassResponse(conn, AskpassResponse{Error: "invalid askpass token"})
 		return
 	}

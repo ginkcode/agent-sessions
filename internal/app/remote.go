@@ -77,9 +77,13 @@ type connSnap struct {
 // connection tracks the active target. The local engine stays running while a
 // remote session is connected; events from a stale generation are dropped.
 type connection struct {
-	mu       sync.Mutex
-	state    ConnectionState
-	session  *remote.Session
+	mu      sync.Mutex
+	state   ConnectionState
+	session *remote.Session
+	// client and xport serve the connected session (set with it; tests set
+	// them directly).
+	client   engine.Backend
+	xport    remote.ArtifactTransport
 	gen      uint64
 	dial     sessionDialer
 	opts     remote.SSHOptions
@@ -87,16 +91,20 @@ type connection struct {
 	emitter  engine.Emitter
 	askpass  *remote.AskpassBroker
 	wantHost string // host the user selected; empty means Local
-	attempt  int
-	cancel   context.CancelFunc
-	stopped  bool
+	// localActive: Local still serves calls. True until a host first
+	// connects, and again after Disconnect.
+	localActive bool
+	attempt     int
+	cancel      context.CancelFunc
+	stopped     bool
 }
 
 func newConnection(emitter engine.Emitter) *connection {
 	c := &connection{
-		state:   ConnectionState{Phase: ConnLocal},
-		dial:    defaultDialer,
-		emitter: emitter,
+		state:       ConnectionState{Phase: ConnLocal},
+		dial:        defaultDialer,
+		emitter:     emitter,
+		localActive: true,
 	}
 	broker, err := remote.NewAskpassBroker(func(id, prompt string) {
 		c.emitAskpass(id, prompt)
@@ -125,31 +133,45 @@ func (c *connection) generation() uint64 {
 	return c.gen
 }
 
-func (c *connection) backend(local engine.Backend) engine.Backend {
+// route is one consistent view of where a binding call goes. Callers take a
+// single snapshot per call, so the backend that ran a call and the host its
+// command is wrapped for cannot disagree.
+type route struct {
+	backend   engine.Backend // nil means Local
+	host      string         // non-empty: the call belongs to this remote host
+	transport remote.ArtifactTransport
+}
+
+// route returns the live remote while connected. Otherwise Local stays
+// active only during a first connect from Local; once a host has been in
+// use, a dropped or switching connection gets the offline backend, never
+// Local.
+func (c *connection) route() route {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if c.state.Phase == ConnConnected && c.session != nil && c.session.Client() != nil {
-		return c.session.Client()
+	if c.state.Phase == ConnConnected && c.client != nil {
+		return route{backend: c.client, host: c.state.Host, transport: c.xport}
+	}
+	if c.wantHost != "" && !c.localActive {
+		return route{backend: offlineBackend{host: c.wantHost}, host: c.wantHost}
+	}
+	return route{}
+}
+
+// wrap turns a command built on the route's host into one the user runs
+// locally: `ssh -t <host> '<cmd>'` for a remote, unchanged for Local.
+func (r route) wrap(cmd string) string {
+	if r.host == "" {
+		return cmd
+	}
+	return remote.WrapSSHCommand(r.host, cmd)
+}
+
+func (c *connection) backend(local engine.Backend) engine.Backend {
+	if b := c.route().backend; b != nil {
+		return b
 	}
 	return local
-}
-
-func (c *connection) transport() remote.ArtifactTransport {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if c.state.Phase == ConnConnected && c.session != nil {
-		return c.session
-	}
-	return nil
-}
-
-func (c *connection) host() string {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if c.state.Phase == ConnConnected {
-		return c.state.Host
-	}
-	return ""
 }
 
 func (c *connection) setEmitter(e engine.Emitter) {
@@ -227,8 +249,10 @@ func (c *connection) setPhase(gen uint64, phase, host, errMsg string, caps rpc.C
 	return true
 }
 
-// Connect begins a connection to alias. Local stays the active backend until
-// the remote handshake finishes. A newer Connect or Disconnect cancels this one.
+// Connect begins a connection to alias. Coming from Local, Local stays the
+// active backend until the remote handshake finishes; coming from another
+// host, calls fail as disconnected meanwhile. A newer Connect or Disconnect
+// cancels this one.
 func (c *connection) Connect(ctx context.Context, alias string) error {
 	if err := remote.ValidateHostAlias(alias); err != nil {
 		return err
@@ -299,6 +323,11 @@ func (c *connection) dialLoop(ctx context.Context, gen uint64, alias string, dia
 			return
 		}
 		c.session = sess
+		if cl := sess.Client(); cl != nil {
+			c.client = cl
+		}
+		c.xport = sess
+		c.localActive = false
 		c.attempt = 0
 		caps := rpc.Capabilities{}
 		appVer := ""
@@ -329,7 +358,7 @@ func (c *connection) dialLoop(ctx context.Context, gen uint64, alias string, dia
 			c.mu.Unlock()
 			return
 		}
-		c.session = nil
+		c.session, c.client, c.xport = nil, nil, nil
 		c.attempt++
 		attempt := c.attempt
 		c.mu.Unlock()
@@ -361,6 +390,7 @@ func permanentDialError(err error) bool {
 func (c *connection) Disconnect() {
 	c.mu.Lock()
 	c.wantHost = ""
+	c.localActive = true
 	c.closeLocked()
 	c.gen++
 	c.state = ConnectionState{Phase: ConnLocal, Generation: c.gen}
@@ -391,6 +421,19 @@ func (c *connection) closeLocked() {
 		_ = c.session.Close()
 		c.session = nil
 	}
+	c.client, c.xport = nil, nil
+}
+
+// localOnlyEmitter forwards local engine events only while Local serves the
+// UI, so local catalog or index changes never land in a remote host's view.
+// Switching back to Local reloads everything, so nothing is lost.
+func localOnlyEmitter(inner engine.Emitter, c *connection) engine.Emitter {
+	return engine.EmitterFunc(func(name string, payload any) {
+		if c.route().backend != nil {
+			return
+		}
+		inner.Emit(name, payload)
+	})
 }
 
 // generationEmitter drops events whose connection generation is no longer current.

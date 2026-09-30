@@ -2,7 +2,6 @@ package app
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -11,6 +10,7 @@ import (
 
 	"github.com/ginkcode/agent-sessions/internal/engine"
 	"github.com/ginkcode/agent-sessions/internal/remote"
+	"github.com/ginkcode/agent-sessions/internal/rpc"
 )
 
 // ExportRequest aliases engine.ExportRequest.
@@ -54,26 +54,27 @@ func (a *App) ExportBundle(req ExportRequest) (string, error) {
 		return "", nil
 	}
 
-	if a.isRemote() {
-		return a.exportRemoteBundle(ctx, req, dest)
+	r := a.route()
+	if r.host != "" {
+		return a.exportRemoteBundle(ctx, r, req, dest)
 	}
 
-	return a.activeBackend().ExportBundle(ctx, req, dest)
+	return r.backend.ExportBundle(ctx, req, dest)
 }
 
-func (a *App) exportRemoteBundle(ctx context.Context, req ExportRequest, localDest string) (string, error) {
+func (a *App) exportRemoteBundle(ctx context.Context, r route, req ExportRequest, localDest string) (string, error) {
 	token, err := remote.RandomArtifactToken("export")
 	if err != nil {
 		return "", fmt.Errorf("artifact token: %w", err)
 	}
 
-	transport := a.artifactTransport()
+	transport := r.transport
 	if transport == nil {
-		return "", errors.New("artifact transport unavailable")
+		return "", fmt.Errorf("%w %s", rpc.ErrDisconnected, r.host)
 	}
 
 	remoteStagingPath := transport.StagingPath(token)
-	if _, err := a.activeBackend().ExportBundle(ctx, req, remoteStagingPath); err != nil {
+	if _, err := r.backend.ExportBundle(ctx, req, remoteStagingPath); err != nil {
 		return "", err
 	}
 
@@ -120,4 +121,3 @@ func dialogDefaultDir() string {
 	}
 	return home
 }
-

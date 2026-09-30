@@ -3,6 +3,7 @@ package rpc
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"sync"
@@ -171,9 +172,13 @@ func (c *Client) readLoop() {
 		}
 
 		if partial.ID != nil {
+			// Deliver once: taking the entry out under the lock means a
+			// duplicate or late response for this ID finds nothing, so this
+			// send never blocks the read loop (the channel holds one).
 			key := fmt.Sprintf("%v", partial.ID)
 			c.mu.Lock()
 			ch, ok := c.pending[key]
+			delete(c.pending, key)
 			c.mu.Unlock()
 			if ok && ch != nil {
 				ch <- &Response{
@@ -238,7 +243,10 @@ func (c *Client) call(ctx context.Context, method string, params any, out any) e
 	}
 
 	if err := c.writer.WriteFrame(req); err != nil {
-		return err
+		if errors.Is(err, ErrPayloadTooLarge) {
+			return err
+		}
+		return fmt.Errorf("%w: %v", ErrDisconnected, err)
 	}
 
 	select {

@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -48,9 +49,9 @@ func WaitForPreface(ctx context.Context, r io.Reader, nonce string) (io.Reader, 
 			return nil, ctx.Err()
 		}
 
-		line, err := br.ReadString('\n')
+		line, err := readLineCapped(br, MaxScanCapBytes-totalRead)
 		totalRead += int64(len(line))
-		if totalRead > MaxScanCapBytes {
+		if err == errLineTooLong {
 			return nil, ErrPrefaceNotFound
 		}
 
@@ -66,6 +67,26 @@ func WaitForPreface(ctx context.Context, r io.Reader, nonce string) (io.Reader, 
 			}
 			return nil, err
 		}
+	}
+}
+
+var errLineTooLong = errors.New("line exceeds scan budget")
+
+// readLineCapped reads through the next newline like ReadString, but gives
+// up with errLineTooLong once the line passes budget bytes, so output with no
+// newline cannot grow memory without bound.
+func readLineCapped(br *bufio.Reader, budget int64) (string, error) {
+	var sb strings.Builder
+	for {
+		chunk, err := br.ReadSlice('\n')
+		if int64(sb.Len()+len(chunk)) > budget {
+			return sb.String(), errLineTooLong
+		}
+		sb.Write(chunk)
+		if err == bufio.ErrBufferFull {
+			continue
+		}
+		return sb.String(), err
 	}
 }
 

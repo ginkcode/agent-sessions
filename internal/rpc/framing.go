@@ -37,6 +37,21 @@ func NewFrameReaderWithLimit(r io.Reader, limit int64) *FrameReader {
 // ReadFrame reads the next newline-delimited JSON frame.
 // Returns io.EOF when the input stream closes.
 func (r *FrameReader) ReadFrame() ([]byte, error) {
+	// Blank lines (keep-alives) are skipped in a loop: a peer can send any
+	// number of them, so this must not recurse.
+	for {
+		line, err := r.readLine()
+		if err != nil {
+			return nil, err
+		}
+		if line = bytes.TrimSpace(line); len(line) > 0 {
+			return line, nil
+		}
+	}
+}
+
+// readLine reads one line of at most r.limit bytes.
+func (r *FrameReader) readLine() ([]byte, error) {
 	var buf bytes.Buffer
 	for {
 		chunk, isPrefix, err := r.reader.ReadLine()
@@ -57,17 +72,9 @@ func (r *FrameReader) ReadFrame() ([]byte, error) {
 
 		buf.Write(chunk)
 		if !isPrefix {
-			break
+			return buf.Bytes(), nil
 		}
 	}
-
-	line := bytes.TrimSpace(buf.Bytes())
-	if len(line) == 0 {
-		// Empty line (e.g. keep-alive or blank line); read next frame
-		return r.ReadFrame()
-	}
-
-	return line, nil
 }
 
 // FrameWriter writes newline-delimited JSON frames concurrently safely.

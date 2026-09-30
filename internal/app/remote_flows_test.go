@@ -130,8 +130,10 @@ func (f *fakeArtifactTransport) StagingPath(token string) string {
 
 func setupRemoteApp(stub *stubRemoteBackend) *App {
 	a := NewApp()
-	a.backend = stub
 	a.conn = newConnection(nil)
+	a.conn.wantHost = "remote-server"
+	a.conn.localActive = false
+	a.conn.client = stub
 	a.conn.state = ConnectionState{
 		Phase:      ConnConnected,
 		Host:       "remote-server",

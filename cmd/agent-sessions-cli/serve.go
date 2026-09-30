@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"sync/atomic"
 
 	"github.com/ginkcode/agent-sessions/internal/engine"
 	"github.com/ginkcode/agent-sessions/internal/paths"
@@ -51,10 +52,11 @@ func serveCmd(ctx context.Context, args []string, roots paths.Roots, stdout, std
 	}()
 
 	// 3. Create engine with roots and emitter
-	var server *rpc.Server
+	// The engine's goroutines emit from Start on, before the server exists.
+	var server atomic.Pointer[rpc.Server]
 	emitter := engine.EmitterFunc(func(name string, payload any) {
-		if server != nil {
-			_ = server.Notify(name, payload)
+		if s := server.Load(); s != nil {
+			_ = s.Notify(name, payload)
 		}
 	})
 
@@ -74,15 +76,16 @@ func serveCmd(ctx context.Context, args []string, roots paths.Roots, stdout, std
 	}()
 
 	// 4. Run RPC server over stdio
-	server = rpc.NewServer(eng, stdin, stdout)
-	server.SetCapabilities(rpc.Capabilities{
+	srv := rpc.NewServer(eng, stdin, stdout)
+	srv.SetCapabilities(rpc.Capabilities{
 		Trash:  eng.TrashSupported(),
 		Manage: true,
 		Export: true,
 		Import: true,
 		Search: true,
 	})
-	if err := server.Serve(ctx); err != nil && !errors.Is(err, io.EOF) && !errors.Is(err, context.Canceled) {
+	server.Store(srv)
+	if err := srv.Serve(ctx); err != nil && !errors.Is(err, io.EOF) && !errors.Is(err, context.Canceled) {
 		_, _ = fmt.Fprintf(stderr, "agent-sessions-cli serve: %v\n", err)
 		return 1
 	}

@@ -8,6 +8,7 @@ import (
 	"io"
 	"os/exec"
 	"sync"
+	"time"
 
 	"github.com/ginkcode/agent-sessions/internal/engine"
 	"github.com/ginkcode/agent-sessions/internal/rpc"
@@ -75,6 +76,20 @@ func DialSession(ctx context.Context, alias string, opts SSHOptions, bin string,
 	return startServe(ctx, alias, opts, bin, clientEnv, emitter)
 }
 
+// handshakeTimeout bounds the preface scan plus initialize. The ssh master
+// is already up from the probe, so this covers only the remote login shell
+// and server startup.
+var handshakeTimeout = 60 * time.Second
+
+// handshakeErr names the timeout when it, rather than the caller, ended the
+// handshake.
+func handshakeErr(parent, run context.Context, err error) error {
+	if run.Err() != nil && parent.Err() == nil {
+		return fmt.Errorf("no response within %v: %w", handshakeTimeout, err)
+	}
+	return err
+}
+
 func startServe(ctx context.Context, alias string, opts SSHOptions, bin string, clientEnv map[string]string, emitter engine.Emitter) (*Session, error) {
 	nonce := rpc.GenerateNonce()
 	// The preface is printed by the server (--nonce), after the login shell
@@ -119,10 +134,15 @@ func startServe(ctx context.Context, alias string, opts SSHOptions, bin string, 
 	go s.drainStderr(stderr)
 	go s.wait()
 
+	// Bound the handshake: a login shell that stalls, or streams output with
+	// no preface, must not leave the connect hanging. Cancelling runCtx
+	// kills ssh, which ends the preface scan or the initialize call.
+	handshake := time.AfterFunc(handshakeTimeout, cancel)
+	defer handshake.Stop()
 	framed, err := rpc.WaitForPreface(runCtx, stdout, nonce)
 	if err != nil {
 		_ = s.Close()
-		return nil, fmt.Errorf("remote server handshake: %w%s", err, s.stderrSuffix())
+		return nil, fmt.Errorf("remote server handshake: %w%s", handshakeErr(ctx, runCtx, err), s.stderrSuffix())
 	}
 
 	client := rpc.NewClient(framed, stdin)
@@ -137,7 +157,7 @@ func startServe(ctx context.Context, alias string, opts SSHOptions, bin string, 
 	if err != nil {
 		_ = client.Close()
 		_ = s.Close()
-		return nil, fmt.Errorf("remote initialize: %w%s", err, s.stderrSuffix())
+		return nil, fmt.Errorf("remote initialize: %w%s", handshakeErr(ctx, runCtx, err), s.stderrSuffix())
 	}
 	s.client = client
 	s.init = res

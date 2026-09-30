@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/ginkcode/agent-sessions/internal/engine"
+	"github.com/ginkcode/agent-sessions/internal/model"
 	"github.com/ginkcode/agent-sessions/internal/remote"
 	"github.com/ginkcode/agent-sessions/internal/rpc"
 )
@@ -141,7 +142,134 @@ func TestConnection_ConnectedUsesRemoteBackend(t *testing.T) {
 	if c.snapshot().Phase != ConnReconnecting {
 		t.Fatalf("after drop phase = %q", c.snapshot().Phase)
 	}
+	// Dropped: the host stays selected and calls fail, never going to Local.
+	r := c.route()
+	if _, ok := r.backend.(offlineBackend); !ok || r.host != "box" {
+		t.Fatalf("after drop route = %+v", r)
+	}
 	c.Disconnect()
+	if r := c.route(); r.backend != nil || r.host != "" {
+		t.Fatalf("after disconnect route = %+v", r)
+	}
+}
+
+// localRecorder is a Local backend that records the calls that reach it.
+type localRecorder struct {
+	engine.Backend
+	mu    sync.Mutex
+	calls []string
+}
+
+func (l *localRecorder) record(name string) {
+	l.mu.Lock()
+	l.calls = append(l.calls, name)
+	l.mu.Unlock()
+}
+
+func (l *localRecorder) DeleteSessions(context.Context, []model.SessionRef, string) (engine.DeleteReport, error) {
+	l.record("DeleteSessions")
+	return engine.DeleteReport{}, nil
+}
+
+func (l *localRecorder) SetAllowPermanentDelete(context.Context, bool) (engine.Settings, error) {
+	l.record("SetAllowPermanentDelete")
+	return engine.Settings{}, nil
+}
+
+func (l *localRecorder) CopyResumeCommand(context.Context, model.SessionRef) (string, error) {
+	l.record("CopyResumeCommand")
+	return "claude --resume x", nil
+}
+
+func (l *localRecorder) RevealSource(context.Context, model.SessionRef) (string, error) {
+	l.record("RevealSource")
+	return "/tmp", nil
+}
+
+func (l *localRecorder) ListGroups(context.Context, engine.GroupMode, engine.FilterOpts) ([]engine.GroupNode, error) {
+	l.record("ListGroups")
+	return nil, nil
+}
+
+func TestApp_DroppedRemoteNeverFallsBackToLocal(t *testing.T) {
+	local := &localRecorder{}
+	a := NewApp()
+	a.backend = local
+	a.conn = newConnection(nil)
+	// Was connected to box, then the link dropped.
+	a.conn.wantHost = "box"
+	a.conn.localActive = false
+	a.conn.state = ConnectionState{Phase: ConnReconnecting, Host: "box", Generation: 1, Error: "connection lost"}
+
+	ref := model.SessionRef{Agent: model.AgentCodex, ID: "s1"}
+	if _, err := a.DeleteSessions([]model.SessionRef{ref}, "tok"); !errors.Is(err, rpc.ErrDisconnected) {
+		t.Errorf("DeleteSessions err = %v, want ErrDisconnected", err)
+	}
+	if _, err := a.SetAllowPermanentDelete(true); !errors.Is(err, rpc.ErrDisconnected) {
+		t.Errorf("SetAllowPermanentDelete err = %v, want ErrDisconnected", err)
+	}
+	if _, err := a.ListGroups(engine.GroupModeDirAgent, engine.FilterOpts{}); !errors.Is(err, rpc.ErrDisconnected) {
+		t.Errorf("ListGroups err = %v, want ErrDisconnected", err)
+	}
+	if cmd, err := a.CopyResumeCommand(ref); err == nil {
+		t.Errorf("CopyResumeCommand = %q, want an error", cmd)
+	}
+	if err := a.RevealSource(ref); err == nil || !strings.Contains(err.Error(), "not supported on remote hosts") {
+		t.Errorf("RevealSource err = %v", err)
+	}
+	if len(local.calls) != 0 {
+		t.Fatalf("calls reached Local while disconnected from box: %v", local.calls)
+	}
+
+	// Disconnect is the only way back to Local.
+	a.conn.Disconnect()
+	if cmd, err := a.CopyResumeCommand(ref); err != nil || cmd != "claude --resume x" {
+		t.Fatalf("after disconnect: %q, %v", cmd, err)
+	}
+}
+
+func TestConnection_SwitchingHostsIsOfflineUntilConnected(t *testing.T) {
+	c := newConnection(nil)
+	c.wantHost = "a"
+	c.localActive = false // a was connected
+	prev := reconnectBackoff
+	reconnectBackoff = []time.Duration{time.Hour}
+	t.Cleanup(func() { reconnectBackoff = prev })
+	block := make(chan struct{})
+	t.Cleanup(func() { close(block) })
+	c.dial = func(ctx context.Context, alias string, opts remote.SSHOptions, env map[string]string, emitter engine.Emitter) (*remote.Session, error) {
+		select {
+		case <-block:
+		case <-ctx.Done():
+		}
+		return nil, errors.New("cancelled")
+	}
+	if err := c.Connect(context.Background(), "b"); err != nil {
+		t.Fatal(err)
+	}
+	defer c.Disconnect()
+	r := c.route()
+	if _, ok := r.backend.(offlineBackend); !ok || r.host != "b" {
+		t.Fatalf("while connecting a->b route = %+v", r)
+	}
+}
+
+func TestLocalOnlyEmitter_DropsWhileRemote(t *testing.T) {
+	c := newConnection(nil)
+	var got []string
+	e := localOnlyEmitter(engine.EmitterFunc(func(name string, _ any) { got = append(got, name) }), c)
+
+	e.Emit("catalog:changed", nil)
+	c.mu.Lock()
+	c.wantHost, c.localActive = "box", false
+	c.mu.Unlock()
+	e.Emit("index:progress", nil)
+	c.Disconnect()
+	e.Emit("catalog:changed", nil)
+
+	if strings.Join(got, ",") != "catalog:changed,catalog:changed" {
+		t.Fatalf("emitted %v", got)
+	}
 }
 
 func pipeClient(t *testing.T) (*rpc.Client, *rpc.InitializeResult) {

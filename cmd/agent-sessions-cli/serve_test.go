@@ -164,14 +164,31 @@ func TestServe_AdvisoryLockBusy(t *testing.T) {
 }
 
 func TestNoWailsDependency(t *testing.T) {
-	// Assert no Wails packages are linked in cmd/agent-sessions-cli
-	cmd := exec.Command("go", "list", "-deps", ".")
+	// The remote server must not link the GUI (Wails, internal/app) or the
+	// test-only ssh harness.
+	assertNoDeps(t, []string{"."},
+		"github.com/wailsapp/wails",
+		"github.com/ginkcode/agent-sessions/internal/app",
+		"github.com/ginkcode/agent-sessions/internal/remote/sshtest")
+}
+
+func TestDesktopDoesNotLinkTestHarness(t *testing.T) {
+	assertNoDeps(t, []string{"-tags", "webkit2_41,production", "../agent-sessions"},
+		"github.com/ginkcode/agent-sessions/internal/remote/sshtest")
+}
+
+func assertNoDeps(t *testing.T, args []string, forbidden ...string) {
+	t.Helper()
+	cmd := exec.Command("go", append([]string{"list", "-deps"}, args...)...)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		t.Fatalf("go list -deps failed: %v, output: %s", err, out)
+		t.Fatalf("go list -deps %v failed: %v, output: %s", args, err, out)
 	}
-	deps := string(out)
-	if strings.Contains(deps, "github.com/wailsapp/wails") {
-		t.Errorf("found forbidden Wails dependency in cmd/agent-sessions-cli:\n%s", deps)
+	for _, dep := range strings.Split(string(out), "\n") {
+		for _, f := range forbidden {
+			if dep == f || strings.HasPrefix(dep, f+"/") {
+				t.Errorf("go list -deps %v: forbidden dependency %s", args, dep)
+			}
+		}
 	}
 }

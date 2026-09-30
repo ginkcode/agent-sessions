@@ -103,7 +103,7 @@ func unpackScript(targetDir, targetBin, sum string) string {
 		QuotePOSIX(targetDir),
 		QuotePOSIX(tmpBin+".gz"),
 		QuotePOSIX(tmpBin),
-		sum,
+		QuotePOSIX(sum), // quoted in a case pattern: matched literally
 		QuotePOSIX(targetBin),
 	)
 }

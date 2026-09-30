@@ -103,12 +103,25 @@ func (a *App) appCtx() context.Context {
 	return context.Background()
 }
 
-func (a *App) activeBackend() engine.Backend {
+// route snapshots where one binding call goes (see connection.route). Take
+// it once per call and use its backend, host and transport together.
+func (a *App) route() route {
+	var r route
 	if a.conn != nil {
-		if b := a.conn.backend(nil); b != nil {
-			return b
-		}
+		r = a.conn.route()
 	}
+	if r.backend == nil {
+		r.backend = a.localBackend()
+	}
+	if a.transportOverride != nil {
+		r.transport = a.transportOverride
+	}
+	return r
+}
+
+func (a *App) activeBackend() engine.Backend { return a.route().backend }
+
+func (a *App) localBackend() engine.Backend {
 	a.backendMu.RLock()
 	defer a.backendMu.RUnlock()
 
@@ -134,27 +147,6 @@ func (a *App) activeBackend() engine.Backend {
 	return a.localEngine
 }
 
-func (a *App) isRemote() bool {
-	return a.remoteHost() != ""
-}
-
-func (a *App) remoteHost() string {
-	if a.conn == nil {
-		return ""
-	}
-	return a.conn.host()
-}
-
-func (a *App) artifactTransport() remote.ArtifactTransport {
-	if a.transportOverride != nil {
-		return a.transportOverride
-	}
-	if a.conn == nil {
-		return nil
-	}
-	return a.conn.transport()
-}
-
 // SetArtifactTransportOverride sets an artifact transport override (used in tests).
 func (a *App) SetArtifactTransportOverride(t remote.ArtifactTransport) {
 	a.transportOverride = t
@@ -176,7 +168,7 @@ func (a *App) OnStartup(ctx context.Context) {
 		engine.WithCacheEnabled(a.cacheEnabled),
 		engine.WithCacheDir(a.cacheDirOverride),
 		engine.WithManage(a.manageOverride),
-		engine.WithEmitter(wailsEmitter),
+		engine.WithEmitter(localOnlyEmitter(wailsEmitter, a.conn)),
 	)
 	a.backendMu.Lock()
 	a.backend = a.localEngine
@@ -192,6 +184,9 @@ func (a *App) OnStartup(ctx context.Context) {
 // Scan triggers a scan across all providers and updates the service state.
 func (a *App) Scan() error {
 	ctx := a.appCtx()
+	if r := a.route(); r.host != "" {
+		return r.backend.Scan(ctx)
+	}
 	if a.localEngine != nil {
 		err := a.localEngine.Scan(ctx)
 		a.refresher = a.localEngine.Refresher()
@@ -260,22 +255,21 @@ func (a *App) GetBlob(ref model.SessionRef, key string) (BlobResponse, error) {
 
 // CopyResumeCommand builds the provider resume command for a session.
 func (a *App) CopyResumeCommand(ref model.SessionRef) (string, error) {
-	cmd, err := a.activeBackend().CopyResumeCommand(a.appCtx(), ref)
+	r := a.route()
+	cmd, err := r.backend.CopyResumeCommand(a.appCtx(), ref)
 	if err != nil {
 		return "", err
 	}
-	if host := a.remoteHost(); host != "" {
-		return remote.WrapSSHCommand(host, cmd), nil
-	}
-	return cmd, nil
+	return r.wrap(cmd), nil
 }
 
 // RevealSource reveals the session's source directory in the system file manager.
 func (a *App) RevealSource(ref model.SessionRef) error {
-	if a.isRemote() {
+	r := a.route()
+	if r.host != "" {
 		return errors.New("reveal source is not supported on remote hosts")
 	}
-	dir, err := a.activeBackend().RevealSource(a.appCtx(), ref)
+	dir, err := r.backend.RevealSource(a.appCtx(), ref)
 	if err != nil {
 		return err
 	}

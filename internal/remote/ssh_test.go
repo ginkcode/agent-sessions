@@ -3,8 +3,10 @@ package remote
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -176,5 +178,51 @@ func TestBuildSSHArgs_LoginShellExpands(t *testing.T) {
 	}
 	if got := string(out); got != "/bin/sh|$(whoami)|" {
 		t.Fatalf("output = %q (line %q)", got, line)
+	}
+}
+
+func TestControlDir_ShortEnoughForSockets(t *testing.T) {
+	// A macOS-style $TMPDIR and a long runtime dir both fall back to /tmp.
+	long := "/var/folders/2h/qp6vs8qd5rs5w0vjh3hl7ckm0000gn/T/"
+	t.Setenv("XDG_RUNTIME_DIR", long+"runtime")
+	t.Setenv("TMPDIR", long)
+	dir, err := ControlDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := fmt.Sprintf("/tmp/as-ssh-%d", os.Getuid()); dir != want {
+		t.Fatalf("dir = %q, want %q", dir, want)
+	}
+	// What the ssh master binds first: "<dir>/cm-<40 hex>.<16 chars>" + NUL.
+	if n := len(dir+"/cm-") + 40 + 17 + 1; n > 104 {
+		t.Fatalf("socket path would be %d bytes, over macOS's 104", n)
+	}
+}
+
+func TestCheckPrivateDir(t *testing.T) {
+	root := t.TempDir()
+	good := filepath.Join(root, "good")
+	loose := filepath.Join(root, "loose")
+	link := filepath.Join(root, "link")
+	if err := os.Mkdir(good, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(loose, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(loose, 0o777); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(good, link); err != nil {
+		t.Fatal(err)
+	}
+	if err := checkPrivateDir(good); err != nil {
+		t.Errorf("0700 dir rejected: %v", err)
+	}
+	if err := checkPrivateDir(loose); err == nil {
+		t.Error("0777 dir accepted")
+	}
+	if err := checkPrivateDir(link); err == nil {
+		t.Error("symlink accepted")
 	}
 }

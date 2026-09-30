@@ -8,7 +8,6 @@ import (
 	wruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 
 	"github.com/ginkcode/agent-sessions/internal/engine"
-	"github.com/ginkcode/agent-sessions/internal/remote"
 )
 
 // HandoffRequest aliases engine.HandoffRequest.
@@ -22,26 +21,23 @@ type HandoffCacheInfo = engine.HandoffCacheInfo
 
 // BuildHandoff renders the handoff document preview for the desktop frontend.
 func (a *App) BuildHandoff(req HandoffRequest) (HandoffPreview, error) {
-	preview, err := a.activeBackend().BuildHandoff(a.appCtx(), req)
+	r := a.route()
+	preview, err := r.backend.BuildHandoff(a.appCtx(), req)
 	if err != nil {
 		return preview, err
 	}
-	if host := a.remoteHost(); host != "" {
-		preview.Command = remote.WrapSSHCommand(host, preview.Command)
-	}
+	preview.Command = r.wrap(preview.Command)
 	return preview, nil
 }
 
 // HandoffCommand writes the handoff files and returns the launch command.
 func (a *App) HandoffCommand(req HandoffRequest) (string, error) {
-	cmd, err := a.activeBackend().HandoffCommand(a.appCtx(), req)
+	r := a.route()
+	cmd, err := r.backend.HandoffCommand(a.appCtx(), req)
 	if err != nil {
 		return "", err
 	}
-	if host := a.remoteHost(); host != "" {
-		cmd = remote.WrapSSHCommand(host, cmd)
-	}
-	return cmd, nil
+	return r.wrap(cmd), nil
 }
 
 // SaveHandoff opens a file save dialog and saves the self-contained full handoff
@@ -75,15 +71,16 @@ func (a *App) SaveHandoff(req HandoffRequest) (string, error) {
 		return "", nil
 	}
 
-	if a.isRemote() {
-		md, err := a.activeBackend().RenderHandoff(ctx, req)
+	r := a.route()
+	if r.host != "" {
+		md, err := r.backend.RenderHandoff(ctx, req)
 		if err != nil {
 			return "", err
 		}
 		return writeSecureLocalFile(destPath, md)
 	}
 
-	return a.activeBackend().SaveHandoff(ctx, req, destPath)
+	return r.backend.SaveHandoff(ctx, req, destPath)
 }
 
 func writeSecureLocalFile(destPath, content string) (string, error) {
@@ -131,4 +128,3 @@ func (a *App) HandoffCache() HandoffCacheInfo {
 func (a *App) ClearHandoffCache() (HandoffCacheInfo, error) {
 	return a.activeBackend().ClearHandoffCache(a.appCtx())
 }
-

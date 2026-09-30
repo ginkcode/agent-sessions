@@ -2,7 +2,6 @@ package app
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
 
@@ -10,6 +9,7 @@ import (
 
 	"github.com/ginkcode/agent-sessions/internal/engine"
 	"github.com/ginkcode/agent-sessions/internal/remote"
+	"github.com/ginkcode/agent-sessions/internal/rpc"
 )
 
 // BundleSummary aliases engine.BundleSummary.
@@ -44,13 +44,14 @@ func (a *App) OpenBundle() (BundleSummary, error) {
 // OpenBundlePath opens a specific bundle path without showing a dialog.
 func (a *App) OpenBundlePath(path string) (BundleSummary, error) {
 	ctx := a.appCtx()
-	if a.isRemote() {
-		return a.openRemoteBundle(ctx, path)
+	r := a.route()
+	if r.host != "" {
+		return a.openRemoteBundle(ctx, r, path)
 	}
-	return a.activeBackend().OpenBundle(ctx, path)
+	return r.backend.OpenBundle(ctx, path)
 }
 
-func (a *App) openRemoteBundle(ctx context.Context, localPath string) (BundleSummary, error) {
+func (a *App) openRemoteBundle(ctx context.Context, r route, localPath string) (BundleSummary, error) {
 	f, err := os.Open(localPath)
 	if err != nil {
 		return BundleSummary{}, fmt.Errorf("open bundle file: %w", err)
@@ -62,9 +63,9 @@ func (a *App) openRemoteBundle(ctx context.Context, localPath string) (BundleSum
 		return BundleSummary{}, fmt.Errorf("artifact token: %w", err)
 	}
 
-	transport := a.artifactTransport()
+	transport := r.transport
 	if transport == nil {
-		return BundleSummary{}, errors.New("artifact transport unavailable")
+		return BundleSummary{}, fmt.Errorf("%w %s", rpc.ErrDisconnected, r.host)
 	}
 
 	if _, err := transport.PutArtifact(ctx, token, f); err != nil {
@@ -72,7 +73,7 @@ func (a *App) openRemoteBundle(ctx context.Context, localPath string) (BundleSum
 	}
 
 	remotePath := transport.StagingPath(token)
-	summary, err := a.activeBackend().OpenBundle(ctx, remotePath)
+	summary, err := r.backend.OpenBundle(ctx, remotePath)
 	if err != nil {
 		return BundleSummary{}, err
 	}
@@ -82,26 +83,23 @@ func (a *App) openRemoteBundle(ctx context.Context, localPath string) (BundleSum
 
 // BuildBundleHandoff generates a handoff preview from an opened bundle.
 func (a *App) BuildBundleHandoff(req BundleHandoffRequest) (HandoffPreview, error) {
-	preview, err := a.activeBackend().BuildBundleHandoff(a.appCtx(), req)
+	r := a.route()
+	preview, err := r.backend.BuildBundleHandoff(a.appCtx(), req)
 	if err != nil {
 		return preview, err
 	}
-	if host := a.remoteHost(); host != "" {
-		preview.Command = remote.WrapSSHCommand(host, preview.Command)
-	}
+	preview.Command = r.wrap(preview.Command)
 	return preview, nil
 }
 
 // BundleHandoffCommand writes the handoff files and returns the launch command.
 func (a *App) BundleHandoffCommand(req BundleHandoffRequest) (string, error) {
-	cmd, err := a.activeBackend().BundleHandoffCommand(a.appCtx(), req)
+	r := a.route()
+	cmd, err := r.backend.BundleHandoffCommand(a.appCtx(), req)
 	if err != nil {
 		return "", err
 	}
-	if host := a.remoteHost(); host != "" {
-		cmd = remote.WrapSSHCommand(host, cmd)
-	}
-	return cmd, nil
+	return r.wrap(cmd), nil
 }
 
 // SaveBundleHandoff writes the full handoff document to a file chosen by the user.
@@ -130,14 +128,14 @@ func (a *App) SaveBundleHandoff(req BundleHandoffRequest) (string, error) {
 		return "", nil // User cancelled
 	}
 
-	if a.isRemote() {
-		md, err := a.activeBackend().RenderBundleHandoff(ctx, req)
+	r := a.route()
+	if r.host != "" {
+		md, err := r.backend.RenderBundleHandoff(ctx, req)
 		if err != nil {
 			return "", err
 		}
 		return writeSecureLocalFile(dest, md)
 	}
 
-	return a.activeBackend().SaveBundleHandoff(ctx, req, dest)
+	return r.backend.SaveBundleHandoff(ctx, req, dest)
 }
-

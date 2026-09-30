@@ -183,3 +183,56 @@ func stderrNote(sess *Session) string {
 	}
 	return ""
 }
+
+// The server must talk only over its stdio: no TCP/unix listeners and no UDP
+// sockets, even after a scan has started the index and watcher.
+func TestSSHD_ServeOpensNoListeningSockets(t *testing.T) {
+	h := startSSHD(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	defer cancel()
+
+	sess, err := StartSession(ctx, h.Alias(sshtest.UserSh), sshdOpts(h), nil, noopEmitter())
+	if err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	defer sess.Close()
+	if err := sess.Client().Scan(ctx); err != nil {
+		t.Fatalf("scan: %v", err)
+	}
+
+	// For every socket fd of the server process, look its inode up in the
+	// process's view of /proc/net. tcp: st is $4 (0A = LISTEN), inode $10.
+	// unix: flags $4 (00010000 = listening), inode $7. The same script
+	// reports sshd's own :22 listener, so it does see sockets; the FDS line
+	// proves each matched process's fd table was readable.
+	out := h.Exec(t, `
+pids=$(pgrep -f '[a]gent-sessions-cli.* serve --stdio') # [a]: not this script
+[ -n "$pids" ] || { echo NO_SERVER; exit 0; }
+for pid in $pids; do
+  echo "PID $pid"
+  echo "FDS $(ls /proc/$pid/fd | sort -n | tr '\n' ' ')"
+  for fd in /proc/$pid/fd/*; do
+    l=$(readlink "$fd" 2>/dev/null) || continue
+    case "$l" in socket:\[*\]) ;; *) continue;; esac
+    ino=${l#socket:[}; ino=${ino%]}
+    awk -v i="$ino" '$10==i && $4=="0A" {print "TCP_LISTEN " $2}' /proc/$pid/net/tcp /proc/$pid/net/tcp6
+    awk -v i="$ino" '$10==i {print "UDP " $2}' /proc/$pid/net/udp /proc/$pid/net/udp6
+    awk -v i="$ino" '$7==i && $4=="00010000" {print "UNIX_LISTEN " $8}' /proc/$pid/net/unix
+  done
+done`)
+	if strings.Contains(out, "NO_SERVER") || !strings.Contains(out, "PID ") {
+		t.Fatalf("server process not found: %q", out)
+	}
+	t.Logf("server sockets probe:\n%s", out)
+	for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
+		switch {
+		case strings.HasPrefix(line, "PID "):
+		case strings.HasPrefix(line, "FDS "):
+			if !strings.HasPrefix(line, "FDS 0 1 2 ") {
+				t.Errorf("server fd table not readable: %q", line)
+			}
+		default:
+			t.Errorf("server has a socket it should not: %s", line)
+		}
+	}
+}
