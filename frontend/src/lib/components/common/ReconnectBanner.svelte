@@ -4,6 +4,9 @@
   let isReconnecting = $derived(connectionStore.phase === 'reconnecting');
   let isDisconnected = $derived(connectionStore.phase === 'disconnected');
   let visible = $derived(isReconnecting || isDisconnected);
+  // The backend reports "connection lost" only when a live session dropped;
+  // anything else is a failed connect attempt.
+  let wasLost = $derived(connectionStore.error === 'connection lost');
 
   function handleSwitchLocal() {
     void connectionStore.disconnect();
@@ -26,10 +29,17 @@
           ⚠️
         {/if}
       </span>
-      <div class="banner-text">
-        {#if isReconnecting}
+      <div class="banner-text" title={connectionStore.error || undefined}>
+        {#if isReconnecting && wasLost}
           <span>
             Connection to <strong>{connectionStore.host}</strong> lost. Automatically reconnecting…
+          </span>
+        {:else if isReconnecting}
+          <span>
+            Could not connect to <strong>{connectionStore.host}</strong>
+            {#if connectionStore.error}
+              — {connectionStore.error}
+            {/if}. Retrying…
           </span>
         {:else}
           <span>

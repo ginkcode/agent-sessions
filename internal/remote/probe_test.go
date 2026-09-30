@@ -84,7 +84,7 @@ func TestLocateServer(t *testing.T) {
 	if got != path {
 		t.Fatalf("LocateServer = %q, want %q", got, path)
 	}
-	if _, err := LocateServer("darwin", "arm64"); err == nil {
+	if _, err := LocateServer("plan9", "amd64"); err == nil {
 		t.Fatal("expected missing bundle error")
 	}
 }

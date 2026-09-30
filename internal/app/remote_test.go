@@ -3,7 +3,9 @@ package app
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -182,3 +184,37 @@ func TestConnection_ShutdownBlocksConnect(t *testing.T) {
 // markerBackend is a non-nil Backend stand-in. backend() only returns it when
 // no remote session is active, and the test never calls its methods.
 type markerBackend struct{ engine.Backend }
+
+func TestConnection_PermanentDialErrorStopsRetrying(t *testing.T) {
+	c := newConnection(nil)
+	var mu sync.Mutex
+	calls := 0
+	c.dial = func(ctx context.Context, alias string, opts remote.SSHOptions, env map[string]string, emitter engine.Emitter) (*remote.Session, error) {
+		mu.Lock()
+		calls++
+		mu.Unlock()
+		return nil, fmt.Errorf("locate server bundle: %w", remote.ErrServerBundleNotFound)
+	}
+	prev := reconnectBackoff
+	reconnectBackoff = []time.Duration{time.Millisecond}
+	t.Cleanup(func() { reconnectBackoff = prev })
+
+	if err := c.Connect(context.Background(), "box"); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) && c.snapshot().Phase != ConnDisconnected {
+		time.Sleep(5 * time.Millisecond)
+	}
+	time.Sleep(50 * time.Millisecond)
+	st := c.snapshot()
+	if st.Phase != ConnDisconnected || st.Host != "box" || !strings.Contains(st.Error, "no bundled server") {
+		t.Fatalf("state = %+v", st)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if calls != 1 {
+		t.Fatalf("dial calls = %d, want 1", calls)
+	}
+	c.Disconnect()
+}

@@ -83,7 +83,7 @@ func startServe(ctx context.Context, alias string, opts SSHOptions, bin string, 
 	opts.NoTTY = true
 
 	runCtx, cancel := context.WithCancel(ctx)
-	cmd, err := BuildSSHCmd(runCtx, alias, []string{"$SHELL", "-lc", script}, opts)
+	cmd, err := BuildSSHCmd(runCtx, alias, []string{LoginShell, "-lc", script}, opts)
 	if err != nil {
 		cancel()
 		return nil, err

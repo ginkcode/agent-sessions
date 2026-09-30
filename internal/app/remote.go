@@ -45,12 +45,12 @@ var reconnectBackoff = []time.Duration{
 
 // ConnectionState is the snapshot the frontend renders.
 type ConnectionState struct {
-	Phase        string            `json:"phase"`
-	Host         string            `json:"host,omitempty"`
-	Generation   uint64            `json:"generation"`
-	Error        string            `json:"error,omitempty"`
-	Capabilities rpc.Capabilities  `json:"capabilities"`
-	AppVersion   string            `json:"appVersion,omitempty"`
+	Phase        string           `json:"phase"`
+	Host         string           `json:"host,omitempty"`
+	Generation   uint64           `json:"generation"`
+	Error        string           `json:"error,omitempty"`
+	Capabilities rpc.Capabilities `json:"capabilities"`
+	AppVersion   string           `json:"appVersion,omitempty"`
 }
 
 // HostEntry is one row in the host picker.
@@ -276,6 +276,10 @@ func (c *connection) dialLoop(ctx context.Context, gen uint64, alias string, dia
 				return
 			}
 			c.setPhase(gen, ConnDisconnected, alias, err.Error(), rpc.Capabilities{}, "")
+			if permanentDialError(err) {
+				// Stay disconnected on the host; the user can Retry.
+				return
+			}
 			delay := reconnectBackoff[(attempt-1)%len(reconnectBackoff)]
 			c.setPhase(gen, ConnReconnecting, alias, err.Error(), rpc.Capabilities{}, "")
 			timer := time.NewTimer(delay)
@@ -341,6 +345,15 @@ func (c *connection) dialLoop(ctx context.Context, gen uint64, alias string, dia
 		case <-timer.C:
 		}
 	}
+}
+
+// permanentDialError reports failures that a reconnect cannot fix.
+func permanentDialError(err error) bool {
+	return errors.Is(err, remote.ErrServerBundleNotFound) ||
+		errors.Is(err, remote.ErrUnsupportedOS) ||
+		errors.Is(err, remote.ErrUnsupportedArch) ||
+		errors.Is(err, remote.ErrInvalidHostAlias) ||
+		errors.Is(err, rpc.ErrProtocolMismatch)
 }
 
 // Disconnect returns to Local and stops reconnects. The selected host is cleared.

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"os/exec"
 	"strings"
 	"testing"
 )
@@ -156,5 +157,24 @@ func TestControlDir_Permissions(t *testing.T) {
 	perm := info.Mode().Perm()
 	if perm != 0700 {
 		t.Errorf("expected 0700 permissions on control dir, got: %o", perm)
+	}
+}
+
+// The remote command line is run by the remote user's shell, as sshd does
+// with `$SHELL -c <line>`. LoginShell must expand there; the script must not.
+func TestBuildSSHArgs_LoginShellExpands(t *testing.T) {
+	args, err := BuildSSHArgs("box", []string{LoginShell, "-lc", `printf '%s|' "$0" '$(whoami)'`}, SSHOptions{ControlMaster: "no"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	line := args[len(args)-1]
+	cmd := exec.Command("/bin/sh", "-c", line)
+	cmd.Env = append(os.Environ(), "SHELL=/bin/sh")
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("run %q: %v: %s", line, err, out)
+	}
+	if got := string(out); got != "/bin/sh|$(whoami)|" {
+		t.Fatalf("output = %q (line %q)", got, line)
 	}
 }

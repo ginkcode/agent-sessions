@@ -213,8 +213,8 @@ flows/UI (M7-15…17), packaging (M7-18), and QA (M7-19…20).
 | M7-15 | ✅ | Artifact transfer; remote export/import/save flows; `ssh -t` command wrapping; capabilities, RevealSource and OpenURL | 4 | M7-14 | Remote bundle export/import, SSH-wrapped resume/handoff commands, and capability handling. |
 | M7-16 | ✅ | Frontend api/types/mock/connection store; store resets by generation | 4 | M7-14 | Frontend connection store, generation gating, and store resets. |
 | M7-17 | ✅ | Host chip and menu, banners, host-aware confirmations, AskpassDialog, per-host env override UI | 4 | M7-16 | Status bar host switcher, reconnect overlays, and credentials prompt dialog in UI. |
-| M7-18 | ⬜ | `make remote-servers` (4 × gz plus SHA256SUMS); nfpm contents; macOS Resources before codesign; release.yml | 3 | M7-02, M7-10 | Pre-compiled headless server bundles built for linux/darwin × amd64/arm64. |
-| M7-19 | ⬜ | Opt-in SSH integration harness (sshd in a container or on localhost with temp keys, known_hosts, HOME, and synthetic fixtures) | 4 | M7-15, M7-18 | End-to-end integration tests over local ephemeral SSH daemon. |
+| M7-18 | ✅ | `make remote-servers` (4 × gz plus SHA256SUMS); nfpm contents; macOS Resources before codesign; release.yml | 3 | M7-02, M7-10 | Pre-compiled headless server bundles built for linux/darwin × amd64/arm64. |
+| M7-19 | 🟡 | Opt-in SSH integration harness (sshd in a container or on localhost with temp keys, known_hosts, HOME, and synthetic fixtures) | 4 | M7-15, M7-18 | End-to-end integration tests over local ephemeral SSH daemon. Started: `TestSSHIntegration` runs probe/deploy/initialize against a real host from `AGENT_SESSIONS_SSH_HOST`; the ephemeral sshd fixture is still to do. |
 | M7-20 | ⬜ | QA and security review (race tests, package inspection, no-Wails check, no listening sockets) | 3 | all | Comprehensive verification suite confirming clean architecture, safety, and race freedom. |
 
 ---

@@ -129,9 +129,25 @@ jobs:
           path: dist/*.dmg
           if-no-files-found: error
 
+  remote-servers:
+    needs: [version, test]
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: Build headless server bundles
+        run: make remote-servers VERSION=${{ needs.version.outputs.version }}
+      - uses: actions/upload-artifact@v7
+        with:
+          name: remote-servers
+          path: build/remote/*
+          if-no-files-found: error
+
   release:
     if: github.ref_type == 'tag'
-    needs: [linux, macos]
+    needs: [linux, macos, remote-servers]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -146,7 +162,10 @@ jobs:
           merge-multiple: true
       - name: Write checksums
         working-directory: dist
-        run: sha256sum -- * > SHA256SUMS
+        run: |
+          # The server directory already carries its own SHA256SUMS.
+          find . -name SHA256SUMS -delete
+          sha256sum -- * > SHA256SUMS
       - name: Publish release
         run: |
           # Versions with a suffix (1.2.0-beta.1) publish as pre-releases and

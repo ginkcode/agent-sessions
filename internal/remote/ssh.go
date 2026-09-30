@@ -25,6 +25,11 @@ type SSHOptions struct {
 	ExtraOptions        []string
 }
 
+// LoginShell, as the first element of a remote command, runs the rest under
+// the remote user's own shell. It is sent as "$SHELL" so the remote side
+// expands it; every other element is single-quoted.
+const LoginShell = "$SHELL"
+
 // ControlDir returns a private 0700 directory for ControlMaster sockets.
 func ControlDir() (string, error) {
 	var base string
@@ -119,7 +124,15 @@ func BuildSSHArgs(alias string, remoteCmd []string, opts SSHOptions) ([]string, 
 	args = append(args, "--", alias)
 
 	if len(remoteCmd) > 0 {
-		args = append(args, QuoteArgs(remoteCmd))
+		if remoteCmd[0] == LoginShell {
+			line := `"$SHELL"`
+			if rest := remoteCmd[1:]; len(rest) > 0 {
+				line += " " + QuoteArgs(rest)
+			}
+			args = append(args, line)
+		} else {
+			args = append(args, QuoteArgs(remoteCmd))
+		}
 	}
 
 	return args, nil

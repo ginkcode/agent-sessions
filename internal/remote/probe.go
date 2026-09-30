@@ -69,7 +69,7 @@ func ProbeHost(ctx context.Context, alias string, opts SSHOptions, expectedVersi
 	)
 
 	// Run inside login shell $SHELL -lc to load PATH and env
-	shellCmd := []string{"$SHELL", "-lc", remoteScript}
+	shellCmd := []string{LoginShell, "-lc", remoteScript}
 	cmd, err := BuildSSHCmd(ctx, alias, shellCmd, opts)
 	if err != nil {
 		return nil, err

@@ -30,10 +30,8 @@ func RemoteServerPath(home, versionTag string) string {
 	return strings.TrimRight(home, "/") + "/.cache/agent-sessions/server/" + versionTag + "/agent-sessions-cli"
 }
 
-// DeployServer streams a bundled server archive to the remote host, unpacks it
-// to a temporary file, verifies sha256 when the remote has sha256sum, sets
-// mode 0700, renames it into place, checks `version` output, and prunes older
-// builds. localGzPath may be empty to locate the bundle for probe.OS/Arch.
+// DeployServer streams a bundled server archive to the remote host (see
+// unpackScript), checks `version` output, and prunes older builds. localGzPath may be empty to locate the bundle for probe.OS/Arch.
 // It returns the absolute remote path of the installed binary.
 func DeployServer(ctx context.Context, alias string, opts SSHOptions, probe *HostProbe, localGzPath string) (string, error) {
 	if probe == nil {
@@ -56,7 +54,6 @@ func DeployServer(ctx context.Context, alias string, opts SSHOptions, probe *Hos
 	}
 	tag := ServerDirTag(version.Current(), sum)
 	targetBin := RemoteServerPath(probe.Home, tag)
-	tmpBin := targetBin + ".tmp"
 	targetDir := strings.TrimSuffix(targetBin, "/agent-sessions-cli")
 
 	gz, err := os.Open(localGzPath)
@@ -65,15 +62,7 @@ func DeployServer(ctx context.Context, alias string, opts SSHOptions, probe *Hos
 	}
 	defer gz.Close()
 
-	// Stream the archive into a temp file, checksum it, then rename.
-	// sha256sum is best-effort: macOS and minimal images may not have it.
-	unpack := fmt.Sprintf(
-		`mkdir -p %[1]s && chmod 700 %[1]s && rm -f %[2]s && gzip -dc > %[2]s && chmod 700 %[2]s && if command -v sha256sum >/dev/null 2>&1; then echo "%[3]s  %[2]s" | sha256sum -c - || exit 86; fi && mv -f %[2]s %[4]s`,
-		QuotePOSIX(targetDir),
-		QuotePOSIX(tmpBin),
-		sum,
-		QuotePOSIX(targetBin),
-	)
+	unpack := unpackScript(targetDir, targetBin, sum)
 	if err := runRemote(ctx, alias, opts, nil, gz, unpack); err != nil {
 		return "", fmt.Errorf("deploy server: %w", err)
 	}
@@ -90,6 +79,28 @@ func DeployServer(ctx context.Context, alias string, opts SSHOptions, probe *Hos
 	_ = runRemote(ctx, alias, opts, nil, nil, prune)
 
 	return targetBin, nil
+}
+
+// unpackScript reads the gzip archive on stdin into targetDir and installs it
+// as targetBin. It checks the archive against sum, the sha256 of the same .gz
+// bytes, before unpacking. The hash is read from stdin so no filename is
+// echoed or re-quoted. macOS has shasum rather than sha256sum; with neither,
+// the check is skipped (minimal images) and the version check still runs.
+// A mismatch exits 86.
+func unpackScript(targetDir, targetBin, sum string) string {
+	tmpBin := targetBin + ".tmp"
+	return fmt.Sprintf(
+		`mkdir -p %[1]s && chmod 700 %[1]s && rm -f %[2]s %[3]s && cat > %[2]s && `+
+			`if command -v sha256sum >/dev/null 2>&1; then h=$(sha256sum < %[2]s); `+
+			`elif command -v shasum >/dev/null 2>&1; then h=$(shasum -a 256 < %[2]s); else h=; fi && `+
+			`case "$h" in ''|%[4]s*) ;; *) rm -f %[2]s; echo 'server bundle checksum mismatch' >&2; exit 86;; esac && `+
+			`gzip -dc < %[2]s > %[3]s && rm -f %[2]s && chmod 700 %[3]s && mv -f %[3]s %[5]s`,
+		QuotePOSIX(targetDir),
+		QuotePOSIX(tmpBin+".gz"),
+		QuotePOSIX(tmpBin),
+		sum,
+		QuotePOSIX(targetBin),
+	)
 }
 
 // verifyRemoteVersion runs the deployed binary's version command behind the
@@ -125,7 +136,7 @@ func verifyRemoteVersion(ctx context.Context, alias string, opts SSHOptions, bin
 // is the ssh process stdin (used to stream the gzip archive).
 func runRemote(ctx context.Context, alias string, opts SSHOptions, stdout io.Writer, stdin io.Reader, script string) error {
 	opts.NoTTY = true
-	cmd, err := BuildSSHCmd(ctx, alias, []string{"$SHELL", "-lc", script}, opts)
+	cmd, err := BuildSSHCmd(ctx, alias, []string{LoginShell, "-lc", script}, opts)
 	if err != nil {
 		return err
 	}

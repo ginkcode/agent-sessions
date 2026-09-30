@@ -9,7 +9,13 @@ ARCH ?= $(shell $(GO) env GOARCH)
 NFPM ?= $(GO) run github.com/goreleaser/nfpm/v2/cmd/nfpm@v2.47.0
 
 .PHONY: test lint fmt cli fuzz-smoke golden build clean dev app gui-build check-gui-deps package-linux package-macos \
-	version tags set-version tag untag release help
+	remote-servers version tags set-version tag untag release help
+
+# Headless servers the desktop app deploys over SSH. CGO stays off: these
+# binaries have no GUI. Cross targets need a Go toolchain that can produce
+# them (CI does); `make remote-servers HOST=1` builds only the host pair.
+REMOTE_PLATFORMS ?= linux/amd64 linux/arm64 darwin/amd64 darwin/arm64
+REMOTE_DIR ?= build/remote
 
 test:
 	$(GO) test -race ./...
@@ -23,6 +29,31 @@ fmt:
 
 cli:
 	$(GO) build -trimpath -ldflags "$(LDFLAGS)" -o bin/agent-sessions-cli ./cmd/agent-sessions-cli
+
+# Gzipped headless servers in $(REMOTE_DIR), plus SHA256SUMS of those archives.
+# The checksum covers the .gz bytes: the remote deploy verifies that file.
+remote-servers:
+	mkdir -p $(REMOTE_DIR)
+	rm -f $(REMOTE_DIR)/SHA256SUMS $(REMOTE_DIR)/*.gz
+	@set -e; \
+	platforms='$(REMOTE_PLATFORMS)'; \
+	if [ "$(HOST)" = 1 ]; then platforms="$$($(GO) env GOOS)/$$($(GO) env GOARCH)"; fi; \
+	for pair in $$platforms; do \
+		os=$${pair%/*}; arch=$${pair#*/}; \
+		name="agent-sessions-cli-$$os-$$arch"; \
+		echo "building $$name"; \
+		CGO_ENABLED=0 GOOS=$$os GOARCH=$$arch \
+			$(GO) build -trimpath -ldflags "$(LDFLAGS)" -o $(REMOTE_DIR)/$$name ./cmd/agent-sessions-cli; \
+		gzip -c -n $(REMOTE_DIR)/$$name > $(REMOTE_DIR)/$$name.gz; \
+		rm -f $(REMOTE_DIR)/$$name; \
+	done; \
+	if command -v sha256sum >/dev/null 2>&1; then \
+		(cd $(REMOTE_DIR) && sha256sum -- *.gz > SHA256SUMS); \
+	else \
+		(cd $(REMOTE_DIR) && shasum -a 256 -- *.gz > SHA256SUMS); \
+	fi; \
+	echo "remote servers in $(REMOTE_DIR):"; \
+	cat $(REMOTE_DIR)/SHA256SUMS
 
 fuzz-smoke:
 	$(GO) test ./internal/provider/claude -run='^$$' -fuzz=FuzzRecord -fuzztime=60s
@@ -45,7 +76,9 @@ check-gui-deps:
 # The Wails v2 CLI is required: go install github.com/wailsapp/wails/v2/cmd/wails@v2.14.0
 # NOTE: do not launch in headless CI; use `make gui-build` for compile checks.
 dev: check-gui-deps
-	$(WAILS) dev -tags $(WAILS_TAGS)
+	# Stamp the same version the deployed server reports, or the handshake
+	# rejects it (a plain `wails dev` would be version "dev").
+	$(WAILS) dev -tags $(WAILS_TAGS) -ldflags "$(LDFLAGS)"
 
 # Compile a standalone desktop binary at build/bin/agent-sessions.
 app: check-gui-deps
@@ -60,8 +93,11 @@ gui-build: check-gui-deps
 	$(GO) build -tags "$(WAILS_TAGS),production" -trimpath -ldflags "$(LDFLAGS)" -o build/bin/agent-sessions ./cmd/agent-sessions
 
 # Linux .deb and .rpm packages in dist/, wrapping the gui-build binary.
-# Runtime dependencies are declared in packaging/nfpm.yaml.
+# Runtime dependencies are declared in packaging/nfpm.yaml. The package ships
+# the headless server for every remote platform, since a Linux desktop can
+# connect to a macOS host.
 package-linux: gui-build
+	$(MAKE) remote-servers
 	mkdir -p dist
 	VERSION=$(VERSION) ARCH=$(ARCH) $(NFPM) pkg --config packaging/nfpm.yaml --packager deb --target dist/
 	VERSION=$(VERSION) ARCH=$(ARCH) $(NFPM) pkg --config packaging/nfpm.yaml --packager rpm --target dist/
@@ -92,6 +128,8 @@ package-macos:
 	rm -f build/agent-sessions-arm64 build/agent-sessions-amd64
 	rm -rf "build/bin/Agent Sessions.app" build/dmg
 	mv build/bin/agent-sessions.app "build/bin/Agent Sessions.app"
+	# Servers go in before codesign so the signature covers them.
+	$(MAKE) remote-servers REMOTE_DIR="build/bin/Agent Sessions.app/Contents/Resources/remote"
 	codesign --force --deep --sign - "build/bin/Agent Sessions.app"
 	mkdir -p build/dmg dist
 	cp -R "build/bin/Agent Sessions.app" build/dmg/
@@ -149,6 +187,7 @@ help:
 	@printf '  %-22s %s\n' 'lint' 'Run golangci-lint'
 	@printf '  %-22s %s\n' 'fmt' 'Format Go code'
 	@printf '  %-22s %s\n' 'cli / build' 'Build bin/agent-sessions-cli'
+	@printf '  %-22s %s\n' 'remote-servers' 'Build gzipped headless servers (HOST=1: this machine only)'
 	@printf '  %-22s %s\n' 'fuzz-smoke' 'Fuzz the Claude record parser for 60s'
 	@printf '  %-22s %s\n' 'golden' 'Regenerate golden test files'
 	@printf '  %-22s %s\n' 'dev' 'Run the desktop app with live reload (Wails CLI)'
@@ -167,4 +206,4 @@ help:
 	@printf '  %-22s %s\n' 'release' 'Create the tag if needed and push it; CI publishes'
 
 clean:
-	rm -rf bin build/bin build/dmg dist frontend/dist
+	rm -rf bin build/bin build/dmg build/remote dist frontend/dist

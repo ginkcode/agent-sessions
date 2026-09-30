@@ -135,7 +135,7 @@ func fakeProbe(args []string, linux bool) int {
 func fakeDeploy(args []string, stdin []byte, mismatch bool) int {
 	script := scriptArg(args)
 	switch {
-	case strings.Contains(script, "sha256sum -c"):
+	case strings.Contains(script, "gzip -dc"):
 		if !strings.Contains(script, "chmod 700") || !strings.Contains(script, "mv -f") {
 			_, _ = os.Stderr.WriteString("unpack script incomplete\n")
 			return 2

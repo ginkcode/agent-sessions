@@ -23,6 +23,12 @@ contents:
     dst: /usr/share/applications/agent-sessions.desktop
   - src: build/appicon.png
     dst: /usr/share/pixmaps/agent-sessions.png
+  # Servers for every remote platform: the app deploys to the remote host's
+  # OS/arch, not its own. With a glob src, dst is a directory.
+  - src: build/remote/*.gz
+    dst: /usr/lib/agent-sessions/remote/
+    file_info:
+      mode: 0644
 
 # Runtime libraries for the WebKitGTK 4.1 build (-tags webkit2_41).
 overrides:
