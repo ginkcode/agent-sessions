@@ -8,7 +8,7 @@ LDFLAGS ?= -s -w -X $(VERSION_PKG).Version=$(VERSION)
 ARCH ?= $(shell $(GO) env GOARCH)
 NFPM ?= $(GO) run github.com/goreleaser/nfpm/v2/cmd/nfpm@v2.47.0
 
-.PHONY: test lint fmt cli fuzz-smoke golden build clean dev app gui-build check-gui-deps package-linux package-macos \
+.PHONY: test test-ssh lint fmt cli fuzz-smoke golden build clean dev app gui-build check-gui-deps package-linux package-macos \
 	remote-servers version tags set-version tag untag release help
 
 # Headless servers the desktop app deploys over SSH. CGO stays off: these
@@ -19,6 +19,11 @@ REMOTE_DIR ?= build/remote
 
 test:
 	$(GO) test -race ./...
+
+# Opt-in SSH integration tests against a throwaway Docker sshd
+# (internal/remote/sshtest). Needs docker, ssh and ssh-keygen.
+test-ssh:
+	AGENT_SESSIONS_SSH_DOCKER=1 $(GO) test -race -count=1 -run 'SSHD' ./internal/remote/... ./internal/app/...
 
 lint:
 	$(GO) tool golangci-lint run
@@ -184,6 +189,7 @@ release:
 help:
 	@printf 'Development\n'
 	@printf '  %-22s %s\n' 'test' 'Run Go tests with the race detector'
+	@printf '  %-22s %s\n' 'test-ssh' 'Run the SSH integration tests against a Docker sshd'
 	@printf '  %-22s %s\n' 'lint' 'Run golangci-lint'
 	@printf '  %-22s %s\n' 'fmt' 'Format Go code'
 	@printf '  %-22s %s\n' 'cli / build' 'Build bin/agent-sessions-cli'

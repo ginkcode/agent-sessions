@@ -6,6 +6,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -14,6 +15,10 @@ import (
 	"github.com/ginkcode/agent-sessions/internal/rpc"
 	"github.com/ginkcode/agent-sessions/internal/version"
 )
+
+// ErrServerVersionMismatch means the bundled server reports another version
+// than the app. Redeploying the same bundle cannot fix it.
+var ErrServerVersionMismatch = errors.New("server version mismatch")
 
 // ServerDirTag is the remote directory name for one deployed server build:
 // "<version>-<sha8>".
@@ -86,11 +91,11 @@ func DeployServer(ctx context.Context, alias string, opts SSHOptions, probe *Hos
 // bytes, before unpacking. The hash is read from stdin so no filename is
 // echoed or re-quoted. macOS has shasum rather than sha256sum; with neither,
 // the check is skipped (minimal images) and the version check still runs.
-// A mismatch exits 86.
+// umask 077 keeps every directory it creates private. A mismatch exits 86.
 func unpackScript(targetDir, targetBin, sum string) string {
 	tmpBin := targetBin + ".tmp"
 	return fmt.Sprintf(
-		`mkdir -p %[1]s && chmod 700 %[1]s && rm -f %[2]s %[3]s && cat > %[2]s && `+
+		`umask 077 && mkdir -p %[1]s && chmod 700 %[1]s && rm -f %[2]s %[3]s && cat > %[2]s && `+
 			`if command -v sha256sum >/dev/null 2>&1; then h=$(sha256sum < %[2]s); `+
 			`elif command -v shasum >/dev/null 2>&1; then h=$(shasum -a 256 < %[2]s); else h=; fi && `+
 			`case "$h" in ''|%[4]s*) ;; *) rm -f %[2]s; echo 'server bundle checksum mismatch' >&2; exit 86;; esac && `+
@@ -127,7 +132,7 @@ func verifyRemoteVersion(ctx context.Context, alias string, opts SSHOptions, bin
 	got = strings.TrimSpace(got)
 	want := version.Current()
 	if got != want {
-		return fmt.Errorf("deployed server version %q, want %q", got, want)
+		return fmt.Errorf("%w: deployed server is %q, app is %q", ErrServerVersionMismatch, got, want)
 	}
 	return nil
 }

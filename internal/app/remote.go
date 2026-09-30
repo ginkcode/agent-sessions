@@ -350,6 +350,7 @@ func (c *connection) dialLoop(ctx context.Context, gen uint64, alias string, dia
 // permanentDialError reports failures that a reconnect cannot fix.
 func permanentDialError(err error) bool {
 	return errors.Is(err, remote.ErrServerBundleNotFound) ||
+		errors.Is(err, remote.ErrServerVersionMismatch) ||
 		errors.Is(err, remote.ErrUnsupportedOS) ||
 		errors.Is(err, remote.ErrUnsupportedArch) ||
 		errors.Is(err, remote.ErrInvalidHostAlias) ||
