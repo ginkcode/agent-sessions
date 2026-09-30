@@ -24,8 +24,11 @@
   import { connectionStore } from './lib/stores/connection.svelte';
   import { link } from './lib/stores/link.svelte';
   import { hasOpenModal, isEditableTarget } from './lib/search';
+  import { api } from './lib/api';
+  import { formatVersion } from './lib/format';
 
   let isWails = $state(false);
+  let appVersion = $state('');
   // The panes show a host's last data while it is not serving, or stay
   // inert during a first connect so nothing on screen passes for the
   // host's sessions.
@@ -39,6 +42,10 @@
     manage.init();
     search.init();
     isWails = typeof window !== 'undefined' && Boolean((window as any).go?.app?.App);
+    api
+      .appVersion()
+      .then((v) => (appVersion = formatVersion(v)))
+      .catch(() => {});
 
     const onKeydown = (event: KeyboardEvent) => {
       if (event.key !== '/' || event.metaKey || event.ctrlKey || event.altKey) return;
@@ -163,9 +170,13 @@
     <footer class="sidebar-footer">
       <div class="footer-status">
         <HostSelector />
-        <span class="runtime-badge" class:wails={isWails}>
-          {isWails ? 'Desktop' : 'Mock (Browser)'}
-        </span>
+        {#if isWails}
+          {#if appVersion}
+            <span class="runtime-badge wails" title="Agent Sessions {appVersion}">{appVersion}</span>
+          {/if}
+        {:else}
+          <span class="runtime-badge">Mock (Browser)</span>
+        {/if}
       </div>
       <div class="footer-actions">
         <button

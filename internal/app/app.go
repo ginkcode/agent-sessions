@@ -21,6 +21,7 @@ import (
 	"github.com/ginkcode/agent-sessions/internal/provider/all"
 	"github.com/ginkcode/agent-sessions/internal/remote"
 	"github.com/ginkcode/agent-sessions/internal/scan"
+	"github.com/ginkcode/agent-sessions/internal/version"
 )
 
 // App is the desktop application service exposed to the Wails frontend.
@@ -217,6 +218,12 @@ func (a *App) Close() error {
 		return a.localEngine.Close()
 	}
 	return nil
+}
+
+// AppVersion returns this desktop app's version, which is "dev" for builds
+// without the release ldflags. It is local even while connected to a host.
+func (a *App) AppVersion() string {
+	return version.Current()
 }
 
 // Ping returns a greeting confirmation from the backend service.

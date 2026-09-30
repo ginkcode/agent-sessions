@@ -40,3 +40,10 @@ export function formatBytes(bytes?: number): string {
   }
   return `${size.toFixed(unitIndex === 0 ? 0 : 1)} ${units[unitIndex]}`;
 }
+
+/** Labels an app version: "0.3.2" becomes "v0.3.2"; "dev" and tags that already start with "v" are kept. */
+export function formatVersion(version?: string): string {
+  const v = version?.trim();
+  if (!v) return '';
+  return /^\d/.test(v) ? `v${v}` : v;
+}

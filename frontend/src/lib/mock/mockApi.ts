@@ -671,6 +671,10 @@ export class MockBackendAPI {
     return `/mock/downloads/bundle-${req.bundleId}-handoff.md`;
   }
 
+  async appVersion(): Promise<string> {
+    return 'dev';
+  }
+
   async openURL(url: string): Promise<void> {
     if (typeof window !== 'undefined') {
       window.open(url, '_blank');

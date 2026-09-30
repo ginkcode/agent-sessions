@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { formatTokens, formatCost, formatBytes } from '../src/lib/format.ts';
+import { formatTokens, formatCost, formatBytes, formatVersion } from '../src/lib/format.ts';
 import { formatRelativeTime, formatAbsoluteTime, isKnownTime, formatAgo } from '../src/lib/date.ts';
 import { highlightCode, detectLanguage } from '../src/lib/highlight.ts';
 import { renderMarkdown } from '../src/lib/markdown.ts';
@@ -1072,4 +1072,17 @@ test('filterHosts matches alias, host name and user without case', () => {
   assert.deepEqual(filterHosts(hosts, 'ALICE').map((h) => h.name), ['dev-box']);
   assert.deepEqual(filterHosts(hosts, 'b').map((h) => h.name), ['dev-box', 'build']);
   assert.deepEqual(filterHosts(hosts, 'nope'), []);
+});
+
+test('formatVersion prefixes release versions with v', () => {
+  assert.equal(formatVersion('0.3.2'), 'v0.3.2');
+  assert.equal(formatVersion(' 1.2.0-beta.1 '), 'v1.2.0-beta.1');
+  assert.equal(formatVersion('v0.3.2'), 'v0.3.2');
+  assert.equal(formatVersion('dev'), 'dev');
+  assert.equal(formatVersion(''), '');
+  assert.equal(formatVersion(undefined), '');
+});
+
+test('MockBackendAPI appVersion reports a dev build', async () => {
+  assert.equal(await new MockBackendAPI().appVersion(), 'dev');
 });

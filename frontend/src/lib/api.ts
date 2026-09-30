@@ -42,6 +42,7 @@ export interface BackendAPI {
   revealSource(ref: SessionRef): Promise<void>;
   getDiagnostics(): Promise<Diagnostics>;
   openURL(url: string): Promise<void>;
+  appVersion(): Promise<string>;
   onEvent(name: string, callback: (...data: any[]) => void): () => void;
   getSettings(): Promise<ManageSettings>;
   setManageEnabled(enabled: boolean): Promise<ManageSettings>;
@@ -83,6 +84,7 @@ interface WailsAppBinding {
   RevealSource(ref: SessionRef): Promise<void>;
   Diagnostics(): Promise<Diagnostics>;
   OpenURL(url: string): Promise<void>;
+  AppVersion(): Promise<string>;
   GetSettings(): Promise<ManageSettings>;
   SetManageEnabled(enabled: boolean): Promise<ManageSettings>;
   SetAllowPermanentDelete(allow: boolean): Promise<ManageSettings>;
@@ -428,6 +430,14 @@ class WailsBackendAPI implements BackendAPI {
     }
   }
 
+  async appVersion(): Promise<string> {
+    try {
+      return await this.binding.AppVersion();
+    } catch (e) {
+      throw normalizeError(e);
+    }
+  }
+
   async openURL(url: string): Promise<void> {
     try {
       if (this.binding.OpenURL) {
@@ -470,6 +480,7 @@ export function createAPI(): BackendAPI {
 const UNGUARDED = new Set<string>([
   'onEvent',
   'openURL',
+  'appVersion',
   'listHosts',
   'connect',
   'disconnect',
