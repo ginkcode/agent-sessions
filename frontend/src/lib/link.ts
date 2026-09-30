@@ -1,4 +1,4 @@
-import type { ConnectionPhase } from './types';
+import type { ConnectionPhase, HostEntry } from './types';
 
 // Bumped each time the stores reset for a new backend.
 let currentEpoch = 0;
@@ -118,4 +118,16 @@ export function blockedReason(link: LinkState, host: string | undefined): string
     return `Not connected to ${link.dataHost}. Changes are disabled until it reconnects.`;
   }
   return `Not connected to ${host}. The sessions shown are Local; changes are disabled until ${host} connects or you switch back to Local.`;
+}
+
+/**
+ * Hosts whose alias, host name or user contains query, ignoring case. An
+ * empty query keeps every host.
+ */
+export function filterHosts(hosts: HostEntry[], query: string): HostEntry[] {
+  const q = query.trim().toLowerCase();
+  if (!q) return hosts;
+  return hosts.filter((h) =>
+    [h.name, h.hostName, h.user].some((field) => field?.toLowerCase().includes(q)),
+  );
 }

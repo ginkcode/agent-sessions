@@ -19,6 +19,7 @@ import { MockBackendAPI, highlightedSnippet } from '../src/lib/mock/mockApi.ts';
 import {
   StaleReplyError,
   blockedReason,
+  filterHosts,
   guardEpoch,
   isDisconnectedError,
   isLocked,
@@ -1056,4 +1057,19 @@ test('nextLink reloads only when a host connects or the app returns to Local', (
   assert.equal(isLocked(r.link), true);
   assert.equal(blockedReason(r.link, 'c'), 'Not connected to c. The sessions shown are Local; changes are disabled until c connects or you switch back to Local.');
   assert.equal(step(r.link, 'local', undefined).reload, false);
+});
+
+test('filterHosts matches alias, host name and user without case', () => {
+  const hosts = [
+    { name: 'dev-box', hostName: '10.0.0.5', user: 'alice' },
+    { name: 'Prod-API', hostName: 'api.example.com' },
+    { name: 'build' },
+  ];
+  assert.deepEqual(filterHosts(hosts, ''), hosts);
+  assert.deepEqual(filterHosts(hosts, '   '), hosts);
+  assert.deepEqual(filterHosts(hosts, 'prod').map((h) => h.name), ['Prod-API']);
+  assert.deepEqual(filterHosts(hosts, ' EXAMPLE ').map((h) => h.name), ['Prod-API']);
+  assert.deepEqual(filterHosts(hosts, 'ALICE').map((h) => h.name), ['dev-box']);
+  assert.deepEqual(filterHosts(hosts, 'b').map((h) => h.name), ['dev-box', 'build']);
+  assert.deepEqual(filterHosts(hosts, 'nope'), []);
 });

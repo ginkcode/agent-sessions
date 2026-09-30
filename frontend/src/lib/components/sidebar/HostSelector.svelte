@@ -1,9 +1,12 @@
 <script lang="ts">
   import { connectionStore } from '../../stores/connection.svelte';
   import HostEnvDialog from '../common/HostEnvDialog.svelte';
+  import { filterHosts } from '../../link';
 
   let menuOpen = $state(false);
   let manualHost = $state('');
+  // The alias being typed also narrows the SSH host list.
+  let visibleHosts = $derived(filterHosts(connectionStore.hosts, manualHost));
   let envDialogOpen = $state(false);
   let envDialogHost = $state('');
   let menuEl = $state<HTMLElement | null>(null);
@@ -41,6 +44,7 @@
   function toggleMenu() {
     menuOpen = !menuOpen;
     if (menuOpen) {
+      manualHost = '';
       void connectionStore.refreshHosts();
     }
   }
@@ -145,9 +149,11 @@
         <div class="menu-note">Loading hosts…</div>
       {:else if connectionStore.hosts.length === 0}
         <div class="menu-note">No SSH config hosts found</div>
+      {:else if visibleHosts.length === 0}
+        <div class="menu-note">No SSH config hosts match "{manualHost.trim()}"</div>
       {:else}
         <div class="hosts-list">
-          {#each connectionStore.hosts as host}
+          {#each visibleHosts as host}
             <div
               class="menu-item host-row"
               class:selected={connectionStore.isRemote && connectionStore.host === host.name}
