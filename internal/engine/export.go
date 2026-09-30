@@ -304,18 +304,61 @@ func parseProfile(s string) (bundle.Profile, error) {
 	}
 }
 
-// ExportFileName returns the standard sanitized filename for a session bundle.
-func ExportFileName(id string) string {
-	name := id
-	if name == "" {
-		name = "session"
+// ExportFileName returns the standard sanitized filename for a session
+// bundle: <agent>_<directory name>_<short id>.agent-session.zip, so bundles
+// saved side by side say where they came from. Unknown parts are left out.
+func ExportFileName(meta model.SessionMeta) string {
+	id := shortID(meta.Ref.ID)
+	if id == "" {
+		id = "session"
 	}
-	name = strings.Map(func(r rune) rune {
+	var parts []string
+	for _, p := range []string{string(meta.Ref.Agent), dirName(meta.CWD), id} {
+		if p = fileNamePart(p); p != "" {
+			parts = append(parts, p)
+		}
+	}
+	return strings.Join(parts, "_") + ".agent-session.zip"
+}
+
+// shortIDMax caps IDs that have no "-" block, such as O‍penCode's
+// ses_<base62> IDs.
+const shortIDMax = 12
+
+// shortID returns the first block of id: the part before the first "-" or
+// "/", which is the first 8 hex digits of a UUID.
+func shortID(id string) string {
+	if i := strings.IndexAny(id, "-/"); i > 0 {
+		id = id[:i]
+	}
+	if len(id) > shortIDMax {
+		id = id[:shortIDMax]
+	}
+	return id
+}
+
+// dirName returns the last element of cwd, which may be a POSIX path from a
+// remote host or a Windows path.
+func dirName(cwd string) string {
+	cwd = strings.TrimRight(cwd, `/\`)
+	if i := strings.LastIndexAny(cwd, `/\`); i >= 0 {
+		cwd = cwd[i+1:]
+	}
+	return cwd
+}
+
+// fileNamePart replaces characters that are unsafe in file names on any
+// platform, and trims the dots and dashes left at either end.
+func fileNamePart(s string) string {
+	s = strings.Map(func(r rune) rune {
 		switch r {
-		case '/', '\\', ':', ' ':
+		case '/', '\\', ':', ' ', '*', '?', '"', '<', '>', '|':
 			return '-'
 		}
+		if r < 0x20 {
+			return -1
+		}
 		return r
-	}, name)
-	return name + ".agent-session.zip"
+	}, s)
+	return strings.Trim(s, ".-")
 }

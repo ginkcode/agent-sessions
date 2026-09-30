@@ -36,6 +36,10 @@ type stubRemoteBackend struct {
 	transport            *fakeArtifactTransport
 }
 
+func (s *stubRemoteBackend) GetSessionMeta(_ context.Context, ref model.SessionRef) (model.SessionMeta, error) {
+	return model.SessionMeta{Ref: ref, CWD: "/home/remote/remote-project"}, nil
+}
+
 func (s *stubRemoteBackend) CopyResumeCommand(_ context.Context, _ model.SessionRef) (string, error) {
 	return s.resumeCmd, nil
 }
@@ -288,16 +292,23 @@ func TestRemote_ExportBundle(t *testing.T) {
 
 	tmpDir := t.TempDir()
 	localDest := filepath.Join(tmpDir, "exported.agent-session.zip")
+	var offered string
 	a.saveDialogOverride = func(ctx context.Context, defaultName string) (string, error) {
+		offered = defaultName
 		return localDest, nil
 	}
 
-	gotPath, err := a.ExportBundle(engine.ExportRequest{})
+	ref := model.SessionRef{Agent: model.AgentCodex, ID: "6f1c2d3e-4a5b-4c6d-8e7f-001122334455"}
+	gotPath, err := a.ExportBundle(engine.ExportRequest{Ref: ref})
 	if err != nil {
 		t.Fatalf("ExportBundle: %v", err)
 	}
 	if gotPath != localDest {
 		t.Errorf("ExportBundle returned %q, want %q", gotPath, localDest)
+	}
+	// The name comes from the remote host's metadata for the session.
+	if want := "codex_remote-project_6f1c2d3e.agent-session.zip"; offered != want {
+		t.Errorf("default file name = %q, want %q", offered, want)
 	}
 	if !stub.exportCalled {
 		t.Error("expected backend.ExportBundle to be called")

@@ -764,7 +764,7 @@ test('MockBackendAPI previewExport and exportBundle support complete and share-s
     includeReasoning: false,
     redactSecrets: false,
   });
-  assert.match(exportPath, /session-claude-1\.agent-session\.zip$/);
+  assert.match(exportPath, /\/claude-code_[^_/]+_session\.agent-session\.zip$/);
 });
 
 test('MockBackendAPI openBundle, buildBundleHandoff, and saveBundleHandoff', async () => {

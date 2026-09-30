@@ -101,7 +101,11 @@ func TestPreviewExportCompleteWarnsAndCounts(t *testing.T) {
 func TestExportBundleRoundTrip(t *testing.T) {
 	app, _, ref := exportFixture(t)
 	dest := filepath.Join(t.TempDir(), "out.agent-session.zip")
-	app.saveDialogOverride = func(context.Context, string) (string, error) { return dest, nil }
+	var offered string
+	app.saveDialogOverride = func(_ context.Context, name string) (string, error) {
+		offered = name
+		return dest, nil
+	}
 
 	got, err := app.ExportBundle(ExportRequest{Ref: ref, Profile: "complete"})
 	if err != nil {
@@ -109,6 +113,9 @@ func TestExportBundleRoundTrip(t *testing.T) {
 	}
 	if got != dest {
 		t.Fatalf("path = %q", got)
+	}
+	if want := "claude-code_project_11111111.agent-session.zip"; offered != want {
+		t.Fatalf("default file name = %q, want %q", offered, want)
 	}
 	info, err := os.Stat(dest)
 	if err != nil {

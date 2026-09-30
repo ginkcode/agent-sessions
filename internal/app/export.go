@@ -9,6 +9,7 @@ import (
 	wruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 
 	"github.com/ginkcode/agent-sessions/internal/engine"
+	"github.com/ginkcode/agent-sessions/internal/model"
 	"github.com/ginkcode/agent-sessions/internal/remote"
 	"github.com/ginkcode/agent-sessions/internal/rpc"
 )
@@ -19,8 +20,15 @@ type ExportRequest = engine.ExportRequest
 // ExportPreview aliases engine.ExportPreview.
 type ExportPreview = engine.ExportPreview
 
-func exportFileName(id string) string {
-	return engine.ExportFileName(id)
+// exportFileName names the bundle after the session's agent, directory and
+// ID. When the session's metadata is unavailable (for example, the host just
+// dropped), the name falls back to the agent and ID from the ref.
+func (a *App) exportFileName(ctx context.Context, ref model.SessionRef) string {
+	meta, err := a.activeBackend().GetSessionMeta(ctx, ref)
+	if err != nil {
+		meta = model.SessionMeta{Ref: ref}
+	}
+	return engine.ExportFileName(meta)
 }
 
 // PreviewExport estimates an export for the desktop frontend.
@@ -32,7 +40,7 @@ func (a *App) PreviewExport(req ExportRequest) (ExportPreview, error) {
 // returns an empty path.
 func (a *App) ExportBundle(req ExportRequest) (string, error) {
 	ctx := a.appCtx()
-	name := exportFileName(req.Ref.ID)
+	name := a.exportFileName(ctx, req.Ref)
 	var dest string
 	var err error
 	if a.saveDialogOverride != nil {

@@ -583,7 +583,11 @@ export class MockBackendAPI {
 
   async exportBundle(req: ExportRequest): Promise<string> {
     await this.previewExport(req);
-    return `/mock/downloads/${req.ref.id}.agent-session.zip`;
+    const meta = this.sessions.find((s) => s.ref.agent === req.ref.agent && s.ref.id === req.ref.id);
+    const dir = meta?.cwd.split('/').filter(Boolean).pop();
+    const shortId = req.ref.id.split(/[-/]/)[0].slice(0, 12);
+    const name = [req.ref.agent, dir, shortId].filter(Boolean).join('_');
+    return `/mock/downloads/${name}.agent-session.zip`;
   }
 
   private mockBundles = new Map<string, BundleSummary>();
