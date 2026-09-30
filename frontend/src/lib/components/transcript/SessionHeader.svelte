@@ -8,6 +8,7 @@
   import { exporter } from '../../stores/export.svelte';
   import { ALL_AGENTS } from '../../portable';
   import AgentIcon from '../common/AgentIcon.svelte';
+  import { link } from '../../stores/link.svelte';
 
   interface Props {
     meta: SessionMeta;
@@ -173,7 +174,7 @@
         {/if}
       </div>
 
-      {#if meta.sourcePath}
+      {#if meta.sourcePath && !link.dataHost}
         <button
           type="button"
           class="action-btn reveal-btn"
