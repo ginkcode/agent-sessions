@@ -20,7 +20,10 @@ const (
 	NotificationCatalogChanged = "catalog:changed"
 	NotificationIndexProgress  = "index:progress"
 	MethodCancelRequest        = "$/cancelRequest"
-	MethodInitialize           = "initialize"
+	// MethodHeartbeat is a notification the client sends on a timer so the
+	// server can tell a live but quiet client from one that vanished.
+	MethodHeartbeat  = "$/heartbeat"
+	MethodInitialize = "initialize"
 )
 
 // Request represents an incoming JSON-RPC 2.0 request.

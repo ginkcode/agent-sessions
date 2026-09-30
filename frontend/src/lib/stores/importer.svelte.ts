@@ -1,6 +1,8 @@
 import { api } from '../api';
 import type { AgentID, BundleHandoffRequest, BundleSummary, HandoffPreview } from '../types';
 import { copyToClipboard } from '../portable';
+import { isStaleReply } from '../link';
+import { link } from './link.svelte';
 
 export class ImporterStore {
   dialogOpen = $state(false);
@@ -31,6 +33,7 @@ export class ImporterStore {
   private requestSeq = 0;
 
   async open(): Promise<void> {
+    if (this.refuseWhileStale()) return;
     this.opening = true;
     this.error = null;
     try {
@@ -41,6 +44,7 @@ export class ImporterStore {
       }
       this.initBundle(summary);
     } catch (err) {
+      if (isStaleReply(err)) return;
       this.error = err instanceof Error ? err.message : String(err);
       this.dialogOpen = true;
     } finally {
@@ -49,17 +53,29 @@ export class ImporterStore {
   }
 
   async openPath(path: string): Promise<void> {
+    if (this.refuseWhileStale()) return;
     this.opening = true;
     this.error = null;
     try {
       const summary = await api.openBundlePath(path);
       this.initBundle(summary);
     } catch (err) {
+      if (isStaleReply(err)) return;
       this.error = err instanceof Error ? err.message : String(err);
       this.dialogOpen = true;
     } finally {
       this.opening = false;
     }
+  }
+
+  // A bundle opened now would be read by a host that is not connected.
+  private refuseWhileStale(): boolean {
+    const reason = link.blockedReason;
+    if (!reason) return false;
+    this.bundle = null;
+    this.error = reason;
+    this.dialogOpen = true;
+    return true;
   }
 
   initBundle(summary: BundleSummary): void {
@@ -163,6 +179,7 @@ export class ImporterStore {
         this.preview = res;
       }
     } catch (err) {
+      if (isStaleReply(err)) return;
       if (this.requestSeq === seq) {
         this.error = err instanceof Error ? err.message : String(err);
       }
@@ -216,6 +233,7 @@ export class ImporterStore {
         this.copiedCommand = false;
       }, 2000);
     } catch (err) {
+      if (isStaleReply(err)) return;
       this.clipboardError = err instanceof Error ? err.message : String(err);
     }
   }
@@ -239,6 +257,7 @@ export class ImporterStore {
       const path = await api.saveBundleHandoff(req);
       if (path) this.savedPath = path;
     } catch (err) {
+      if (isStaleReply(err)) return;
       this.error = err instanceof Error ? err.message : String(err);
     } finally {
       this.saving = false;

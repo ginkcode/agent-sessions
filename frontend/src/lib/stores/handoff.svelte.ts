@@ -1,6 +1,7 @@
 import { api } from '../api';
 import type { AgentID, HandoffPreview, HandoffRequest, SessionMeta } from '../types';
 import { copyToClipboard } from '../portable';
+import { isStaleReply } from '../link';
 
 export class HandoffStore {
   dialogOpen = $state(false);
@@ -113,6 +114,7 @@ export class HandoffStore {
         this.preview = res;
       }
     } catch (err) {
+      if (isStaleReply(err)) return;
       if (this.requestSeq === seq) {
         this.error = err instanceof Error ? err.message : String(err);
       }
@@ -166,6 +168,7 @@ export class HandoffStore {
         this.copiedCommand = false;
       }, 2000);
     } catch (err) {
+      if (isStaleReply(err)) return;
       this.clipboardError = err instanceof Error ? err.message : String(err);
     }
   }
@@ -191,6 +194,7 @@ export class HandoffStore {
         this.savedPath = path;
       }
     } catch (err) {
+      if (isStaleReply(err)) return;
       this.error = err instanceof Error ? err.message : String(err);
     } finally {
       this.saving = false;

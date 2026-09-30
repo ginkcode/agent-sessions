@@ -27,6 +27,7 @@ import type {
   AskpassPrompt,
 } from './types';
 import { MockBackendAPI } from './mock/mockApi';
+import { epoch, guardEpoch } from './link';
 
 export interface BackendAPI {
   listGroups(mode: GroupMode, filter?: FilterOpts): Promise<GroupNode[]>;
@@ -465,7 +466,22 @@ export function createAPI(): BackendAPI {
   return new MockBackendAPI();
 }
 
-export const api: BackendAPI = createAPI();
+// Connection control and events are not tied to the loaded data.
+const UNGUARDED = new Set<string>([
+  'onEvent',
+  'openURL',
+  'listHosts',
+  'connect',
+  'disconnect',
+  'connectionState',
+  'askpassReply',
+  'setHostEnv',
+  'getHostEnv',
+]);
+
+// Replies that arrive after the stores reset for another backend reject
+// with StaleReplyError instead of landing in the new host's views.
+export const api: BackendAPI = guardEpoch(createAPI(), epoch, UNGUARDED);
 
 export const CATALOG_CHANGED_EVENT = 'catalog:changed';
 export const INDEX_PROGRESS_EVENT = 'index:progress';

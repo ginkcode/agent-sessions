@@ -7,6 +7,7 @@
   import { formatBytes } from '../../format';
   import { manage } from '../../stores/manage.svelte';
   import { connectionStore } from '../../stores/connection.svelte';
+  import { link } from '../../stores/link.svelte';
 
   interface Props {
     open: boolean;
@@ -17,15 +18,16 @@
 
   let summary = $derived(summarizePreview(manage.preview));
   let permanent = $derived(isPermanentDelete(manage.preview));
-  let isRemote = $derived(connectionStore.isRemote);
-  let remoteHost = $derived(connectionStore.currentHost);
+  // The host the previewed sessions came from, even while it is dropped.
+  let isRemote = $derived(link.dataHost !== undefined);
+  let remoteHost = $derived(link.dataHost ?? 'Local');
   let trashSupported = $derived(connectionStore.canTrash);
   let trashDisabledOnRemote = $derived(isRemote && !trashSupported);
   let blockedByTrashPolicy = $derived(
     trashDisabledOnRemote && !manage.settings.allowPermanentDelete
   );
   let canConfirm = $derived(
-    summary.canProceed && !manage.deleting && !blockedByTrashPolicy
+    summary.canProceed && !manage.deleting && !blockedByTrashPolicy && !link.stale
   );
 
   function handleCancel() {
@@ -76,7 +78,17 @@
         </button>
       </header>
 
-      {#if manage.previewLoading}
+      {#if manage.deleteOutcomeUnknown}
+        <div class="dialog-body">
+          <div class="error-banner" role="alert">
+            <strong>Outcome unknown.</strong>
+            <span>{manage.deleteError}</span>
+          </div>
+          <footer class="dialog-footer">
+            <button type="button" class="btn" onclick={handleCancel}>Close</button>
+          </footer>
+        </div>
+      {:else if manage.previewLoading}
         <div class="dialog-body">
           <p class="loading-note">Preparing delete preview…</p>
         </div>
@@ -235,7 +247,12 @@
             </p>
           {/if}
 
-          {#if manage.deleteError}
+          {#if link.blockedReason}
+            <div class="error-banner" role="alert">
+              <strong>Not connected.</strong>
+              <span>{link.blockedReason}</span>
+            </div>
+          {:else if manage.deleteError}
             <div class="error-banner" role="alert">
               <strong>Delete failed.</strong>
               <span>{manage.deleteError}</span>

@@ -81,6 +81,11 @@ func DialSession(ctx context.Context, alias string, opts SSHOptions, bin string,
 // and server startup.
 var handshakeTimeout = 60 * time.Second
 
+// heartbeatInterval paces the heartbeats that keep the remote server from
+// exiting on its idle timeout (60s by default, see serve --idle-timeout).
+// Several must fit in that window so a slow link does not trip it.
+const heartbeatInterval = 15 * time.Second
+
 // handshakeErr names the timeout when it, rather than the caller, ended the
 // handshake.
 func handshakeErr(parent, run context.Context, err error) error {
@@ -149,6 +154,9 @@ func startServe(ctx context.Context, alias string, opts SSHOptions, bin string, 
 	if emitter != nil {
 		client.SetEmitter(emitter)
 	}
+	// Started before initialize: the server's idle timer runs from the
+	// preface on, and starting the engine can take a while.
+	go heartbeat(runCtx, client, heartbeatInterval)
 	res, err := client.Initialize(runCtx, rpc.InitializeRequest{
 		ProtocolVersion: rpc.ProtocolVersion,
 		AppVersion:      version.Current(),
@@ -163,6 +171,23 @@ func startServe(ctx context.Context, alias string, opts SSHOptions, bin string, 
 	s.init = res
 	go s.watchClient()
 	return s, nil
+}
+
+// heartbeat runs until the session ends. A failed send needs no handling
+// here: the same broken pipe ends the client's read loop and the session.
+func heartbeat(ctx context.Context, client *rpc.Client, every time.Duration) {
+	t := time.NewTicker(every)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-client.Done():
+			return
+		case <-t.C:
+			_ = client.Heartbeat()
+		}
+	}
 }
 
 func (s *Session) drainStderr(r io.Reader) {

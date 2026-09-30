@@ -7,17 +7,25 @@ import (
 	"fmt"
 	"io"
 	"sync/atomic"
+	"time"
 
 	"github.com/ginkcode/agent-sessions/internal/engine"
 	"github.com/ginkcode/agent-sessions/internal/paths"
 	"github.com/ginkcode/agent-sessions/internal/rpc"
 )
 
-func serveCmd(ctx context.Context, args []string, roots paths.Roots, stdout, stderr io.Writer, stdin io.Reader) int {
+// serveCmd runs the JSON-RPC server. resolveRoots runs during initialize,
+// after the client's env overrides are applied, so the cache lock, the engine
+// and the reported roots all use the overridden locations.
+func serveCmd(ctx context.Context, args []string, resolveRoots func() (paths.Roots, error), stdout, stderr io.Writer, stdin io.Reader) int {
 	fs := flag.NewFlagSet("serve", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	stdio := fs.Bool("stdio", false, "run over stdio using JSON-RPC 2.0")
 	nonce := fs.String("nonce", "", "startup synchronization nonce")
+	// The client heartbeats every 15s. Without this, a client that vanished
+	// behind a half-open connection would keep the server, and the cache
+	// lock, alive until sshd notices, which by default takes hours.
+	idleTimeout := fs.Duration("idle-timeout", 60*time.Second, "exit after this long with no message from the client (0 disables)")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -34,25 +42,8 @@ func serveCmd(ctx context.Context, args []string, roots paths.Roots, stdout, std
 		}
 	}
 
-	// 2. Acquire cache advisory lock
-	lock, lockErr := rpc.AcquireCacheLock(roots.Cache)
-	if lockErr != nil {
-		if errors.Is(lockErr, rpc.ErrRemoteBusy) {
-			_, _ = fmt.Fprintln(stderr, "agent-sessions-cli serve: remote host is busy (cache locked by another session)")
-			server := rpc.NewServer(nil, stdin, stdout)
-			server.SetInitError(rpc.ErrRemoteBusy)
-			_ = server.Serve(ctx)
-			return 1
-		}
-		_, _ = fmt.Fprintf(stderr, "agent-sessions-cli serve: acquire cache lock: %v\n", lockErr)
-		return 1
-	}
-	defer func() {
-		_ = lock.Unlock()
-	}()
-
-	// 3. Create engine with roots and emitter
-	// The engine's goroutines emit from Start on, before the server exists.
+	// The engine's goroutines emit from Start on, while initialize is still
+	// running, so the server is published before the starter runs.
 	var server atomic.Pointer[rpc.Server]
 	emitter := engine.EmitterFunc(func(name string, payload any) {
 		if s := server.Load(); s != nil {
@@ -60,32 +51,78 @@ func serveCmd(ctx context.Context, args []string, roots paths.Roots, stdout, std
 		}
 	})
 
-	eng := engine.NewEngine(
-		engine.WithRoots(roots),
-		engine.WithCacheDir(roots.Cache),
-		engine.WithCacheEnabled(true),
-		engine.WithEmitter(emitter),
+	// Set by the starter. Serve waits for its handlers before returning, so
+	// these are safe to read afterwards.
+	var (
+		lock    *rpc.Lock
+		eng     *engine.Engine
+		initErr error
 	)
-
-	if err := eng.Start(ctx); err != nil {
-		_, _ = fmt.Fprintf(stderr, "agent-sessions-cli serve: start engine: %v\n", err)
-		return 1
-	}
 	defer func() {
-		_ = eng.Close()
+		if eng != nil {
+			_ = eng.Close()
+		}
+		if lock != nil {
+			_ = lock.Unlock()
+		}
 	}()
 
-	// 4. Run RPC server over stdio
-	srv := rpc.NewServer(eng, stdin, stdout)
-	srv.SetCapabilities(rpc.Capabilities{
-		Trash:  eng.TrashSupported(),
-		Manage: true,
-		Export: true,
-		Import: true,
-		Search: true,
+	srv := rpc.NewServer(nil, stdin, stdout)
+	srv.SetIdleTimeout(*idleTimeout)
+	srv.SetStarter(func(sctx context.Context) (engine.Backend, rpc.Capabilities, paths.Roots, error) {
+		roots, err := resolveRoots()
+		if err != nil {
+			initErr = fmt.Errorf("resolve roots: %w", err)
+			return nil, rpc.Capabilities{}, paths.Roots{}, initErr
+		}
+		// 2. Acquire cache advisory lock
+		l, err := rpc.AcquireCacheLock(roots.Cache)
+		if err != nil {
+			if errors.Is(err, rpc.ErrRemoteBusy) {
+				initErr = err
+				_, _ = fmt.Fprintln(stderr, "agent-sessions-cli serve: remote host is busy (cache locked by another session)")
+				return nil, rpc.Capabilities{}, paths.Roots{}, err
+			}
+			initErr = fmt.Errorf("acquire cache lock: %w", err)
+			return nil, rpc.Capabilities{}, paths.Roots{}, initErr
+		}
+		lock = l
+
+		// 3. Create and start the engine
+		e := engine.NewEngine(
+			engine.WithRoots(roots),
+			engine.WithCacheDir(roots.Cache),
+			engine.WithCacheEnabled(true),
+			engine.WithEmitter(emitter),
+		)
+		if err := e.Start(sctx); err != nil {
+			initErr = fmt.Errorf("start engine: %w", err)
+			return nil, rpc.Capabilities{}, paths.Roots{}, initErr
+		}
+		eng = e
+		return e, rpc.Capabilities{
+			Trash:  e.TrashSupported(),
+			Manage: true,
+			Export: true,
+			Import: true,
+			Search: true,
+		}, roots, nil
 	})
 	server.Store(srv)
-	if err := srv.Serve(ctx); err != nil && !errors.Is(err, io.EOF) && !errors.Is(err, context.Canceled) {
+
+	// 4. Run RPC server over stdio
+	err := srv.Serve(ctx)
+	if initErr != nil {
+		if !errors.Is(initErr, rpc.ErrRemoteBusy) {
+			_, _ = fmt.Fprintf(stderr, "agent-sessions-cli serve: %v\n", initErr)
+		}
+		return 1
+	}
+	if errors.Is(err, rpc.ErrIdleTimeout) {
+		_, _ = fmt.Fprintf(stderr, "agent-sessions-cli serve: no message from the client for %v; exiting\n", *idleTimeout)
+		return 1
+	}
+	if err != nil && !errors.Is(err, io.EOF) && !errors.Is(err, context.Canceled) {
 		_, _ = fmt.Fprintf(stderr, "agent-sessions-cli serve: %v\n", err)
 		return 1
 	}

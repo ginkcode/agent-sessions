@@ -22,7 +22,7 @@ var validTokenRe = regexp.MustCompile(`^[a-zA-Z0-9_-]{1,128}$`)
 
 func transferCmd(args []string, roots paths.Roots, stdout, stderr io.Writer, stdin io.Reader) int {
 	if len(args) < 2 {
-		_, _ = fmt.Fprintln(stderr, "Usage: agent-sessions-cli transfer <get|put> <token> [--remove]")
+		_, _ = fmt.Fprintln(stderr, "Usage: agent-sessions-cli transfer <get|put> <token> [--remove] [--cache <dir>]")
 		return 2
 	}
 
@@ -32,6 +32,27 @@ func transferCmd(args []string, roots paths.Roots, stdout, stderr io.Writer, std
 	if !validTokenRe.MatchString(token) {
 		_, _ = fmt.Fprintln(stderr, "agent-sessions-cli transfer: invalid token (must be 1-128 chars of [a-zA-Z0-9_-])")
 		return 2
+	}
+	if action != "get" && action != "put" {
+		_, _ = fmt.Fprintf(stderr, "agent-sessions-cli transfer: unknown action %q (expected get or put)\n", action)
+		return 2
+	}
+
+	fs := flag.NewFlagSet("transfer "+action, flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	removeAfter := fs.Bool("remove", false, "remove artifact after streaming (get only)")
+	// The serve session reports its cache dir after the client's env
+	// overrides; transfer runs in a fresh ssh command without them.
+	cacheDir := fs.String("cache", "", "cache directory reported by serve (absolute)")
+	if err := fs.Parse(args[2:]); err != nil {
+		return 2
+	}
+	if *cacheDir != "" {
+		if !filepath.IsAbs(*cacheDir) {
+			_, _ = fmt.Fprintln(stderr, "agent-sessions-cli transfer: --cache must be an absolute path")
+			return 2
+		}
+		roots.Cache = filepath.Clean(*cacheDir)
 	}
 
 	stagingDir := filepath.Join(roots.Cache, "staging")
@@ -45,21 +66,10 @@ func transferCmd(args []string, roots paths.Roots, stdout, stderr io.Writer, std
 
 	targetFile := filepath.Join(stagingDir, token)
 
-	switch action {
-	case "put":
+	if action == "put" {
 		return transferPut(targetFile, stagingDir, token, stdin, stdout, stderr)
-	case "get":
-		fs := flag.NewFlagSet("transfer get", flag.ContinueOnError)
-		fs.SetOutput(stderr)
-		removeAfter := fs.Bool("remove", false, "remove artifact after streaming")
-		if err := fs.Parse(args[2:]); err != nil {
-			return 2
-		}
-		return transferGet(targetFile, *removeAfter, stdout, stderr)
-	default:
-		_, _ = fmt.Fprintf(stderr, "agent-sessions-cli transfer: unknown action %q (expected get or put)\n", action)
-		return 2
 	}
+	return transferGet(targetFile, *removeAfter, stdout, stderr)
 }
 
 func transferPut(targetFile, stagingDir, token string, stdin io.Reader, stdout, stderr io.Writer) int {

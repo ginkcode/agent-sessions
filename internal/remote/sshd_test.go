@@ -236,3 +236,81 @@ done`)
 		}
 	}
 }
+
+// countServe reports how many remote servers are running, for all users.
+func countServe(t *testing.T, h *sshtest.Host) int {
+	t.Helper()
+	out := strings.TrimSpace(h.Exec(t, `pgrep -f '[a]gent-sessions-cli.* serve --stdio' | wc -l`))
+	n, err := strconv.Atoi(out)
+	if err != nil {
+		t.Fatalf("pgrep count %q: %v", out, err)
+	}
+	return n
+}
+
+func waitServeCount(t *testing.T, h *sshtest.Host, want int, within time.Duration) {
+	t.Helper()
+	deadline := time.Now().Add(within)
+	for {
+		n := countServe(t, h)
+		if n == want {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("%d remote servers running, want %d", n, want)
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+}
+
+// Closing a session ends its server. A client that goes silent while its
+// connection stays open, as behind a half-open link sshd has not noticed,
+// is ended by the server's idle timeout.
+func TestSSHD_NoServerLeftBehind(t *testing.T) {
+	h := startSSHD(t)
+	opts := sshdOpts(h)
+	alias := h.Alias(sshtest.UserSh)
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	defer cancel()
+
+	sess, err := StartSession(ctx, alias, opts, nil, noopEmitter())
+	if err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	bin := sess.bin
+	waitServeCount(t, h, 1, 5*time.Second)
+	_ = sess.Close()
+	waitServeCount(t, h, 0, 10*time.Second)
+
+	// Run the server by hand with a short idle timeout and never write to
+	// it, keeping stdin open.
+	script := QuotePOSIX(bin) + " serve --stdio --idle-timeout 2s"
+	opts.NoTTY = true
+	cmd, err := BuildSSHCmd(ctx, alias, []string{LoginShell, "-lc", script}, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stdin.Close()
+	var stderr strings.Builder
+	cmd.Stderr = &stderr
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	waitServeCount(t, h, 1, 5*time.Second)
+	exited := make(chan error, 1)
+	go func() { exited <- cmd.Wait() }()
+	select {
+	case <-exited:
+	case <-time.After(20 * time.Second):
+		_ = cmd.Process.Kill()
+		t.Fatal("silent client: remote server did not exit on its idle timeout")
+	}
+	if !strings.Contains(stderr.String(), "no message from the client") {
+		t.Errorf("stderr = %q", stderr.String())
+	}
+	waitServeCount(t, h, 0, 5*time.Second)
+}

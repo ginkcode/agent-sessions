@@ -346,3 +346,63 @@ func TestConnection_PermanentDialErrorStopsRetrying(t *testing.T) {
 	}
 	c.Disconnect()
 }
+
+// Leaving a host on purpose closes its ssh master; a retry of the same host
+// keeps it for the next dial.
+func TestConnection_ExplicitLeaveStopsMaster(t *testing.T) {
+	c := newConnection(nil)
+	var mu sync.Mutex
+	var stopped []string
+	c.stopMaster = func(_ context.Context, alias string, _ remote.SSHOptions) error {
+		mu.Lock()
+		stopped = append(stopped, alias)
+		mu.Unlock()
+		return nil
+	}
+	prev := reconnectBackoff
+	reconnectBackoff = []time.Duration{time.Hour}
+	t.Cleanup(func() { reconnectBackoff = prev })
+	c.dial = func(ctx context.Context, alias string, opts remote.SSHOptions, env map[string]string, emitter engine.Emitter) (*remote.Session, error) {
+		<-ctx.Done()
+		return nil, ctx.Err()
+	}
+	got := func() string {
+		mu.Lock()
+		defer mu.Unlock()
+		return strings.Join(stopped, ",")
+	}
+
+	c.Disconnect() // from Local: nothing to stop
+	for _, host := range []string{"a", "a", "b"} {
+		if err := c.Connect(context.Background(), host); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if g := got(); g != "a" {
+		t.Fatalf("after a, a (retry), b: stopped %q, want \"a\"", g)
+	}
+	c.Disconnect()
+	if g := got(); g != "a,b" {
+		t.Fatalf("after disconnect: stopped %q", g)
+	}
+	if err := c.Connect(context.Background(), "c"); err != nil {
+		t.Fatal(err)
+	}
+	c.Shutdown()
+	if g := got(); g != "a,b,c" {
+		t.Fatalf("after shutdown: stopped %q", g)
+	}
+
+	// With multiplexing off there is no master to stop.
+	c2 := newConnection(nil)
+	c2.opts.ControlMaster = "no"
+	c2.dial = c.dial
+	c2.stopMaster = c.stopMaster
+	if err := c2.Connect(context.Background(), "d"); err != nil {
+		t.Fatal(err)
+	}
+	c2.Shutdown()
+	if g := got(); g != "a,b,c" {
+		t.Fatalf("ControlMaster=no: stopped %q", g)
+	}
+}

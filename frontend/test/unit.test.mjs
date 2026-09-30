@@ -17,6 +17,14 @@ import {
 } from '../src/lib/manage.ts';
 import { MockBackendAPI, highlightedSnippet } from '../src/lib/mock/mockApi.ts';
 import {
+  StaleReplyError,
+  guardEpoch,
+  isDisconnectedError,
+  isStale,
+  isStaleReply,
+  nextLink,
+} from '../src/lib/link.ts';
+import {
   LatestRequestGate,
   jumpOffset,
   progressIncomplete,
@@ -912,3 +920,116 @@ test('subscribeConnectionState and subscribeAskpassPrompt handle events correctl
 });
 
 
+
+test('guardEpoch rejects replies that land after the epoch moved', async () => {
+  let current = 0;
+  const deferred = () => {
+    let resolve, reject;
+    const promise = new Promise((res, rej) => {
+      resolve = res;
+      reject = rej;
+    });
+    return { promise, resolve, reject };
+  };
+  const pending = [];
+  const backend = {
+    call() {
+      const d = deferred();
+      pending.push(d);
+      return d.promise;
+    },
+    sync() {
+      return 'sync';
+    },
+    connect() {
+      const d = deferred();
+      pending.push(d);
+      return d.promise;
+    },
+  };
+  const api = guardEpoch(backend, () => current, new Set(['connect']));
+
+  // Same epoch: the reply and the error pass through.
+  const ok = api.call();
+  pending.at(-1).resolve(1);
+  assert.equal(await ok, 1);
+  const failed = api.call();
+  pending.at(-1).reject(new Error('boom'));
+  await assert.rejects(failed, /boom/);
+
+  // Epoch moved while in flight: both outcomes become StaleReplyError.
+  const lateOk = api.call();
+  current++;
+  pending.at(-1).resolve(2);
+  await assert.rejects(lateOk, (err) => isStaleReply(err) && err instanceof StaleReplyError);
+  const lateErr = api.call();
+  current++;
+  pending.at(-1).reject(new Error('boom'));
+  await assert.rejects(lateErr, (err) => isStaleReply(err));
+
+  // Passthrough methods and sync methods are untouched.
+  const conn = api.connect();
+  current++;
+  pending.at(-1).resolve('c');
+  assert.equal(await conn, 'c');
+  assert.equal(api.sync(), 'sync');
+  assert.equal(isStaleReply(new Error('x')), false);
+});
+
+test('isDisconnectedError matches the backend disconnected error', () => {
+  assert.equal(isDisconnectedError(new Error('delete: disconnected from remote host mac')), true);
+  assert.equal(isDisconnectedError('disconnected from remote host mac'), true);
+  assert.equal(isDisconnectedError(new Error('permission denied')), false);
+  assert.equal(isDisconnectedError(undefined), false);
+});
+
+test('nextLink reloads only when a host connects or the app returns to Local', () => {
+  const step = (prev, phase, host) => {
+    const next = nextLink(prev, phase, host);
+    return { link: { dataHost: next.dataHost, phase }, reload: next.reload };
+  };
+  let link = { dataHost: undefined, phase: 'local' };
+  let r;
+
+  // First connect from Local: Local data stays live until the host is up.
+  r = step(link, 'connecting', 'a');
+  assert.deepEqual(r, { link: { dataHost: undefined, phase: 'connecting' }, reload: false });
+  assert.equal(isStale(r.link), false);
+  r = step(r.link, 'connected', 'a');
+  assert.equal(r.reload, true);
+  assert.equal(r.link.dataHost, 'a');
+  assert.equal(isStale(r.link), false);
+
+  // A drop keeps a's data, marked stale, and reconnecting reloads it.
+  r = step(r.link, 'disconnected', 'a');
+  assert.equal(r.reload, false);
+  assert.equal(isStale(r.link), true);
+  r = step(r.link, 'reconnecting', 'a');
+  assert.equal(r.reload, false);
+  assert.equal(isStale(r.link), true);
+  r = step(r.link, 'connected', 'a');
+  assert.equal(r.reload, true);
+  assert.equal(isStale(r.link), false);
+
+  // A repeated connected update for the same host does not reload.
+  assert.equal(step(r.link, 'connected', 'a').reload, false);
+
+  // Switching a -> b keeps a's data stale until b connects.
+  r = step(r.link, 'connecting', 'b');
+  assert.equal(r.link.dataHost, 'a');
+  assert.equal(isStale(r.link), true);
+  r = step(r.link, 'connected', 'b');
+  assert.equal(r.reload, true);
+  assert.equal(r.link.dataHost, 'b');
+
+  // Disconnect returns to Local and reloads.
+  r = step(r.link, 'local', undefined);
+  assert.deepEqual(r, { link: { dataHost: undefined, phase: 'local' }, reload: true });
+  assert.equal(isStale(r.link), false);
+
+  // A failed first connect never touches the Local data.
+  r = step(r.link, 'reconnecting', 'c');
+  assert.equal(r.reload, false);
+  assert.equal(isStale(r.link), false);
+  assert.equal(step(r.link, 'local', undefined).reload, false);
+});

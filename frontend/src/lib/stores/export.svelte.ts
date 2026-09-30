@@ -1,4 +1,6 @@
 import { api } from '../api';
+import { isStaleReply } from '../link';
+import { link } from './link.svelte';
 import type { ExportPreview, ExportProfile, ExportRequest, SessionMeta } from '../types';
 
 // ExportStore drives the export dialog. Complete is the default profile and
@@ -94,6 +96,7 @@ export class ExportStore {
       const preview = await api.previewExport(req);
       if (this.requestSeq === seq) this.preview = preview;
     } catch (err) {
+      if (isStaleReply(err)) return;
       if (this.requestSeq === seq) {
         this.error = err instanceof Error ? err.message : String(err);
       }
@@ -105,6 +108,11 @@ export class ExportStore {
   async save(): Promise<void> {
     const req = this.request();
     if (!req) return;
+    const blocked = link.blockedReason;
+    if (blocked) {
+      this.error = blocked;
+      return;
+    }
     this.exporting = true;
     this.error = null;
     this.savedPath = null;
@@ -112,6 +120,7 @@ export class ExportStore {
       const path = await api.exportBundle(req);
       if (path) this.savedPath = path;
     } catch (err) {
+      if (isStaleReply(err)) return;
       this.error = err instanceof Error ? err.message : String(err);
     } finally {
       this.exporting = false;

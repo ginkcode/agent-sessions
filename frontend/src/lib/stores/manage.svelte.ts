@@ -15,6 +15,8 @@ import {
   type AgeFilter,
 } from '../manage';
 import { appState } from './appState.svelte';
+import { link } from './link.svelte';
+import { isDisconnectedError, isStaleReply } from '../link';
 
 export class ManageStore {
   settings = $state<ManageSettings>({
@@ -36,6 +38,9 @@ export class ManageStore {
 
   deleting = $state(false);
   deleteError = $state<string | null>(null);
+  // The link dropped while a delete was in flight: it may or may not have
+  // run. Never retried; the lists reload when the host reconnects.
+  deleteOutcomeUnknown = $state(false);
   lastResult = $state<DeleteResult | null>(null);
 
   confirmDialogOpen = $state(false);
@@ -53,6 +58,7 @@ export class ManageStore {
       this.settings = await api.getSettings();
       this.settingsError = null;
     } catch (err) {
+      if (isStaleReply(err)) return;
       this.settingsError = errorText(err, 'Failed to load manage settings');
     } finally {
       this.loadingSettings = false;
@@ -70,16 +76,22 @@ export class ManageStore {
     try {
       this.handoffCache = await api.handoffCache();
     } catch (err) {
+      if (isStaleReply(err)) return;
       this.handoffCacheError = errorText(err, 'Failed to read handoff files');
     }
   }
 
   async clearHandoffCache(): Promise<void> {
+    if (link.blockedReason) {
+      this.handoffCacheError = link.blockedReason;
+      return;
+    }
     this.handoffCacheBusy = true;
     this.handoffCacheError = null;
     try {
       this.handoffCache = await api.clearHandoffCache();
     } catch (err) {
+      if (isStaleReply(err)) return;
       this.handoffCacheError = errorText(err, 'Failed to delete handoff files');
       await this.loadHandoffCache();
     } finally {
@@ -105,6 +117,10 @@ export class ManageStore {
   }
 
   async setManageEnabled(enabled: boolean): Promise<void> {
+    if (link.blockedReason) {
+      this.settingsError = link.blockedReason;
+      return;
+    }
     this.loadingSettings = true;
     this.settingsError = null;
     try {
@@ -113,6 +129,7 @@ export class ManageStore {
         this.clearSelection();
       }
     } catch (err) {
+      if (isStaleReply(err)) return;
       this.settingsError = errorText(err, 'Failed to update manage enabled setting');
     } finally {
       this.loadingSettings = false;
@@ -120,11 +137,16 @@ export class ManageStore {
   }
 
   async setAllowPermanentDelete(allow: boolean): Promise<void> {
+    if (link.blockedReason) {
+      this.settingsError = link.blockedReason;
+      return;
+    }
     this.loadingSettings = true;
     this.settingsError = null;
     try {
       this.settings = await api.setAllowPermanentDelete(allow);
     } catch (err) {
+      if (isStaleReply(err)) return;
       this.settingsError =
         errorText(err, 'Failed to update permanent delete setting');
     } finally {
@@ -182,18 +204,24 @@ export class ManageStore {
       return;
     }
     if (!refs.length) return;
+    if (link.blockedReason) {
+      this.deleteError = link.blockedReason;
+      return;
+    }
 
     this.previewLoading = true;
     this.previewError = null;
     this.preview = null;
     this.lastResult = null;
     this.deleteError = null;
+    this.deleteOutcomeUnknown = false;
     this.confirmDialogOpen = true;
 
     try {
       const preview = await api.previewDelete(refs);
       this.preview = preview;
     } catch (err) {
+      if (isStaleReply(err)) return;
       this.previewError = errorText(err, 'Failed to preview delete operation');
     } finally {
       this.previewLoading = false;
@@ -202,9 +230,14 @@ export class ManageStore {
 
   async executeDelete(): Promise<boolean> {
     if (!this.preview) return false;
+    if (link.blockedReason) {
+      this.deleteError = link.blockedReason;
+      return false;
+    }
 
     this.deleting = true;
     this.deleteError = null;
+    this.deleteOutcomeUnknown = false;
 
     // The backend token covers only the unblocked items; sending a blocked
     // ref would fail the MAC check.
@@ -244,6 +277,17 @@ export class ManageStore {
 
       return result.failed === 0;
     } catch (err) {
+      if (isStaleReply(err)) return false;
+      if (isDisconnectedError(err)) {
+        // The request may have reached the host before the link dropped.
+        // The token is spent either way, so the preview cannot be reused.
+        this.deleteOutcomeUnknown = true;
+        this.preview = null;
+        this.deleteError =
+          'The connection dropped during the delete, so its outcome is unknown. ' +
+          'Nothing will be retried; the sessions reload when the host reconnects.';
+        return false;
+      }
       this.deleteError = errorText(err, 'Failed to delete sessions');
       return false;
     } finally {
@@ -256,6 +300,7 @@ export class ManageStore {
     this.preview = null;
     this.previewError = null;
     this.deleteError = null;
+    this.deleteOutcomeUnknown = false;
     this.lastResult = null;
   }
 
@@ -264,6 +309,7 @@ export class ManageStore {
     this.preview = null;
     this.previewError = null;
     this.deleteError = null;
+    this.deleteOutcomeUnknown = false;
     this.lastResult = null;
     this.confirmDialogOpen = false;
     this.settingsDialogOpen = false;

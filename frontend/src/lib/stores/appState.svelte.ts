@@ -16,6 +16,7 @@ import {
 } from '../tree';
 import { affectsSessionList, findGroup, hasRef, RequestSequence } from '../catalog';
 import { nextSelectionAfterDelete, refsEqual } from '../manage';
+import { isStaleReply } from '../link';
 
 export class AppState {
   targetHost = $state<string | undefined>(undefined);
@@ -83,6 +84,7 @@ export class AppState {
       await api.scan();
       await this.reload(true);
     } catch (err: any) {
+      if (isStaleReply(err)) return;
       this.error = err?.message || 'Failed to refresh sessions';
     } finally {
       this.refreshing = false;
@@ -223,12 +225,14 @@ export class AppState {
       // A narrowing filter hides nodes that still exist, so only prune
       // toggles for vanished nodes against the unfiltered tree. An empty
       // tree (e.g. before the first scan) is not evidence that nodes vanished.
+      // The prune stays in memory until the next toggle saves it: a tree
+      // loaded around a host switch can come from the other backend, and
+      // saving then would wipe this host's toggles.
       const f = this.filter;
       if (groups.length > 0 && !f.agent && !f.query && !f.path && !f.liveOnly && !f.hasSubagents) {
         const pruned = pruneKeys(this.collapsedKeys, groups);
         if (pruned.size !== this.collapsedKeys.size) {
           this.collapsedKeys = pruned;
-          saveCollapsedKeys(pruned, this.targetHost);
         }
       }
       this.error = null;
@@ -290,6 +294,8 @@ export class AppState {
   }
 
   async reset(host?: string): Promise<void> {
+    // Drop a header load still in flight for the previous backend.
+    this.sessionMetaRequests.next();
     this.targetHost = host;
     this.collapsedKeys = loadCollapsedKeys(host);
     this.defaultCollapsed = new Set();

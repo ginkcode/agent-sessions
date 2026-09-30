@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"os/exec"
 	"strings"
 	"sync"
 	"testing"
@@ -65,6 +66,7 @@ func sshdConnection(t *testing.T, h *sshtest.Host) (*connection, *phaseLog) {
 	t.Cleanup(c.Shutdown)
 	c.opts.ConfigFile = h.ConfigFile
 	c.opts.ControlPath = h.ControlPath
+	c.stopMaster = stopControlMaster
 	return c, log
 }
 
@@ -116,10 +118,33 @@ func TestSSHD_ConnectionReconnectsAfterDrop(t *testing.T) {
 	if _, err := again.AgentCounts(ctx, engine.FilterOpts{}); err != nil {
 		t.Fatalf("call after reconnect: %v", err)
 	}
+	masterCheck := func() error {
+		return exec.Command("ssh", "-F", h.ConfigFile, "-o", "ControlPath="+h.ControlPath, "-O", "check", "--", alias).Run()
+	}
+	if err := masterCheck(); err != nil {
+		t.Fatalf("no ssh master while connected: %v", err)
+	}
 
 	c.Disconnect()
 	if st := c.snapshot(); st.Phase != ConnLocal || st.Host != "" {
 		t.Fatalf("after disconnect: %+v", st)
+	}
+
+	// Disconnect leaves nothing running: no server on the host and no ssh
+	// master on this side.
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		out := strings.TrimSpace(h.Exec(t, `pgrep -f '[a]gent-sessions-cli.* serve --stdio' | wc -l`))
+		if out == "0" {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("%s remote servers still running after disconnect", out)
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+	if masterCheck() == nil {
+		t.Fatal("ssh master still running after disconnect")
 	}
 }
 

@@ -17,19 +17,23 @@ import { search } from './search.svelte';
 import { handoff } from './handoff.svelte';
 import { exporter } from './export.svelte';
 import { importer } from './importer.svelte';
+import { link } from './link.svelte';
+
+// Local always has every capability; the backend reports none for it.
+const LOCAL_CAPABILITIES: HostCapabilities = {
+  trash: true,
+  manage: true,
+  export: true,
+  import: true,
+  search: true,
+};
 
 export class ConnectionStore {
   phase = $state<ConnectionPhase>('local');
   host = $state<string | undefined>(undefined);
   generation = $state<number>(0);
   error = $state<string | undefined>(undefined);
-  capabilities = $state<HostCapabilities>({
-    trash: true,
-    manage: true,
-    export: true,
-    import: true,
-    search: true,
-  });
+  capabilities = $state<HostCapabilities>({ ...LOCAL_CAPABILITIES });
   appVersion = $state<string | undefined>(undefined);
 
   hosts = $state<HostEntry[]>([]);
@@ -162,29 +166,33 @@ export class ConnectionStore {
   }
 
   applyState(state: ConnectionState, triggerResets = true): void {
-    const prevGeneration = this.generation;
-    const prevPhase = this.phase;
-    const prevHost = this.host;
-
     this.phase = state.phase;
     this.host = state.host;
     this.generation = state.generation;
     this.error = state.error;
-    if (state.capabilities) {
+    // Only a live session reports real capabilities. A dropped host keeps
+    // its last ones so the stale view still describes that host.
+    if (state.phase === 'local') {
+      this.capabilities = { ...LOCAL_CAPABILITIES };
+    } else if (state.phase === 'connected' && state.capabilities) {
       this.capabilities = state.capabilities;
     }
     this.appVersion = state.appVersion;
 
-    if (!triggerResets) return;
-
-    const generationChanged = state.generation !== prevGeneration;
-    const hostChanged = state.host !== prevHost;
-    const becameConnected = state.phase === 'connected' && prevPhase !== 'connected';
-    const becameLocal = state.phase === 'local' && prevPhase !== 'local';
-
-    if (generationChanged || hostChanged || becameConnected || becameLocal) {
-      this.resetStores(state.host);
+    if (!triggerResets) {
+      link.seed(state.phase, state.host);
+      return;
     }
+    // Reload only when a host (re)connects or the app returns to Local; a
+    // drop or a pending switch leaves the last data up as stale.
+    if (link.update(state.phase, state.host)) {
+      this.resetStores(link.dataHost);
+    }
+  }
+
+  /** The loaded data is from a host that is not serving it right now. */
+  get stale(): boolean {
+    return link.stale;
   }
 
   private resetStores(host?: string): void {

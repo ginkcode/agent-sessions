@@ -50,12 +50,7 @@ func runWithStdin(ctx context.Context, args []string, providers provider.Set, st
 		_, _ = fmt.Fprintln(stdout, version.Current())
 		return 0
 	case "serve":
-		roots, err := paths.Default()
-		if err != nil {
-			_, _ = fmt.Fprintf(stderr, "resolve roots: %v\n", err)
-			return 1
-		}
-		return serveCmd(ctx, args[1:], roots, stdout, stderr, stdin)
+		return serveCmd(ctx, args[1:], paths.Default, stdout, stderr, stdin)
 	case "transfer":
 		roots, err := paths.Default()
 		if err != nil {

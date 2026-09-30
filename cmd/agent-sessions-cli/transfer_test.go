@@ -106,3 +106,30 @@ func TestTransfer_InvalidToken(t *testing.T) {
 		}
 	}
 }
+
+func TestTransfer_CacheFlagOverridesRoots(t *testing.T) {
+	roots := paths.Roots{Cache: filepath.Join(t.TempDir(), "default")}
+	override := filepath.Join(t.TempDir(), "override")
+
+	var out, errOut bytes.Buffer
+	code := transferCmd([]string{"put", "tok-1", "--cache", override}, roots, &out, &errOut, strings.NewReader("payload"))
+	if code != 0 {
+		t.Fatalf("put exit %d: %s", code, errOut.String())
+	}
+	if _, err := os.Stat(filepath.Join(override, "staging", "tok-1")); err != nil {
+		t.Fatalf("artifact not in overridden cache: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(roots.Cache, "staging")); !os.IsNotExist(err) {
+		t.Fatalf("default staging dir was used: %v", err)
+	}
+
+	out.Reset()
+	code = transferCmd([]string{"get", "tok-1", "--remove", "--cache", override}, roots, &out, &errOut, strings.NewReader(""))
+	if code != 0 || out.String() != "payload" {
+		t.Fatalf("get exit %d, out %q: %s", code, out.String(), errOut.String())
+	}
+
+	if code := transferCmd([]string{"get", "tok-1", "--cache", "relative/dir"}, roots, &out, &errOut, nil); code != 2 {
+		t.Fatalf("relative --cache exit %d, want 2", code)
+	}
+}

@@ -292,6 +292,18 @@ func (c *Client) Close() error {
 	return nil
 }
 
+// Heartbeat tells the server the client is still there. It needs no reply,
+// so it also works before initialize finishes.
+func (c *Client) Heartbeat() error {
+	c.mu.Lock()
+	closed := c.closed
+	c.mu.Unlock()
+	if closed {
+		return ErrDisconnected
+	}
+	return c.sendNotification(MethodHeartbeat, nil)
+}
+
 // Done returns a channel that is closed when the client connection terminates.
 func (c *Client) Done() <-chan struct{} {
 	return c.done

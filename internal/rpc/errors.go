@@ -44,6 +44,7 @@ var (
 	ErrPayloadTooLarge  = errors.New("payload exceeds maximum frame size")
 	ErrPrefaceNotFound  = errors.New("preface nonce not found before scan cap")
 	ErrTimeout          = errors.New("request timed out")
+	ErrIdleTimeout      = errors.New("no message from the client within the idle timeout")
 )
 
 // ErrorData attaches machine-readable diagnostic codes to a JSON-RPC error.

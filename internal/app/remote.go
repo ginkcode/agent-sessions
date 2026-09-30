@@ -97,7 +97,24 @@ type connection struct {
 	attempt     int
 	cancel      context.CancelFunc
 	stopped     bool
+	stopMaster  masterStopper
 }
+
+// masterStopper closes the shared ssh connection (ControlMaster) for a host
+// the user explicitly left, so it does not linger for ControlPersist.
+type masterStopper func(ctx context.Context, alias string, opts remote.SSHOptions) error
+
+func stopControlMaster(ctx context.Context, alias string, opts remote.SSHOptions) error {
+	return remote.StopControlMaster(ctx, opts.Binary, alias, opts)
+}
+
+// newMasterStopper is what newConnection installs. Unit tests swap it so
+// they never run ssh.
+var newMasterStopper masterStopper = stopControlMaster
+
+// stopMasterTimeout bounds "ssh -O exit", which only talks to the local
+// control socket.
+const stopMasterTimeout = 3 * time.Second
 
 func newConnection(emitter engine.Emitter) *connection {
 	c := &connection{
@@ -105,6 +122,7 @@ func newConnection(emitter engine.Emitter) *connection {
 		dial:        defaultDialer,
 		emitter:     emitter,
 		localActive: true,
+		stopMaster:  newMasterStopper,
 	}
 	broker, err := remote.NewAskpassBroker(func(id, prompt string) {
 		c.emitAskpass(id, prompt)
@@ -262,6 +280,7 @@ func (c *connection) Connect(ctx context.Context, alias string) error {
 		c.mu.Unlock()
 		return errors.New("app is shut down")
 	}
+	prevHost := c.wantHost
 	c.closeLocked()
 	c.gen++
 	gen := c.gen
@@ -275,6 +294,12 @@ func (c *connection) Connect(ctx context.Context, alias string) error {
 	emitter := c.emitter
 	c.state = ConnectionState{Phase: ConnConnecting, Host: alias, Generation: gen}
 	c.mu.Unlock()
+	// Switching hosts leaves the previous one; a retry of the same host
+	// reuses its master. This runs before the new dial so two aliases for
+	// one host cannot have the new master closed under them.
+	if prevHost != "" && prevHost != alias {
+		c.releaseHost(prevHost, opts)
+	}
 	c.emit()
 
 	go c.dialLoop(runCtx, gen, alias, dial, opts, env, emitter)
@@ -389,24 +414,46 @@ func permanentDialError(err error) bool {
 // Disconnect returns to Local and stops reconnects. The selected host is cleared.
 func (c *connection) Disconnect() {
 	c.mu.Lock()
+	prevHost := c.wantHost
+	opts := c.opts
 	c.wantHost = ""
 	c.localActive = true
 	c.closeLocked()
 	c.gen++
 	c.state = ConnectionState{Phase: ConnLocal, Generation: c.gen}
 	c.mu.Unlock()
+	if prevHost != "" {
+		c.releaseHost(prevHost, opts)
+	}
 	c.emit()
+}
+
+// releaseHost closes the ssh master for alias after its session is closed.
+// A missing master (never started, or already gone) is not an error worth
+// reporting.
+func (c *connection) releaseHost(alias string, opts remote.SSHOptions) {
+	if c.stopMaster == nil || opts.ControlMaster == "no" {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), stopMasterTimeout)
+	defer cancel()
+	_ = c.stopMaster(ctx, alias, opts)
 }
 
 // Shutdown cancels any dial and closes the session. Called from App.Close.
 func (c *connection) Shutdown() {
 	c.mu.Lock()
 	c.stopped = true
+	prevHost := c.wantHost
+	opts := c.opts
 	c.wantHost = ""
 	c.closeLocked()
 	broker := c.askpass
 	c.askpass = nil
 	c.mu.Unlock()
+	if prevHost != "" {
+		c.releaseHost(prevHost, opts)
+	}
 	if broker != nil {
 		_ = broker.Close()
 	}

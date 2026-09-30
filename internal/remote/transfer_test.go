@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -69,6 +70,9 @@ func TestSession_PutAndGetArtifact(t *testing.T) {
 		}
 		action := remoteCmd[2]
 		token := remoteCmd[3]
+		if !strings.Contains(strings.Join(remoteCmd, " "), " --cache "+stagingDir) {
+			t.Errorf("remoteCmd %v does not pass the session cache dir", remoteCmd)
+		}
 
 		switch action {
 		case "put":
@@ -84,7 +88,7 @@ func TestSession_PutAndGetArtifact(t *testing.T) {
 			cmd := exec.CommandContext(ctx, "sh", "-c", script, "sh", target)
 			return cmd, nil
 		case "get":
-			remove := len(remoteCmd) >= 5 && remoteCmd[4] == "--remove"
+			remove := slices.Contains(remoteCmd[4:], "--remove")
 			target := filepath.Join(stagingDir, "staging", token)
 			script := `
 				target="$1"

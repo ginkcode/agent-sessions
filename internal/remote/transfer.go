@@ -57,7 +57,7 @@ func (s *Session) PutArtifact(ctx context.Context, token string, src io.Reader) 
 		cmdBuilder = BuildSSHCmd
 	}
 
-	cmd, err := cmdBuilder(ctx, s.alias, []string{s.bin, "transfer", "put", token}, opts)
+	cmd, err := cmdBuilder(ctx, s.alias, s.transferArgs("put", token), opts)
 	if err != nil {
 		return "", err
 	}
@@ -88,7 +88,7 @@ func (s *Session) GetArtifact(ctx context.Context, token string, remove bool, ds
 	opts := s.opts
 	opts.NoTTY = true
 
-	remoteCmd := []string{s.bin, "transfer", "get", token}
+	remoteCmd := s.transferArgs("get", token)
 	if remove {
 		remoteCmd = append(remoteCmd, "--remove")
 	}
@@ -115,6 +115,16 @@ func (s *Session) GetArtifact(ctx context.Context, token string, remove bool, ds
 	}
 
 	return nil
+}
+
+// transferArgs builds the remote transfer command. It passes the cache dir
+// serve reported, which already reflects the client's env overrides.
+func (s *Session) transferArgs(action, token string) []string {
+	args := []string{s.bin, "transfer", action, token}
+	if s.init != nil && s.init.Roots.Cache != "" {
+		args = append(args, "--cache", s.init.Roots.Cache)
+	}
+	return args
 }
 
 // StagingPath returns the full remote path to the artifact with the given token.

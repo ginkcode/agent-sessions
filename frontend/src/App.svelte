@@ -22,9 +22,13 @@
   import { search } from './lib/stores/search.svelte';
   import { importer } from './lib/stores/importer.svelte';
   import { connectionStore } from './lib/stores/connection.svelte';
+  import { link } from './lib/stores/link.svelte';
   import { hasOpenModal, isEditableTarget } from './lib/search';
 
   let isWails = $state(false);
+  // The panes show a host's last data while it is not serving; they stay
+  // visible but inert, and only the host selector and banner stay live.
+  let stale = $derived(link.stale);
 
   onMount(() => {
     theme.init();
@@ -37,7 +41,7 @@
 
     const onKeydown = (event: KeyboardEvent) => {
       if (event.key !== '/' || event.metaKey || event.ctrlKey || event.altKey) return;
-      if (isEditableTarget(event.target) || hasOpenModal()) return;
+      if (isEditableTarget(event.target) || hasOpenModal() || link.stale) return;
       event.preventDefault();
       search.show();
     };
@@ -79,6 +83,7 @@
           class="icon-button search-toggle"
           title="Search all sessions (/)"
           aria-label="Search all sessions"
+          disabled={stale}
           onclick={() => search.show()}
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
@@ -141,16 +146,18 @@
       </div>
     </header>
 
-    <div class="sidebar-mode-section">
+    <div class="sidebar-mode-section" class:stale inert={stale}>
       <ModeSelector />
       <PathFilter />
     </div>
 
-    <div class="sidebar-content">
+    <div class="sidebar-content" class:stale inert={stale}>
       <GroupTree />
     </div>
 
-    <AgentSummary />
+    <div class:stale inert={stale}>
+      <AgentSummary />
+    </div>
 
     <footer class="sidebar-footer">
       <div class="footer-status">
@@ -165,7 +172,7 @@
           class="icon-button import-button"
           title="Import session bundle"
           aria-label="Import session bundle"
-          disabled={importer.opening}
+          disabled={importer.opening || stale}
           onclick={() => void importer.open()}
         >
           <svg
@@ -190,7 +197,7 @@
           class:refreshing={appState.refreshing}
           title={appState.refreshing ? 'Refreshing…' : 'Refresh sessions'}
           aria-label={appState.refreshing ? 'Refreshing…' : 'Refresh sessions'}
-          disabled={appState.refreshing}
+          disabled={appState.refreshing || stale}
           onclick={() => void appState.refresh()}
         >
           <svg
@@ -222,8 +229,10 @@
   <!-- Pane 2: Session List -->
   <section
     class="pane session-list-container"
+    class:stale
     style="width: {preferences.widths.sessionList}px"
     aria-label="Session list"
+    inert={stale}
   >
     <SessionList />
   </section>
@@ -236,9 +245,16 @@
   />
 
   <!-- Pane 3: Transcript View -->
-  <main class="pane transcript-container" aria-label="Transcript details">
+  <main class="pane transcript-container" class:stale aria-label="Transcript details" inert={stale}>
     <TranscriptView />
   </main>
+
+  {#if stale}
+    <div class="stale-overlay" role="status">
+      Showing data last loaded from <strong>{link.dataHost}</strong>. Changes are disabled until it
+      reconnects.
+    </div>
+  {/if}
 
   <ManageSettingsDialog />
   <GlobalSearchDialog />
@@ -259,6 +275,7 @@
   }
 
   .shell {
+    position: relative;
     display: flex;
     flex-direction: row;
     flex: 1;
@@ -397,6 +414,33 @@
     background: rgba(16, 185, 129, 0.15);
     color: #10b981;
     font-weight: 500;
+  }
+
+  .stale {
+    opacity: 0.55;
+    filter: grayscale(0.6);
+  }
+
+  .stale-overlay {
+    position: absolute;
+    top: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+    max-width: 70%;
+    padding: 6px 12px;
+    border-radius: 6px;
+    border: 1px solid var(--border-color);
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+    font-size: 0.78rem;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+    z-index: 50;
+    pointer-events: none;
+  }
+
+  .search-toggle:disabled {
+    cursor: default;
+    opacity: 0.5;
   }
 
   /* Session List */

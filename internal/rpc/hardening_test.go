@@ -91,3 +91,77 @@ func (r *repeatReader) Read(p []byte) (int, error) {
 }
 
 var _ engine.Backend = (*Client)(nil)
+
+// A client that stops sending, while its pipe stays open, must not keep the
+// server alive. Heartbeats, and any other frame, push the deadline out.
+func TestServer_IdleTimeoutAndHeartbeat(t *testing.T) {
+	sInR, sInW := io.Pipe()
+	sOutR, sOutW := io.Pipe()
+	defer sInW.Close()
+
+	srv := NewServer(nil, sInR, sOutW)
+	srv.SetIdleTimeout(200 * time.Millisecond)
+	done := make(chan error, 1)
+	start := time.Now()
+	go func() { done <- srv.Serve(context.Background()) }()
+
+	client := NewClient(sOutR, sInW)
+	stop := make(chan struct{})
+	go func() {
+		t := time.NewTicker(50 * time.Millisecond)
+		defer t.Stop()
+		for {
+			select {
+			case <-stop:
+				return
+			case <-t.C:
+				_ = client.Heartbeat()
+			}
+		}
+	}()
+
+	select {
+	case err := <-done:
+		close(stop)
+		t.Fatalf("Serve returned while heartbeats were flowing: %v", err)
+	case <-time.After(600 * time.Millisecond):
+	}
+	close(stop)
+
+	select {
+	case err := <-done:
+		if !errors.Is(err, ErrIdleTimeout) {
+			t.Fatalf("Serve = %v, want ErrIdleTimeout", err)
+		}
+		if elapsed := time.Since(start); elapsed < 700*time.Millisecond {
+			t.Fatalf("Serve returned after %v, before the heartbeats stopped", elapsed)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("Serve did not return after the client went silent")
+	}
+}
+
+func TestServer_NoIdleTimeoutByDefault(t *testing.T) {
+	sInR, sInW := io.Pipe()
+	defer sInW.Close()
+	srv := NewServer(nil, sInR, io.Discard)
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- srv.Serve(ctx) }()
+
+	select {
+	case err := <-done:
+		t.Fatalf("Serve returned without a timeout set: %v", err)
+	case <-time.After(300 * time.Millisecond):
+	}
+	// ctx ends Serve even while a read is blocked.
+	cancel()
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("Serve = %v, want context.Canceled", err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("Serve did not return on cancel")
+	}
+}
