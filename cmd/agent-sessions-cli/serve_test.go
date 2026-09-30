@@ -13,9 +13,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ginkcode/agent-sessions/internal/index"
 	"github.com/ginkcode/agent-sessions/internal/paths"
 	"github.com/ginkcode/agent-sessions/internal/rpc"
 )
+
+// rootsKey names the index the server's engine uses for roots.
+func rootsKey(r paths.Roots) string { return index.RootsKey(r.Claude, r.Codex, r.OpenCodeData) }
 
 func fixedRoots(r paths.Roots) func() (paths.Roots, error) {
 	return func() (paths.Roots, error) { return r, nil }
@@ -109,67 +113,91 @@ func TestServe_PrefaceAndRoundTrip(t *testing.T) {
 	}
 }
 
-func TestServe_AdvisoryLockBusy(t *testing.T) {
-	tmpDir := t.TempDir()
-	cacheDir := filepath.Join(tmpDir, "cache")
-	roots := paths.Roots{
-		Cache:        cacheDir,
-		Config:       filepath.Join(tmpDir, "config"),
-		Data:         filepath.Join(tmpDir, "data"),
-		Claude:       filepath.Join(tmpDir, "claude"),
-		Codex:        filepath.Join(tmpDir, "codex"),
-		OpenCodeData: filepath.Join(tmpDir, "opencode"),
-	}
+type serveHandle struct {
+	client *rpc.Client
+	stdin  io.Closer
+	done   chan int
+	stderr *bytes.Buffer
+}
 
-	// Acquire lock first
-	lock, err := rpc.AcquireCacheLock(cacheDir)
-	if err != nil {
-		t.Fatalf("failed to acquire initial lock: %v", err)
-	}
-	defer lock.Unlock()
-
+func startServe(t *testing.T, ctx context.Context, roots paths.Roots) *serveHandle {
+	t.Helper()
 	sInR, sInW := io.Pipe()
 	sOutR, sOutW := io.Pipe()
 	nonce := rpc.GenerateNonce()
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	var stderr bytes.Buffer
-	serveDone := make(chan int, 1)
+	h := &serveHandle{stdin: sInW, done: make(chan int, 1), stderr: &bytes.Buffer{}}
 	go func() {
-		code := serveCmd(ctx, []string{"--stdio", "--nonce", nonce}, fixedRoots(roots), sOutW, &stderr, sInR)
-		serveDone <- code
+		h.done <- serveCmd(ctx, []string{"--stdio", "--nonce", nonce}, fixedRoots(roots), sOutW, h.stderr, sInR)
 	}()
-
-	rAfterPreface, err := rpc.WaitForPreface(ctx, sOutR, nonce)
+	r, err := rpc.WaitForPreface(ctx, sOutR, nonce)
 	if err != nil {
-		t.Fatalf("WaitForPreface failed: %v", err)
+		t.Fatalf("WaitForPreface: %v", err)
 	}
-
-	client := rpc.NewClient(rAfterPreface, sInW)
-	defer client.Close()
-
-	// Handshake should fail with ErrRemoteBusy
-	_, err = client.Initialize(ctx, rpc.InitializeRequest{})
-	if err == nil {
-		t.Fatal("expected error from busy server, got nil")
+	h.client = rpc.NewClient(r, sInW)
+	t.Cleanup(func() { _ = h.client.Close() })
+	if _, err := h.client.Initialize(ctx, rpc.InitializeRequest{ProtocolVersion: rpc.ProtocolVersion}); err != nil {
+		t.Fatalf("initialize: %v", err)
 	}
-	if !errors.Is(err, rpc.ErrRemoteBusy) {
-		t.Fatalf("expected ErrRemoteBusy, got: %v", err)
-	}
+	return h
+}
 
-	_ = sInW.Close()
+func (h *serveHandle) stop(t *testing.T) {
+	t.Helper()
+	_ = h.stdin.Close()
 	select {
-	case code := <-serveDone:
-		if code != 1 {
-			t.Errorf("expected exit code 1 for busy server, got %d", code)
+	case code := <-h.done:
+		if code != 0 {
+			t.Errorf("exit %d, stderr: %s", code, h.stderr.String())
 		}
-	case <-time.After(3 * time.Second):
+	case <-time.After(5 * time.Second):
 		t.Fatal("serveCmd did not exit")
 	}
 }
 
-// The client's env overrides must reach the roots the engine, the cache lock
+// Two clients on one host each get a server; neither blocks the other, and
+// one of them is the index writer.
+func TestServe_TwoClientsShareOneCache(t *testing.T) {
+	tmpDir := t.TempDir()
+	claude := filepath.Join(tmpDir, "claude")
+	if err := os.MkdirAll(filepath.Join(claude, "projects"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	roots := paths.Roots{
+		Cache:  filepath.Join(tmpDir, "cache"),
+		Config: filepath.Join(tmpDir, "config"),
+		Data:   filepath.Join(tmpDir, "data"),
+		Claude: claude,
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	first := startServe(t, ctx, roots)
+	second := startServe(t, ctx, roots)
+	for i, h := range []*serveHandle{first, second} {
+		if _, err := h.client.Ping(ctx, "x"); err != nil {
+			t.Fatalf("client %d ping: %v", i, err)
+		}
+		if _, err := h.client.Search(ctx, "anything", index.SearchFilter{}); err != nil {
+			t.Errorf("client %d search: %v", i, err)
+		}
+	}
+	if _, err := index.TryLock(roots.Cache, rootsKey(roots)); !errors.Is(err, index.ErrLocked) {
+		t.Errorf("index lock while serving: err = %v, want ErrLocked", err)
+	}
+
+	first.stop(t)
+	if _, err := second.client.Ping(ctx, "x"); err != nil {
+		t.Fatalf("second client after the first left: %v", err)
+	}
+	second.stop(t)
+	l, err := index.TryLock(roots.Cache, rootsKey(roots))
+	if err != nil {
+		t.Fatalf("index lock after both exited: %v", err)
+	}
+	_ = l.Unlock()
+}
+
+// The client's env overrides must reach the roots the engine, its index
 // and the transfer staging dir use, so they apply before the engine starts.
 func TestServe_ClientEnvAppliesBeforeEngineStarts(t *testing.T) {
 	tmp := t.TempDir()
@@ -222,9 +250,9 @@ func TestServe_ClientEnvAppliesBeforeEngineStarts(t *testing.T) {
 		if res.Roots.Cache != wantCache {
 			t.Errorf("roots.Cache = %q, want %q", res.Roots.Cache, wantCache)
 		}
-		// The advisory lock lives in the overridden cache dir.
-		if _, err := rpc.AcquireCacheLock(wantCache); !errors.Is(err, rpc.ErrRemoteBusy) {
-			t.Errorf("lock in overridden cache: err = %v, want ErrRemoteBusy", err)
+		// The index lives in the overridden cache dir.
+		if _, err := index.TryLock(wantCache, rootsKey(res.Roots)); !errors.Is(err, index.ErrLocked) {
+			t.Errorf("index lock in overridden cache: err = %v, want ErrLocked", err)
 		}
 	}
 
@@ -247,7 +275,7 @@ func TestServe_ClientEnvAppliesBeforeEngineStarts(t *testing.T) {
 }
 
 // A client that goes silent without closing the pipe, as behind a half-open
-// ssh connection, must not keep the server and its cache lock alive.
+// ssh connection, must not keep the server and its index lock alive.
 func TestServe_IdleTimeoutReleasesLock(t *testing.T) {
 	tmpDir := t.TempDir()
 	roots := paths.Roots{
@@ -274,8 +302,8 @@ func TestServe_IdleTimeoutReleasesLock(t *testing.T) {
 	if _, err := client.Initialize(ctx, rpc.InitializeRequest{ProtocolVersion: rpc.ProtocolVersion}); err != nil {
 		t.Fatalf("initialize: %v", err)
 	}
-	if _, err := rpc.AcquireCacheLock(roots.Cache); !errors.Is(err, rpc.ErrRemoteBusy) {
-		t.Fatalf("lock while serving: err = %v, want ErrRemoteBusy", err)
+	if _, err := index.TryLock(roots.Cache, rootsKey(roots)); !errors.Is(err, index.ErrLocked) {
+		t.Fatalf("lock while serving: err = %v, want ErrLocked", err)
 	}
 
 	// Stdin stays open; the client just stops sending.
@@ -290,7 +318,7 @@ func TestServe_IdleTimeoutReleasesLock(t *testing.T) {
 	if !strings.Contains(stderr.String(), "no message from the client") {
 		t.Errorf("stderr = %q", stderr.String())
 	}
-	lock, err := rpc.AcquireCacheLock(roots.Cache)
+	lock, err := index.TryLock(roots.Cache, rootsKey(roots))
 	if err != nil {
 		t.Fatalf("lock after idle exit: %v", err)
 	}

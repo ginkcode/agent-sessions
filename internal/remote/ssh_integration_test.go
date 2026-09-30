@@ -33,12 +33,12 @@ func TestSSHIntegration(t *testing.T) {
 	// Default options, as the app uses: ControlMaster=auto on a private socket.
 	opts := SSHOptions{}
 	t.Cleanup(func() { _ = StopControlMaster(context.Background(), "", host, opts) })
-	probe, err := ProbeHost(ctx, host, opts, ServerDirTag(version.Current(), ""))
+	probe, err := ProbeHost(ctx, host, opts, version.Current())
 	if err != nil {
 		t.Fatalf("probe: %v", err)
 	}
 	t.Logf("probe: %+v", *probe)
-	if os.Getenv("AGENT_SESSIONS_SSH_EXPECT_INSTALLED") == "1" && probe.ServerPath == "" {
+	if os.Getenv("AGENT_SESSIONS_SSH_EXPECT_INSTALLED") == "1" && len(probe.Installed) == 0 {
 		t.Fatal("expected the server from a previous run to be reused")
 	}
 

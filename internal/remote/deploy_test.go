@@ -10,13 +10,14 @@ import (
 	"os/exec"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 // runUnpack executes the real unpack script with /bin/sh, as the remote
 // login shell would, feeding gz on stdin.
 func runUnpack(t *testing.T, targetDir, targetBin, sum string, gz []byte) (string, error) {
 	t.Helper()
-	cmd := exec.Command("/bin/sh", "-c", unpackScript(targetDir, targetBin, sum))
+	cmd := exec.Command("/bin/sh", "-c", unpackScript(targetDir, targetBin, sum, "t0k3n"))
 	cmd.Stdin = bytes.NewReader(gz)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
@@ -62,10 +63,41 @@ func TestUnpackScript_InstallsVerifiedArchive(t *testing.T) {
 	if info.Mode().Perm() != 0o700 {
 		t.Fatalf("mode = %v, want 0700", info.Mode().Perm())
 	}
-	for _, leftover := range []string{bin + ".tmp", bin + ".tmp.gz"} {
+	for _, leftover := range []string{bin + ".tmp-t0k3n", bin + ".tmp-t0k3n.gz"} {
 		if _, err := os.Stat(leftover); !errors.Is(err, os.ErrNotExist) {
 			t.Fatalf("%s left behind (err %v)", leftover, err)
 		}
+	}
+}
+
+// Temp files of an interrupted deploy go once they are stale; a recent one
+// may belong to a deploy still writing and stays.
+func TestUnpackScript_RemovesStaleTempFiles(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "0.1.0-abcd")
+	bin := filepath.Join(dir, "agent-sessions-cli")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	stale, recent := bin+".tmp-old.gz", bin+".tmp-busy.gz"
+	for _, f := range []string{stale, recent} {
+		if err := os.WriteFile(f, []byte("x"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	old := time.Now().Add(-2 * time.Hour)
+	if err := os.Chtimes(stale, old, old); err != nil {
+		t.Fatal(err)
+	}
+	gz := gzipBytes(t, []byte("payload"))
+	h := sha256.Sum256(gz)
+	if stderr, err := runUnpack(t, dir, bin, hex.EncodeToString(h[:]), gz); err != nil {
+		t.Fatalf("unpack: %v: %s", err, stderr)
+	}
+	if _, err := os.Stat(stale); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("stale temp file kept (err %v)", err)
+	}
+	if _, err := os.Stat(recent); err != nil {
+		t.Errorf("recent temp file removed: %v", err)
 	}
 }
 

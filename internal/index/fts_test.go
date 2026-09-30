@@ -18,7 +18,7 @@ import (
 func TestFTSTextExtractionAndCaps(t *testing.T) {
 	ctx := context.Background()
 	dir := t.TempDir()
-	db, err := index.Open(ctx, dir)
+	db, err := index.Open(ctx, dir, "")
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
@@ -148,7 +148,7 @@ func TestFTSWorkerDebounceAndStaleRevision(t *testing.T) {
 	defer cancel()
 
 	dir := t.TempDir()
-	db, err := index.Open(ctx, dir)
+	db, err := index.Open(ctx, dir, "")
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
@@ -245,7 +245,7 @@ func TestFTSWorkerDebounceAndStaleRevision(t *testing.T) {
 func TestFTSFailedJobBackoff(t *testing.T) {
 	ctx := context.Background()
 	dir := t.TempDir()
-	db, err := index.Open(ctx, dir)
+	db, err := index.Open(ctx, dir, "")
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}

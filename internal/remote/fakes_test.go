@@ -123,12 +123,13 @@ func fakeProbe(args []string, linux bool) int {
 		return 2
 	}
 	osName := "Linux"
-	installed := "INSTALLED:/home/remote/.cache/agent-sessions/server/dev/agent-sessions-cli"
+	// Only dev-0123abcd is a build of "dev"; the others share the prefix.
+	installed := "INSTALLED:dev-0123abcd\nINSTALLED:dev-rc1-0123abcd\nINSTALLED:dev-0123ABCD\n"
 	if !linux {
 		osName = "FreeBSD"
-		installed = "NOT_INSTALLED"
+		installed = ""
 	}
-	_, _ = os.Stdout.WriteString("MOTD banner should be skipped\n" + line + "\n" + osName + "\nx86_64\n/home/remote\n" + installed + "\n")
+	_, _ = os.Stdout.WriteString("MOTD banner should be skipped\n" + line + "\n" + osName + "\nx86_64\n/home/remote\n" + installed + "END\nINSTALLED:dev-99999999\n")
 	return 0
 }
 

@@ -29,24 +29,25 @@ type DB struct {
 	cacheDir string
 	dsn      string
 	writeMu  sync.Mutex
+	// readOnly handles come from OpenReadOnly; file is what they opened.
+	readOnly bool
+	file     os.FileInfo
 }
 
-// Open opens or initializes the cache database in cacheDir.
-// If cacheDir is empty, the default application cache directory is used.
-// The cache directory is enforced to 0700, the database file to 0600,
-// and symlinks are strictly rejected.
-func Open(ctx context.Context, cacheDir string) (*DB, error) {
+// prepareCacheDir resolves cacheDir (the default when empty), creates it
+// 0700 or enforces 0700, and refuses a symlink.
+func prepareCacheDir(cacheDir string) (string, error) {
 	if cacheDir == "" {
 		roots, err := paths.Default()
 		if err != nil {
-			return nil, fmt.Errorf("index: resolve default cache dir: %w", err)
+			return "", fmt.Errorf("index: resolve default cache dir: %w", err)
 		}
 		cacheDir = roots.Cache
 	}
 
 	absDir, err := filepath.Abs(cacheDir)
 	if err != nil {
-		return nil, fmt.Errorf("index: invalid cache dir %q: %w", cacheDir, err)
+		return "", fmt.Errorf("index: invalid cache dir %q: %w", cacheDir, err)
 	}
 	cacheDir = filepath.Clean(absDir)
 
@@ -55,28 +56,46 @@ func Open(ctx context.Context, cacheDir string) (*DB, error) {
 	switch {
 	case err == nil:
 		if fi.Mode()&os.ModeSymlink != 0 {
-			return nil, fmt.Errorf("index: cache directory %q is a symlink", cacheDir)
+			return "", fmt.Errorf("index: cache directory %q is a symlink", cacheDir)
 		}
 		if !fi.IsDir() {
-			return nil, fmt.Errorf("index: cache directory %q is not a directory", cacheDir)
+			return "", fmt.Errorf("index: cache directory %q is not a directory", cacheDir)
 		}
 		if err := os.Chmod(cacheDir, 0o700); err != nil {
-			return nil, fmt.Errorf("index: chmod cache dir %q: %w", cacheDir, err)
+			return "", fmt.Errorf("index: chmod cache dir %q: %w", cacheDir, err)
 		}
 	case os.IsNotExist(err):
 		if err := os.MkdirAll(cacheDir, 0o700); err != nil {
-			return nil, fmt.Errorf("index: mkdir cache dir %q: %w", cacheDir, err)
+			return "", fmt.Errorf("index: mkdir cache dir %q: %w", cacheDir, err)
 		}
 		fi, err := os.Lstat(cacheDir)
 		if err == nil && fi.Mode()&os.ModeSymlink != 0 {
-			return nil, fmt.Errorf("index: cache directory %q is a symlink", cacheDir)
+			return "", fmt.Errorf("index: cache directory %q is a symlink", cacheDir)
 		}
 	default:
-		return nil, fmt.Errorf("index: stat cache dir %q: %w", cacheDir, err)
+		return "", fmt.Errorf("index: stat cache dir %q: %w", cacheDir, err)
+	}
+	return cacheDir, nil
+}
+
+// Open opens or initializes this schema's cache database for key (see
+// FileName) in cacheDir, seeding a missing file from an older schema's
+// database. Only the
+// writer may call it: it migrates, and wipes a corrupt file. See shared.go.
+// If cacheDir is empty, the default application cache directory is used.
+// The cache directory is enforced to 0700, the database file to 0600,
+// and symlinks are strictly rejected.
+func Open(ctx context.Context, cacheDir, key string) (*DB, error) {
+	cacheDir, err := prepareCacheDir(cacheDir)
+	if err != nil {
+		return nil, err
 	}
 
-	dbPath := filepath.Join(cacheDir, "index.db")
-	fi, err = os.Lstat(dbPath)
+	dbPath := filepath.Join(cacheDir, FileName(SchemaVersion(), key))
+	if _, err := os.Lstat(dbPath); os.IsNotExist(err) {
+		seedFrom(ctx, cacheDir, dbPath, SchemaVersion(), key)
+	}
+	fi, err := os.Lstat(dbPath)
 	switch {
 	case err == nil:
 		if fi.Mode()&os.ModeSymlink != 0 {
@@ -187,6 +206,11 @@ func Open(ctx context.Context, cacheDir string) (*DB, error) {
 		}
 	}
 
+	// Marks this schema as in use for Cleanup in other versions, even when
+	// this session commits nothing.
+	now := time.Now()
+	_ = os.Chtimes(dbPath, now, now)
+
 	return &DB{
 		db:       sqlDB,
 		path:     dbPath,
@@ -226,6 +250,9 @@ func (d *DB) SQLDB() *sql.DB {
 // Rebuild tears down the existing database and sidecars, reopens a clean file,
 // and applies all embedded migrations from scratch.
 func (d *DB) Rebuild(ctx context.Context) error {
+	if d.readOnly {
+		return errReadOnly
+	}
 	d.writeMu.Lock()
 	defer d.writeMu.Unlock()
 
@@ -290,8 +317,15 @@ func (d *DB) LoadCatalog(ctx context.Context) ([]model.SessionMeta, error) {
 	if d.db == nil {
 		return nil, errors.New("index: database closed")
 	}
+	return loadCatalog(ctx, d.db)
+}
 
-	rows, err := d.db.QueryContext(ctx, "SELECT meta_json FROM sessions ORDER BY updated_at DESC")
+type querier interface {
+	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
+}
+
+func loadCatalog(ctx context.Context, q querier) ([]model.SessionMeta, error) {
+	rows, err := q.QueryContext(ctx, "SELECT meta_json FROM sessions ORDER BY updated_at DESC")
 	if err != nil {
 		return nil, fmt.Errorf("index: query sessions: %w", err)
 	}
@@ -335,9 +369,17 @@ func (d *DB) LoadState(ctx context.Context, agent model.AgentID) (provider.ScanS
 		return provider.ScanState{}, fmt.Errorf("index: query provider state for %s: %w", agent, err)
 	}
 
+	state, err := decodeState(stateJSON)
+	if err != nil {
+		return provider.ScanState{}, fmt.Errorf("index: unmarshal provider state for %s: %w", agent, err)
+	}
+	return state, nil
+}
+
+func decodeState(stateJSON string) (provider.ScanState, error) {
 	var state provider.ScanState
 	if err := json.Unmarshal([]byte(stateJSON), &state); err != nil {
-		return provider.ScanState{}, fmt.Errorf("index: unmarshal provider state for %s: %w", agent, err)
+		return provider.ScanState{}, err
 	}
 	if state.Sources == nil {
 		state.Sources = make(map[string]provider.SourceState)
@@ -349,6 +391,9 @@ func (d *DB) LoadState(ctx context.Context, agent model.AgentID) (provider.ScanS
 // atomically in a single transaction. It increments fts_revision for changed sessions
 // and enqueues indexing jobs in fts_jobs.
 func (d *DB) CommitScan(ctx context.Context, agent model.AgentID, result provider.ScanResult) error {
+	if d.readOnly {
+		return errReadOnly
+	}
 	if agent == "" {
 		return errors.New("index: agent ID is required")
 	}
@@ -499,6 +544,9 @@ ON CONFLICT(agent) DO UPDATE SET state_json = excluded.state_json;
 // triggers clean the associated fts_jobs, fts_docs, and fts_messages rows.
 // Deleting a ref that has no row is a no-op; refs must be fully qualified.
 func (d *DB) DeleteSessions(ctx context.Context, refs []model.SessionRef) error {
+	if d.readOnly {
+		return errReadOnly
+	}
 	for _, ref := range refs {
 		if ref.Agent == "" || ref.ID == "" {
 			return fmt.Errorf("index: delete session %q:%q: agent and id are required", ref.Agent, ref.ID)

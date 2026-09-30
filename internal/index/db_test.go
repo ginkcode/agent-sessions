@@ -18,7 +18,7 @@ func TestEmptyDBMigration(t *testing.T) {
 	tmpDir := t.TempDir()
 	ctx := context.Background()
 
-	db, err := Open(ctx, tmpDir)
+	db, err := Open(ctx, tmpDir, "")
 	if err != nil {
 		t.Fatalf("Open failed: %v", err)
 	}
@@ -53,7 +53,7 @@ func TestReopenIdempotence(t *testing.T) {
 	tmpDir := t.TempDir()
 	ctx := context.Background()
 
-	db, err := Open(ctx, tmpDir)
+	db, err := Open(ctx, tmpDir, "")
 	if err != nil {
 		t.Fatalf("Open failed: %v", err)
 	}
@@ -103,7 +103,7 @@ func TestReopenIdempotence(t *testing.T) {
 	}
 
 	// Reopen the database
-	reopened, err := Open(ctx, tmpDir)
+	reopened, err := Open(ctx, tmpDir, "")
 	if err != nil {
 		t.Fatalf("Reopen failed: %v", err)
 	}
@@ -146,7 +146,7 @@ func TestNewerVersionRebuild(t *testing.T) {
 	tmpDir := t.TempDir()
 	ctx := context.Background()
 
-	db, err := Open(ctx, tmpDir)
+	db, err := Open(ctx, tmpDir, "")
 	if err != nil {
 		t.Fatalf("Open failed: %v", err)
 	}
@@ -164,7 +164,7 @@ func TestNewerVersionRebuild(t *testing.T) {
 	_ = db.Close()
 
 	// Manually corrupt version in DB by inserting higher version 999
-	dbFile := filepath.Join(tmpDir, "index.db")
+	dbFile := filepath.Join(tmpDir, FileName(SchemaVersion(), ""))
 	rawDB, err := sql.Open("sqlite", dbFile)
 	if err != nil {
 		t.Fatalf("open raw sqlite: %v", err)
@@ -176,7 +176,7 @@ func TestNewerVersionRebuild(t *testing.T) {
 	_ = rawDB.Close()
 
 	// Reopen with index.Open — it should detect version 999 > bundled 1 and rebuild
-	rebuilt, err := Open(ctx, tmpDir)
+	rebuilt, err := Open(ctx, tmpDir, "")
 	if err != nil {
 		t.Fatalf("Open after newer version failed: %v", err)
 	}
@@ -205,7 +205,7 @@ func TestRollbackOnInjectedWriteError(t *testing.T) {
 	tmpDir := t.TempDir()
 	ctx := context.Background()
 
-	db, err := Open(ctx, tmpDir)
+	db, err := Open(ctx, tmpDir, "")
 	if err != nil {
 		t.Fatalf("Open failed: %v", err)
 	}
@@ -261,7 +261,7 @@ func TestCascadeFTSDelete(t *testing.T) {
 	tmpDir := t.TempDir()
 	ctx := context.Background()
 
-	db, err := Open(ctx, tmpDir)
+	db, err := Open(ctx, tmpDir, "")
 	if err != nil {
 		t.Fatalf("Open failed: %v", err)
 	}
@@ -341,7 +341,7 @@ func TestPermissionsAndPragmas(t *testing.T) {
 	ctx := context.Background()
 
 	cacheDir := filepath.Join(tmpDir, "agent-cache")
-	db, err := Open(ctx, cacheDir)
+	db, err := Open(ctx, cacheDir, "")
 	if err != nil {
 		t.Fatalf("Open failed: %v", err)
 	}
@@ -415,7 +415,7 @@ func TestPermissionsAndPragmas(t *testing.T) {
 	if err := os.Symlink(cacheDir, symCacheDir); err != nil {
 		t.Fatalf("create symlink: %v", err)
 	}
-	_, err = Open(ctx, symCacheDir)
+	_, err = Open(ctx, symCacheDir, "")
 	if err == nil {
 		t.Errorf("expected Open on symlink cache dir to fail, but succeeded")
 	}
@@ -425,12 +425,12 @@ func TestPermissionsAndPragmas(t *testing.T) {
 	if err := os.MkdirAll(targetDir, 0o700); err != nil {
 		t.Fatalf("mkdir target: %v", err)
 	}
-	targetDB := filepath.Join(targetDir, "index.db")
-	realDB := filepath.Join(cacheDir, "index.db")
+	targetDB := filepath.Join(targetDir, FileName(SchemaVersion(), ""))
+	realDB := filepath.Join(cacheDir, FileName(SchemaVersion(), ""))
 	if err := os.Symlink(realDB, targetDB); err != nil {
 		t.Fatalf("symlink db: %v", err)
 	}
-	_, err = Open(ctx, targetDir)
+	_, err = Open(ctx, targetDir, "")
 	if err == nil {
 		t.Errorf("expected Open on symlink index.db to fail, but succeeded")
 	}
@@ -440,7 +440,7 @@ func TestClearLiveFlagsRoundTrip(t *testing.T) {
 	tmpDir := t.TempDir()
 	ctx := context.Background()
 
-	db, err := Open(ctx, tmpDir)
+	db, err := Open(ctx, tmpDir, "")
 	if err != nil {
 		t.Fatalf("Open failed: %v", err)
 	}
@@ -495,7 +495,7 @@ func TestUnicodeAndPathDSN(t *testing.T) {
 
 	// Path with spaces, hashes, unicode characters
 	unicodeDir := filepath.Join(tmpDir, "câché #1 with spáces & ünicode")
-	db, err := Open(ctx, unicodeDir)
+	db, err := Open(ctx, unicodeDir, "")
 	if err != nil {
 		t.Fatalf("Open with unicode/special path failed: %v", err)
 	}
@@ -524,7 +524,7 @@ func TestCompiledFTS5Smoke(t *testing.T) {
 	tmpDir := t.TempDir()
 	ctx := context.Background()
 
-	db, err := Open(ctx, tmpDir)
+	db, err := Open(ctx, tmpDir, "")
 	if err != nil {
 		t.Fatalf("Open failed: %v", err)
 	}
@@ -609,7 +609,7 @@ func TestCompiledFTS5Smoke(t *testing.T) {
 
 func TestDeleteSessions(t *testing.T) {
 	ctx := context.Background()
-	db, err := Open(ctx, t.TempDir())
+	db, err := Open(ctx, t.TempDir(), "")
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
@@ -673,7 +673,7 @@ func TestDeleteSessions(t *testing.T) {
 
 func TestDeleteSessionsRejectsInvalidRefsAndClosedDB(t *testing.T) {
 	ctx := context.Background()
-	db, err := Open(ctx, t.TempDir())
+	db, err := Open(ctx, t.TempDir(), "")
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}

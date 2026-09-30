@@ -11,6 +11,7 @@ import (
 	"io"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/ginkcode/agent-sessions/internal/rpc"
 	"github.com/ginkcode/agent-sessions/internal/version"
@@ -30,10 +31,27 @@ func ServerDirTag(appVersion, sha256hex string) string {
 	return appVersion + "-" + sum
 }
 
+// serverRoot holds one directory per deployed build, below $HOME.
+const serverRoot = "/.cache/agent-sessions/server/"
+
 // RemoteServerPath is the installed binary for one version tag.
 func RemoteServerPath(home, versionTag string) string {
-	return strings.TrimRight(home, "/") + "/.cache/agent-sessions/server/" + versionTag + "/agent-sessions-cli"
+	return strings.TrimRight(home, "/") + serverRoot + versionTag + "/agent-sessions-cli"
 }
+
+// buildDir is the build directory of a binary at RemoteServerPath.
+func buildDir(bin string) (string, bool) {
+	dir, ok := strings.CutSuffix(bin, "/agent-sessions-cli")
+	if !ok || !strings.Contains(dir, serverRoot) {
+		return "", false
+	}
+	return dir, true
+}
+
+// PruneAfter is how long a build must go unstarted before a deploy removes
+// it. Every start touches its build directory, so a build some client still
+// uses is never removed.
+const PruneAfter = 30 * 24 * time.Hour
 
 // DeployServer streams a bundled server archive to the remote host (see
 // unpackScript), checks `version` output, and prunes older builds. localGzPath may be empty to locate the bundle for probe.OS/Arch.
@@ -65,9 +83,9 @@ func DeployServer(ctx context.Context, alias string, opts SSHOptions, probe *Hos
 	if err != nil {
 		return "", fmt.Errorf("open server bundle: %w", err)
 	}
-	defer gz.Close()
+	defer func() { _ = gz.Close() }()
 
-	unpack := unpackScript(targetDir, targetBin, sum)
+	unpack := unpackScript(targetDir, targetBin, sum, rpc.GenerateNonce()[:8])
 	if err := runRemote(ctx, alias, opts, nil, gz, unpack); err != nil {
 		return "", fmt.Errorf("deploy server: %w", err)
 	}
@@ -76,14 +94,24 @@ func DeployServer(ctx context.Context, alias string, opts SSHOptions, probe *Hos
 		return "", err
 	}
 
-	// Best-effort: keep the two newest version directories.
-	prune := fmt.Sprintf(
-		`cd %[1]s 2>/dev/null && ls -1dt -- */ 2>/dev/null | tail -n +3 | while IFS= read -r d; do rm -rf -- "$d"; done || true`,
-		QuotePOSIX(strings.TrimSuffix(targetDir, "/"+tag)),
-	)
+	// Best-effort: remove builds no client has started for PruneAfter. A
+	// build that is running keeps working without its directory, and the
+	// next start of that version deploys it again.
+	prune := pruneScript(strings.TrimSuffix(targetDir, "/"+tag), tag)
 	_ = runRemote(ctx, alias, opts, nil, nil, prune)
 
 	return targetBin, nil
+}
+
+// pruneScript removes the build directories in root, other than keep, that
+// have not been touched for PruneAfter.
+func pruneScript(root, keep string) string {
+	return fmt.Sprintf(
+		`cd %[1]s 2>/dev/null && find . -mindepth 1 -maxdepth 1 -type d ! -name %[2]s -mtime +%[3]d -exec rm -rf -- {} + 2>/dev/null; true`,
+		QuotePOSIX(root),
+		QuotePOSIX(keep),
+		int(PruneAfter/(24*time.Hour)),
+	)
 }
 
 // unpackScript reads the gzip archive on stdin into targetDir and installs it
@@ -92,10 +120,16 @@ func DeployServer(ctx context.Context, alias string, opts SSHOptions, probe *Hos
 // echoed or re-quoted. macOS has shasum rather than sha256sum; with neither,
 // the check is skipped (minimal images) and the version check still runs.
 // umask 077 keeps every directory it creates private. A mismatch exits 86.
-func unpackScript(targetDir, targetBin, sum string) string {
-	tmpBin := targetBin + ".tmp"
+// Temp files carry token, so two clients deploying the same build at once do
+// not write into each other's files; the last rename wins with equal bytes.
+// Temp files an interrupted deploy left behind are removed once they are
+// older than any deploy still writing could be.
+func unpackScript(targetDir, targetBin, sum, token string) string {
+	tmpBin := targetBin + ".tmp-" + token
 	return fmt.Sprintf(
-		`umask 077 && mkdir -p %[1]s && chmod 700 %[1]s && rm -f %[2]s %[3]s && cat > %[2]s && `+
+		`umask 077 && mkdir -p %[1]s && chmod 700 %[1]s && `+
+			`{ find %[1]s -maxdepth 1 -name 'agent-sessions-cli.tmp-*' -mmin +60 -exec rm -f -- {} + 2>/dev/null; true; } && `+
+			`rm -f %[2]s %[3]s && cat > %[2]s && `+
 			`if command -v sha256sum >/dev/null 2>&1; then h=$(sha256sum < %[2]s); `+
 			`elif command -v shasum >/dev/null 2>&1; then h=$(shasum -a 256 < %[2]s); else h=; fi && `+
 			`case "$h" in ''|%[4]s*) ;; *) rm -f %[2]s; echo 'server bundle checksum mismatch' >&2; exit 86;; esac && `+
@@ -166,7 +200,7 @@ func fileSHA256(path string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	h := sha256.New()
 	if _, err := io.Copy(h, f); err != nil {
 		return "", err

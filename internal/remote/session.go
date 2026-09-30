@@ -49,19 +49,58 @@ func StartSession(ctx context.Context, alias string, opts SSHOptions, clientEnv 
 	if err := ValidateHostAlias(alias); err != nil {
 		return nil, err
 	}
-	probe, err := ProbeHost(ctx, alias, opts, ServerDirTag(version.Current(), ""))
+	probe, err := ProbeHost(ctx, alias, opts, version.Current())
 	if err != nil {
 		return nil, err
 	}
 
-	bin := probe.ServerPath
-	if probe.InstalledVersion == "" || bin == "" {
-		bin, err = DeployServer(ctx, alias, opts, probe, "")
+	bin, bundle := chooseServer(probe)
+	if bin == "" {
+		bin, err = DeployServer(ctx, alias, opts, probe, bundle)
 		if err != nil {
 			return nil, err
 		}
+		return startServe(ctx, alias, opts, bin, clientEnv, emitter)
+	}
+	sess, err := startServe(ctx, alias, opts, bin, clientEnv, emitter)
+	if !errors.Is(err, ErrServerMissing) {
+		return sess, err
+	}
+	// Another client's deploy pruned the build after the probe listed it.
+	bin, err = DeployServer(ctx, alias, opts, probe, bundle)
+	if err != nil {
+		return nil, err
 	}
 	return startServe(ctx, alias, opts, bin, clientEnv, emitter)
+}
+
+// ErrServerMissing means the server binary was gone when the start script
+// ran, as when a prune removed it after the probe.
+var ErrServerMissing = errors.New("remote server build is missing")
+
+// exitServerMissing is the start script's exit status for ErrServerMissing.
+const exitServerMissing = 87
+
+// chooseServer returns the installed build to run, or "" and the local
+// bundle to deploy. The build must be this bundle's own, matched by
+// checksum: a rebuild with the same version is redeployed rather than
+// running the old one. Builds are never replaced, so a build another client
+// runs stays as it is. Without a readable local bundle, the newest build of
+// this version is the best there is.
+func chooseServer(probe *HostProbe) (bin, bundle string) {
+	if gz, err := LocateServer(probe.OS, probe.Arch); err == nil {
+		if sum, err := fileSHA256(gz); err == nil {
+			tag := ServerDirTag(version.Current(), sum)
+			if probe.Has(tag) {
+				return RemoteServerPath(probe.Home, tag), ""
+			}
+			return "", gz
+		}
+	}
+	if len(probe.Installed) > 0 {
+		return RemoteServerPath(probe.Home, probe.Installed[0]), ""
+	}
+	return "", ""
 }
 
 // DialSession starts an already-installed server binary. Tests use it to skip
@@ -98,8 +137,14 @@ func handshakeErr(parent, run context.Context, err error) error {
 func startServe(ctx context.Context, alias string, opts SSHOptions, bin string, clientEnv map[string]string, emitter engine.Emitter) (*Session, error) {
 	nonce := rpc.GenerateNonce()
 	// The preface is printed by the server (--nonce), after the login shell
-	// has written any banner, so WaitForPreface can skip it.
-	script := fmt.Sprintf(`%s serve --stdio --nonce %s`, QuotePOSIX(bin), QuotePOSIX(nonce))
+	// has written any banner, so WaitForPreface can skip it. exec leaves no
+	// shell behind to outlive the server.
+	script := fmt.Sprintf(`exec %s serve --stdio --nonce %s`, QuotePOSIX(bin), QuotePOSIX(nonce))
+	if dir, ok := buildDir(bin); ok {
+		// Marks the build as in use, so no client's prune removes it.
+		script = fmt.Sprintf(`touch -c %s 2>/dev/null; [ -x %s ] || exit %d; %s`,
+			QuotePOSIX(dir), QuotePOSIX(bin), exitServerMissing, script)
+	}
 	opts.NoTTY = true
 
 	runCtx, cancel := context.WithCancel(ctx)
@@ -146,7 +191,17 @@ func startServe(ctx context.Context, alias string, opts SSHOptions, bin string, 
 	defer handshake.Stop()
 	framed, err := rpc.WaitForPreface(runCtx, stdout, nonce)
 	if err != nil {
+		// A script that exited on its own has ended ssh too, or soon will;
+		// its status is read before Close kills ssh.
+		select {
+		case <-s.done:
+		case <-time.After(2 * time.Second):
+		}
+		missing := s.exitCode() == exitServerMissing
 		_ = s.Close()
+		if missing {
+			return nil, fmt.Errorf("%w: %s", ErrServerMissing, bin)
+		}
 		return nil, fmt.Errorf("remote server handshake: %w%s", handshakeErr(ctx, runCtx, err), s.stderrSuffix())
 	}
 
@@ -231,6 +286,21 @@ func (s *Session) wait() {
 		s.waitErr = s.cmd.Wait()
 		close(s.done)
 	})
+}
+
+// exitCode is the ssh exit status once the process has exited, else -1.
+// ssh passes on the remote command's status.
+func (s *Session) exitCode() int {
+	select {
+	case <-s.done:
+	default:
+		return -1
+	}
+	var exitErr *exec.ExitError
+	if errors.As(s.waitErr, &exitErr) {
+		return exitErr.ExitCode()
+	}
+	return -1
 }
 
 // watchClient tears the ssh process down when the RPC reader hits EOF, so a

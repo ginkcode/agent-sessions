@@ -25,18 +25,20 @@ import (
 
 // App is the desktop application service exposed to the Wails frontend.
 type App struct {
-	ctx                context.Context
-	localEngine        *engine.Engine
-	backendMu          sync.RWMutex
-	backend            engine.Backend
-	svc                *Service
-	runner             *scan.Runner
-	refresher          *index.Refresher
-	manageMu           sync.Mutex
-	manage             *manage.Manager
-	manageOverride     *manage.Manager
-	cacheEnabled       bool
-	cacheDirOverride   string
+	ctx              context.Context
+	localEngine      *engine.Engine
+	backendMu        sync.RWMutex
+	backend          engine.Backend
+	svc              *Service
+	runner           *scan.Runner
+	refresher        *index.Refresher
+	manageMu         sync.Mutex
+	manage           *manage.Manager
+	manageOverride   *manage.Manager
+	cacheEnabled     bool
+	cacheDirOverride string
+	// roots are the provider roots of svc; the engine names its index by them.
+	roots              paths.Roots
 	saveDialogOverride func(ctx context.Context, defaultName string) (string, error)
 
 	events            *catalogBus
@@ -70,6 +72,7 @@ func NewApp() *App {
 		svc:          svc,
 		runner:       runner,
 		cacheEnabled: true,
+		roots:        roots,
 	}
 }
 
@@ -138,6 +141,7 @@ func (a *App) localBackend() engine.Backend {
 		return a.localEngine
 	}
 	a.localEngine = engine.NewEngine(
+		engine.WithRoots(a.roots),
 		engine.WithService(a.svc),
 		engine.WithRunner(a.runner),
 		engine.WithCacheEnabled(a.cacheEnabled),
@@ -163,6 +167,7 @@ func (a *App) OnStartup(ctx context.Context) {
 	a.events = newCatalogBus(ctx)
 
 	a.localEngine = engine.NewEngine(
+		engine.WithRoots(a.roots),
 		engine.WithService(a.svc),
 		engine.WithRunner(a.runner),
 		engine.WithCacheEnabled(a.cacheEnabled),

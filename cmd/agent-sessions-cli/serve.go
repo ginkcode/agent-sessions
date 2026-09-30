@@ -15,16 +15,19 @@ import (
 )
 
 // serveCmd runs the JSON-RPC server. resolveRoots runs during initialize,
-// after the client's env overrides are applied, so the cache lock, the engine
-// and the reported roots all use the overridden locations.
+// after the client's env overrides are applied, so the engine, its cache and
+// the reported roots all use the overridden locations. Every client gets its
+// own server process; they share the cache as index writer or readers (see
+// internal/engine/cache.go), so none of them waits for another.
 func serveCmd(ctx context.Context, args []string, resolveRoots func() (paths.Roots, error), stdout, stderr io.Writer, stdin io.Reader) int {
 	fs := flag.NewFlagSet("serve", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	stdio := fs.Bool("stdio", false, "run over stdio using JSON-RPC 2.0")
 	nonce := fs.String("nonce", "", "startup synchronization nonce")
 	// The client heartbeats every 15s. Without this, a client that vanished
-	// behind a half-open connection would keep the server, and the cache
-	// lock, alive until sshd notices, which by default takes hours.
+	// behind a half-open connection would keep the server, and possibly the
+	// index writer role, alive until sshd notices, which by default takes
+	// hours.
 	idleTimeout := fs.Duration("idle-timeout", 60*time.Second, "exit after this long with no message from the client (0 disables)")
 	if err := fs.Parse(args); err != nil {
 		return 2
@@ -54,16 +57,12 @@ func serveCmd(ctx context.Context, args []string, resolveRoots func() (paths.Roo
 	// Set by the starter. Serve waits for its handlers before returning, so
 	// these are safe to read afterwards.
 	var (
-		lock    *rpc.Lock
 		eng     *engine.Engine
 		initErr error
 	)
 	defer func() {
 		if eng != nil {
 			_ = eng.Close()
-		}
-		if lock != nil {
-			_ = lock.Unlock()
 		}
 	}()
 
@@ -75,20 +74,7 @@ func serveCmd(ctx context.Context, args []string, resolveRoots func() (paths.Roo
 			initErr = fmt.Errorf("resolve roots: %w", err)
 			return nil, rpc.Capabilities{}, paths.Roots{}, initErr
 		}
-		// 2. Acquire cache advisory lock
-		l, err := rpc.AcquireCacheLock(roots.Cache)
-		if err != nil {
-			if errors.Is(err, rpc.ErrRemoteBusy) {
-				initErr = err
-				_, _ = fmt.Fprintln(stderr, "agent-sessions-cli serve: remote host is busy (cache locked by another session)")
-				return nil, rpc.Capabilities{}, paths.Roots{}, err
-			}
-			initErr = fmt.Errorf("acquire cache lock: %w", err)
-			return nil, rpc.Capabilities{}, paths.Roots{}, initErr
-		}
-		lock = l
-
-		// 3. Create and start the engine
+		// 2. Create and start the engine
 		e := engine.NewEngine(
 			engine.WithRoots(roots),
 			engine.WithCacheDir(roots.Cache),
@@ -110,12 +96,10 @@ func serveCmd(ctx context.Context, args []string, resolveRoots func() (paths.Roo
 	})
 	server.Store(srv)
 
-	// 4. Run RPC server over stdio
+	// 3. Run RPC server over stdio
 	err := srv.Serve(ctx)
 	if initErr != nil {
-		if !errors.Is(initErr, rpc.ErrRemoteBusy) {
-			_, _ = fmt.Fprintf(stderr, "agent-sessions-cli serve: %v\n", initErr)
-		}
+		_, _ = fmt.Fprintf(stderr, "agent-sessions-cli serve: %v\n", initErr)
 		return 1
 	}
 	if errors.Is(err, rpc.ErrIdleTimeout) {

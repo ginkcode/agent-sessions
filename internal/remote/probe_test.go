@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -56,8 +57,8 @@ func TestProbeHost(t *testing.T) {
 	if probe.OS != "linux" || probe.Arch != "amd64" || probe.Home != "/home/remote" {
 		t.Fatalf("probe = %+v", probe)
 	}
-	if probe.InstalledVersion != "dev" || !strings.HasSuffix(probe.ServerPath, "/agent-sessions-cli") {
-		t.Fatalf("installed = %q %q", probe.InstalledVersion, probe.ServerPath)
+	if !slices.Equal(probe.Installed, []string{"dev-0123abcd"}) {
+		t.Fatalf("installed = %q", probe.Installed)
 	}
 }
 

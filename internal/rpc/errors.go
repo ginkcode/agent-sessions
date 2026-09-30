@@ -37,6 +37,8 @@ const (
 
 // Client-side and server-side sentinel errors.
 var (
+	// ErrRemoteBusy is no longer returned: clients share a host (see
+	// internal/engine/cache.go). The code stays so it keeps decoding.
 	ErrRemoteBusy       = errors.New("remote server is busy with another session")
 	ErrDisconnected     = errors.New("disconnected from remote host")
 	ErrCancelled        = errors.New("request cancelled")

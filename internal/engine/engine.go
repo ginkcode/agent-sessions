@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/ginkcode/agent-sessions/internal/index"
 	"github.com/ginkcode/agent-sessions/internal/manage"
@@ -27,26 +28,36 @@ var _ Backend = (*Engine)(nil)
 type Engine struct {
 	mu sync.Mutex
 
-	svc              *Service
-	runner           *scan.Runner
-	refresher        *index.Refresher
-	indexer          *index.Indexer
-	closeWatch       func() error
-	events           *CatalogBus
-	emitter          Emitter
+	svc        *Service
+	runner     *scan.Runner
+	refresher  *index.Refresher
+	indexer    *index.Indexer
+	closeWatch func() error
+	events     *CatalogBus
+	emitter    Emitter
 
-	manageMu         sync.Mutex
-	manage           *manage.Manager
-	manageOverride   *manage.Manager
+	manageMu       sync.Mutex
+	manage         *manage.Manager
+	manageOverride *manage.Manager
 
 	cacheEnabled     bool
 	cacheDirOverride string
 	roots            paths.Roots
 
-	cancelBootstrap  context.CancelFunc
-	bootstrapDone    chan struct{}
-	started          bool
-	closed           bool
+	// Cache roles (see cache.go). lock is held while this engine is the
+	// index writer; readDB is a reader's read-only handle on the writer's
+	// database.
+	lock         *index.Lock
+	readDB       *index.DB
+	promoteEvery time.Duration
+	// dbUse keeps a database open while a query runs on it: Search and
+	// IndexProgress hold it shared, closing a database takes it.
+	dbUse sync.RWMutex
+
+	runCancel context.CancelFunc
+	bg        sync.WaitGroup
+	started   bool
+	closed    bool
 }
 
 // Option configures an Engine instance.
@@ -106,6 +117,7 @@ func NewEngine(opts ...Option) *Engine {
 	e := &Engine{
 		cacheEnabled: true,
 		emitter:      NopEmitter{},
+		promoteEvery: defaultPromoteEvery,
 	}
 	for _, opt := range opts {
 		opt(e)
@@ -201,75 +213,24 @@ func (e *Engine) Start(ctx context.Context) error {
 		return nil
 	}
 
-	db, err := index.Open(ctx, e.cacheDir())
-	if err != nil {
-		if e.svc.Catalog() != nil {
-			e.svc.Catalog().Reset(nil)
-		}
-		if e.runner != nil {
-			go func() {
-				_ = e.Scan(ctx)
-			}()
-		}
+	runCtx, cancel := context.WithCancel(ctx)
+	e.runCancel = cancel
+	if e.startCache(runCtx) {
 		return nil
 	}
-
-	metas, err := db.LoadCatalog(ctx)
-	if err != nil {
-		_ = db.Rebuild(ctx)
-		metas = nil
-	}
-
 	if e.svc.Catalog() != nil {
-		e.svc.Catalog().Reset(metas)
+		e.svc.Catalog().Reset(nil)
 	}
-	e.events.NotifyFullRefresh()
-
-	e.refresher = index.NewRefresher(db, e.svc.Catalog(), e.svc.Providers())
-	e.refresher.SetOnChanged(func(agent model.AgentID, changed, removed []model.SessionRef) {
-		e.mu.Lock()
-		indexer := e.indexer
-		events := e.events
-		e.mu.Unlock()
-		if indexer != nil {
-			indexer.Notify()
-		}
-		if events != nil {
-			events.NoteChanged(changed, removed)
-		}
-	})
-
-	emitProgress := func(p index.FTSProgress) {
-		e.mu.Lock()
-		emitter := e.emitter
-		e.mu.Unlock()
-		if emitter != nil {
-			emitter.Emit("index:progress", p)
-		}
+	if e.runner != nil {
+		go func() {
+			_ = e.Scan(ctx)
+		}()
 	}
-	e.indexer = index.StartIndexer(ctx, db, e.svc.Providers(), emitProgress)
-
-	e.closeWatch = e.startWatcher(ctx)
-
-	bootCtx, cancel := context.WithCancel(ctx)
-	e.cancelBootstrap = cancel
-	done := make(chan struct{})
-	e.bootstrapDone = done
-	ref := e.refresher
-
-	go func() {
-		defer close(done)
-		if ref != nil {
-			_ = ref.Bootstrap(bootCtx)
-			if e.svc != nil {
-				e.svc.ApplyReport(ref.Report())
-			}
-		}
-	}()
-
 	return nil
 }
 
+// startWatcher rescans a provider when its files change. It looks up the
+// refresher on each change because a reader swaps it when promoted.
 func (e *Engine) startWatcher(ctx context.Context) func() error {
 	if e.svc == nil || len(e.svc.Providers()) == 0 || e.refresher == nil {
 		return nil
@@ -280,14 +241,14 @@ func (e *Engine) startWatcher(ctx context.Context) func() error {
 			return
 		}
 		go func() {
-			scanCtx := ctx
-			if scanCtx == nil {
-				scanCtx = context.Background()
+			e.mu.Lock()
+			refresher := e.refresher
+			e.mu.Unlock()
+			if refresher == nil {
+				return
 			}
-			_, _, _ = e.refresher.Refresh(scanCtx, p)
-			if e.svc != nil {
-				e.svc.ApplyReport(e.refresher.Report())
-			}
+			_, _, _ = refresher.Refresh(ctx, p)
+			e.svc.ApplyReport(refresher.Report())
 		}()
 	}
 	closeWatch, err := watch.Start(ctx, e.svc.Providers(), onChange)
@@ -342,38 +303,45 @@ func (e *Engine) Close() error {
 
 	events := e.events
 	closeWatch := e.closeWatch
-	cancelBootstrap := e.cancelBootstrap
-	bootstrapDone := e.bootstrapDone
+	runCancel := e.runCancel
 	indexer := e.indexer
 	refresher := e.refresher
+	readDB := e.readDB
+	lock := e.lock
 
 	e.events = nil
 	e.closeWatch = nil
-	e.cancelBootstrap = nil
-	e.bootstrapDone = nil
+	e.runCancel = nil
 	e.indexer = nil
 	e.refresher = nil
+	e.readDB = nil
+	e.lock = nil
 	e.mu.Unlock()
 
+	if runCancel != nil {
+		runCancel()
+	}
 	if events != nil {
 		events.Stop()
 	}
 	if closeWatch != nil {
 		_ = closeWatch()
 	}
-	if cancelBootstrap != nil {
-		cancelBootstrap()
-	}
-	if bootstrapDone != nil {
-		<-bootstrapDone
-	}
+	// Bootstrap scans, the promoter and cleanup.
+	e.bg.Wait()
 	if indexer != nil {
 		indexer.Close()
 	}
+	var err error
 	if refresher != nil {
-		return refresher.Close()
+		e.dbUse.Lock()
+		err = refresher.Close()
+		e.dbUse.Unlock()
 	}
-	return nil
+	e.closeDB(readDB)
+	// Last, so the next writer never opens a database this one still writes.
+	_ = lock.Unlock()
+	return err
 }
 
 func (e *Engine) cacheDir() string {
@@ -430,24 +398,40 @@ func (e *Engine) GetBlob(ctx context.Context, ref model.SessionRef, key string) 
 
 // Search queries the full-text search index.
 func (e *Engine) Search(ctx context.Context, query string, filter index.SearchFilter) ([]index.SearchHit, error) {
-	e.mu.Lock()
-	refresher := e.refresher
-	e.mu.Unlock()
-	if refresher == nil || refresher.DB() == nil {
+	e.dbUse.RLock()
+	defer e.dbUse.RUnlock()
+	db, reader := e.searchDB()
+	if db == nil {
 		return []index.SearchHit{}, nil
 	}
-	return refresher.DB().Search(ctx, query, filter)
+	hits, err := db.Search(ctx, query, filter)
+	if err != nil || !reader {
+		return hits, err
+	}
+	// The writer may not have caught up with a session this reader already
+	// saw removed, such as one deleted here.
+	catalog := e.svc.Catalog()
+	if catalog == nil {
+		return hits, nil
+	}
+	kept := hits[:0]
+	for _, h := range hits {
+		if _, ok := catalog.Get(h.Ref); ok {
+			kept = append(kept, h)
+		}
+	}
+	return kept, nil
 }
 
 // IndexProgress returns the status of background FTS indexing.
 func (e *Engine) IndexProgress(ctx context.Context) (index.FTSProgress, error) {
-	e.mu.Lock()
-	refresher := e.refresher
-	e.mu.Unlock()
-	if refresher == nil || refresher.DB() == nil {
+	e.dbUse.RLock()
+	defer e.dbUse.RUnlock()
+	db, _ := e.searchDB()
+	if db == nil {
 		return index.FTSProgress{}, nil
 	}
-	return refresher.DB().Progress(ctx)
+	return db.Progress(ctx)
 }
 
 // CopyResumeCommand builds the provider resume command for a session.
@@ -633,12 +617,8 @@ func (e *Engine) SetManageEnabled(ctx context.Context, enabled bool) (Settings, 
 	if err != nil {
 		return Settings{}, err
 	}
-	cfg, err := mgr.Config()
+	cfg, err := mgr.UpdateConfig(func(c *manage.Config) { c.Enabled = enabled })
 	if err != nil {
-		return Settings{}, err
-	}
-	cfg.Enabled = enabled
-	if err := mgr.SetConfig(cfg); err != nil {
 		return Settings{}, err
 	}
 	return Settings{Enabled: cfg.Enabled, AllowPermanentDelete: cfg.AllowPermanentDelete}, nil
@@ -650,12 +630,8 @@ func (e *Engine) SetAllowPermanentDelete(ctx context.Context, allow bool) (Setti
 	if err != nil {
 		return Settings{}, err
 	}
-	cfg, err := mgr.Config()
+	cfg, err := mgr.UpdateConfig(func(c *manage.Config) { c.AllowPermanentDelete = allow })
 	if err != nil {
-		return Settings{}, err
-	}
-	cfg.AllowPermanentDelete = allow
-	if err := mgr.SetConfig(cfg); err != nil {
 		return Settings{}, err
 	}
 	return Settings{Enabled: cfg.Enabled, AllowPermanentDelete: cfg.AllowPermanentDelete}, nil

@@ -136,6 +136,13 @@ func (m *Manager) SetConfig(cfg Config) error {
 	return m.config.Save(cfg)
 }
 
+// UpdateConfig changes the settings on disk with fn; see ConfigStore.Update.
+func (m *Manager) UpdateConfig(fn func(*Config)) (Config, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.config.Update(fn)
+}
+
 const tokenTTL = 5 * time.Minute
 
 type operation struct {

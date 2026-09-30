@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 	"strings"
 
 	"github.com/ginkcode/agent-sessions/internal/rpc"
@@ -13,11 +14,20 @@ import (
 
 // HostProbe reports system details of a remote host.
 type HostProbe struct {
-	OS               string // "linux" or "darwin"
-	Arch             string // "amd64" or "arm64"
-	Home             string // remote user $HOME
-	InstalledVersion string // version if installed, or empty
-	ServerPath       string // path to server executable if installed
+	OS   string // "linux" or "darwin"
+	Arch string // "amd64" or "arm64"
+	Home string // remote user $HOME
+	// Installed lists the server builds of this app version on the host
+	// ("<version>-<sha8>" directory names), newest first.
+	Installed []string
+}
+
+// maxInstalled caps the builds a probe reads, against a hostile listing.
+const maxInstalled = 64
+
+// Has reports whether the build dir tag is installed.
+func (p *HostProbe) Has(tag string) bool {
+	return slices.Contains(p.Installed, tag)
 }
 
 // Sentinel errors for probe failures.
@@ -53,20 +63,12 @@ func NormalizeArch(m string) (string, error) {
 }
 
 // ProbeHost probes a remote machine via SSH to detect OS, architecture, $HOME,
-// and whether the target server version is already installed.
-func ProbeHost(ctx context.Context, alias string, opts SSHOptions, expectedVersionTag string) (*HostProbe, error) {
+// and which server builds of appVersion are installed.
+func ProbeHost(ctx context.Context, alias string, opts SSHOptions, appVersion string) (*HostProbe, error) {
 	nonce := rpc.GenerateNonce()
 	preface := rpc.FormatPreface(nonce)
 
-	// expectedVersionTag may be a full directory name ("0.3.0-0123abcd") or a
-	// version prefix ("0.3.0"). A prefix matches the newest directory that
-	// starts with it, which is how a redeploy of the same version is found
-	// without knowing the bundle checksum yet.
-	remoteScript := fmt.Sprintf(
-		`echo %[1]s; uname -s; uname -m; echo "$HOME"; d=$(ls -1dt "$HOME"/.cache/agent-sessions/server/%[2]s* 2>/dev/null | head -n 1); if [ -n "$d" ] && [ -x "$d/agent-sessions-cli" ]; then echo "INSTALLED:$d/agent-sessions-cli"; else echo "NOT_INSTALLED"; fi`,
-		QuotePOSIX(preface),
-		QuotePOSIX(expectedVersionTag),
-	)
+	remoteScript := probeScript(preface, appVersion)
 
 	// Run inside login shell $SHELL -lc to load PATH and env
 	shellCmd := []string{LoginShell, "-lc", remoteScript}
@@ -105,10 +107,13 @@ func ProbeHost(ctx context.Context, alias string, opts SSHOptions, expectedVersi
 	var lines []string
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
+		if line == "END" {
+			break
+		}
 		if line != "" {
 			lines = append(lines, line)
 		}
-		if len(lines) >= 4 {
+		if len(lines) >= 3+maxInstalled {
 			break
 		}
 	}
@@ -134,11 +139,43 @@ func ProbeHost(ctx context.Context, alias string, opts SSHOptions, expectedVersi
 		Arch: goArch,
 		Home: home,
 	}
-
-	if len(lines) >= 4 && strings.HasPrefix(lines[3], "INSTALLED:") {
-		probe.InstalledVersion = expectedVersionTag
-		probe.ServerPath = strings.TrimPrefix(lines[3], "INSTALLED:")
+	for _, line := range lines[3:] {
+		tag, ok := strings.CutPrefix(line, "INSTALLED:")
+		if ok && isBuildTag(appVersion, tag) {
+			probe.Installed = append(probe.Installed, tag)
+		}
 	}
-
 	return probe, nil
+}
+
+// isBuildTag reports whether tag is a build dir of appVersion:
+// "<version>-" followed by exactly 8 lowercase hex digits. The prefix alone
+// also matches other versions such as "<version>-rc1-…".
+func isBuildTag(appVersion, tag string) bool {
+	sum, ok := strings.CutPrefix(tag, appVersion+"-")
+	if !ok || len(sum) != 8 {
+		return false
+	}
+	for _, c := range sum {
+		if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
+			return false
+		}
+	}
+	return true
+}
+
+// probeScript prints the preface, uname -s, uname -m, $HOME, one
+// "INSTALLED:<dir>" line per server build of appVersion (newest first), and
+// END. Every build of the version is listed, not just one, so the client can
+// pick the one matching its own bundle: two builds of one version (a
+// rebuild, or clients built apart) must not run each other's server.
+func probeScript(preface, appVersion string) string {
+	return fmt.Sprintf(
+		`echo %[1]s; uname -s; uname -m; echo "$HOME"; `+
+			`ls -1dt "$HOME"%[2]s%[3]s* 2>/dev/null | while IFS= read -r d; do `+
+			`if [ -x "$d/agent-sessions-cli" ]; then echo "INSTALLED:${d##*/}"; fi; done; echo END`,
+		QuotePOSIX(preface),
+		QuotePOSIX(serverRoot),
+		QuotePOSIX(appVersion+"-"),
+	)
 }

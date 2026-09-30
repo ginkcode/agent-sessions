@@ -8,6 +8,9 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
+
+	"github.com/ginkcode/agent-sessions/internal/filelock"
 )
 
 // Config holds the user's opt-in settings for destructive session management
@@ -47,9 +50,46 @@ func (cs *ConfigStore) Load() (Config, error) {
 // Save atomically writes cfg to disk, preserving comments and other tables
 // in the existing file.
 func (cs *ConfigStore) Save(cfg Config) error {
+	_, err := cs.Update(func(c *Config) { *c = cfg })
+	return err
+}
+
+// configLockWait bounds how long Update waits for another process holding
+// the config lock, so a stalled holder cannot hang the settings RPCs.
+const configLockWait = 10 * time.Second
+
+// Update reads the file, applies fn and writes the result atomically, under
+// a lock other processes take too. Apps and remote servers of several
+// versions may share this file, so a change must start from what is on disk
+// now: two processes changing different keys at once both keep their
+// change. Builds older than this lock do not take it and can still
+// overwrite a concurrent change. Keys and tables this build does not know
+// are written back unchanged.
+func (cs *ConfigStore) Update(fn func(*Config)) (Config, error) {
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
-	return saveConfig(cs.path, cfg)
+	if cs.path == "" {
+		return Config{}, fmt.Errorf("manage: empty config path")
+	}
+	dir := filepath.Dir(cs.path)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return Config{}, fmt.Errorf("manage: create config dir: %w", err)
+	}
+	lock, err := filelock.Acquire(cs.path+".lock", configLockWait)
+	if err != nil {
+		return Config{}, fmt.Errorf("manage: lock config: %w", err)
+	}
+	defer func() { _ = lock.Unlock() }()
+
+	cfg, err := loadConfig(cs.path)
+	if err != nil {
+		return Config{}, err
+	}
+	fn(&cfg)
+	if err := saveConfig(cs.path, cfg); err != nil {
+		return Config{}, err
+	}
+	return cfg, nil
 }
 
 func loadConfig(path string) (Config, error) {

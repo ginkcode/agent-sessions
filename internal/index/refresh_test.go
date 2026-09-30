@@ -20,7 +20,7 @@ import (
 
 func newTestRefresher(t *testing.T, provs ...provider.Provider) (*Refresher, *DB) {
 	t.Helper()
-	db, err := Open(context.Background(), t.TempDir())
+	db, err := Open(context.Background(), t.TempDir(), "")
 	if err != nil {
 		t.Fatalf("Open failed: %v", err)
 	}
@@ -631,7 +631,7 @@ func TestBenchmarkWarmFirstPaint(t *testing.T) {
 	ctx := context.Background()
 
 	// 1. Prepare a cache database with 1,000 sessions
-	db, err := Open(ctx, tmpDir)
+	db, err := Open(ctx, tmpDir, "")
 	if err != nil {
 		t.Fatalf("Open failed: %v", err)
 	}
@@ -670,7 +670,7 @@ func TestBenchmarkWarmFirstPaint(t *testing.T) {
 	// 2. Measure warm first paint path: Open -> LoadCatalog -> Catalog.Reset
 	start := time.Now()
 
-	warmDB, err := Open(ctx, tmpDir)
+	warmDB, err := Open(ctx, tmpDir, "")
 	if err != nil {
 		t.Fatalf("warm Open failed: %v", err)
 	}

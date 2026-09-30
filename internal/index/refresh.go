@@ -37,6 +37,19 @@ func WithOnChanged(fn OnChangedFunc) RefresherOption {
 	}
 }
 
+// WithStates seeds the scan states of a Refresher without a database, such
+// as a reader's, so its first scans are incremental from that point.
+func WithStates(states map[model.AgentID]provider.ScanState) RefresherOption {
+	return func(r *Refresher) {
+		if r.db != nil {
+			return
+		}
+		for id, st := range states {
+			r.states[id] = st
+		}
+	}
+}
+
 // Refresher coordinates incremental session scanning, private cache commits,
 // and in-memory catalog synchronization across providers.
 type Refresher struct {
@@ -49,6 +62,7 @@ type Refresher struct {
 	onChanged   OnChangedFunc
 
 	generation atomic.Uint64
+	retired    atomic.Bool
 
 	locksMu sync.Mutex
 	locks   map[model.AgentID]*sync.Mutex
@@ -137,6 +151,9 @@ func (r *Refresher) Refresh(ctx context.Context, p provider.Provider) ([]model.S
 
 	if err := ctx.Err(); err != nil {
 		return nil, nil, err
+	}
+	if r.retired.Load() {
+		return nil, nil, nil
 	}
 
 	// 2. Capture generation for staleness check after scan.
@@ -330,6 +347,18 @@ func (r *Refresher) providerLocks() []*sync.Mutex {
 		out = append(out, mu)
 	}
 	return out
+}
+
+// Retire stops this Refresher from touching the catalog again, so another
+// one can take it over. It returns once every Refresh in flight has finished;
+// later calls return without scanning.
+func (r *Refresher) Retire() {
+	r.retired.Store(true)
+	r.BumpGeneration()
+	for _, mu := range r.providerLocks() {
+		mu.Lock()
+		mu.Unlock() //nolint:staticcheck // waits for the holder
+	}
 }
 
 // ClearCache bumps the generation, rebuilds the private SQLite cache DB,

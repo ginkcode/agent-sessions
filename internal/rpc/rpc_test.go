@@ -182,31 +182,3 @@ func TestCancelRegistry(t *testing.T) {
 		t.Error("cancelling again should return false")
 	}
 }
-
-func TestAcquireCacheLock(t *testing.T) {
-	tmpDir := t.TempDir()
-
-	lock1, err := AcquireCacheLock(tmpDir)
-	if err != nil {
-		t.Fatalf("first AcquireCacheLock failed: %v", err)
-	}
-	defer lock1.Unlock()
-
-	// Second acquire should fail with ErrRemoteBusy
-	_, err = AcquireCacheLock(tmpDir)
-	if !errors.Is(err, ErrRemoteBusy) {
-		t.Fatalf("expected ErrRemoteBusy, got %v", err)
-	}
-
-	// Unlock first
-	if err := lock1.Unlock(); err != nil {
-		t.Fatalf("unlock failed: %v", err)
-	}
-
-	// Now second acquire should succeed
-	lock2, err := AcquireCacheLock(tmpDir)
-	if err != nil {
-		t.Fatalf("second AcquireCacheLock failed after unlock: %v", err)
-	}
-	_ = lock2.Unlock()
-}

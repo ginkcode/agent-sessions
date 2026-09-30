@@ -16,7 +16,7 @@ import (
 func TestSearchQueryParserAndSafety(t *testing.T) {
 	ctx := context.Background()
 	dir := t.TempDir()
-	db, err := index.Open(ctx, dir)
+	db, err := index.Open(ctx, dir, "")
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
@@ -167,7 +167,7 @@ func TestSearchQueryParserAndSafety(t *testing.T) {
 func TestSearchVisibilityGuard(t *testing.T) {
 	ctx := context.Background()
 	dir := t.TempDir()
-	db, err := index.Open(ctx, dir)
+	db, err := index.Open(ctx, dir, "")
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}

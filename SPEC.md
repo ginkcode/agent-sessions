@@ -43,7 +43,7 @@ coding tools (Claude Code, Codex CLI, OpenCode, …).
 | Frontend | Svelte + TypeScript + Vite (alt: React) | Lightweight; good fit for virtualized lists. |
 | Markdown / code | `marked` + `shiki` (or `highlight.js`) | Transcripts are markdown-heavy. |
 | SQLite (read) | `modernc.org/sqlite` (pure Go) | No cgo/sqlite version coupling; open tool DBs with `mode=ro`. |
-| Own index/cache | SQLite + FTS5 at `$XDG_CACHE_HOME/agent-sessions/index.db` | Fast startup + full-text search. |
+| Own index/cache | SQLite + FTS5 at `$XDG_CACHE_HOME/agent-sessions/index-v<N>-<roots>.db` | Fast startup + full-text search; files named by schema and by a hash of the provider roots let different app versions, and processes scanning different roots, share a host safely. |
 | File watching | `fsnotify` | Live updates of active sessions. |
 
 **Linux build deps:** `gcc`, `pkg-config`, `libgtk-3-dev`, `libwebkit2gtk-4.1-dev`
