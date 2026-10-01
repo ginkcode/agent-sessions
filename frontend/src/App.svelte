@@ -172,7 +172,7 @@
       <AgentSummary />
     </div>
 
-    <footer class="sidebar-footer">
+    <footer class="sidebar-footer" class:remote={connectionStore.isRemote}>
       <div class="footer-status">
         <HostSelector />
         {#if isWails}
@@ -394,6 +394,10 @@
     justify-content: space-between;
     padding: 0 6px 0 10px;
     font-size: 0.72rem;
+  }
+
+  .sidebar-footer.remote {
+    background: var(--remote-footer-bg);
   }
 
   .footer-status {
