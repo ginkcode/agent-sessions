@@ -25,11 +25,13 @@ import (
 // checkpoint preserves scanner state across incremental runs.
 // Counts and usage are saved so append resume avoids re-reading earlier lines.
 type checkpoint struct {
+	Version         int               `json:"version,omitempty"`
 	Meta            model.SessionMeta `json:"meta"`
 	LastAssistantID string            `json:"lastAssistantId,omitempty"`
 	AssistantIDs    map[string]bool   `json:"assistantIds,omitempty"`
 	CallIDs         map[string]bool   `json:"callIds,omitempty"`
 	FirstUserSeen   bool              `json:"firstUserSeen,omitempty"`
+	LastUserPrompt  string            `json:"lastUserPrompt,omitempty"`
 	MetaCWD         bool              `json:"metaCwd,omitempty"`
 	FirstLineTime   time.Time         `json:"firstLineTime,omitempty"`
 	LinesRead       int               `json:"linesRead,omitempty"`
@@ -39,6 +41,8 @@ type checkpoint struct {
 	path      string
 	lineNo    int
 }
+
+const checkpointVersion = 2
 
 // Rollout items known from Codex CLI source that are not conversational messages.
 // These are skipped safely without generating an unknown-type diagnostic.
@@ -222,6 +226,9 @@ func (c *checkpoint) handleMessage(role string, content gjson.Result, id string,
 				c.FirstUserSeen = true
 				c.Meta.FirstPrompt = model.TruncateRunes(model.OneLine(prompt), 300)
 			}
+			if prompt = model.TruncateRunes(model.OneLine(prompt), 300); prompt != "" {
+				c.LastUserPrompt = prompt
+			}
 		}
 	case "assistant":
 		if id != "" {
@@ -337,7 +344,9 @@ func (c *checkpoint) finalize(path string, modTime time.Time) model.SessionMeta 
 		meta.UpdatedAt = modTime.UTC()
 	}
 	if meta.Title == "" {
-		if meta.FirstPrompt != "" {
+		if c.LastUserPrompt != "" {
+			meta.Title = c.LastUserPrompt
+		} else if meta.FirstPrompt != "" { // Checkpoints written before LastUserPrompt existed.
 			meta.Title = meta.FirstPrompt
 		} else {
 			meta.Title = "(untitled)"
@@ -637,6 +646,8 @@ func (p *Provider) scanSource(ctx context.Context, path string, old provider.Sou
 		if err := json.Unmarshal(old.Checkpoint, &cp); err != nil {
 			out.diag.Warn(path, 0, "invalid scan checkpoint: %v", err)
 			resume = false
+		} else if cp.Version != checkpointVersion {
+			resume = false
 		}
 	}
 
@@ -712,6 +723,7 @@ func (p *Provider) scanSource(ctx context.Context, path string, old provider.Sou
 	}
 
 	cp.LinesRead = lineBase + r.LineNo()
+	cp.Version = checkpointVersion
 	out.meta = cp.finalize(path, info.ModTime())
 	if out.meta.CWD != "" {
 		out.meta.CWDMissing = !pathutil.Exists(out.meta.CWD)

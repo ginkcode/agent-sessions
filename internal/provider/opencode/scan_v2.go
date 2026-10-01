@@ -272,6 +272,35 @@ func (p *Provider) v2Counts(ctx context.Context, db v2Query, metas []model.Sessi
 		return fmt.Errorf("v2 first prompts: %w", err)
 	}
 
+	// Naming uses the latest user message with text while FirstPrompt remains
+	// the stable session-opening preview used by handoff and search.
+	titleQuery := `SELECT session_id, text FROM (
+		SELECT m.session_id, json_extract(m.data,'$.text') AS text,
+			ROW_NUMBER() OVER (PARTITION BY m.session_id ORDER BY m.seq DESC, m.id DESC) AS rn
+		FROM session_message AS m
+		WHERE m.session_id IN (` + in + `) AND m.type='user'
+			AND CASE WHEN json_valid(m.data) AND json_type(m.data,'$.text')='text'
+				THEN trim(json_extract(m.data,'$.text'), ' '||char(9,10,13))!='' ELSE 0 END
+	) WHERE rn=1`
+	rows, err = db.QueryContext(ctx, titleQuery, args...)
+	if err != nil {
+		return fmt.Errorf("v2 latest user prompts: %w", err)
+	}
+	for rows.Next() {
+		var id string
+		var text sql.NullString
+		if err := rows.Scan(&id, &text); err != nil {
+			_ = rows.Close()
+			return fmt.Errorf("v2 latest user prompts: %w", err)
+		}
+		if meta := byID[id]; meta != nil && meta.Title == "" {
+			meta.Title = model.TruncateRunes(model.OneLine(text.String), 300)
+		}
+	}
+	if err := closeRows(rows); err != nil {
+		return fmt.Errorf("v2 latest user prompts: %w", err)
+	}
+
 	return nil
 }
 

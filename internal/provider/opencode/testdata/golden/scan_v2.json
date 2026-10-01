@@ -8,7 +8,7 @@
     "cwd": "/source/worktree",
     "repoRoot": "/source/main",
     "cwdMissing": true,
-    "title": "Please fix this issue.",
+    "title": "follow-up",
     "firstPrompt": "Please fix this issue.",
     "model": "anthropic/claude-sonnet-4",
     "agentName": "build",

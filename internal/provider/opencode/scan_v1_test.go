@@ -15,7 +15,7 @@ func TestScanV1Only(t *testing.T) {
 	if _, err := f.db.Exec(`DROP TABLE session_v2; DROP TABLE session_message`); err != nil {
 		t.Fatal(err)
 	}
-	f.v1Session("v1", nil)
+	f.v1Session("v1", map[string]any{"title": nil})
 	f.v1Message("m-user", "v1", "user", 1_700_000_000_001)
 	f.v1Part("p-text", "m-user", "v1", 1_700_000_000_002, `{"type":"text","text":"first prompt"}`)
 	f.v1Message("m-synthetic", "v1", "user", 1_700_000_000_003)
@@ -24,6 +24,10 @@ func TestScanV1Only(t *testing.T) {
 	f.v1Part("p-compact", "m-compact", "v1", 1_700_000_000_006, `{"type":"compaction","auto":true}`)
 	f.v1Message("m-assistant", "v1", "assistant", 1_700_000_000_007)
 	f.v1Part("p-tool", "m-assistant", "v1", 1_700_000_000_008, `{"type":"tool","tool":"bash","callID":"c1","state":{"status":"completed","input":{},"output":"ok"}}`)
+	f.v1Message("m-follow-up", "v1", "user", 1_700_000_000_009)
+	f.v1Part("p-follow-up", "m-follow-up", "v1", 1_700_000_000_010, `{"type":"text","text":"latest prompt"}`)
+	f.v1Message("m-attach", "v1", "user", 1_700_000_000_011)
+	f.v1Part("p-attach", "m-attach", "v1", 1_700_000_000_012, `{"type":"file","mime":"image/png","url":"data:image/png;base64,AA=="}`)
 
 	result, err := New(f.root, nil).Scan(t.Context(), provider.ScanState{})
 	if err != nil {
@@ -33,14 +37,14 @@ func TestScanV1Only(t *testing.T) {
 		t.Fatalf("changed = %+v", result.Changed)
 	}
 	meta := result.Changed[0]
-	if meta.Ref.ID != "v1" || meta.FirstPrompt != "first prompt" || meta.Counts != (model.MessageCounts{User: 1, Assistant: 1, ToolCalls: 1}) {
+	if meta.Ref.ID != "v1" || meta.Title != "latest prompt" || meta.FirstPrompt != "first prompt" || meta.Counts != (model.MessageCounts{User: 3, Assistant: 1, ToolCalls: 1}) {
 		t.Fatalf("v1 meta = %+v", meta)
 	}
 	var checkpoint dbCheckpoint
 	if err := json.Unmarshal(result.State.Sources[filepath.Join(f.root, dbName)].Checkpoint, &checkpoint); err != nil {
 		t.Fatal(err)
 	}
-	if checkpoint.Version != 2 || checkpoint.Gen["v1"] != GenV1 {
+	if checkpoint.Version != dbCheckpointVersion || checkpoint.Gen["v1"] != GenV1 {
 		t.Fatalf("checkpoint = %+v", checkpoint)
 	}
 }

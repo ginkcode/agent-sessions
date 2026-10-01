@@ -71,7 +71,7 @@ func TestScanFixtures(t *testing.T) {
 			model:  "claude-sonnet-5", created: "2026-09-20T11:00:00Z", updated: "2026-09-20T11:00:06Z",
 		},
 		{
-			name: "compaction", prompt: "Summarize the work", title: "Summarize the work",
+			name: "compaction", prompt: "Summarize the work", title: "Continue with tests",
 			counts: model.MessageCounts{User: 2, Assistant: 2},
 			tokens: model.TokenUsage{Input: 500, Output: 70},
 			model:  "claude-sonnet-5", created: "2026-09-20T12:00:00Z", updated: "2026-09-20T12:02:10Z",
@@ -156,8 +156,26 @@ func TestScanTitlePrecedenceAndUsage(t *testing.T) {
 		t.Errorf("prompt fallback = %q", got)
 	}
 	cp.Meta.FirstPrompt = ""
+	cp.LastUserPrompt = ""
 	if got := cp.finalize(time.Time{}).Title; got != "(untitled)" {
 		t.Errorf("empty fallback = %q", got)
+	}
+}
+
+func TestScanTitleSkipsAttachmentOnlyLatestPrompt(t *testing.T) {
+	t.Parallel()
+	var cp checkpoint
+	var d provider.Diagnostics
+	for _, line := range []string{
+		`{"type":"user","message":{"content":"opening prompt"}}`,
+		`{"type":"user","message":{"content":[{"type":"text","text":"latest text prompt"}]}}`,
+		`{"type":"user","message":{"content":[{"type":"image","source":{"type":"base64","data":"AA=="}}]}}`,
+	} {
+		cp.consume([]byte(line), &d)
+	}
+	meta := cp.finalize(time.Time{})
+	if meta.Title != "latest text prompt" || meta.FirstPrompt != "opening prompt" || meta.Counts.User != 3 {
+		t.Errorf("meta = %+v", meta)
 	}
 }
 
@@ -362,7 +380,7 @@ func TestScanCheckpointJSONRoundtrip(t *testing.T) {
 	if err := json.Unmarshal(first.State.Sources[path].Checkpoint, &old); err != nil {
 		t.Fatal(err)
 	}
-	if old.Meta.Tokens != (model.TokenUsage{Input: 100, Output: 35, CacheRead: 30, CacheWrite: 10}) || old.PendingUsage != (model.TokenUsage{Input: 150, Output: 40}) || old.LastAssistantID != "msg-a2" {
+	if old.Version != checkpointVersion || old.Meta.Tokens != (model.TokenUsage{Input: 100, Output: 35, CacheRead: 30, CacheWrite: 10}) || old.PendingUsage != (model.TokenUsage{Input: 150, Output: 40}) || old.LastAssistantID != "msg-a2" {
 		t.Errorf("checkpoint = %+v", old)
 	}
 	f, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0o600)

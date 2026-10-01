@@ -16,7 +16,8 @@ type metaOrigin struct {
 }
 
 // finishMetas applies the generation-independent metadata rules after message
-// counts have supplied FirstPrompt. origins is keyed by the session ID.
+// counts have supplied FirstPrompt and, for untitled sessions, the latest
+// user prompt with text as Title. origins is keyed by the session ID.
 func (p *Provider) finishMetas(metas []model.SessionMeta, origins map[string]metaOrigin, d *provider.Diagnostics) {
 	for i := range metas {
 		meta := &metas[i]

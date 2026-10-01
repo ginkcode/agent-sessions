@@ -6,7 +6,7 @@
     },
     "sourcePath": "<fixture>",
     "cwd": "<fixture-cwd>",
-    "title": "Summarize the work",
+    "title": "Continue with tests",
     "firstPrompt": "Summarize the work",
     "model": "claude-sonnet-5",
     "createdAt": "2026-09-20T12:00:00Z",

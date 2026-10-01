@@ -31,7 +31,10 @@ type dbCheckpoint struct {
 	In      map[string]string            `json:"in"`
 }
 
-const genBoth = GenV2 + "+" + GenV1
+const (
+	dbCheckpointVersion = 3
+	genBoth             = GenV2 + "+" + GenV1
+)
 
 func membership(id string, v2Set, v1Set map[string]bool) string {
 	switch {
@@ -184,7 +187,7 @@ func (p *Provider) Scan(ctx context.Context, prev provider.ScanState) (provider.
 	}
 	slices.SortFunc(result.Changed, func(a, b model.SessionMeta) int { return cmp.Compare(a.Ref.Key(), b.Ref.Key()) })
 	slices.SortFunc(result.Removed, func(a, b model.SessionRef) int { return cmp.Compare(a.Key(), b.Key()) })
-	checkpoint, err := json.Marshal(dbCheckpoint{Version: 2, Metas: all, Gen: gens, In: in})
+	checkpoint, err := json.Marshal(dbCheckpoint{Version: dbCheckpointVersion, Metas: all, Gen: gens, In: in})
 	if err != nil {
 		return provider.ScanResult{}, fmt.Errorf("opencode database %q checkpoint: %w", path, err)
 	}
@@ -228,7 +231,7 @@ func decodeCheckpoint(path string, prev provider.ScanState) (dbCheckpoint, bool,
 		if previous.Metas == nil {
 			return dbCheckpoint{}, false, fmt.Errorf("opencode database %q: invalid v2 checkpoint; restore or reset the scan state explicitly", path)
 		}
-		previous.Version = 2
+		previous.Version = dbCheckpointVersion
 		previous.Gen = make(map[string]string, len(previous.Metas))
 		previous.In = make(map[string]string, len(previous.Metas))
 		for id := range previous.Metas {
@@ -236,7 +239,11 @@ func decodeCheckpoint(path string, prev provider.ScanState) (dbCheckpoint, bool,
 		}
 		return previous, true, nil
 	}
-	if previous.Version != 2 || previous.Metas == nil || previous.Gen == nil || previous.In == nil {
+	upgraded := previous.Version == 2
+	if upgraded {
+		previous.Version = dbCheckpointVersion
+	}
+	if previous.Version != dbCheckpointVersion || previous.Metas == nil || previous.Gen == nil || previous.In == nil {
 		return dbCheckpoint{}, false, fmt.Errorf("opencode database %q: invalid v2 checkpoint; restore or reset the scan state explicitly", path)
 	}
 	for id := range previous.Metas {
@@ -246,7 +253,7 @@ func decodeCheckpoint(path string, prev provider.ScanState) (dbCheckpoint, bool,
 			return dbCheckpoint{}, false, fmt.Errorf("opencode database %q: invalid v2 checkpoint; restore or reset the scan state explicitly", path)
 		}
 	}
-	return previous, false, nil
+	return previous, upgraded, nil
 }
 
 func (p *Provider) scanDBGenerations(ctx context.Context, tx *sql.Tx, hasProject bool, v1Columns map[string]bool, v2Ready, v1Ready bool, since int64, full bool, previous dbCheckpoint, d *provider.Diagnostics) (map[string]model.SessionMeta, map[string]string, map[string]string, int64, error) {

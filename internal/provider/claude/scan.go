@@ -27,6 +27,7 @@ import (
 // authoritative usage. Keeping that message pending prevents double-counting
 // when a scan resumes in the middle of it.
 type checkpoint struct {
+	Version         int               `json:"version,omitempty"`
 	Meta            model.SessionMeta `json:"meta"`
 	LastAssistantID string            `json:"lastAssistantId"`
 	PendingUsage    model.TokenUsage  `json:"pendingUsage"`
@@ -34,6 +35,7 @@ type checkpoint struct {
 	Summary         string            `json:"summary"`
 
 	FirstUserSeen         bool   `json:"firstUserSeen,omitempty"`
+	LastUserPrompt        string `json:"lastUserPrompt,omitempty"`
 	SubagentDescription   string `json:"subagentDescription,omitempty"`
 	SubagentMetaPath      string `json:"subagentMetaPath,omitempty"`
 	SubagentMetaSize      int64  `json:"subagentMetaSize,omitempty"`
@@ -42,6 +44,8 @@ type checkpoint struct {
 	path                  string
 	lineNo                int
 }
+
+const checkpointVersion = 2
 
 var ignoredRecordTypes = map[string]bool{
 	"attachment": true, "last-prompt": true, "mode": true,
@@ -94,6 +98,9 @@ func (c *checkpoint) consume(line []byte, d *provider.Diagnostics) {
 			if !c.FirstUserSeen {
 				c.FirstUserSeen = true
 				c.Meta.FirstPrompt = model.TruncateRunes(model.OneLine(text), 300)
+			}
+			if prompt := model.TruncateRunes(model.OneLine(text), 300); prompt != "" {
+				c.LastUserPrompt = prompt
 			}
 		}
 	case "assistant":
@@ -195,7 +202,9 @@ func (c *checkpoint) finalize(fileModTime time.Time) model.SessionMeta {
 		meta.Title = c.SubagentDescription
 	case c.Summary != "":
 		meta.Title = c.Summary
-	case meta.FirstPrompt != "":
+	case c.LastUserPrompt != "":
+		meta.Title = c.LastUserPrompt
+	case meta.FirstPrompt != "": // Checkpoints written before LastUserPrompt existed.
 		meta.Title = meta.FirstPrompt
 	default:
 		meta.Title = "(untitled)"
@@ -311,6 +320,8 @@ func (p *Provider) scanSource(ctx context.Context, src source, old provider.Sour
 		if err := json.Unmarshal(old.Checkpoint, &cp); err != nil {
 			out.diag.Warn(src.Path, 0, "invalid scan checkpoint: %v", err)
 			resume = false
+		} else if cp.Version != checkpointVersion {
+			resume = false
 		}
 	}
 	metaSize, metaModTimeNs := subagentMetaStat(src.MetaPath)
@@ -393,6 +404,7 @@ func (p *Provider) scanSource(ctx context.Context, src source, old provider.Sour
 		cp.consume(line, &out.diag)
 	}
 	cp.LinesRead = lineBase + r.LineNo()
+	cp.Version = checkpointVersion
 	out.meta = cp.finalize(info.ModTime())
 	if out.meta.CWD != "" {
 		out.meta.CWDMissing = !pathutil.Exists(out.meta.CWD)

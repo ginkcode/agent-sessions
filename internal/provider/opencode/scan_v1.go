@@ -289,6 +289,39 @@ func (p *Provider) v1Counts(ctx context.Context, db v2Query, metas []model.Sessi
 	if err := closeRows(rows); err != nil {
 		return fmt.Errorf("v1 first prompts: %w", err)
 	}
+
+	// Keep FirstPrompt as the opening preview, but name untitled sessions from
+	// their latest user message with non-synthetic text. Attachment-only turns
+	// are skipped so they do not blank the name.
+	titleQuery := `WITH texts AS (
+		SELECT m.session_id, json_extract(p.data,'$.text') AS text,
+			ROW_NUMBER() OVER (PARTITION BY m.session_id ORDER BY m.time_created DESC, m.id DESC, p.id) AS rn
+		FROM message AS m JOIN part AS p ON p.message_id=m.id
+		WHERE m.session_id IN (` + in + `)
+			AND CASE WHEN json_valid(m.data) THEN json_extract(m.data,'$.role')='user' ELSE 0 END
+			AND CASE WHEN json_valid(p.data) THEN json_extract(p.data,'$.type')='text' ELSE 0 END
+			AND CASE WHEN json_valid(p.data) THEN COALESCE(json_extract(p.data,'$.synthetic'),0)=0 ELSE 0 END
+			AND CASE WHEN json_valid(p.data) THEN trim(json_extract(p.data,'$.text'), ' '||char(9,10,13))!='' ELSE 0 END
+	)
+	SELECT session_id, text FROM texts WHERE rn=1`
+	rows, err = db.QueryContext(ctx, titleQuery, args...)
+	if err != nil {
+		return fmt.Errorf("v1 latest user prompts: %w", err)
+	}
+	for rows.Next() {
+		var id string
+		var text sql.NullString
+		if err := rows.Scan(&id, &text); err != nil {
+			_ = rows.Close()
+			return fmt.Errorf("v1 latest user prompts: %w", err)
+		}
+		if meta := byID[id]; meta != nil && meta.Title == "" {
+			meta.Title = model.TruncateRunes(model.OneLine(text.String), 300)
+		}
+	}
+	if err := closeRows(rows); err != nil {
+		return fmt.Errorf("v1 latest user prompts: %w", err)
+	}
 	return nil
 }
 

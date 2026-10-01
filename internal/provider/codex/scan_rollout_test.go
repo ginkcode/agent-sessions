@@ -12,6 +12,7 @@ import (
 
 	"github.com/ginkcode/agent-sessions/internal/model"
 	"github.com/ginkcode/agent-sessions/internal/provider"
+	"github.com/tidwall/gjson"
 )
 
 // writeRollout writes a rollout with content under root/sessions/<date>/ and
@@ -213,6 +214,9 @@ func TestScan_UnchangedSkipsAndIncrementalAppend(t *testing.T) {
 	}
 	if got.Counts.User != 2 || got.Counts.Assistant != 3 || got.Counts.ToolCalls != 3 {
 		t.Errorf("resumed Counts = %+v", got.Counts)
+	}
+	if got.Title != "Follow-up" || got.FirstPrompt != "First real prompt" {
+		t.Errorf("resumed title/first prompt = %q / %q", got.Title, got.FirstPrompt)
 	}
 	if got.UpdatedAt != want.UpdatedAt || got.CreatedAt != want.CreatedAt {
 		t.Errorf("resumed times differ: got %v/%v want %v/%v", got.CreatedAt, got.UpdatedAt, want.CreatedAt, want.UpdatedAt)
@@ -537,6 +541,21 @@ func TestScan_CompactedNotCounted(t *testing.T) {
 	}
 }
 
+func TestTitleSkipsAttachmentOnlyLatestPrompt(t *testing.T) {
+	var cp checkpoint
+	for _, content := range []string{
+		`[{"type":"input_text","text":"opening prompt"}]`,
+		`[{"type":"input_text","text":"latest text prompt"}]`,
+		`[{"type":"input_image","image_url":"data:image/png;base64,AA=="}]`,
+	} {
+		cp.handleMessage("user", gjson.Parse(content), "", nil)
+	}
+	meta := cp.finalize("", time.Time{})
+	if meta.Title != "latest text prompt" || meta.FirstPrompt != "opening prompt" || meta.Counts.User != 3 {
+		t.Errorf("meta = %+v", meta)
+	}
+}
+
 func TestCheckpointRoundTrip(t *testing.T) {
 	root := t.TempDir()
 	writeBasic(t, root)
@@ -552,6 +571,9 @@ func TestCheckpointRoundTrip(t *testing.T) {
 	var cp checkpoint
 	if err := json.Unmarshal(res.State.Sources[path].Checkpoint, &cp); err != nil {
 		t.Fatalf("unmarshal checkpoint: %v", err)
+	}
+	if cp.Version != checkpointVersion {
+		t.Errorf("checkpoint version = %d, want %d", cp.Version, checkpointVersion)
 	}
 	if cp.Meta.Ref.ID != res.Changed[0].Ref.ID {
 		t.Errorf("checkpoint meta ID = %q, want %q", cp.Meta.Ref.ID, res.Changed[0].Ref.ID)

@@ -364,12 +364,15 @@ func TestScanFirstPromptPreferenceAndTruncation(t *testing.T) {
 	}
 }
 
-func TestScanTitleFallbackToFirstPrompt(t *testing.T) {
+func TestScanTitleFallbackToLatestUserPrompt(t *testing.T) {
 	f := newScanFixture(t)
 	f.session("s1", map[string]any{"title": nil})
-	f.message("s1", "user", 1, `{"text":"the prompt"}`)
+	f.message("s1", "user", 1, `{"text":"the opening prompt"}`)
+	f.message("s1", "user", 2, `{"text":"the latest prompt"}`)
+	f.message("s1", "user", 3, `{"text":"  \n "}`)
+	f.message("s1", "user", 4, `{"files":[{"name":"a.png"}]}`)
 	got := f.metas(t)
-	if len(got) != 1 || got[0].Title != "the prompt" {
+	if len(got) != 1 || got[0].Title != "the latest prompt" || got[0].FirstPrompt != "the opening prompt" {
 		t.Fatalf("title fallback = %+v", got)
 	}
 }
