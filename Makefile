@@ -7,10 +7,9 @@ VERSION_PKG ?= github.com/ginkcode/agent-sessions/internal/version
 LDFLAGS ?= -s -w -X $(VERSION_PKG).Version=$(VERSION)
 ARCH ?= $(shell $(GO) env GOARCH)
 NFPM ?= $(GO) run github.com/goreleaser/nfpm/v2/cmd/nfpm@v2.47.0
-MACOS_APPICON := frontend/assets/Icon-iOS-Default-1024@1x.png
-UNIVERSAL_APPICON := frontend/assets/Icon-universal.png
-# Wails reads build/appicon.png for the macOS icns and the Windows ico.
-HOST_APPICON := $(if $(filter Darwin,$(shell uname -s)),$(MACOS_APPICON),$(UNIVERSAL_APPICON))
+# One icon source for every platform. Wails reads build/appicon.png for the
+# macOS icns and the Windows ico.
+APPICON := frontend/assets/Icon-universal.png
 
 .PHONY: test test-ssh lint fmt cli fuzz-smoke golden build clean dev app gui-build check-gui-deps package-linux package-macos \
 	remote-servers version tags set-version tag untag release help check-app-icons app-icon
@@ -101,21 +100,18 @@ gui-build: check-gui-deps
 	cd frontend && npm run check && npm run build
 	$(GO) build -tags "$(WAILS_TAGS),production" -trimpath -ldflags "$(LDFLAGS)" -o build/bin/agent-sessions ./cmd/agent-sessions
 
-# Verify the canonical platform icon sources before packaging them. Both stay
-# 1024px so Wails can generate every macOS/Windows representation from them.
+# Verify the icon source before packaging it. It stays 1024px so Wails can
+# generate every macOS/Windows representation from it.
 check-app-icons:
-	@set -e; \
-	for icon in "$(MACOS_APPICON)" "$(UNIVERSAL_APPICON)"; do \
-		case "$$(file -b "$$icon")" in \
-			'PNG image data, 1024 x 1024, '*'RGBA'*) ;; \
-			*) echo "$$icon must be a 1024x1024 RGBA PNG" >&2; exit 1 ;; \
-		esac; \
-	done
+	@case "$$(file -b "$(APPICON)")" in \
+		'PNG image data, 1024 x 1024, '*'RGBA'*) ;; \
+		*) echo "$(APPICON) must be a 1024x1024 RGBA PNG" >&2; exit 1 ;; \
+	esac
 
-# Stage this host's icon where Wails looks for it.
+# Stage the icon where Wails looks for it.
 app-icon: check-app-icons
 	mkdir -p build
-	cp "$(HOST_APPICON)" build/appicon.png
+	cp "$(APPICON)" build/appicon.png
 
 # Linux .deb and .rpm packages in dist/, wrapping the gui-build binary.
 # Runtime dependencies are declared in packaging/nfpm.yaml. The package ships
@@ -142,7 +138,7 @@ package-macos: check-app-icons
 	backup=$$(mktemp ./wails.json.release.XXXXXX); \
 	cp -p wails.json "$$backup"; \
 	mkdir -p build; \
-	cp "$(MACOS_APPICON)" build/appicon.png; \
+	cp "$(APPICON)" build/appicon.png; \
 	trap 'mv "$$backup" wails.json' EXIT; \
 	jq --arg root "$$root" '.projectdir = ($$root + "/cmd/agent-sessions") | .["build:dir"] = ($$root + "/build")' \
 		"$$backup" > wails.json; \
