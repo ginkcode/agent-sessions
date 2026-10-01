@@ -26,6 +26,7 @@
   import { hasOpenModal, isEditableTarget } from './lib/search';
   import { api } from './lib/api';
   import { formatVersion } from './lib/format';
+  import { themeButtonTitle } from './lib/theme';
 
   let isWails = $state(false);
   let appVersion = $state('');
@@ -126,9 +127,9 @@
         <button
           type="button"
           class="icon-button theme-toggle"
-          title="Toggle Theme ({theme.mode} mode, resolved: {theme.resolved})"
+          title={themeButtonTitle(theme.mode, theme.resolved)}
           onclick={() => theme.toggle()}
-          aria-label="Toggle theme"
+          aria-label={themeButtonTitle(theme.mode, theme.resolved)}
         >
           <svg
             width="16"
@@ -141,7 +142,10 @@
             stroke-linejoin="round"
             aria-hidden="true"
           >
-            {#if theme.resolved === 'dark'}
+            {#if theme.mode === 'system'}
+              <rect x="2" y="3" width="20" height="14" rx="2" />
+              <path d="M8 21h8M12 17v4" />
+            {:else if theme.mode === 'dark'}
               <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
             {:else}
               <circle cx="12" cy="12" r="5" />

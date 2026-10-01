@@ -1,10 +1,12 @@
-export type ThemeMode = 'system' | 'light' | 'dark';
+import { isThemeMode, nextThemeMode, resolveTheme, type ResolvedTheme, type ThemeMode } from '../theme';
+
+export type { ThemeMode } from '../theme';
 
 const STORAGE_KEY = 'agent-sessions:theme';
 
 export class ThemeStore {
   mode = $state<ThemeMode>('system');
-  resolved = $state<'light' | 'dark'>('dark');
+  resolved = $state<ResolvedTheme>('dark');
 
   private mediaQuery: MediaQueryList | null = null;
   private listener: ((e: MediaQueryListEvent) => void) | null = null;
@@ -12,15 +14,16 @@ export class ThemeStore {
   init(): void {
     if (typeof window === 'undefined') return;
 
-    const saved = localStorage.getItem(STORAGE_KEY) as ThemeMode | null;
-    if (saved && (saved === 'system' || saved === 'light' || saved === 'dark')) {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (isThemeMode(saved)) {
       this.mode = saved;
     }
 
+    // System mode follows the OS live, e.g. when it switches at sunset.
     this.mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
-    this.listener = (e: MediaQueryListEvent) => {
+    this.listener = () => {
       if (this.mode === 'system') {
-        this.resolved = e.matches ? 'dark' : 'light';
+        this.updateResolved();
         this.applyDOM();
       }
     };
@@ -39,21 +42,13 @@ export class ThemeStore {
     this.applyDOM();
   }
 
+  // Steps System → Light → Dark → System.
   toggle(): void {
-    if (this.resolved === 'dark') {
-      this.setMode('light');
-    } else {
-      this.setMode('dark');
-    }
+    this.setMode(nextThemeMode(this.mode));
   }
 
   private updateResolved(): void {
-    if (this.mode === 'system') {
-      const prefersDark = this.mediaQuery ? this.mediaQuery.matches : false;
-      this.resolved = prefersDark ? 'dark' : 'light';
-    } else {
-      this.resolved = this.mode;
-    }
+    this.resolved = resolveTheme(this.mode, this.mediaQuery?.matches ?? false);
   }
 
   private applyDOM(): void {

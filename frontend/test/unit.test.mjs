@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { formatTokens, formatCost, formatBytes, formatVersion } from '../src/lib/format.ts';
+import { isThemeMode, nextThemeMode, resolveTheme, themeButtonTitle } from '../src/lib/theme.ts';
 import { formatRelativeTime, formatAbsoluteTime, isKnownTime, formatAgo } from '../src/lib/date.ts';
 import { highlightCode, detectLanguage } from '../src/lib/highlight.ts';
 import { renderMarkdown } from '../src/lib/markdown.ts';
@@ -1085,4 +1086,30 @@ test('formatVersion prefixes release versions with v', () => {
 
 test('MockBackendAPI appVersion reports a dev build', async () => {
   assert.equal(await new MockBackendAPI().appVersion(), 'dev');
+});
+
+test('nextThemeMode cycles system, light, dark', () => {
+  assert.equal(nextThemeMode('system'), 'light');
+  assert.equal(nextThemeMode('light'), 'dark');
+  assert.equal(nextThemeMode('dark'), 'system');
+});
+
+test('resolveTheme follows the OS only in system mode', () => {
+  assert.equal(resolveTheme('system', true), 'dark');
+  assert.equal(resolveTheme('system', false), 'light');
+  assert.equal(resolveTheme('light', true), 'light');
+  assert.equal(resolveTheme('dark', false), 'dark');
+});
+
+test('isThemeMode accepts only known saved values', () => {
+  assert.ok(isThemeMode('system'));
+  assert.ok(isThemeMode('dark'));
+  assert.ok(!isThemeMode('auto'));
+  assert.ok(!isThemeMode(null));
+});
+
+test('themeButtonTitle names the current mode and the next one', () => {
+  assert.equal(themeButtonTitle('system', 'dark'), 'Theme: System (dark). Click for Light');
+  assert.equal(themeButtonTitle('light', 'light'), 'Theme: Light. Click for Dark');
+  assert.equal(themeButtonTitle('dark', 'dark'), 'Theme: Dark. Click for System');
 });
