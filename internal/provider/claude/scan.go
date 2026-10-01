@@ -37,6 +37,7 @@ type checkpoint struct {
 	FirstUserSeen         bool   `json:"firstUserSeen,omitempty"`
 	LastUserPrompt        string `json:"lastUserPrompt,omitempty"`
 	SubagentDescription   string `json:"subagentDescription,omitempty"`
+	SubagentTask          string `json:"subagentTask,omitempty"`
 	SubagentMetaPath      string `json:"subagentMetaPath,omitempty"`
 	SubagentMetaSize      int64  `json:"subagentMetaSize,omitempty"`
 	SubagentMetaModTimeNs int64  `json:"subagentMetaModTimeNs,omitempty"`
@@ -45,7 +46,7 @@ type checkpoint struct {
 	lineNo                int
 }
 
-const checkpointVersion = 2
+const checkpointVersion = 3
 
 var ignoredRecordTypes = map[string]bool{
 	"attachment": true, "last-prompt": true, "mode": true,
@@ -89,7 +90,16 @@ func (c *checkpoint) consume(line []byte, d *provider.Diagnostics) {
 
 	switch kind := gjson.GetBytes(line, "type").String(); kind {
 	case "user":
-		if gjson.GetBytes(line, "isMeta").Bool() || gjson.GetBytes(line, "isCompactSummary").Bool() {
+		if gjson.GetBytes(line, "isCompactSummary").Bool() {
+			return
+		}
+		if gjson.GetBytes(line, "isMeta").Bool() {
+			// A subagent's task prompt can arrive as its opening meta record.
+			// It names the subagent when the spawn metadata has no description.
+			if c.Meta.ParentID != "" && !c.FirstUserSeen && c.SubagentTask == "" {
+				text, _ := userContent(gjson.GetBytes(line, "message.content"))
+				c.SubagentTask = model.TruncateRunes(model.OneLine(text), 300)
+			}
 			return
 		}
 		text, counts := userContent(gjson.GetBytes(line, "message.content"))
@@ -99,7 +109,7 @@ func (c *checkpoint) consume(line []byte, d *provider.Diagnostics) {
 				c.FirstUserSeen = true
 				c.Meta.FirstPrompt = model.TruncateRunes(model.OneLine(text), 300)
 			}
-			if prompt := model.TruncateRunes(model.OneLine(text), 300); prompt != "" {
+			if prompt := model.TruncateRunes(model.OneLine(text), 300); prompt != "" && !isHarnessNotice(text) {
 				c.LastUserPrompt = prompt
 			}
 		}
@@ -179,6 +189,13 @@ func userContent(content gjson.Result) (string, bool) {
 	return prompt, counts
 }
 
+// isHarnessNotice reports user records that Claude Code writes on the user's
+// behalf. They still count as user turns but never name a session.
+func isHarnessNotice(text string) bool {
+	text = strings.TrimSpace(text)
+	return strings.HasPrefix(text, "<task-notification>") || strings.HasPrefix(text, "[Request interrupted by user")
+}
+
 func isCommandText(text string) bool {
 	text = strings.TrimSpace(text)
 	for _, prefix := range []string{"<command-", "<local-command-", "Caveat:", "<system-reminder>"} {
@@ -200,6 +217,8 @@ func (c *checkpoint) finalize(fileModTime time.Time) model.SessionMeta {
 		meta.Title = c.AITitle
 	case c.SubagentDescription != "":
 		meta.Title = c.SubagentDescription
+	case c.SubagentTask != "":
+		meta.Title = c.SubagentTask
 	case c.Summary != "":
 		meta.Title = c.Summary
 	case c.LastUserPrompt != "":

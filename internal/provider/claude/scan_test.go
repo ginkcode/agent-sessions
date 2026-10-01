@@ -170,12 +170,45 @@ func TestScanTitleSkipsAttachmentOnlyLatestPrompt(t *testing.T) {
 		`{"type":"user","message":{"content":"opening prompt"}}`,
 		`{"type":"user","message":{"content":[{"type":"text","text":"latest text prompt"}]}}`,
 		`{"type":"user","message":{"content":[{"type":"image","source":{"type":"base64","data":"AA=="}}]}}`,
+		`{"type":"user","message":{"content":[{"type":"text","text":"[Request interrupted by user for tool use]"}]}}`,
+		`{"type":"user","message":{"content":"<task-notification> <task-id>a1</task-id> </task-notification>"}}`,
 	} {
 		cp.consume([]byte(line), &d)
 	}
 	meta := cp.finalize(time.Time{})
-	if meta.Title != "latest text prompt" || meta.FirstPrompt != "opening prompt" || meta.Counts.User != 3 {
+	if meta.Title != "latest text prompt" || meta.FirstPrompt != "opening prompt" || meta.Counts.User != 5 {
 		t.Errorf("meta = %+v", meta)
+	}
+}
+
+func TestScanSubagentTitleFromMetaTaskPrompt(t *testing.T) {
+	t.Parallel()
+	lines := []string{
+		`{"type":"user","isMeta":true,"message":{"content":"Review target:\n  T-080 router changes"}}`,
+		`{"type":"user","isMeta":true,"message":{"content":"later injected context"}}`,
+		`{"type":"user","message":{"content":[{"type":"tool_result","content":"output"}]}}`,
+		`{"type":"user","message":{"content":[{"type":"text","text":"[Request interrupted by user]"}]}}`,
+	}
+	consume := func(cp *checkpoint) model.SessionMeta {
+		var d provider.Diagnostics
+		for _, line := range lines {
+			cp.consume([]byte(line), &d)
+		}
+		return cp.finalize(time.Time{})
+	}
+
+	sub := checkpoint{Meta: model.SessionMeta{ParentID: "parent"}}
+	if got := consume(&sub).Title; got != "Review target: T-080 router changes" {
+		t.Errorf("subagent title = %q", got)
+	}
+	sub.SubagentDescription = "Spawn description"
+	if got := sub.finalize(time.Time{}).Title; got != "Spawn description" {
+		t.Errorf("description precedence = %q", got)
+	}
+	// Main sessions keep ignoring meta records, which hold injected context.
+	var main checkpoint
+	if got := consume(&main).Title; got != "[Request interrupted by user]" {
+		t.Errorf("main session title = %q", got)
 	}
 }
 
