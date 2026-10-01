@@ -24,7 +24,7 @@ contents:
     dst: /usr/share/applications/agent-sessions.desktop
     file_info:
       mode: 0644
-  - src: build/appicon.png
+  - src: frontend/assets/Icon-universal.png
     dst: /usr/share/pixmaps/agent-sessions.png
     file_info:
       mode: 0644

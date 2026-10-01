@@ -51,6 +51,7 @@ func run() {
 		OnShutdown:  application.OnShutdown,
 		Bind:        []interface{}{application},
 		Linux: &linux.Options{
+			Icon:             frontend.AppIcon,
 			WebviewGpuPolicy: linux.WebviewGpuPolicyOnDemand,
 			ProgramName:      "agent-sessions",
 		},
