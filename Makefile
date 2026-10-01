@@ -141,6 +141,7 @@ package-macos: check-app-icons
 	root=$$(pwd); \
 	backup=$$(mktemp ./wails.json.release.XXXXXX); \
 	cp -p wails.json "$$backup"; \
+	mkdir -p build; \
 	cp "$(MACOS_APPICON)" build/appicon.png; \
 	trap 'mv "$$backup" wails.json' EXIT; \
 	jq --arg root "$$root" '.projectdir = ($$root + "/cmd/agent-sessions") | .["build:dir"] = ($$root + "/build")' \
