@@ -3,6 +3,8 @@
   import { BUDGET_PRESETS, ALL_AGENTS } from '../../portable';
   import { formatBytes, formatTokens } from '../../format';
   import AgentIcon from './AgentIcon.svelte';
+  import RemoteCommandNote from './RemoteCommandNote.svelte';
+  import { link } from '../../stores/link.svelte';
 
   let previewTab = $state<'prompt' | 'full'>('prompt');
 
@@ -374,6 +376,9 @@
                   </button>
                 </div>
                 <pre class="command-code"><code>{importer.preview.command}</code></pre>
+                {#if link.dataHost}
+                  <RemoteCommandNote host={link.dataHost} />
+                {/if}
               </div>
 
               <!-- Document Preview -->

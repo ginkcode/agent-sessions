@@ -25,13 +25,3 @@ func QuoteArgs(args []string) string {
 	}
 	return strings.Join(quoted, " ")
 }
-
-// WrapSSHCommand formats a command to execute on a remote host via interactive ssh (`ssh -t <alias> '<cmd>'`).
-// If alias or cmd is empty, the original command is returned unchanged.
-func WrapSSHCommand(alias, cmd string) string {
-	if alias == "" || cmd == "" {
-		return cmd
-	}
-	return "ssh -t " + alias + " " + QuotePOSIX(cmd)
-}
-

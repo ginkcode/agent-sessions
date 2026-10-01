@@ -157,12 +157,13 @@ func TestRemote_CommandWrappingAndRevealSource(t *testing.T) {
 	a := setupRemoteApp(stub)
 	ref := model.SessionRef{Agent: model.AgentClaude, ID: "session-1"}
 
-	// 1. CopyResumeCommand wrapped with ssh -t
+	// 1. CopyResumeCommand is returned as built on the remote host, for an
+	// interactive shell there; no ssh wrapping.
 	cmd, err := a.CopyResumeCommand(ref)
 	if err != nil {
 		t.Fatalf("CopyResumeCommand: %v", err)
 	}
-	wantResume := "ssh -t remote-server 'claude resume '\\''session 123'\\'''"
+	wantResume := "claude resume 'session 123'"
 	if cmd != wantResume {
 		t.Errorf("CopyResumeCommand = %q, want %q", cmd, wantResume)
 	}
@@ -173,42 +174,42 @@ func TestRemote_CommandWrappingAndRevealSource(t *testing.T) {
 		t.Errorf("RevealSource err = %v, want 'not supported on remote hosts'", err)
 	}
 
-	// 3. HandoffCommand wrapped with ssh -t
+	// 3. HandoffCommand unwrapped
 	hCmd, err := a.HandoffCommand(engine.HandoffRequest{Ref: ref})
 	if err != nil {
 		t.Fatalf("HandoffCommand: %v", err)
 	}
-	wantHandoff := "ssh -t remote-server 'cd /remote/cwd && opencode'"
+	wantHandoff := "cd /remote/cwd && opencode"
 	if hCmd != wantHandoff {
 		t.Errorf("HandoffCommand = %q, want %q", hCmd, wantHandoff)
 	}
 
-	// 4. BuildHandoff preview.Command wrapped with ssh -t
+	// 4. BuildHandoff preview.Command unwrapped
 	p, err := a.BuildHandoff(engine.HandoffRequest{Ref: ref})
 	if err != nil {
 		t.Fatalf("BuildHandoff: %v", err)
 	}
-	wantPreview := "ssh -t remote-server 'claude --prompt foo'"
+	wantPreview := "claude --prompt foo"
 	if p.Command != wantPreview {
 		t.Errorf("BuildHandoff Command = %q, want %q", p.Command, wantPreview)
 	}
 
-	// 5. BundleHandoffCommand wrapped with ssh -t
+	// 5. BundleHandoffCommand unwrapped
 	bCmd, err := a.BundleHandoffCommand(engine.BundleHandoffRequest{BundleID: "b-1"})
 	if err != nil {
 		t.Fatalf("BundleHandoffCommand: %v", err)
 	}
-	wantBundle := "ssh -t remote-server 'cd /remote/bundle && codex'"
+	wantBundle := "cd /remote/bundle && codex"
 	if bCmd != wantBundle {
 		t.Errorf("BundleHandoffCommand = %q, want %q", bCmd, wantBundle)
 	}
 
-	// 6. BuildBundleHandoff preview.Command wrapped with ssh -t
+	// 6. BuildBundleHandoff preview.Command unwrapped
 	bp, err := a.BuildBundleHandoff(engine.BundleHandoffRequest{BundleID: "b-1"})
 	if err != nil {
 		t.Fatalf("BuildBundleHandoff: %v", err)
 	}
-	wantBundlePreview := "ssh -t remote-server 'codex --handoff bar'"
+	wantBundlePreview := "codex --handoff bar"
 	if bp.Command != wantBundlePreview {
 		t.Errorf("BuildBundleHandoff Command = %q, want %q", bp.Command, wantBundlePreview)
 	}

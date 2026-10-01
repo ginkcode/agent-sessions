@@ -27,6 +27,7 @@ import {
   isStale,
   isStaleReply,
   nextLink,
+  resumeButtonTitle,
 } from '../src/lib/link.ts';
 import {
   LatestRequestGate,
@@ -1112,4 +1113,12 @@ test('themeButtonTitle names the current mode and the next one', () => {
   assert.equal(themeButtonTitle('system', 'dark'), 'Theme: System (dark). Click for Light');
   assert.equal(themeButtonTitle('light', 'light'), 'Theme: Light. Click for Dark');
   assert.equal(themeButtonTitle('dark', 'dark'), 'Theme: Dark. Click for System');
+});
+
+test('resumeButtonTitle tells remote users to paste into a shell on the host', () => {
+  assert.equal(resumeButtonTitle(undefined), 'Copy shell command to resume this session');
+  assert.equal(
+    resumeButtonTitle('plgl'),
+    'Copy shell command to resume this session. Run it on plgl: open a shell with "ssh plgl", then paste it.',
+  );
 });

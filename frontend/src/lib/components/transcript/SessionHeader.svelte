@@ -9,6 +9,7 @@
   import { ALL_AGENTS } from '../../portable';
   import AgentIcon from '../common/AgentIcon.svelte';
   import { link } from '../../stores/link.svelte';
+  import { resumeButtonTitle } from '../../link';
 
   interface Props {
     meta: SessionMeta;
@@ -90,7 +91,7 @@
       <button
         type="button"
         class="action-btn resume-btn"
-        title="Copy shell command to resume this session"
+        title={resumeButtonTitle(link.dataHost)}
         onclick={onResume}
       >
         {resumeCopied ? '✓ Copied' : 'Resume'}

@@ -21,23 +21,12 @@ type HandoffCacheInfo = engine.HandoffCacheInfo
 
 // BuildHandoff renders the handoff document preview for the desktop frontend.
 func (a *App) BuildHandoff(req HandoffRequest) (HandoffPreview, error) {
-	r := a.route()
-	preview, err := r.backend.BuildHandoff(a.appCtx(), req)
-	if err != nil {
-		return preview, err
-	}
-	preview.Command = r.wrap(preview.Command)
-	return preview, nil
+	return a.route().backend.BuildHandoff(a.appCtx(), req)
 }
 
 // HandoffCommand writes the handoff files and returns the launch command.
 func (a *App) HandoffCommand(req HandoffRequest) (string, error) {
-	r := a.route()
-	cmd, err := r.backend.HandoffCommand(a.appCtx(), req)
-	if err != nil {
-		return "", err
-	}
-	return r.wrap(cmd), nil
+	return a.route().backend.HandoffCommand(a.appCtx(), req)
 }
 
 // SaveHandoff opens a file save dialog and saves the self-contained full handoff

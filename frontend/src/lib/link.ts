@@ -131,3 +131,13 @@ export function filterHosts(hosts: HostEntry[], query: string): HostEntry[] {
     [h.name, h.hostName, h.user].some((field) => field?.toLowerCase().includes(q)),
   );
 }
+
+/**
+ * Tooltip for the Resume button. A remote session's command is built for
+ * that host and has to be pasted into an interactive shell there.
+ */
+export function resumeButtonTitle(host: string | undefined): string {
+  const base = 'Copy shell command to resume this session';
+  if (!host) return base;
+  return `${base}. Run it on ${host}: open a shell with "ssh ${host}", then paste it.`;
+}

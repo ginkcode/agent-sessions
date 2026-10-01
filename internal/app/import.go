@@ -83,23 +83,12 @@ func (a *App) openRemoteBundle(ctx context.Context, r route, localPath string) (
 
 // BuildBundleHandoff generates a handoff preview from an opened bundle.
 func (a *App) BuildBundleHandoff(req BundleHandoffRequest) (HandoffPreview, error) {
-	r := a.route()
-	preview, err := r.backend.BuildBundleHandoff(a.appCtx(), req)
-	if err != nil {
-		return preview, err
-	}
-	preview.Command = r.wrap(preview.Command)
-	return preview, nil
+	return a.route().backend.BuildBundleHandoff(a.appCtx(), req)
 }
 
 // BundleHandoffCommand writes the handoff files and returns the launch command.
 func (a *App) BundleHandoffCommand(req BundleHandoffRequest) (string, error) {
-	r := a.route()
-	cmd, err := r.backend.BundleHandoffCommand(a.appCtx(), req)
-	if err != nil {
-		return "", err
-	}
-	return r.wrap(cmd), nil
+	return a.route().backend.BundleHandoffCommand(a.appCtx(), req)
 }
 
 // SaveBundleHandoff writes the full handoff document to a file chosen by the user.

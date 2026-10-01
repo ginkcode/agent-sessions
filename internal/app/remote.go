@@ -176,15 +176,6 @@ func (c *connection) route() route {
 	return route{}
 }
 
-// wrap turns a command built on the route's host into one the user runs
-// locally: `ssh -t <host> '<cmd>'` for a remote, unchanged for Local.
-func (r route) wrap(cmd string) string {
-	if r.host == "" {
-		return cmd
-	}
-	return remote.WrapSSHCommand(r.host, cmd)
-}
-
 func (c *connection) backend(local engine.Backend) engine.Backend {
 	if b := c.route().backend; b != nil {
 		return b

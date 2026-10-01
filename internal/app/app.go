@@ -267,12 +267,7 @@ func (a *App) GetBlob(ref model.SessionRef, key string) (BlobResponse, error) {
 
 // CopyResumeCommand builds the provider resume command for a session.
 func (a *App) CopyResumeCommand(ref model.SessionRef) (string, error) {
-	r := a.route()
-	cmd, err := r.backend.CopyResumeCommand(a.appCtx(), ref)
-	if err != nil {
-		return "", err
-	}
-	return r.wrap(cmd), nil
+	return a.route().backend.CopyResumeCommand(a.appCtx(), ref)
 }
 
 // RevealSource reveals the session's source directory in the system file manager.

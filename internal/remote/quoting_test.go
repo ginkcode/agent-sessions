@@ -81,18 +81,3 @@ func TestQuoteArgs_Evaluation(t *testing.T) {
 		}
 	}
 }
-
-func TestWrapSSHCommand(t *testing.T) {
-	if got := WrapSSHCommand("", "claude resume 123"); got != "claude resume 123" {
-		t.Errorf("expected empty alias to return cmd, got %q", got)
-	}
-	if got := WrapSSHCommand("myhost", ""); got != "" {
-		t.Errorf("expected empty cmd to return empty, got %q", got)
-	}
-	got := WrapSSHCommand("dev-box", "claude resume 'session 1'")
-	want := "ssh -t dev-box 'claude resume '\\''session 1'\\'''"
-	if got != want {
-		t.Errorf("got %q, want %q", got, want)
-	}
-}
-
