@@ -27,10 +27,10 @@ func (a *App) OpenBundle() (BundleSummary, error) {
 	path, err := wruntime.OpenFileDialog(ctx, wruntime.OpenDialogOptions{
 		Title:            "Open Session Bundle",
 		DefaultDirectory: dialogDefaultDir(),
-		Filters: []wruntime.FileFilter{
-			{DisplayName: "Agent Session Bundles (*.agent-session.zip, *.zip)", Pattern: "*.agent-session.zip;*.zip"},
-			{DisplayName: "All Files (*.*)", Pattern: "*.*"},
-		},
+		Filters: fileFilters(
+			wruntime.FileFilter{DisplayName: "Agent Session Bundles (*.agent-session.zip, *.zip)", Pattern: "*.agent-session.zip;*.zip"},
+			wruntime.FileFilter{DisplayName: "All Files (*.*)", Pattern: "*.*"},
+		),
 	})
 	if err != nil {
 		return BundleSummary{}, fmt.Errorf("open bundle dialog: %w", err)
@@ -116,9 +116,9 @@ func (a *App) SaveBundleHandoff(req BundleHandoffRequest) (string, error) {
 			Title:            "Save Handoff Markdown",
 			DefaultDirectory: dialogDefaultDir(),
 			DefaultFilename:  filename,
-			Filters: []wruntime.FileFilter{
-				{DisplayName: "Markdown (*.md)", Pattern: "*.md"},
-			},
+			Filters: fileFilters(
+				wruntime.FileFilter{DisplayName: "Markdown (*.md)", Pattern: "*.md"},
+			),
 		})
 	}
 	if err != nil {

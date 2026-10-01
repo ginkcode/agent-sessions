@@ -220,6 +220,25 @@ flows/UI (M7-15…17), packaging (M7-18), and QA (M7-19…20).
 
 ---
 
+## M8 — Windows support (≈ 46 h)
+
+Design: [docs/plan/M8.md](docs/plan/M8.md). Two-step decision: local-only first
+(M8-01…07); remote over SSH later (M8-08…09), gated on askpass security.
+
+| ID | St | Task | Est | Deps | Done when |
+|---|---|---|---|---|---|
+| M8-01 | ⬜ | `internal/paths` Windows `FromEnv` (Claude/Codex profiles, `%LOCALAPPDATA%`/`%APPDATA%` roots; verify OpenCode's Windows data dir on a real machine) | 3 | – | `GOOS=windows` builds the CLI and desktop app; app boots and scans on Windows. |
+| M8-02 | ⬜ | `explorer /select` for Reveal and `rundll32`/`explorer` for OpenURL via a per-GOOS `desktopOpen` helper | 2 | M8-01 | Reveal opens the file in Explorer; links open in the default browser. |
+| M8-03 | ⬜ | Windows path audit: grouping keys/labels, `pathutil` normalize + git resolver, Claude project-folder encoding, `tree.ts` path filter, export file-name fixtures (drive letters, backslashes, case-insensitivity) | 6 | M8-01 | Sessions recorded on Windows group, filter and label correctly; table tests with Windows-path fixtures pass on Linux. |
+| M8-04 | ⬜ | Live-session detection fallback: sessions never show live (no `/proc`); Windows process-API variant deferred | 1 | M8-01 | No crashes; LIVE badge absent on Windows; fallback documented. |
+| M8-05 | ⬜ | Recycle Bin trash via `SHFileOperation` (`FOF_ALLOWUNDO`); delete-dialog wording states Recycle Bin; `allowPermanentDelete` path unchanged | 5 | M8-01 | Deleting a session moves it to the Recycle Bin; permanent delete still opt-in. |
+| M8-06 | ⬜ | PowerShell command quoting for resume/handoff commands (decide PS5 vs PS7 target; single-line handoff pointer kept) | 4 | M8-01 | Pasted commands work in the target shell on a real Windows machine. |
+| M8-07 | ⬜ | CI `windows-latest` job (tests + `GOOS=windows` build assert), NSIS installer in release.yml, remote-server bundling, SmartScreen note | 6 | M8-01 | CI green on Windows; installer artifact published; unsigned warning documented. |
+| M8-08 | ⬜ | Askpass over a per-user named pipe with DACL (replaces the skipped Unix peer-UID/private-dir checks); re-enable no-listening-socket assertions | 8 | M8-07 | Password channel is scoped to the current user; security review passes. |
+| M8-09 | ⬜ | Remote SSH without ControlMaster: one-shot connections (keys/agent only, host picker hidden otherwise); evaluate a long-lived forward later | 5 | M8-08 | Connect/browse/delete/export work to a Windows host or from Windows to Linux; no password-auth dead ends. |
+| M8-10 | ⬜ | QA: real-machine pass over scan, search, export/import, handoff, Recycle Bin delete, PowerShell paste, install + first launch | 6 | M8-01…07 | Checklist in `docs/plan/M8.md` signed off. |
+
+---
 
 ## Summary
 
@@ -233,7 +252,8 @@ flows/UI (M7-15…17), packaging (M7-18), and QA (M7-19…20).
 | M5 macOS & distribution | 6 | 20 | 0 | 1 | 5 |
 | M6 Portable sessions | 17 | 60 | 15 | 0 | 2 |
 | M7 Remote over SSH | 20 | 65 | 1 | 0 | 19 |
-| **Total** | **122** | **≈ 368 h** | **64** | **18** | **40** |
+| M8 Windows support | 10 | 46 | 0 | 0 | 10 |
+| **Total** | **132** | **≈ 414 h** | **64** | **18** | **50** |
 
 **Critical path to the MVP:**
 

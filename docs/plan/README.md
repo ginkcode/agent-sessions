@@ -12,6 +12,7 @@ later milestones build on the contracts defined in M0.
 | [M3-M5.md](M3-M5.md) | Filters, config, export, keyboard, stats; destructive actions; macOS port, packaging, CI |
 | [M6.md](M6.md) | Portable bundles (export, import, opt-in restore) and cross-agent handoff; bundle manifest v1 contract |
 | [M7.md](M7.md) | Remote over SSH: headless server via system SSH, browse, search, manage remote sessions |
+| [M8.md](M8.md) | Windows support: local-first port (paths, Recycle Bin, PowerShell, packaging); remote over SSH later |
 
 Reference: [../formats.md](../formats.md) holds the verified on-disk formats of each tool.
 

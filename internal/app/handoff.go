@@ -58,10 +58,10 @@ func (a *App) SaveHandoff(req HandoffRequest) (string, error) {
 			Title:            "Save Handoff Document",
 			DefaultDirectory: dialogDefaultDir(),
 			DefaultFilename:  defaultName,
-			Filters: []wruntime.FileFilter{
-				{DisplayName: "Markdown Files (*.md)", Pattern: "*.md"},
-				{DisplayName: "All Files (*.*)", Pattern: "*.*"},
-			},
+			Filters: fileFilters(
+				wruntime.FileFilter{DisplayName: "Markdown Files (*.md)", Pattern: "*.md"},
+				wruntime.FileFilter{DisplayName: "All Files (*.*)", Pattern: "*.*"},
+			),
 		})
 	}
 	if err != nil {

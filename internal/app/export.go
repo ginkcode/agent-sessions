@@ -50,9 +50,9 @@ func (a *App) ExportBundle(req ExportRequest) (string, error) {
 			Title:            "Export Session",
 			DefaultDirectory: dialogDefaultDir(),
 			DefaultFilename:  name,
-			Filters: []wruntime.FileFilter{
-				{DisplayName: "Agent Session Bundles (*.agent-session.zip)", Pattern: "*.agent-session.zip"},
-			},
+			Filters: fileFilters(
+				wruntime.FileFilter{DisplayName: "Agent Session Bundles (*.agent-session.zip)", Pattern: "*.agent-session.zip"},
+			),
 		})
 	}
 	if err != nil {
