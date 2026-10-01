@@ -6,6 +6,11 @@
   import { highlightTextNodes, jumpOffset } from '../../search';
   import { manage } from '../../stores/manage.svelte';
   import { api } from '../../api';
+  import { copyToClipboard } from '../../portable';
+  import { copiedGuidance, copyFailed } from '../../guidance';
+  import { toast } from '../../stores/toast.svelte';
+  import { link } from '../../stores/link.svelte';
+  import { isStaleReply } from '../../link';
   import SessionHeader from './SessionHeader.svelte';
   import MessageBubble from './MessageBubble.svelte';
   import LoadingSpinner from '../common/LoadingSpinner.svelte';
@@ -274,15 +279,18 @@
     if (!appState.selectedSessionRef) return;
     try {
       const cmd = await api.copyResumeCommand(appState.selectedSessionRef);
-      if (typeof navigator !== 'undefined' && navigator.clipboard) {
-        await navigator.clipboard.writeText(cmd);
-        resumeCopied = true;
-        setTimeout(() => {
-          resumeCopied = false;
-        }, 2000);
+      if (!(await copyToClipboard(cmd))) {
+        toast.show(copyFailed('resume command', 'The clipboard is not available.'));
+        return;
       }
+      resumeCopied = true;
+      setTimeout(() => {
+        resumeCopied = false;
+      }, 2000);
+      toast.show(copiedGuidance('resume', { host: link.dataHost }));
     } catch (err) {
-      console.error('Failed to copy resume command:', err);
+      if (isStaleReply(err)) return;
+      toast.show(copyFailed('resume command', err));
     }
   }
 

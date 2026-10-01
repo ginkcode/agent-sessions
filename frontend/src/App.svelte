@@ -15,6 +15,7 @@
   import AskpassDialog from './lib/components/common/AskpassDialog.svelte';
   import ReconnectBanner from './lib/components/common/ReconnectBanner.svelte';
   import HostSelector from './lib/components/sidebar/HostSelector.svelte';
+  import Toaster from './lib/components/common/Toaster.svelte';
   import { theme } from './lib/stores/theme.svelte';
   import { preferences } from './lib/stores/preferences.svelte';
   import { appState } from './lib/stores/appState.svelte';
@@ -281,6 +282,7 @@
   <ExportDialog />
   <ImportDialog />
   <AskpassDialog />
+  <Toaster />
   </div>
 </div>
 

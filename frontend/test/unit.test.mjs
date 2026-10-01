@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { formatTokens, formatCost, formatBytes, formatVersion } from '../src/lib/format.ts';
 import { isThemeMode, nextThemeMode, resolveTheme, themeButtonTitle } from '../src/lib/theme.ts';
+import { copiedGuidance, copyFailed } from '../src/lib/guidance.ts';
 import { formatRelativeTime, formatAbsoluteTime, isKnownTime, formatAgo } from '../src/lib/date.ts';
 import { highlightCode, detectLanguage } from '../src/lib/highlight.ts';
 import { renderMarkdown } from '../src/lib/markdown.ts';
@@ -1121,4 +1122,32 @@ test('resumeButtonTitle tells remote users to paste into a shell on the host', (
     resumeButtonTitle('plgl'),
     'Copy shell command to resume this session. Run it on plgl: open a shell with "ssh plgl", then paste it.',
   );
+});
+
+test('copiedGuidance tells local users to paste into a terminal', () => {
+  const resume = copiedGuidance('resume');
+  assert.equal(resume.title, 'Resume command copied');
+  assert.match(resume.body, /^Paste it into a terminal\./);
+  assert.equal(resume.code, undefined);
+
+  const launch = copiedGuidance('launch', { agent: 'codex' });
+  assert.equal(launch.title, 'Launch command copied');
+  assert.match(launch.body, /Codex starts in the project directory, restores the context and waits/);
+});
+
+test('copiedGuidance sends remote users to a shell on the host', () => {
+  const launch = copiedGuidance('launch', { host: 'plgl', agent: 'opencode' });
+  assert.match(launch.body, /^Open a shell on plgl, then paste it there\. OpenCode starts/);
+  assert.equal(launch.code, 'ssh plgl');
+
+  const prompt = copiedGuidance('prompt', { host: 'plgl', agent: 'claude-code' });
+  assert.equal(prompt.body, 'Start Claude Code in the project directory on plgl and paste it as your first message.');
+  assert.equal(prompt.code, undefined);
+});
+
+test('copyFailed reports the error as an error toast', () => {
+  const t = copyFailed('resume command', new Error('not connected'));
+  assert.equal(t.title, "Couldn't copy resume command");
+  assert.equal(t.body, 'not connected');
+  assert.equal(t.tone, 'error');
 });

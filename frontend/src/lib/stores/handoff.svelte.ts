@@ -2,6 +2,9 @@ import { api } from '../api';
 import type { AgentID, HandoffPreview, HandoffRequest, SessionMeta } from '../types';
 import { copyToClipboard } from '../portable';
 import { isStaleReply } from '../link';
+import { copiedGuidance } from '../guidance';
+import { toast } from './toast.svelte';
+import { link } from './link.svelte';
 
 export class HandoffStore {
   dialogOpen = $state(false);
@@ -136,6 +139,7 @@ export class HandoffStore {
     }
 
     this.copiedPrompt = true;
+    toast.show(copiedGuidance('prompt', { host: link.dataHost, agent: this.target }));
     if (this.copyPromptTimer) clearTimeout(this.copyPromptTimer);
     this.copyPromptTimer = setTimeout(() => {
       this.copiedPrompt = false;
@@ -163,6 +167,7 @@ export class HandoffStore {
         return;
       }
       this.copiedCommand = true;
+      toast.show(copiedGuidance('launch', { host: link.dataHost, agent: this.target }));
       if (this.copyCommandTimer) clearTimeout(this.copyCommandTimer);
       this.copyCommandTimer = setTimeout(() => {
         this.copiedCommand = false;
