@@ -4,6 +4,7 @@
   import { formatBytes, formatTokens } from '../../format';
   import AgentIcon from './AgentIcon.svelte';
   import RemoteCommandNote from './RemoteCommandNote.svelte';
+  import MarkdownDoc from './MarkdownDoc.svelte';
   import { link } from '../../stores/link.svelte';
 
   let previewTab = $state<'prompt' | 'full'>('prompt');
@@ -403,14 +404,20 @@
                   <button
                     type="button"
                     class="copy-btn mini-btn tab-copy-btn"
-                    onclick={() => importer.copyPrompt()}
+                    onclick={() => importer.copyCurrent(previewTab)}
                   >
-                    {importer.copiedPrompt ? '✓ Copied' : 'Copy Prompt'}
+                    {importer.copiedPrompt ? '✓ Copied' : previewTab === 'full' ? 'Copy Doc' : 'Copy Prompt'}
                   </button>
                 </div>
-                <div class="preview-content">
-                  <pre><code>{previewTab === 'prompt' ? importer.preview.promptMarkdown : importer.preview.fullMarkdown}</code></pre>
-                </div>
+                {#if previewTab === 'prompt'}
+                  <div class="preview-content preview-raw">
+                    <pre><code>{importer.preview.promptMarkdown}</code></pre>
+                  </div>
+                {:else}
+                  <div class="preview-content preview-rendered">
+                    <MarkdownDoc source={importer.preview.fullMarkdown} />
+                  </div>
+                {/if}
               </div>
             {:else if importer.loadingPreview}
               <div class="loading-state">
@@ -1096,10 +1103,14 @@
   }
 
   .preview-content {
-    background-color: #121214;
+    background-color: var(--bg-primary);
     max-height: 180px;
     overflow-y: auto;
     padding: 10px;
+  }
+
+  .preview-rendered {
+    max-height: 260px;
   }
 
   .preview-content pre {

@@ -129,17 +129,23 @@ export class HandoffStore {
   }
 
   async copyPrompt(): Promise<void> {
-    this.clipboardError = null;
-    if (!this.preview?.promptMarkdown) return;
+    await this.copyCurrent('prompt');
+  }
 
-    const ok = await copyToClipboard(this.preview.promptMarkdown);
+  /** Copies the content of the active preview tab. */
+  async copyCurrent(tab: 'prompt' | 'full'): Promise<void> {
+    this.clipboardError = null;
+    const text = tab === 'full' ? this.preview?.fullMarkdown : this.preview?.promptMarkdown;
+    if (!text) return;
+
+    const ok = await copyToClipboard(text);
     if (!ok) {
-      this.clipboardError = 'Failed to copy prompt to clipboard. Please select and copy manually.';
+      this.clipboardError = 'Failed to copy to clipboard. Please select and copy manually.';
       return;
     }
 
     this.copiedPrompt = true;
-    toast.show(copiedGuidance('prompt', { host: link.dataHost, agent: this.target }));
+    toast.show(copiedGuidance(tab === 'full' ? 'doc' : 'prompt', { host: link.dataHost, agent: this.target }));
     if (this.copyPromptTimer) clearTimeout(this.copyPromptTimer);
     this.copyPromptTimer = setTimeout(() => {
       this.copiedPrompt = false;

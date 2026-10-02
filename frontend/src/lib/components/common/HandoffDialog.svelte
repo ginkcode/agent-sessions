@@ -4,6 +4,7 @@
   import { formatTokens } from '../../format';
   import AgentIcon from './AgentIcon.svelte';
   import RemoteCommandNote from './RemoteCommandNote.svelte';
+  import MarkdownDoc from './MarkdownDoc.svelte';
   import { link } from '../../stores/link.svelte';
 
   let previewTab = $state<'prompt' | 'full'>('prompt');
@@ -237,14 +238,22 @@
               <button
                 type="button"
                 class="copy-btn mini-btn tab-copy-btn"
-                onclick={() => handoff.copyPrompt()}
+                onclick={() => handoff.copyCurrent(previewTab)}
               >
-                {handoff.copiedPrompt ? '✓ Copied' : 'Copy Prompt'}
+                {handoff.copiedPrompt ? '✓ Copied' : previewTab === 'full' ? 'Copy Doc' : 'Copy Prompt'}
               </button>
             </div>
-            <div class="preview-content">
-              <pre><code>{previewTab === 'prompt' ? handoff.preview.promptMarkdown : handoff.preview.fullMarkdown}</code></pre>
-            </div>
+            {#if previewTab === 'prompt'}
+              <!-- The prompt is the exact text that gets pasted, so show it raw. -->
+              <div class="preview-content preview-raw">
+                <pre><code>{handoff.preview.promptMarkdown}</code></pre>
+              </div>
+            {:else}
+              <!-- The full doc is a document, so render it as one. -->
+              <div class="preview-content preview-rendered">
+                <MarkdownDoc source={handoff.preview.fullMarkdown} />
+              </div>
+            {/if}
           </div>
         {:else if handoff.loading}
           <div class="loading-state">
@@ -666,6 +675,10 @@
     white-space: pre-wrap;
     word-break: break-word;
     color: var(--text-secondary);
+  }
+
+  .preview-rendered {
+    max-height: 260px;
   }
 
   .loading-state {

@@ -1145,6 +1145,13 @@ test('copiedGuidance sends remote users to a shell on the host', () => {
   assert.equal(prompt.code, undefined);
 });
 
+test('copiedGuidance distinguishes a full document from a launch prompt', () => {
+  const doc = copiedGuidance('doc', { host: 'plgl', agent: 'codex' });
+  assert.equal(doc.title, 'Document copied');
+  assert.equal(doc.body, 'The full handoff document is on your clipboard.');
+  assert.equal(doc.code, undefined);
+});
+
 test('copyFailed reports the error as an error toast', () => {
   const t = copyFailed('resume command', new Error('not connected'));
   assert.equal(t.title, "Couldn't copy resume command");

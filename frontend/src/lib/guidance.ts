@@ -9,7 +9,7 @@ export interface ToastMessage {
   tone?: 'info' | 'error';
 }
 
-export type CopiedKind = 'resume' | 'launch' | 'prompt';
+export type CopiedKind = 'resume' | 'launch' | 'prompt' | 'doc';
 
 function agentLabel(agent: AgentID | undefined): string {
   return ALL_AGENTS.find((a) => a.id === agent)?.label ?? 'the agent';
@@ -46,6 +46,11 @@ export function copiedGuidance(
       return {
         title: 'Prompt copied',
         body: `Start ${agent} in the project directory${host ? ` on ${host}` : ''} and paste it as your first message.`,
+      };
+    case 'doc':
+      return {
+        title: 'Document copied',
+        body: 'The full handoff document is on your clipboard.',
       };
   }
 }
