@@ -235,7 +235,7 @@ Design: [docs/plan/M8.md](docs/plan/M8.md). Two-step decision: local-only first
 | M8-06 | ⬜ | PowerShell command quoting for resume/handoff commands (decide PS5 vs PS7 target; single-line handoff pointer kept) | 4 | M8-01 | Pasted commands work in the target shell on a real Windows machine. |
 | M8-07 | ⬜ | CI `windows-latest` job (tests + `GOOS=windows` build assert), NSIS installer in release.yml, remote-server bundling, SmartScreen note | 6 | M8-01 | CI green on Windows; installer artifact published; unsigned warning documented. |
 | M8-08 | ⬜ | Askpass over a per-user named pipe with DACL (replaces the skipped Unix peer-UID/private-dir checks); re-enable no-listening-socket assertions | 8 | M8-07 | Password channel is scoped to the current user; security review passes. |
-| M8-09 | ⬜ | Remote SSH without ControlMaster: one-shot connections (keys/agent only, host picker hidden otherwise); evaluate a long-lived forward later | 5 | M8-08 | Connect/browse/delete/export work to a Windows host or from Windows to Linux; no password-auth dead ends. |
+| M8-09 | ⬜ | Remote SSH without ControlMaster: one-shot connections via inbox `ssh.exe` (keys/agent only, host picker hidden otherwise; hidden console window; agent-service check); evaluate a long-lived forward later | 5 | M8-08 | Connect/browse/delete/export work to a Windows host or from Windows to Linux; no password-auth dead ends. |
 | M8-10 | ⬜ | QA: real-machine pass over scan, search, export/import, handoff, Recycle Bin delete, PowerShell paste, install + first launch | 6 | M8-01…07 | Checklist in `docs/plan/M8.md` signed off. |
 
 ---
