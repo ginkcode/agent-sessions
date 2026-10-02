@@ -11,6 +11,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"unicode/utf8"
 
 	"github.com/ginkcode/agent-sessions/internal/bundle"
@@ -48,8 +49,10 @@ type Service struct {
 	states   map[model.AgentID]provider.ScanState
 
 	transcripts *LRU[string, *model.Transcript]
-	bundles     *LRU[string, *bundle.Bundle]
-	dataDir     string
+	// transcriptGen counts evictions, so a load that raced one is not cached.
+	transcriptGen atomic.Uint64
+	bundles       *LRU[string, *bundle.Bundle]
+	dataDir       string
 }
 
 // NewService wires a Service onto an existing catalog and provider set.
@@ -299,16 +302,40 @@ func (s *Service) loadTranscript(ctx context.Context, ref model.SessionRef) (*mo
 	if !ok {
 		return nil, fmt.Errorf("%w: %s", ErrUnknownProvider, ref.Agent)
 	}
+	gen := s.transcriptGen.Load()
 	tr, err := prov.Load(ctx, ref)
 	if err != nil {
 		return nil, err
 	}
-	s.transcripts.Put(key, tr)
+	// A session that changed during the load may have been read before the
+	// change; serve it once but do not cache it.
+	if s.transcriptGen.Load() == gen {
+		s.transcripts.Put(key, tr)
+	}
 	return tr, nil
 }
 
 func (s *Service) EvictTranscript(key string) {
+	s.transcriptGen.Add(1)
 	s.transcripts.Evict(key)
+}
+
+// EvictTranscripts drops the cached transcripts of sessions a scan reported
+// changed or removed, so the next read loads their current content.
+func (s *Service) EvictTranscripts(refs ...[]model.SessionRef) {
+	s.transcriptGen.Add(1)
+	for _, list := range refs {
+		for _, ref := range list {
+			s.transcripts.Evict(ref.Key())
+		}
+	}
+}
+
+// ClearTranscripts drops every cached transcript, for scans that rebuild the
+// catalog without reporting which sessions changed.
+func (s *Service) ClearTranscripts() {
+	s.transcriptGen.Add(1)
+	s.transcripts.Clear()
 }
 
 func (s *Service) evictTranscript(key string) {

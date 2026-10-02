@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { tick } from 'svelte';
+  import { tick, untrack } from 'svelte';
   import type { SessionRef, Message, MessageJump } from '../../types';
   import { appState } from '../../stores/appState.svelte';
   import { search } from '../../stores/search.svelte';
@@ -75,6 +75,17 @@
     }
   });
 
+  // A refresh or a change event for the open session reloads what is
+  // loaded, in place, so new messages appear without losing the scroll.
+  let lastVersion = appState.transcriptVersion;
+  $effect(() => {
+    const version = appState.transcriptVersion;
+    if (version === lastVersion) return;
+    lastVersion = version;
+    const ref = untrack(() => appState.selectedSessionRef);
+    if (ref) void reloadMessages(ref);
+  });
+
   function refsMatch(a: SessionRef | null | undefined, b: SessionRef): boolean {
     return a?.agent === b.agent && a.id === b.id;
   }
@@ -105,6 +116,28 @@
       }
     } finally {
       if (generation === loadGeneration) isLoading = false;
+    }
+  }
+
+  async function reloadMessages(ref: SessionRef): Promise<void> {
+    // A first load in flight reads the current content anyway.
+    if (isLoading) return;
+    if (pendingLoad) await pendingLoad;
+    if (isLoading || !refsMatch(appState.selectedSessionRef, ref)) return;
+    if (loadError) {
+      await loadInitialMessages(ref);
+      return;
+    }
+    // Supersedes in-flight page loads, which would splice into the old list.
+    const generation = ++loadGeneration;
+    try {
+      const page = await api.getMessages(ref, pageOffset, Math.max(messages.length, PAGE_SIZE));
+      if (generation !== loadGeneration || !refsMatch(appState.selectedSessionRef, ref)) return;
+      messages = page.messages || [];
+      hasMore = page.hasMore;
+    } catch (err) {
+      if (isStaleReply(err)) return;
+      console.error('Failed to reload transcript:', err);
     }
   }
 

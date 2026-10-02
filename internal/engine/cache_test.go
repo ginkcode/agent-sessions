@@ -233,3 +233,56 @@ func TestSharedCache_ReaderSearchSkipsRemoved(t *testing.T) {
 		t.Errorf("reader search returned a removed session: %+v", hits)
 	}
 }
+
+func transcriptOf(id string, texts ...string) *model.Transcript {
+	tr := &model.Transcript{Meta: claudeSession(id)}
+	for _, s := range texts {
+		tr.Messages = append(tr.Messages, model.Message{
+			Role:  model.RoleAssistant,
+			Parts: []model.Part{{Kind: model.PartText, Text: s}},
+		})
+	}
+	return tr
+}
+
+// A rescan that reports a session changed must drop its cached transcript,
+// or a live session shows the content it had when first opened.
+func TestScanRefreshesCachedTranscript(t *testing.T) {
+	for _, cache := range []bool{true, false} {
+		t.Run(map[bool]string{true: "cache", false: "no-cache"}[cache], func(t *testing.T) {
+			fake := providertest.NewFake(model.AgentClaude, "Claude")
+			fake.DetectionData = provider.Detection{Present: true}
+			fake.Sessions = []model.SessionMeta{claudeSession("s1")}
+			fake.Transcripts["s1"] = transcriptOf("s1", "one")
+			e := NewEngine(
+				WithRoots(testRoots),
+				WithService(NewService(scan.NewCatalog(), provider.Set{fake})),
+				WithCacheEnabled(cache),
+				WithCacheDir(t.TempDir()),
+			)
+			if err := e.Start(t.Context()); err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = e.Close() })
+			ref := claudeSession("s1").Ref
+			waitFor(t, "first scan", func() bool {
+				_, ok := e.Service().Catalog().Get(ref)
+				return ok
+			})
+
+			page, err := e.GetMessages(t.Context(), ref, 0, 50)
+			if err != nil || page.TotalCount != 1 {
+				t.Fatalf("before: total = %d, err = %v; want 1", page.TotalCount, err)
+			}
+
+			fake.Transcripts["s1"] = transcriptOf("s1", "one", "two")
+			if err := e.Scan(t.Context()); err != nil {
+				t.Fatal(err)
+			}
+			page, err = e.GetMessages(t.Context(), ref, 0, 50)
+			if err != nil || page.TotalCount != 2 {
+				t.Fatalf("after rescan: total = %d, err = %v; want 2", page.TotalCount, err)
+			}
+		})
+	}
+}

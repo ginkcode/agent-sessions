@@ -146,6 +146,42 @@ func browseFixture(ctx context.Context, t *testing.T, sess *Session) {
 	}
 }
 
+// A session that grows on the host shows its new messages after a rescan,
+// as when the app's Refresh button is clicked on a live session.
+func TestSSHD_RescanServesNewMessages(t *testing.T) {
+	h := startSSHD(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	defer cancel()
+
+	sess, err := StartSession(ctx, h.Alias(sshtest.UserSh), sshdOpts(h), nil, noopEmitter())
+	if err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	defer sess.Close()
+	c := sess.Client()
+	if err := c.Scan(ctx); err != nil {
+		t.Fatalf("scan: %v%s", err, stderrNote(sess))
+	}
+	before, err := c.GetMessages(ctx, fixtureRef, 0, 50)
+	if err != nil {
+		t.Fatalf("messages: %v", err)
+	}
+
+	h.ExecAs(t, sshtest.UserSh, `printf '%s\n' '{"type":"user","uuid":"parent-u3","sessionId":"`+fixtureSessionID+
+		`","timestamp":"2026-09-20T16:02:00Z","cwd":"/home/dev/project-x","message":{"role":"user","content":"One more thing"}}' `+
+		`>> "$HOME/.claude/projects/-home-dev-project-x/`+fixtureSessionID+`.jsonl"`)
+	if err := c.Scan(ctx); err != nil {
+		t.Fatalf("rescan: %v", err)
+	}
+	after, err := c.GetMessages(ctx, fixtureRef, 0, 50)
+	if err != nil {
+		t.Fatalf("messages after rescan: %v", err)
+	}
+	if after.TotalCount != before.TotalCount+1 {
+		t.Fatalf("messages after rescan = %d, want %d", after.TotalCount, before.TotalCount+1)
+	}
+}
+
 func TestSSHD_ServerExitEndsSession(t *testing.T) {
 	h := startSSHD(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)

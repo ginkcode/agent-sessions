@@ -219,6 +219,7 @@ func (e *Engine) promote(ctx context.Context, dir, key string, lock *index.Lock)
 		catalog.Reset(mergeCatalog(metas, catalog.All()))
 	}
 	e.closeDB(readDB)
+	e.svc.ClearTranscripts()
 	if events != nil {
 		events.NotifyFullRefresh()
 	}
@@ -239,6 +240,9 @@ func (e *Engine) onChanged(_ model.AgentID, changed, removed []model.SessionRef)
 	indexer := e.indexer
 	events := e.events
 	e.mu.Unlock()
+	if e.svc != nil {
+		e.svc.EvictTranscripts(changed, removed)
+	}
 	if indexer != nil {
 		indexer.Notify()
 	}

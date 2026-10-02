@@ -14,7 +14,13 @@ import {
   loadCollapsedKeys,
   saveCollapsedKeys,
 } from '../tree';
-import { affectsSessionList, findGroup, hasRef, RequestSequence } from '../catalog';
+import {
+  affectsSessionList,
+  findGroup,
+  hasRef,
+  isFullRefresh,
+  RequestSequence,
+} from '../catalog';
 import { nextSelectionAfterDelete, refsEqual } from '../manage';
 import { isStaleReply } from '../link';
 
@@ -41,6 +47,9 @@ export class AppState {
   loadingSessions = $state(false);
   error = $state<string | null>(null);
   refreshing = $state(false);
+  // Bumped when the selected session's content may have changed; the
+  // transcript reloads its loaded pages in place.
+  transcriptVersion = $state(0);
 
   // Late responses from superseded requests are dropped, never applied.
   private groupsRequests = new RequestSequence();
@@ -83,6 +92,9 @@ export class AppState {
     try {
       await api.scan();
       await this.reload(true);
+      // An explicit refresh reloads the open session even when the scan
+      // reported nothing, e.g. its change event was already applied.
+      await this.refreshSelectedSession();
     } catch (err: any) {
       if (isStaleReply(err)) return;
       this.error = err?.message || 'Failed to refresh sessions';
@@ -171,9 +183,15 @@ export class AppState {
       await this.loadSessions(true);
     }
 
-    if (hasRef(changed, this.selectedSessionRef)) {
-      await this.refreshSelectedMeta();
+    if (hasRef(changed, this.selectedSessionRef) || isFullRefresh(event)) {
+      await this.refreshSelectedSession();
     }
+  }
+
+  private async refreshSelectedSession(): Promise<void> {
+    if (!this.selectedSessionRef) return;
+    this.transcriptVersion++;
+    await this.refreshSelectedMeta();
   }
 
   toggleCollapsed(key: string): void {

@@ -94,6 +94,14 @@ func (c *LRU[K, V]) Evict(key K) {
 	}
 }
 
+// Clear removes every entry.
+func (c *LRU[K, V]) Clear() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.order.Init()
+	clear(c.entries)
+}
+
 func (c *LRU[K, V]) evict(key K) {
 	c.Evict(key)
 }

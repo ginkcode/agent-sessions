@@ -283,6 +283,7 @@ func (e *Engine) Scan(ctx context.Context) error {
 	if runner != nil && svc != nil {
 		report := runner.Run(ctx, svc.ScanStates())
 		svc.ApplyReport(report)
+		svc.ClearTranscripts()
 		if events != nil {
 			events.NotifyFullRefresh()
 		}
