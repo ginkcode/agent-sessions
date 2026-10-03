@@ -1,6 +1,6 @@
 # Runs on every branch push and pull request: tests, frontend type check, and
-# a Linux desktop build. Tag pushes are left to release.yml, which runs the
-# same checks before packaging (deb/rpm/dmg).
+# Linux and Windows desktop builds. Tag pushes are left to release.yml,
+# which runs the checks before packaging (deb/rpm/dmg).
 name: CI
 
 on:
@@ -40,6 +40,40 @@ jobs:
         run: |
           npm run check
           npm test
+
+  windows-test-build:
+    runs-on: windows-latest
+    # pwsh only fails a step on its last command's exit code; bash -e fails on
+    # any of them.
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+        working-directory: frontend
+      - name: Go vet and tests
+        run: |
+          go vet ./...
+          go test -count=1 ./...
+      - name: Frontend type check, tests and build
+        working-directory: frontend
+        run: |
+          npm run check
+          npm test
+          npm run build
+      - name: Build Windows CLI and desktop
+        run: |
+          go build -trimpath -o build/bin/agent-sessions-cli.exe ./cmd/agent-sessions-cli
+          go build -tags desktop,production -trimpath -ldflags "-H windowsgui" -o build/bin/agent-sessions.exe ./cmd/agent-sessions
 
   linux-build:
     runs-on: ubuntu-22.04
