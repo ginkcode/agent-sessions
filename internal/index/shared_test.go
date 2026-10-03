@@ -127,11 +127,20 @@ func TestOpenReadOnly(t *testing.T) {
 		t.Error("Replaced before any rebuild")
 	}
 
+	// The writer rebuilds in place while the reader has the file open, on
+	// every OS; the reader keeps working and sees the empty index.
 	if err := w.Rebuild(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	if !r.Replaced() {
-		t.Error("Replaced = false after the writer rebuilt the file")
+	if r.Replaced() {
+		t.Error("Replaced = true after an in-place rebuild")
+	}
+	if metas, err := r.LoadCatalog(t.Context()); err != nil || len(metas) != 0 {
+		t.Errorf("reader after rebuild: %d sessions, %v", len(metas), err)
+	}
+	commitOne(t, w, "s3")
+	if metas, err := r.LoadCatalog(t.Context()); err != nil || len(metas) != 1 {
+		t.Errorf("reader after commit into the rebuilt index: %d sessions, %v", len(metas), err)
 	}
 }
 

@@ -33,6 +33,10 @@ import (
 //   - Per file, the process holding its lock (index-v<N>-<key>.lock) is the
 //     only writer. Everyone else of that schema and key opens the file
 //     read-only.
+//   - A writer never deletes or replaces its own file, which readers in
+//     other processes may have open (and Windows then refuses): Rebuild
+//     and a newer schema reset it in place in one transaction. Only a
+//     file too damaged for that is deleted.
 //   - Another file is deleted only by a writer that can take that file's
 //     lock too, and only after it has been unused for a while.
 
@@ -145,6 +149,10 @@ func OpenReadOnly(ctx context.Context, cacheDir, key string) (*DB, error) {
 	case !fi.Mode().IsRegular():
 		return nil, fmt.Errorf("index: database %q is not a regular file", dbPath)
 	}
+	// On Windows a FileInfo from Lstat looks its file ID up by path only at
+	// the first os.SameFile. Do it now, so Replaced compares against the
+	// file opened here rather than whatever is at the path later.
+	_ = os.SameFile(fi, fi)
 
 	sqlDB, err := sql.Open("sqlite", readOnlyDSN(dbPath))
 	if err != nil {
@@ -153,11 +161,18 @@ func OpenReadOnly(ctx context.Context, cacheDir, key string) (*DB, error) {
 	sqlDB.SetMaxOpenConns(2)
 	sqlDB.SetMaxIdleConns(2)
 	applied, err := appliedVersion(ctx, sqlDB)
-	if err != nil || applied != SchemaVersion() {
-		_ = sqlDB.Close()
-		if err == nil {
-			err = fmt.Errorf("schema %d, want %d", applied, SchemaVersion())
+	if err == nil && applied != SchemaVersion() {
+		err = fmt.Errorf("schema %d, want %d", applied, SchemaVersion())
+	}
+	if err == nil {
+		// The file must still be the one fi describes, or Replaced would
+		// never notice that this handle reads a stale copy.
+		if now, statErr := os.Lstat(dbPath); statErr != nil || !os.SameFile(fi, now) {
+			err = errors.New("replaced while opening")
 		}
+	}
+	if err != nil {
+		_ = sqlDB.Close()
 		return nil, fmt.Errorf("%w: %w", ErrNoIndex, err)
 	}
 	return &DB{db: sqlDB, path: dbPath, cacheDir: dir, readOnly: true, file: fi}, nil
@@ -189,8 +204,9 @@ func appliedVersion(ctx context.Context, db *sql.DB) (int, error) {
 }
 
 // Replaced reports whether the file this read-only handle opened is no
-// longer the one at its path, because the writer rebuilt it or it was
-// cleaned up. The handle then reads a stale copy and should be reopened.
+// longer the one at its path, because a writer had to delete a damaged
+// file or it was cleaned up. The handle then reads a stale copy and should
+// be reopened. Rebuild resets the file in place and never replaces it.
 func (d *DB) Replaced() bool {
 	if !d.readOnly || d.file == nil {
 		return false

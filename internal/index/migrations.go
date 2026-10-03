@@ -3,6 +3,7 @@ package index
 import (
 	"context"
 	"database/sql"
+	"database/sql/driver"
 	"embed"
 	"errors"
 	"fmt"
@@ -150,6 +151,13 @@ func applyMigration(ctx context.Context, db *sql.DB, m migration) error {
 	}
 	defer func() { _ = tx.Rollback() }()
 
+	if err := applyMigrationTx(ctx, tx, m); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func applyMigrationTx(ctx context.Context, tx *sql.Tx, m migration) error {
 	if _, err := tx.ExecContext(ctx, m.sql); err != nil {
 		return fmt.Errorf("exec migration sql: %w", err)
 	}
@@ -161,6 +169,114 @@ func applyMigration(ctx context.Context, db *sql.DB, m migration) error {
 	`, m.version, nowMs); err != nil {
 		return fmt.Errorf("record migration %d: %w", m.version, err)
 	}
+	return nil
+}
 
-	return tx.Commit()
+// resetSchema empties db in place: it drops every table and view, of this
+// schema or any other, and applies migrations, all in one write
+// transaction. Readers in this or any other process see either the old
+// database or the new empty one, and the file is never removed or
+// replaced, which Windows refuses while anyone has it open.
+func resetSchema(ctx context.Context, db *sql.DB, migrations []migration) error {
+	conn, err := db.Conn(ctx)
+	if err != nil {
+		return fmt.Errorf("reserve connection: %w", err)
+	}
+	defer func() { _ = conn.Close() }()
+
+	// With foreign keys on, DROP TABLE first deletes every row and runs
+	// the cascades. The pragma is a no-op inside a transaction, so it is
+	// switched on this connection only, and back before the pool reuses it.
+	if _, err := conn.ExecContext(ctx, "PRAGMA foreign_keys=OFF"); err != nil {
+		return fmt.Errorf("disable foreign keys: %w", err)
+	}
+	defer func() {
+		if _, err := conn.ExecContext(context.Background(), "PRAGMA foreign_keys=ON"); err != nil {
+			// Never hand a connection without foreign keys back to the pool.
+			_ = conn.Raw(func(any) error { return driver.ErrBadConn })
+		}
+	}()
+
+	tx, err := conn.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin reset tx: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	// Virtual tables go first: dropping one drops its shadow tables, which
+	// cannot be dropped on their own before it.
+	vtabs, err := schemaObjects(ctx, tx,
+		`SELECT type, name FROM sqlite_schema WHERE type = 'table' AND sql LIKE 'CREATE VIRTUAL TABLE%'`)
+	if err != nil {
+		return err
+	}
+	if err := dropObjects(ctx, tx, vtabs); err != nil {
+		return err
+	}
+	// Indexes and triggers go with their tables.
+	rest, err := schemaObjects(ctx, tx,
+		`SELECT type, name FROM sqlite_schema WHERE type IN ('table', 'view') AND name NOT LIKE 'sqlite\_%' ESCAPE '\'`)
+	if err != nil {
+		return err
+	}
+	if err := dropObjects(ctx, tx, rest); err != nil {
+		return err
+	}
+	var seq int
+	if err := tx.QueryRowContext(ctx,
+		`SELECT count(*) FROM sqlite_schema WHERE name = 'sqlite_sequence'`).Scan(&seq); err != nil {
+		return fmt.Errorf("probe sqlite_sequence: %w", err)
+	}
+	if seq > 0 {
+		if _, err := tx.ExecContext(ctx, "DELETE FROM sqlite_sequence"); err != nil {
+			return fmt.Errorf("clear sqlite_sequence: %w", err)
+		}
+	}
+
+	for _, m := range migrations {
+		if err := applyMigrationTx(ctx, tx, m); err != nil {
+			return fmt.Errorf("apply migration %s (v%d): %w", m.name, m.version, err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit reset tx: %w", err)
+	}
+	return nil
+}
+
+type schemaObject struct{ typ, name string }
+
+// schemaObjects reads the whole result before anything is dropped.
+func schemaObjects(ctx context.Context, tx *sql.Tx, query string) ([]schemaObject, error) {
+	rows, err := tx.QueryContext(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("list schema: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	var out []schemaObject
+	for rows.Next() {
+		var o schemaObject
+		if err := rows.Scan(&o.typ, &o.name); err != nil {
+			return nil, fmt.Errorf("scan schema: %w", err)
+		}
+		out = append(out, o)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("list schema: %w", err)
+	}
+	return out, nil
+}
+
+func dropObjects(ctx context.Context, tx *sql.Tx, objs []schemaObject) error {
+	for _, o := range objs {
+		kind := "TABLE"
+		if o.typ == "view" {
+			kind = "VIEW"
+		}
+		quoted := `"` + strings.ReplaceAll(o.name, `"`, `""`) + `"`
+		if _, err := tx.ExecContext(ctx, "DROP "+kind+" IF EXISTS "+quoted); err != nil {
+			return fmt.Errorf("drop %s %s: %w", o.typ, o.name, err)
+		}
+	}
+	return nil
 }

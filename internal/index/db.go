@@ -28,7 +28,6 @@ type DB struct {
 	db       *sql.DB
 	path     string
 	cacheDir string
-	dsn      string
 	writeMu  sync.Mutex
 	// readOnly handles come from OpenReadOnly; file is what they opened.
 	readOnly bool
@@ -159,37 +158,14 @@ func Open(ctx context.Context, cacheDir, key string) (*DB, error) {
 	}
 
 	err = runMigrations(ctx, sqlDB, migrations)
-	if err != nil {
-		// Rebuild clean private database on integrity error or newer migration version.
-		if errors.Is(err, errCorruptDB) || errors.Is(err, errNewerVersionDB) {
-			_ = sqlDB.Close()
-			if wipeErr := wipeDBFiles(dbPath); wipeErr != nil {
-				return nil, fmt.Errorf("index: wipe corrupt/newer db: %w", wipeErr)
-			}
-			f, err := os.OpenFile(dbPath, os.O_RDWR|os.O_CREATE, 0o600)
-			if err != nil {
-				return nil, fmt.Errorf("index: recreate database file: %w", err)
-			}
-			_ = f.Close()
-
-			sqlDB, err = sql.Open("sqlite", dsn)
-			if err != nil {
-				return nil, fmt.Errorf("index: reopen rebuilt database: %w", err)
-			}
-			sqlDB.SetMaxOpenConns(2)
-			sqlDB.SetMaxIdleConns(2)
-			if err := sqlDB.PingContext(ctx); err != nil {
-				_ = sqlDB.Close()
-				return nil, fmt.Errorf("index: ping rebuilt database: %w", err)
-			}
-			if err := runMigrations(ctx, sqlDB, migrations); err != nil {
-				_ = sqlDB.Close()
-				return nil, fmt.Errorf("index: run migrations on rebuilt database: %w", err)
-			}
-		} else {
-			_ = sqlDB.Close()
-			return nil, fmt.Errorf("index: run migrations: %w", err)
+	if errors.Is(err, errCorruptDB) || errors.Is(err, errNewerVersionDB) {
+		sqlDB, err = startOver(ctx, sqlDB, dbPath, dsn, migrations)
+		if err != nil {
+			return nil, err
 		}
+	} else if err != nil {
+		_ = sqlDB.Close()
+		return nil, fmt.Errorf("index: run migrations: %w", err)
 	}
 
 	// Enforce 0600 permissions on sidecars if created during opening/migrations.
@@ -211,8 +187,58 @@ func Open(ctx context.Context, cacheDir, key string) (*DB, error) {
 		db:       sqlDB,
 		path:     dbPath,
 		cacheDir: cacheDir,
-		dsn:      dsn,
 	}, nil
+}
+
+// startOver empties the database Open found corrupt or of a newer schema.
+// In place first: readers, possibly in other processes, may have the file
+// open, and Windows refuses to delete it then. Only a file too damaged to
+// reset is deleted, never one whose reset was merely canceled. sqlDB is
+// closed whenever an error is returned.
+func startOver(ctx context.Context, sqlDB *sql.DB, dbPath, dsn string, migrations []migration) (*sql.DB, error) {
+	err := resetSchema(ctx, sqlDB, migrations)
+	if err == nil {
+		err = checkIntegrity(ctx, sqlDB)
+	}
+	if err == nil {
+		return sqlDB, nil
+	}
+	_ = sqlDB.Close()
+	if ctxErr := ctx.Err(); ctxErr != nil || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return nil, fmt.Errorf("index: reset database: %w", errors.Join(err, ctxErr))
+	}
+	// Deleting fails on Windows while another process has the file open,
+	// until it closes it.
+	return recreateDB(ctx, dbPath, dsn, migrations)
+}
+
+// recreateDB deletes the database at dbPath with its sidecars and opens a
+// fresh, migrated one in its place.
+func recreateDB(ctx context.Context, dbPath, dsn string, migrations []migration) (*sql.DB, error) {
+	if err := wipeDBFiles(dbPath); err != nil {
+		return nil, fmt.Errorf("index: remove damaged database (is it open in another process?): %w", err)
+	}
+	f, err := os.OpenFile(dbPath, os.O_RDWR|os.O_CREATE, 0o600)
+	if err != nil {
+		return nil, fmt.Errorf("index: recreate database file: %w", err)
+	}
+	_ = f.Close()
+
+	sqlDB, err := sql.Open("sqlite", dsn)
+	if err != nil {
+		return nil, fmt.Errorf("index: reopen rebuilt database: %w", err)
+	}
+	sqlDB.SetMaxOpenConns(2)
+	sqlDB.SetMaxIdleConns(2)
+	if err := sqlDB.PingContext(ctx); err != nil {
+		_ = sqlDB.Close()
+		return nil, fmt.Errorf("index: ping rebuilt database: %w", err)
+	}
+	if err := runMigrations(ctx, sqlDB, migrations); err != nil {
+		_ = sqlDB.Close()
+		return nil, fmt.Errorf("index: run migrations on rebuilt database: %w", err)
+	}
+	return sqlDB, nil
 }
 
 // Close closes the database connection.
@@ -243,56 +269,32 @@ func (d *DB) SQLDB() *sql.DB {
 	return d.db
 }
 
-// Rebuild tears down the existing database and sidecars, reopens a clean file,
-// and applies all embedded migrations from scratch.
+// Rebuild empties the database in place and reapplies every embedded
+// migration, in one transaction. The file and the handle stay the same, so
+// it works while readers in this or other processes have the file open,
+// and they see either the old index or the empty one. A failed rebuild
+// leaves the database as it was.
 func (d *DB) Rebuild(ctx context.Context) error {
 	if d.readOnly {
 		return errReadOnly
 	}
 	d.writeMu.Lock()
 	defer d.writeMu.Unlock()
-
-	restoreUmask := setPrivateUmask()
-	defer restoreUmask()
-
-	if d.db != nil {
-		_ = d.db.Close()
-		d.db = nil
-	}
-
-	if err := wipeDBFiles(d.path); err != nil {
-		return fmt.Errorf("index: wipe db files: %w", err)
-	}
-
-	f, err := os.OpenFile(d.path, os.O_RDWR|os.O_CREATE, 0o600)
-	if err != nil {
-		return fmt.Errorf("index: recreate db file: %w", err)
-	}
-	_ = f.Close()
-
-	sqlDB, err := sql.Open("sqlite", d.dsn)
-	if err != nil {
-		return fmt.Errorf("index: reopen rebuilt db: %w", err)
-	}
-	sqlDB.SetMaxOpenConns(2)
-	sqlDB.SetMaxIdleConns(2)
-	if err := sqlDB.PingContext(ctx); err != nil {
-		_ = sqlDB.Close()
-		return fmt.Errorf("index: ping rebuilt db: %w", err)
+	if d.db == nil {
+		return errors.New("index: database closed")
 	}
 
 	migrations, err := loadMigrations()
 	if err != nil {
-		_ = sqlDB.Close()
 		return fmt.Errorf("index: load migrations: %w", err)
 	}
 
-	if err := runMigrations(ctx, sqlDB, migrations); err != nil {
-		_ = sqlDB.Close()
-		return fmt.Errorf("index: run migrations: %w", err)
-	}
+	restoreUmask := setPrivateUmask()
+	defer restoreUmask()
 
-	d.db = sqlDB
+	if err := resetSchema(ctx, d.db, migrations); err != nil {
+		return fmt.Errorf("index: rebuild: %w", err)
+	}
 
 	for _, sidecar := range []string{d.path + "-wal", d.path + "-shm"} {
 		if _, err := os.Lstat(sidecar); err == nil {
