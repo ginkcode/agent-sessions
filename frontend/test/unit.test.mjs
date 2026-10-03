@@ -16,6 +16,11 @@ import {
   errorText,
   isPermanentDelete,
   formatDeleteResultSummary,
+  trashLabel,
+  actionLabel,
+  describeBlockedReason,
+  groupBlockedReasons,
+  deleteButtonLabel,
 } from '../src/lib/manage.ts';
 import { MockBackendAPI, highlightedSnippet } from '../src/lib/mock/mockApi.ts';
 import {
@@ -309,6 +314,283 @@ test('manage helpers filter age, select next neighbour and summarize preview', (
   assert.equal(isPermanentDelete(preview), true);
   assert.equal(isPermanentDelete({ ...preview, items: [preview.items[0]] }), false);
   assert.equal(formatDeleteResultSummary({ items: [], deleted: 1, failed: 1, freedBytes: 10, forgotten: [a] }), '1 session removed, 1 failed, 1 forgotten');
+});
+
+function deletePreview(items, trashLabel) {
+  const preview = { items, totalBytes: 0, token: 'token' };
+  if (trashLabel !== undefined) preview.trashLabel = trashLabel;
+  return preview;
+}
+
+function previewItem(id, agent, { reversible = agent === 'claude-code', blocked, action } = {}) {
+  return {
+    ref: { agent, id }, agent, title: id, paths: [], bytes: 1, reversible,
+    action: action ?? (reversible ? 'trash' : 'delete'),
+    ...(blocked ? { blocked } : {}),
+  };
+}
+
+const RUNTIME_UNKNOWN = 'cannot verify whether the agent is running: a Node.js, Bun or Deno process may host an agent; close it before deleting sessions';
+
+test('trashLabel follows the operating host and falls back to Trash', () => {
+  const items = [previewItem('one', 'claude-code')];
+  assert.equal(trashLabel(deletePreview(items, 'Recycle Bin')), 'Recycle Bin');
+  assert.equal(trashLabel(deletePreview(items, 'Trash')), 'Trash');
+  // Older servers omit the field; unknown values never invent a destination.
+  assert.equal(trashLabel(deletePreview(items)), 'Trash');
+  assert.equal(trashLabel(deletePreview(items, '')), 'Trash');
+  assert.equal(trashLabel(deletePreview(items, 'Bin')), 'Trash');
+  assert.equal(trashLabel(null), 'Trash');
+  assert.equal(actionLabel('trash', 'Recycle Bin'), 'Recycle Bin');
+  assert.equal(actionLabel('trash', 'Trash'), 'Trash');
+  assert.equal(actionLabel('delete', 'Recycle Bin'), 'delete');
+});
+
+test('describeBlockedReason explains known reasons and keeps others raw', () => {
+  assert.equal(
+    describeBlockedReason('trash transport is unavailable on this platform', 'Recycle Bin'),
+    'Moving sessions to Recycle Bin is not supported on this system.'
+  );
+  assert.equal(
+    describeBlockedReason('trash is not supported on this platform', 'Trash'),
+    'Moving sessions to Trash is not supported on this system.'
+  );
+  assert.match(
+    describeBlockedReason('permanent deletion is not allowed; enable it in settings first', 'Trash'),
+    /^Permanent deletion is turned off\. Enable "Allow permanent deletion" in Settings/
+  );
+  assert.equal(
+    describeBlockedReason(RUNTIME_UNKNOWN, 'Recycle Bin'),
+    'Cannot verify whether the agent is running. A Node.js, Bun or Deno process may host an agent; close it before deleting sessions.'
+  );
+  assert.equal(
+    describeBlockedReason('cannot verify whether the agent is running: process snapshot failed', 'Trash'),
+    'Cannot verify whether the agent is running. Process snapshot failed.'
+  );
+  assert.equal(
+    describeBlockedReason('cannot verify whether the agent is running', 'Trash'),
+    'Cannot verify whether the agent is running.'
+  );
+  // Older servers report unavailable process checks as a live session.
+  assert.match(
+    describeBlockedReason('session is live: process liveness unavailable', 'Trash'),
+    /^Cannot verify whether the agent is running/
+  );
+  assert.equal(
+    describeBlockedReason('session is live: agent process is running', 'Trash'),
+    'The agent is running. Close it before deleting its sessions.'
+  );
+  assert.equal(
+    describeBlockedReason('session is live: session was active within 10 minutes', 'Trash'),
+    'The session was active within the last 10 minutes.'
+  );
+  assert.equal(
+    describeBlockedReason('session is live: session was updated within 10 minutes', 'Trash'),
+    'The session was updated within the last 10 minutes.'
+  );
+  assert.equal(
+    describeBlockedReason('session is live: child session was active within 10 minutes', 'Trash'),
+    'A child session was active within the last 10 minutes.'
+  );
+  assert.equal(
+    describeBlockedReason('session is live: session was active within 10 minutes: child cannot be safely deleted', 'Recycle Bin'),
+    'The session was active within the last 10 minutes. A child session cannot be safely deleted.'
+  );
+  assert.equal(
+    describeBlockedReason('trash transport is unavailable on this platform: child cannot be safely deleted', 'Recycle Bin'),
+    'Moving sessions to Recycle Bin is not supported on this system. A child session cannot be safely deleted.'
+  );
+  for (const raw of [
+    'codex session has ambiguous rollout paths',
+    'invalid subagent session ID format: child cannot be safely deleted',
+    ': child cannot be safely deleted',
+    'Cannot Verify whether the agent is running: case differs',
+  ]) {
+    assert.equal(describeBlockedReason(raw, 'Recycle Bin'), raw);
+  }
+});
+
+test('groupBlockedReasons lists distinct readable reasons with counts', () => {
+  const preview = deletePreview([
+    previewItem('a', 'codex', { blocked: 'permanent deletion is not allowed; enable it in settings first' }),
+    previewItem('b', 'claude-code', { blocked: 'trash transport is unavailable on this platform' }),
+    previewItem('c', 'opencode', { blocked: 'permanent deletion is not allowed; enable it in settings first' }),
+    previewItem('d', 'claude-code'),
+    previewItem('e', 'claude-code', { blocked: RUNTIME_UNKNOWN }),
+    previewItem('f', 'claude-code', { blocked: 'some new backend reason' }),
+  ], 'Recycle Bin');
+  const groups = groupBlockedReasons(preview);
+  assert.deepEqual(groups.map(g => g.count), [2, 1, 1, 1]);
+  assert.match(groups[0].reason, /^Permanent deletion is turned off/);
+  assert.equal(groups[1].reason, 'Moving sessions to Recycle Bin is not supported on this system.');
+  assert.match(groups[2].reason, /Node\.js, Bun or Deno/);
+  assert.equal(groups[3].reason, 'some new backend reason');
+  assert.deepEqual(groupBlockedReasons(deletePreview([previewItem('d', 'claude-code')])), []);
+  assert.deepEqual(groupBlockedReasons(null), []);
+});
+
+test('deleteButtonLabel never promises a destination when nothing can proceed', () => {
+  const claude = previewItem('a', 'claude-code');
+  const codex = previewItem('b', 'codex');
+  const blockedClaude = previewItem('c', 'claude-code', { blocked: 'trash transport is unavailable on this platform' });
+  const blockedCodex = previewItem('d', 'codex', { blocked: 'permanent deletion is not allowed; enable it in settings first' });
+
+  // All blocked: neutral label, whatever the host or remote capability.
+  for (const label of ['Recycle Bin', 'Trash', undefined]) {
+    const allBlocked = deletePreview([blockedClaude, blockedCodex], label);
+    assert.equal(summarizePreview(allBlocked).canProceed, false);
+    assert.equal(deleteButtonLabel(allBlocked), 'Delete');
+    assert.equal(deleteButtonLabel(allBlocked, { trashUnavailable: true }), 'Delete');
+  }
+  assert.equal(deleteButtonLabel(null), 'Delete');
+  assert.equal(deleteButtonLabel(deletePreview([])), 'Delete');
+
+  // Reversible only: destination follows the host, with Trash fallback.
+  assert.equal(deleteButtonLabel(deletePreview([claude], 'Recycle Bin')), 'Move to Recycle Bin');
+  assert.equal(deleteButtonLabel(deletePreview([claude, blockedCodex], 'Recycle Bin')), 'Move to Recycle Bin');
+  assert.equal(deleteButtonLabel(deletePreview([claude], 'Trash')), 'Move to Trash');
+  assert.equal(deleteButtonLabel(deletePreview([claude])), 'Move to Trash');
+
+  // Permanent or mixed actionable selections are always permanent.
+  assert.equal(deleteButtonLabel(deletePreview([codex], 'Recycle Bin')), 'Delete Permanently');
+  assert.equal(deleteButtonLabel(deletePreview([claude, codex], 'Recycle Bin')), 'Delete Permanently');
+  assert.equal(deleteButtonLabel(deletePreview([codex, blockedClaude], 'Trash')), 'Delete Permanently');
+  assert.equal(isPermanentDelete(deletePreview([claude, blockedCodex])), false);
+
+  // A remote Linux host without trash support deletes permanently; one with
+  // trash support still keeps Codex/OpenCode permanent.
+  assert.equal(deleteButtonLabel(deletePreview([claude], 'Trash'), { trashUnavailable: true }), 'Delete Permanently');
+  assert.equal(deleteButtonLabel(deletePreview([claude], 'Trash'), { trashUnavailable: false }), 'Move to Trash');
+  assert.equal(deleteButtonLabel(deletePreview([codex], 'Trash'), { trashUnavailable: false }), 'Delete Permanently');
+  // Disabled by the remote permanent-delete policy: no permanent promise.
+  assert.equal(deleteButtonLabel(deletePreview([claude], 'Trash'), { trashUnavailable: true, blockedByPolicy: true }), 'Delete');
+
+  assert.equal(deleteButtonLabel(deletePreview([claude], 'Recycle Bin'), { deleting: true }), 'Deleting…');
+});
+
+const DELETE_DIALOG_URL = new URL('../src/lib/components/common/DeleteConfirmDialog.svelte', import.meta.url);
+let deleteDialogModule;
+
+// Store imports resolve per render to the fixture set for that render.
+function fixtureStore(name) {
+  return `const ${name} = new Proxy({}, { get: (_, key) => globalThis.__deleteDialogFixture.${name}[key] });`;
+}
+
+// Server-renders the real dialog with plain store fixtures. Only the
+// dialog's own store imports are replaced; helpers are the real modules.
+async function renderDeleteDialog(fixture) {
+  if (!deleteDialogModule) {
+    const [{ readFileSync }, { fileURLToPath }, { compile }] = await Promise.all([
+      import('node:fs'),
+      import('node:url'),
+      import('svelte/compiler'),
+    ]);
+    const filename = fileURLToPath(DELETE_DIALOG_URL);
+    let code = compile(readFileSync(filename, 'utf8'), { generate: 'server', filename }).js.code;
+    const replacements = [
+      ["'svelte/internal/server'", JSON.stringify(import.meta.resolve('svelte/internal/server'))],
+      ["'../../manage'", JSON.stringify(new URL('../../manage.ts', DELETE_DIALOG_URL).href)],
+      ["'../../format'", JSON.stringify(new URL('../../format.ts', DELETE_DIALOG_URL).href)],
+      ["import { manage } from '../../stores/manage.svelte';", fixtureStore('manage')],
+      ["import { connectionStore } from '../../stores/connection.svelte';", fixtureStore('connectionStore')],
+      ["import { link } from '../../stores/link.svelte';", fixtureStore('link')],
+    ];
+    for (const [from, to] of replacements) {
+      assert.ok(code.includes(from), `compiled dialog no longer contains ${from}`);
+      code = code.replace(from, to);
+    }
+    deleteDialogModule = await import(`data:text/javascript,${encodeURIComponent(code)}`);
+  }
+  const { render } = await import('svelte/server');
+  globalThis.__deleteDialogFixture = fixture;
+  try {
+    return render(deleteDialogModule.default, { props: { open: true, onClose() {} } }).body;
+  } finally {
+    delete globalThis.__deleteDialogFixture;
+  }
+}
+
+function deleteDialogFixture({ preview = null, lastResult = null, allowPermanentDelete = false, canTrash = true, dataHost } = {}) {
+  const calls = [];
+  return {
+    calls,
+    manage: {
+      preview, lastResult, previewLoading: false, previewError: null, deleting: false,
+      deleteError: null, deleteOutcomeUnknown: false, settings: { enabled: true, allowPermanentDelete },
+      dismissDialog: () => calls.push('dismiss'),
+      executeDelete: async () => { calls.push('execute'); return true; },
+    },
+    connectionStore: { canTrash },
+    link: { dataHost, stale: false, blockedReason: null },
+  };
+}
+
+function renderedButtons(html) {
+  return [...html.matchAll(/<button\b([^>]*)>([\s\S]*?)<\/button>/g)].map(([, attrs, text]) => ({
+    text: text.replace(/<!--[\s\S]*?-->/g, '').trim(),
+    disabled: /\sdisabled(?:=|\s|$)/.test(attrs),
+  }));
+}
+
+test('delete dialog renders uncertain Recycle Bin results separately and only offers Done', async () => {
+  const uncertain = 'C:\\Users\\tester\\.claude\\projects\\demo\\uncertain.jsonl';
+  const remaining = 'C:\\Users\\tester\\.claude\\projects\\demo\\uncertain';
+  const fixture = deleteDialogFixture({
+    lastResult: {
+      items: [{
+        ref: { agent: 'claude-code', id: 'synthetic' }, title: 'Synthetic session', ok: false,
+        error: 'Recycle Bin outcome is unknown; inspect the original location and Recycle Bin before retrying',
+        moved: [], remaining: [remaining], unknown: [uncertain],
+      }],
+      deleted: 0, failed: 1, freedBytes: 0, forgotten: null,
+    },
+  });
+  const html = await renderDeleteDialog(fixture);
+
+  assert.match(html, /outcome unknown/);
+  assert.doesNotMatch(html, />failed</);
+  assert.match(html, /Recycle Bin outcome is unknown; inspect the original location and Recycle Bin before retrying/);
+  const notRemoved = html.indexOf('Not removed:');
+  const unverified = html.indexOf('Outcome could not be verified for:');
+  assert.ok(notRemoved >= 0 && unverified > notRemoved);
+  assert.ok(html.indexOf(remaining) > notRemoved && html.indexOf(remaining) < unverified);
+  assert.ok(html.indexOf(uncertain) > unverified);
+  assert.equal(html.split(uncertain).length - 1, 2, 'unknown path appears once as text and once as its title');
+  assert.deepEqual(renderedButtons(html).map(b => b.text), ['✕', 'Done']);
+  assert.doesNotMatch(html, /Retry|Cancel|Move to|Delete Permanently/);
+  assert.deepEqual(fixture.calls, []);
+});
+
+test('delete dialog uses the backend Recycle Bin label for previews', async () => {
+  const preview = deletePreview([{ ...previewItem('synthetic', 'claude-code'), paths: ['C:\\Users\\tester\\.claude\\projects\\demo\\synthetic.jsonl'] }], 'Recycle Bin');
+  const html = await renderDeleteDialog(deleteDialogFixture({ preview }));
+  assert.match(html, /Selected sessions move to Recycle Bin\. You can restore them from\s+Recycle Bin\./);
+  assert.match(html, /Confirm to move the selected\s+session to\s+Recycle Bin\./);
+  assert.deepEqual(renderedButtons(html).at(-1), { text: 'Move to Recycle Bin', disabled: false });
+  assert.doesNotMatch(html, /Trash/);
+});
+
+test('delete dialog keeps disabled remote policy and all-blocked actions neutral', async () => {
+  const remotePolicy = await renderDeleteDialog(deleteDialogFixture({
+    preview: deletePreview([previewItem('synthetic', 'claude-code')], 'Trash'),
+    dataHost: 'linux-host', canTrash: false, allowPermanentDelete: false,
+  }));
+  assert.match(remotePolicy, /Trash is not supported on linux-host\./);
+  assert.match(remotePolicy, /permanent deletion is disabled in Settings/);
+  assert.deepEqual(renderedButtons(remotePolicy).at(-1), { text: 'Delete', disabled: true });
+
+  const remoteAllowed = await renderDeleteDialog(deleteDialogFixture({
+    preview: deletePreview([previewItem('synthetic', 'claude-code')], 'Trash'),
+    dataHost: 'linux-host', canTrash: false, allowPermanentDelete: true,
+  }));
+  assert.deepEqual(renderedButtons(remoteAllowed).at(-1), { text: 'Delete Permanently', disabled: false });
+
+  const allBlocked = await renderDeleteDialog(deleteDialogFixture({
+    preview: deletePreview([previewItem('synthetic', 'claude-code', { blocked: RUNTIME_UNKNOWN })], 'Recycle Bin'),
+  }));
+  assert.match(allBlocked, /Cannot verify whether the agent is running\. A Node\.js, Bun or Deno process may host an agent/);
+  assert.deepEqual(renderedButtons(allBlocked).at(-1), { text: 'Delete', disabled: true });
+  assert.doesNotMatch(allBlocked, /Confirm to move|Move to Recycle Bin/);
 });
 
 test('mock settings gate deletion and preview tokens bind to selection', async () => {

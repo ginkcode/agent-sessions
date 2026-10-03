@@ -124,11 +124,11 @@ func (m *Manager) planOne(ctx context.Context, meta model.SessionMeta, idx *cata
 	if action == ActionDelete && !cfg.AllowPermanentDelete {
 		return operation{}, ErrPermanentNotAllowed
 	}
-	if action == ActionDelete && procErr != nil {
-		return operation{}, fmt.Errorf("%w: process liveness unavailable", ErrLive)
-	}
-	if action == ActionDelete && procLive[string(meta.Ref.Agent)] {
-		return operation{}, fmt.Errorf("%w: agent process is running", ErrLive)
+	_, imagesOnly := m.proc.(imageProcFS)
+	if action == ActionDelete || imagesOnly {
+		if err := processSafetyError(procLive, procErr, string(meta.Ref.Agent)); err != nil {
+			return operation{}, err
+		}
 	}
 	switch meta.Ref.Agent {
 	case model.AgentClaude:
@@ -290,9 +290,18 @@ func (m *Manager) execute(ctx context.Context, op operation, all []model.Session
 	}
 	switch op.Item.Agent {
 	case model.AgentClaude:
-		moved, remaining, err := m.claude.trashFiles(ctx, op.Files)
+		moved, remaining, err := m.claude.trashFiles(ctx, op.Files, func() error {
+			if _, imagesOnly := m.proc.(imageProcFS); !imagesOnly {
+				return nil
+			}
+			live, err := m.procLiveMap(ctx)
+			return processSafetyError(live, err, string(model.AgentClaude))
+		})
 		res.Moved = moved
 		res.Remaining = remaining
+		if errors.Is(err, ErrTrashOutcomeUnknown) && len(moved) < len(op.Files) {
+			res.Unknown = []string{op.Files[len(moved)].Path}
+		}
 		if err != nil {
 			res.Error = err.Error()
 			return res, nil
@@ -308,8 +317,8 @@ func (m *Manager) execute(ctx context.Context, op operation, all []model.Session
 				return res, forgotten
 			}
 			live, lerr := m.procLiveMap(ctx)
-			if lerr != nil || live[string(model.AgentCodex)] {
-				res.Error = ErrLive.Error()
+			if err := processSafetyError(live, lerr, string(model.AgentCodex)); err != nil {
+				res.Error = err.Error()
 				res.Remaining = remainingPaths(op.Files, i)
 				return res, forgotten
 			}
@@ -327,8 +336,8 @@ func (m *Manager) execute(ctx context.Context, op operation, all []model.Session
 		for _, member := range op.OpenCodeMember {
 			if member.V2Target {
 				live, lerr := m.procLiveMap(ctx)
-				if lerr != nil || live[string(model.AgentOpenCode)] {
-					res.Error = ErrLive.Error()
+				if err := processSafetyError(live, lerr, string(model.AgentOpenCode)); err != nil {
+					res.Error = err.Error()
 					return res, nil
 				}
 				if err := m.opencode.deleteSession(ctx, member.ID); err != nil {
@@ -345,8 +354,8 @@ func (m *Manager) execute(ctx context.Context, op operation, all []model.Session
 		}
 		if len(v1IDs) != 0 {
 			live, lerr := m.procLiveMap(ctx)
-			if lerr != nil || live[string(model.AgentOpenCode)] {
-				res.Error = ErrLive.Error()
+			if err := processSafetyError(live, lerr, string(model.AgentOpenCode)); err != nil {
+				res.Error = err.Error()
 				return res, nil
 			}
 			if err := m.opencode.deleteV1Rows(ctx, v1IDs, v1OnlyIDs); err != nil {

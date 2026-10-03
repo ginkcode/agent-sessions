@@ -521,7 +521,7 @@ func (e *Engine) PreviewDelete(ctx context.Context, refs []model.SessionRef) (De
 	if err != nil {
 		return DeletePreview{}, err
 	}
-	return DeletePreview{Items: p.Items, TotalBytes: p.TotalBytes, Token: p.Token}, nil
+	return DeletePreview{Items: p.Items, TotalBytes: p.TotalBytes, Token: p.Token, TrashLabel: p.TrashLabel}, nil
 }
 
 // DeleteSessions executes a confirmed destructive plan.

@@ -34,6 +34,7 @@ type Preview struct {
 	Items      []Item `json:"items"`
 	TotalBytes int64  `json:"totalBytes"`
 	Token      string `json:"token"`
+	TrashLabel string `json:"trashLabel,omitempty"`
 }
 type Result struct {
 	Ref       model.SessionRef `json:"ref"`
@@ -42,6 +43,7 @@ type Result struct {
 	Error     string           `json:"error,omitempty"`
 	Moved     []string         `json:"moved,omitempty"`
 	Remaining []string         `json:"remaining,omitempty"`
+	Unknown   []string         `json:"unknown,omitempty"`
 }
 type Report struct {
 	Items      []Result           `json:"items"`
@@ -175,7 +177,11 @@ func (m *Manager) Preview(ctx context.Context, selected []model.SessionRef, cata
 	for _, op := range ops {
 		size += op.Item.Bytes
 	}
-	return &Preview{Items: items, TotalBytes: size, Token: m.seal(m.now().Add(tokenTTL), ops)}, nil
+	label := "Trash"
+	if named, ok := m.trash.(interface{ DisplayName() string }); ok {
+		label = named.DisplayName()
+	}
+	return &Preview{Items: items, TotalBytes: size, Token: m.seal(m.now().Add(tokenTTL), ops), TrashLabel: label}, nil
 }
 
 // Delete rebuilds the plan against fresh metadata and provider state. An

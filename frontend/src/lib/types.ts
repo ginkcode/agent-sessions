@@ -73,6 +73,11 @@ export interface DeletePreview {
   items: DeletePreviewItem[];
   totalBytes: number;
   token: string;
+  /**
+   * Where reversible items go on the host performing the delete: "Recycle
+   * Bin" on Windows, "Trash" elsewhere. Absent from older servers.
+   */
+  trashLabel?: string;
 }
 
 export interface DeleteResultItem {
@@ -82,6 +87,8 @@ export interface DeleteResultItem {
   error?: string;
   moved?: string[] | null;
   remaining?: string[] | null;
+  /** Paths whose removal could not be verified; neither moved nor remaining. */
+  unknown?: string[] | null;
 }
 
 export interface DeleteResult {

@@ -15,6 +15,18 @@ type ProcFS interface {
 	Cmdlines() (map[int][]string, error) // pid -> argv
 }
 
+// imageProcFS supplies only executable names, not arguments. Windows uses
+// this conservative scan for all three agents, including Claude: its provider
+// detector cannot prove that a Windows PID is idle through /proc.
+type imageProcFS interface {
+	Images() (map[int]string, error)
+}
+
+// ErrProcessUnknown blocks deletion when process safety cannot be established.
+var ErrProcessUnknown = errors.New("cannot verify whether the agent is running")
+
+var errRuntimeHost = errors.New("a Node.js, Bun or Deno process may host an agent; close it before deleting sessions")
+
 // LiveFunc reports whether a session (by agent and id) is currently live,
 // or an error when liveness is unknown. Unknown must fail closed.
 type LiveFunc func(ctx context.Context, agent string, id string) (bool, error)
@@ -117,6 +129,16 @@ func (g *liveGuard) procLive(ctx context.Context) (map[string]bool, error) {
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	default:
+	}
+	if images, ok := g.proc.(imageProcFS); ok {
+		table, err := images.Images()
+		if err != nil {
+			return nil, ErrProcessUnknown
+		}
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		return classifyImages(table)
 	}
 	entries, err := g.scanProcs()
 	if err != nil {

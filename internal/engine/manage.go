@@ -22,6 +22,7 @@ type DeletePreview struct {
 	Items      []manage.Item `json:"items"`
 	TotalBytes int64         `json:"totalBytes"`
 	Token      string        `json:"token"`
+	TrashLabel string        `json:"trashLabel,omitempty"`
 }
 
 // DeleteReport mirrors manage.Report for the frontend.

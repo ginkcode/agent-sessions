@@ -3,6 +3,11 @@
     summarizePreview,
     isPermanentDelete,
     formatDeleteResultSummary,
+    trashLabel,
+    actionLabel,
+    describeBlockedReason,
+    groupBlockedReasons,
+    deleteButtonLabel,
   } from '../../manage';
   import { formatBytes } from '../../format';
   import { manage } from '../../stores/manage.svelte';
@@ -18,6 +23,9 @@
 
   let summary = $derived(summarizePreview(manage.preview));
   let permanent = $derived(isPermanentDelete(manage.preview));
+  // Trash or Recycle Bin, as reported by the host performing the delete.
+  let label = $derived(trashLabel(manage.preview));
+  let blockedGroups = $derived(groupBlockedReasons(manage.preview));
   // The host the previewed sessions came from, even while it is dropped.
   let isRemote = $derived(link.dataHost !== undefined);
   let remoteHost = $derived(link.dataHost ?? 'Local');
@@ -119,6 +127,8 @@
                   >
                   {#if item.ok}
                     <span class="result-ok">done</span>
+                  {:else if item.unknown?.length}
+                    <span class="blocked-tag">outcome unknown</span>
                   {:else}
                     <span class="blocked-tag">failed</span>
                   {/if}
@@ -130,6 +140,14 @@
                   <p class="preview-warning">Not removed:</p>
                   <ul class="preview-paths">
                     {#each item.remaining as p}
+                      <li title={p}>{p}</li>
+                    {/each}
+                  </ul>
+                {/if}
+                {#if item.unknown?.length}
+                  <p class="preview-warning">Outcome could not be verified for:</p>
+                  <ul class="preview-paths">
+                    {#each item.unknown as p}
                       <li title={p}>{p}</li>
                     {/each}
                   </ul>
@@ -155,19 +173,28 @@
                   ? 'Blocked sessions will be skipped; the rest can proceed.'
                   : 'None of the selected sessions can be deleted right now.'}
               </span>
+              {#if blockedGroups.length === 1}
+                <span>{blockedGroups[0].reason}</span>
+              {:else}
+                <ul class="blocked-reasons">
+                  {#each blockedGroups as group (group.reason)}
+                    <li>{group.reason} ({group.count})</li>
+                  {/each}
+                </ul>
+              {/if}
             </div>
           {/if}
 
           {#if trashDisabledOnRemote}
             <div class="danger-banner" role="alert">
-              <strong>Trash is not supported on {remoteHost}.</strong>
+              <strong>{label} is not supported on {remoteHost}.</strong>
               {#if manage.settings.allowPermanentDelete}
                 <span>
-                  Trashing is unavailable on this host. Confirming will permanently delete files from {remoteHost}.
+                  Moving to {label} is unavailable on this host. Confirming will permanently delete files from {remoteHost}.
                 </span>
               {:else}
                 <span>
-                  Trashing is unavailable on this host and permanent deletion is disabled in Settings. To delete sessions on {remoteHost}, enable "Allow permanent deletion" in Settings.
+                  Moving to {label} is unavailable on this host and permanent deletion is disabled in Settings. To delete sessions on {remoteHost}, enable "Allow permanent deletion" in Settings.
                 </span>
               {/if}
             </div>
@@ -179,14 +206,14 @@
                 permanently deleted.</strong
               >
               <span>
-                These files have no Trash copy. They will be forgotten and
+                These files have no {label} copy. They will be forgotten and
                 cannot be restored.
               </span>
             </div>
           {:else if summary.reversibleCount > 0}
             <p class="reversible-note">
-              Selected sessions move to Trash{isRemote ? ` on ${remoteHost}` : ''}. You can restore them from
-              Trash.
+              Selected sessions move to {label}{isRemote ? ` on ${remoteHost}` : ''}. You can restore them from
+              {label}.
             </p>
           {/if}
 
@@ -204,14 +231,14 @@
                     class="action-kind"
                     class:permanent={!item.reversible}
                   >
-                    {item.action}
+                    {actionLabel(item.action, label)}
                   </span>
                   {#if item.blocked}
                     <span class="blocked-tag" title={item.blocked}
-                      >blocked: {item.blocked}</span
+                      >blocked: {describeBlockedReason(item.blocked, label)}</span
                     >
                   {:else if !item.reversible}
-                    <span class="permanent-tag">no Trash copy</span>
+                    <span class="permanent-tag">no {label} copy</span>
                   {/if}
                 </div>
                 {#if item.paths?.length}
@@ -236,14 +263,14 @@
 
           {#if permanent || trashDisabledOnRemote}
             <p class="permanent-note">
-              Sessions deleted without Trash are removed permanently from {isRemote ? remoteHost : 'disk'}. This
+              Sessions deleted without a {label} copy are removed permanently from {isRemote ? remoteHost : 'disk'}. This
               action cannot be undone.
             </p>
-          {:else}
+          {:else if summary.canProceed}
             <p class="soft-confirm-note">
               Confirm to move the selected
               {summary.reversibleCount === 1 ? 'session' : 'sessions'} to
-              Trash{isRemote ? ` on ${remoteHost}` : ''}.
+              {label}{isRemote ? ` on ${remoteHost}` : ''}.
             </p>
           {/if}
 
@@ -270,11 +297,11 @@
             disabled={!canConfirm}
             onclick={handleConfirm}
           >
-            {manage.deleting
-              ? 'Deleting…'
-              : (permanent || trashDisabledOnRemote)
-                ? 'Delete Permanently'
-                : 'Move to Trash'}
+            {deleteButtonLabel(manage.preview, {
+              deleting: manage.deleting,
+              trashUnavailable: trashDisabledOnRemote,
+              blockedByPolicy: blockedByTrashPolicy,
+            })}
           </button>
         </footer>
       {/if}
@@ -386,6 +413,11 @@
     background: color-mix(in srgb, var(--danger) 8%, transparent);
     border: 1px solid color-mix(in srgb, var(--danger) 35%, transparent);
     color: var(--danger);
+  }
+
+  .blocked-reasons {
+    margin: 2px 0 0 0;
+    padding-left: 16px;
   }
 
   .reversible-note {

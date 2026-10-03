@@ -31,7 +31,7 @@
         {#if manage.firstEnableWarningVisible}
           <div class="warning" role="alert">
             <strong>Before enabling</strong>
-            <p>Deletion may remove transcripts, related files and cached history. Live sessions are blocked, but other sessions can be moved to Trash or permanently deleted depending on the provider. Always review the preview before confirming.</p>
+            <p>Deletion may remove transcripts, related files and cached history. Sessions that are live, or whose agent cannot be verified as stopped, are blocked. Other sessions are moved to the system Trash or Recycle Bin, or permanently deleted, depending on the provider. Always review the preview before confirming.</p>
             <div class="actions">
               <button type="button" onclick={() => (manage.firstEnableWarningVisible = false)}>Cancel</button>
               <button type="button" disabled={manage.loadingSettings} onclick={() => manage.setManageEnabled(true).then(() => (manage.firstEnableWarningVisible = false))}>I understand — enable</button>
@@ -47,7 +47,7 @@
           />
           Allow permanent deletion (cannot be undone)
         </label>
-        <p class="hint">Codex and OpenCode sessions have no Trash copy. Deleting them is permanent.</p>
+        <p class="hint">Claude sessions move to the system Trash or Recycle Bin when supported. Codex and OpenCode sessions have no Trash or Recycle Bin copy; deleting them is permanent.</p>
 
         <section class="cache">
           <h3>Handoff files</h3>

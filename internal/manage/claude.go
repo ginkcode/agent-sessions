@@ -51,6 +51,14 @@ func (cm *claudeManager) plan(ctx context.Context, m model.SessionMeta, live Liv
 		return nil, safePathError(err)
 	}
 
+	if checker, ok := cm.trash.(TrashPathChecker); ok {
+		for _, file := range files {
+			if err := checker.CheckTrashPath(file.Path); err != nil {
+				return nil, err
+			}
+		}
+	}
+
 	if err := cm.checkRecent(m, files); err != nil {
 		return nil, err
 	}
@@ -188,7 +196,7 @@ func (cm *claudeManager) checkLive(ctx context.Context, m model.SessionMeta, liv
 }
 
 // trash executes trash operation file-by-file with cancellation check.
-func (cm *claudeManager) trashFiles(ctx context.Context, files []itemFile) (moved []string, remaining []string, err error) {
+func (cm *claudeManager) trashFiles(ctx context.Context, files []itemFile, beforeTrash func() error) (moved []string, remaining []string, err error) {
 	if cm.trash == nil {
 		for _, f := range files {
 			remaining = append(remaining, f.Path)
@@ -206,11 +214,18 @@ func (cm *claudeManager) trashFiles(ctx context.Context, files []itemFile) (move
 		default:
 		}
 
-		if trErr := cm.trash.Trash(f.Path); trErr != nil {
-			for j := i; j < len(files); j++ {
-				remaining = append(remaining, files[j].Path)
+		if beforeTrash != nil {
+			if err := beforeTrash(); err != nil {
+				return moved, remainingPaths(files, i), err
 			}
-			return moved, remaining, errors.New("trash operation failed")
+		}
+		if trErr := cm.trash.Trash(f.Path); trErr != nil {
+			if errors.Is(trErr, ErrTrashOutcomeUnknown) {
+				// The shell may have moved all or part of the current target.
+				// Do not list it as remaining or automatically retry it.
+				return moved, remainingPaths(files, i+1), ErrTrashOutcomeUnknown
+			}
+			return moved, remainingPaths(files, i), errors.New("trash operation failed")
 		}
 		moved = append(moved, f.Path)
 	}

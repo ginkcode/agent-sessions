@@ -174,6 +174,101 @@ export function isPermanentDelete(preview: DeletePreview | null): boolean {
   return Boolean(preview?.items.some((item) => !item.reversible && !item.blocked));
 }
 
+export type TrashLabel = 'Trash' | 'Recycle Bin';
+
+/**
+ * Where reversible deletes go on the host that performs them. Older servers
+ * omit the label and only ever used Trash.
+ */
+export function trashLabel(preview: DeletePreview | null): TrashLabel {
+  return preview?.trashLabel === 'Recycle Bin' ? 'Recycle Bin' : 'Trash';
+}
+
+/**
+ * Display name for a preview item's action kind.
+ */
+export function actionLabel(action: string, label: TrashLabel): string {
+  return action === 'trash' ? label : action;
+}
+
+const CANNOT_VERIFY_PREFIX = 'cannot verify whether the agent is running';
+const UNSAFE_CHILD_SUFFIX = ': child cannot be safely deleted';
+
+/**
+ * Turns a known backend block reason into readable guidance. Unrecognized
+ * reasons are returned unchanged so no detail is lost.
+ */
+export function describeBlockedReason(reason: string, label: TrashLabel): string {
+  if (reason.endsWith(UNSAFE_CHILD_SUFFIX)) {
+    const prefix = reason.slice(0, -UNSAFE_CHILD_SUFFIX.length);
+    const description = describeBlockedReason(prefix, label);
+    // Only map the wrapper if its underlying reason is recognized. Otherwise
+    // preserve the complete backend error, including the child context.
+    return description === prefix
+      ? reason
+      : `${description} A child session cannot be safely deleted.`;
+  }
+  switch (reason) {
+    case 'trash transport is unavailable on this platform':
+    case 'trash is not supported on this platform':
+      return `Moving sessions to ${label} is not supported on this system.`;
+    case 'permanent deletion is not allowed; enable it in settings first':
+      return 'Permanent deletion is turned off. Enable "Allow permanent deletion" in Settings to delete these sessions.';
+    case 'session is live: process liveness unavailable':
+      return 'Cannot verify whether the agent is running: process checks are unavailable on this system.';
+    case 'session is live: agent process is running':
+      return 'The agent is running. Close it before deleting its sessions.';
+    case 'session is live: session is currently active':
+      return 'The session is currently active.';
+    case 'session is live: session was active within 10 minutes':
+      return 'The session was active within the last 10 minutes.';
+    case 'session is live: session was updated within 10 minutes':
+      return 'The session was updated within the last 10 minutes.';
+    case 'session is live: child session was active within 10 minutes':
+      return 'A child session was active within the last 10 minutes.';
+    case 'session is already covered by another selection':
+      return 'Already included with another selected session.';
+  }
+  if (reason.startsWith(`${CANNOT_VERIFY_PREFIX}: `)) {
+    const detail = reason.slice(CANNOT_VERIFY_PREFIX.length + 2).trim();
+    if (!detail) return 'Cannot verify whether the agent is running.';
+    return `Cannot verify whether the agent is running. ${detail[0].toUpperCase()}${detail.slice(1)}${/[.!?]$/.test(detail) ? '' : '.'}`;
+  }
+  if (reason === CANNOT_VERIFY_PREFIX) return 'Cannot verify whether the agent is running.';
+  return reason;
+}
+
+/**
+ * Groups the distinct blocked reasons in a preview, in first-seen order,
+ * with how many items each one blocks.
+ */
+export function groupBlockedReasons(
+  preview: DeletePreview | null
+): { reason: string; count: number }[] {
+  const label = trashLabel(preview);
+  const groups = new Map<string, number>();
+  for (const item of preview?.items ?? []) {
+    if (!item.blocked) continue;
+    const reason = describeBlockedReason(item.blocked, label);
+    groups.set(reason, (groups.get(reason) ?? 0) + 1);
+  }
+  return [...groups].map(([reason, count]) => ({ reason, count }));
+}
+
+/**
+ * Wording for the confirm button. A selection where nothing can proceed
+ * gets a neutral label rather than promising a destination.
+ */
+export function deleteButtonLabel(
+  preview: DeletePreview | null,
+  opts: { deleting?: boolean; trashUnavailable?: boolean; blockedByPolicy?: boolean } = {}
+): string {
+  if (opts.deleting) return 'Deleting…';
+  if (opts.blockedByPolicy || !summarizePreview(preview).canProceed) return 'Delete';
+  if (isPermanentDelete(preview) || opts.trashUnavailable) return 'Delete Permanently';
+  return `Move to ${trashLabel(preview)}`;
+}
+
 /**
  * Computes human-readable feedback from a DeleteResult.
  */
