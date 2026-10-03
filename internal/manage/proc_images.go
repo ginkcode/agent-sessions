@@ -36,6 +36,8 @@ func agentServer(agent string, argv []string) bool {
 // Codex and OpenCode executables mirror the Linux guard: args reads the
 // arguments of only those processes so their server modes can be ignored.
 // Arguments are matched, never returned or shown; unreadable ones block.
+// Claude is not scanned: as on Linux, each Claude session is checked against
+// Claude Code's own status files (the provider LiveFunc).
 //
 // The result maps an agent to the executable that makes it live, so the
 // blocked reason can tell the user what to close.
@@ -68,7 +70,7 @@ func classifyImages(images map[int]string, args func(pid int, image string) ([]s
 			runtime = true
 			continue
 		}
-		for _, agent := range []string{"claude", "codex", "opencode"} {
+		for _, agent := range []string{"codex", "opencode"} {
 			// Include platform/version-suffixed binaries (for example the
 			// vendored codex-x86_64-pc-windows-msvc executable).
 			if name == agent || strings.HasPrefix(name, agent+"-") {
@@ -88,24 +90,18 @@ func classifyImages(images map[int]string, args func(pid int, image string) ([]s
 	})
 	live := make(map[string]string)
 	for _, m := range matches {
-		key := m.agent
-		if m.agent == "claude" {
-			// Claude has no server mode to exempt.
-			key = "claude-code"
-		} else {
-			if args == nil {
-				return nil, ErrProcessUnknown
-			}
-			argv, err := args(m.pid, m.image)
-			if err != nil || len(argv) == 0 {
-				return nil, ErrProcessUnknown
-			}
-			if agentServer(m.agent, argv) {
-				continue
-			}
+		if args == nil {
+			return nil, ErrProcessUnknown
 		}
-		if live[key] == "" {
-			live[key] = m.exe
+		argv, err := args(m.pid, m.image)
+		if err != nil || len(argv) == 0 {
+			return nil, ErrProcessUnknown
+		}
+		if agentServer(m.agent, argv) {
+			continue
+		}
+		if live[m.agent] == "" {
+			live[m.agent] = m.exe
 		}
 	}
 	return live, nil

@@ -16,9 +16,8 @@ type ProcFS interface {
 }
 
 // imageProcFS supplies executable names, and arguments only on request for
-// processes already identified as Codex or OpenCode. Windows uses this scan
-// for all three agents, including Claude: its provider detector cannot prove
-// that a Windows PID is idle through /proc.
+// processes already identified as Codex or OpenCode. Windows uses it in place
+// of /proc to guard the permanent Codex/OpenCode deletes.
 type imageProcFS interface {
 	Images() (map[int]string, error)
 	// Args returns pid's arguments, or an error if pid no longer runs image.

@@ -124,8 +124,7 @@ func (m *Manager) planOne(ctx context.Context, meta model.SessionMeta, idx *cata
 	if action == ActionDelete && !cfg.AllowPermanentDelete {
 		return operation{}, ErrPermanentNotAllowed
 	}
-	_, imagesOnly := m.proc.(imageProcFS)
-	if action == ActionDelete || imagesOnly {
+	if action == ActionDelete {
 		if err := processSafetyError(procLive, procErr, string(meta.Ref.Agent)); err != nil {
 			return operation{}, err
 		}
@@ -291,11 +290,7 @@ func (m *Manager) execute(ctx context.Context, op operation, all []model.Session
 	switch op.Item.Agent {
 	case model.AgentClaude:
 		moved, remaining, err := m.claude.trashFiles(ctx, op.Files, func() error {
-			if _, imagesOnly := m.proc.(imageProcFS); !imagesOnly {
-				return nil
-			}
-			live, err := m.procLiveMap(ctx)
-			return processSafetyError(live, err, string(model.AgentClaude))
+			return m.claude.checkLive(ctx, meta, m.live)
 		})
 		res.Moved = moved
 		res.Remaining = remaining
