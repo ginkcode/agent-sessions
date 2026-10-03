@@ -321,7 +321,7 @@ func ExportFileName(meta model.SessionMeta) string {
 	return strings.Join(parts, "_") + ".agent-session.zip"
 }
 
-// shortIDMax caps IDs that have no "-" block, such as O‍penCode's
+// shortIDMax caps IDs that have no "-" block, such as OpenCode's
 // ses_<base62> IDs.
 const shortIDMax = 12
 
