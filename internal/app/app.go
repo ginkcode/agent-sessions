@@ -280,13 +280,7 @@ func (a *App) RevealSource(ref model.SessionRef) error {
 	if err != nil {
 		return err
 	}
-	var cmd *exec.Cmd
-	if runtime.GOOS == "darwin" {
-		cmd = exec.Command("open", dir)
-	} else {
-		cmd = exec.Command("xdg-open", dir)
-	}
-	return cmd.Start()
+	return startDetached(desktopOpen(runtime.GOOS, dir, false))
 }
 
 // Diagnostics returns aggregated scanner health across providers.
@@ -304,11 +298,30 @@ func (a *App) OpenURL(rawURL string) error {
 	if scheme != "http" && scheme != "https" {
 		return fmt.Errorf("unsupported url scheme: %s", scheme)
 	}
-	var cmd *exec.Cmd
-	if runtime.GOOS == "darwin" {
-		cmd = exec.Command("open", parsed.String())
-	} else {
-		cmd = exec.Command("xdg-open", parsed.String())
+	return startDetached(desktopOpen(runtime.GOOS, parsed.String(), true))
+}
+
+// desktopOpen returns the command that opens target, a local directory or an
+// http(s) URL, with the desktop's default handler on goos. On Windows a URL
+// goes to url.dll rather than through cmd.exe, which would interpret & and ^.
+func desktopOpen(goos, target string, isURL bool) *exec.Cmd {
+	switch {
+	case goos == "darwin":
+		return exec.Command("open", target)
+	case goos == "windows" && isURL:
+		return exec.Command("rundll32", "url.dll,FileProtocolHandler", target)
+	case goos == "windows":
+		return exec.Command("explorer", target)
 	}
-	return cmd.Start()
+	return exec.Command("xdg-open", target)
+}
+
+// startDetached starts cmd and reaps it in the background. Explorer exits 1
+// even on success, so the exit status is ignored.
+func startDetached(cmd *exec.Cmd) error {
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+	go func() { _ = cmd.Wait() }()
+	return nil
 }
