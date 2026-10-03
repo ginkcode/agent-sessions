@@ -26,6 +26,22 @@ func TestWindowsRecycleReleaseSafetyGate(t *testing.T) {
 	}
 }
 
+// Reads (never writes) this machine's Recycle Bin settings for a temp file.
+func TestWindowsRecycleBinSettingsReadOnly(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "a"), make([]byte, 100), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if size, err := recycleSize(dir); err != nil || size != 100 {
+		t.Fatalf("recycleSize = %d, %v", size, err)
+	}
+	err := windowsRecycleNative{}.checkBin(dir)
+	if err != nil && !errors.Is(err, errRecycleDisabled) && !errors.Is(err, errRecycleTooLarge) && !errors.Is(err, errRecycleSettings) {
+		t.Fatalf("unexpected checkBin error: %v", err)
+	}
+	t.Logf("checkBin(temp dir) = %v", err)
+}
+
 func TestWindowsRecycleCOMVTableABI(t *testing.T) {
 	word := unsafe.Sizeof(uintptr(0))
 	v := windowsFileOperationVTable{}

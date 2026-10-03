@@ -14,6 +14,9 @@ type fakeRecycleNative struct {
 	locationErr error
 	locationAt  int
 	locationN   int
+	binErr      error
+	binAt       int
+	binN        int
 	initHR      recycleHRESULT
 	newOpHR     recycleHRESULT
 	newItemHR   recycleHRESULT
@@ -37,6 +40,14 @@ func (n *fakeRecycleNative) checkLocation(string) error {
 	n.locationN++
 	if n.locationAt == 0 || n.locationAt == n.locationN {
 		return n.locationErr
+	}
+	return nil
+}
+func (n *fakeRecycleNative) checkBin(string) error {
+	n.events = append(n.events, "check-bin")
+	n.binN++
+	if n.binAt == 0 || n.binAt == n.binN {
+		return n.binErr
 	}
 	return nil
 }
@@ -180,6 +191,57 @@ func TestRecycleLocationUnavailableFailsBeforeCOM(t *testing.T) {
 	}
 }
 
+func TestCheckRecycleBin(t *testing.T) {
+	ok := recycleBinSettings{found: true, maxCapacityMB: 10}
+	for _, tc := range []struct {
+		name string
+		s    recycleBinSettings
+		size int64
+		want error
+	}{
+		{"fits", ok, 10 << 20, nil},
+		{"empty", ok, 0, nil},
+		{"too-large", ok, 10<<20 + 1, errRecycleTooLarge},
+		{"zero-capacity", recycleBinSettings{found: true}, 1, errRecycleTooLarge},
+		{"nuke", recycleBinSettings{found: true, nukeOnDelete: true, maxCapacityMB: 10}, 1, errRecycleDisabled},
+		{"policy-no-recycle", recycleBinSettings{policyNoRecycle: true, found: true, maxCapacityMB: 10}, 1, errRecycleDisabled},
+		{"policy-no-recycle-no-key", recycleBinSettings{policyNoRecycle: true}, 1, errRecycleDisabled},
+		{"policy-size", recycleBinSettings{policySize: true, found: true, maxCapacityMB: 10}, 1, errRecycleSettings},
+		{"no-key", recycleBinSettings{}, 1, errRecycleSettings},
+		{"negative-size", ok, -1, errRecycleSettings},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if err := checkRecycleBin(tc.s, tc.size); err != tc.want {
+				t.Fatalf("checkRecycleBin = %v, want %v", err, tc.want)
+			}
+		})
+	}
+}
+
+func TestRecycleBinPreCheckFailsBeforeCOM(t *testing.T) {
+	for _, tc := range []struct{ err, want error }{
+		{errRecycleDisabled, errRecycleDisabled},
+		{errRecycleTooLarge, errRecycleTooLarge},
+		{errRecycleSettings, errRecycleSettings},
+		{errors.New("private C:\\Users\\secret"), errRecyclePath},
+	} {
+		n := newFakeRecycleNative()
+		n.binErr = tc.err
+		tr := recycleTransport{n}
+		if err := tr.CheckTrashPath(`C:\sessions\file`); err != tc.want {
+			t.Fatalf("CheckTrashPath = %v, want %v", err, tc.want)
+		}
+		if err := tr.Trash(`C:\sessions\file`); err != tc.want {
+			t.Fatalf("Trash = %v, want %v", err, tc.want)
+		}
+		for _, event := range n.events {
+			if event == "lock" || event == "perform" {
+				t.Fatalf("refused Bin reached COM: %#v", n.events)
+			}
+		}
+	}
+}
+
 func TestRecycleConstructorNonDestructiveProbe(t *testing.T) {
 	n := newFakeRecycleNative()
 	tr, err := newRecycleTransport(n)
@@ -207,14 +269,14 @@ func TestRecycleNativeLifecycle(t *testing.T) {
 	if err := (recycleTransport{n}).Trash(`C:\sessions\file`); err != nil {
 		t.Fatal(err)
 	}
-	want := []string{"check-location", "lock", "initialize", "new-operation", "flags", "new-item", "advise", "delete", "check-location", "perform", "aborted", "unadvise", "release-item", "release-operation", "uninitialize", "unlock"}
+	want := []string{"check-location", "check-bin", "lock", "initialize", "new-operation", "flags", "new-item", "advise", "delete", "check-location", "check-bin", "perform", "aborted", "unadvise", "release-item", "release-operation", "uninitialize", "unlock"}
 	if !reflect.DeepEqual(n.events, want) {
 		t.Fatalf("incorrect scoped native lifecycle: %#v", n.events)
 	}
 }
 
 func TestRecycleSetupErrorsNeverPerform(t *testing.T) {
-	for _, stage := range []string{"initialize", "new-operation", "flags", "new-item", "advise", "delete", "recheck"} {
+	for _, stage := range []string{"initialize", "new-operation", "flags", "new-item", "advise", "delete", "recheck", "bin-recheck"} {
 		t.Run(stage, func(t *testing.T) {
 			n := newFakeRecycleNative()
 			const failure recycleHRESULT = 0x80070005
@@ -234,6 +296,9 @@ func TestRecycleSetupErrorsNeverPerform(t *testing.T) {
 			case "recheck":
 				n.locationAt = 2
 				n.locationErr = errors.New("private path")
+			case "bin-recheck":
+				n.binAt = 2
+				n.binErr = errRecycleTooLarge
 			}
 			err := (recycleTransport{n}).Trash(`C:\sessions\secret-file`)
 			if err == nil || errors.Is(err, ErrTrashOutcomeUnknown) || strings.Contains(err.Error(), "secret") {

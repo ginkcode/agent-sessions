@@ -4,6 +4,8 @@ package manage
 
 import (
 	"errors"
+	"io/fs"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"sync"
@@ -12,6 +14,7 @@ import (
 	"unsafe"
 
 	"golang.org/x/sys/windows"
+	"golang.org/x/sys/windows/registry"
 )
 
 var (
@@ -90,6 +93,83 @@ func (windowsRecycleNative) checkLocation(path string) error {
 		}
 	}
 	return nil
+}
+
+func (windowsRecycleNative) checkBin(path string) error {
+	size, err := recycleSize(path)
+	if err != nil {
+		return errRecycleSettings
+	}
+	settings, err := readRecycleBinSettings(path[:3])
+	if err != nil {
+		return errRecycleSettings
+	}
+	return checkRecycleBin(settings, size)
+}
+
+// recycleSize totals regular file sizes under path without following links.
+func recycleSize(path string) (int64, error) {
+	var total int64
+	err := filepath.WalkDir(path, func(_ string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		info, err := d.Info()
+		if err != nil {
+			return err
+		}
+		if info.Mode().IsRegular() {
+			total += info.Size()
+		}
+		return nil
+	})
+	return total, err
+}
+
+// readRecycleBinSettings reads the policies and the per-volume BitBucket key
+// Explorer's Recycle Bin properties write for root (for example `C:\`).
+func readRecycleBinSettings(root string) (recycleBinSettings, error) {
+	var s recycleBinSettings
+	for _, hive := range []registry.Key{registry.CURRENT_USER, registry.LOCAL_MACHINE} {
+		k, err := registry.OpenKey(hive, `Software\Microsoft\Windows\CurrentVersion\Policies\Explorer`, registry.QUERY_VALUE)
+		if err != nil {
+			continue
+		}
+		if v, _, err := k.GetIntegerValue("NoRecycleFiles"); err == nil && v != 0 {
+			s.policyNoRecycle = true
+		}
+		if _, _, err := k.GetIntegerValue("RecycleBinSize"); err == nil {
+			s.policySize = true
+		}
+		k.Close()
+	}
+	rootPtr, err := windows.UTF16PtrFromString(root)
+	if err != nil {
+		return s, err
+	}
+	var volume [64]uint16
+	if err := windows.GetVolumeNameForVolumeMountPoint(rootPtr, &volume[0], uint32(len(volume))); err != nil {
+		return s, err
+	}
+	name := windows.UTF16ToString(volume[:]) // \\?\Volume{GUID}\
+	start, end := strings.IndexByte(name, '{'), strings.IndexByte(name, '}')
+	if start < 0 || end < start {
+		return s, errRecycleSettings
+	}
+	k, err := registry.OpenKey(registry.CURRENT_USER,
+		`Software\Microsoft\Windows\CurrentVersion\Explorer\BitBucket\Volume\`+name[start:end+1], registry.QUERY_VALUE)
+	if err != nil {
+		return s, nil // found stays false: unverified, refused.
+	}
+	defer k.Close()
+	nuke, _, nukeErr := k.GetIntegerValue("NukeOnDelete")
+	capacity, _, capErr := k.GetIntegerValue("MaxCapacity")
+	if nukeErr == nil && capErr == nil && capacity <= 0xFFFFFFFF {
+		s.found, s.nukeOnDelete, s.maxCapacityMB = true, nuke != 0, uint32(capacity)
+	} else if nukeErr == nil && nuke != 0 {
+		s.found, s.nukeOnDelete = true, true
+	}
+	return s, nil
 }
 
 // Named complete SDK vtables make the ABI reviewable. IFileOperation's

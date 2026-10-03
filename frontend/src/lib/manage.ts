@@ -213,7 +213,16 @@ export function describeBlockedReason(reason: string, label: TrashLabel): string
   switch (reason) {
     case 'trash transport is unavailable on this platform':
     case 'trash is not supported on this platform':
+    case 'manage: safe Recycle Bin support is unavailable':
       return `Moving sessions to ${label} is not supported on this system.`;
+    case 'path is not supported by the Recycle Bin transport':
+      return 'The session is on a drive or path the Recycle Bin cannot safely handle, such as a network or removable drive or a linked folder.';
+    case "this drive's Recycle Bin is turned off":
+      return "The Recycle Bin is turned off for this drive (\"Don't move files to the Recycle Bin\"), so the session would be deleted permanently.";
+    case "the session is larger than this drive's Recycle Bin":
+      return "The session is larger than this drive's Recycle Bin, so it would be deleted permanently. Increase the Recycle Bin's maximum size to delete it.";
+    case "this drive's Recycle Bin settings could not be verified":
+      return "This drive's Recycle Bin settings could not be verified, so the session might be deleted permanently.";
     case 'permanent deletion is not allowed; enable it in settings first':
       return 'Permanent deletion is turned off. Enable "Allow permanent deletion" in Settings to delete these sessions.';
     case 'session is live: process liveness unavailable':

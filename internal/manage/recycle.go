@@ -23,7 +23,50 @@ var ErrTrashOutcomeUnknown = errors.New("Recycle Bin outcome is unknown; inspect
 var (
 	errRecycleUnavailable = errors.New("manage: safe Recycle Bin support is unavailable")
 	errRecyclePath        = errors.New("path is not supported by the Recycle Bin transport")
+
+	// Read-only Recycle Bin pre-checks. In these cases the Shell would delete
+	// permanently (or ask to), so the session is refused before anything runs.
+	errRecycleDisabled = errors.New("this drive's Recycle Bin is turned off")
+	errRecycleTooLarge = errors.New("the session is larger than this drive's Recycle Bin")
+	errRecycleSettings = errors.New("this drive's Recycle Bin settings could not be verified")
 )
+
+// recycleBinSettings are the target volume's Recycle Bin settings, read
+// (never written) from the current user's registry.
+type recycleBinSettings struct {
+	policyNoRecycle bool   // NoRecycleFiles policy: never recycle.
+	policySize      bool   // RecycleBinSize policy overrides the per-drive size.
+	found           bool   // The per-volume BitBucket key and both values exist.
+	nukeOnDelete    bool   // "Don't move files to the Recycle Bin".
+	maxCapacityMB   uint32 // Maximum size in MB.
+}
+
+// checkRecycleBin refuses anything the Bin would not keep. size is the total
+// bytes to recycle; comparing the total is stricter than the Shell's
+// per-item limit. A full Bin is not refused: Windows makes room by purging
+// its oldest items, as for any Explorer delete.
+func checkRecycleBin(s recycleBinSettings, size int64) error {
+	switch {
+	case s.policyNoRecycle || s.found && s.nukeOnDelete:
+		return errRecycleDisabled
+	case s.policySize || !s.found || size < 0:
+		return errRecycleSettings
+	case size > int64(s.maxCapacityMB)<<20:
+		return errRecycleTooLarge
+	}
+	return nil
+}
+
+// recycleBinError keeps the pre-check reasons visible; any other failure is
+// reported as an unsupported path.
+func recycleBinError(err error) error {
+	for _, known := range []error{errRecycleDisabled, errRecycleTooLarge, errRecycleSettings} {
+		if errors.Is(err, known) {
+			return known
+		}
+	}
+	return errRecyclePath
+}
 
 type recycleHRESULT uint32
 
@@ -73,6 +116,8 @@ func recycleNativeError(stage string, hr recycleHRESULT) error {
 type recycleNative interface {
 	available() bool
 	checkLocation(string) error
+	// checkBin reads the target's Recycle Bin settings and size. Read-only.
+	checkBin(string) error
 	lockThread()
 	unlockThread()
 	initialize() recycleHRESULT
@@ -107,6 +152,9 @@ func (t recycleTransport) CheckTrashPath(path string) error {
 	}
 	if err := t.native.checkLocation(path); err != nil {
 		return errRecyclePath
+	}
+	if err := t.native.checkBin(path); err != nil {
+		return recycleBinError(err)
 	}
 	return nil
 }
@@ -196,6 +244,9 @@ func (t recycleTransport) Trash(path string) error {
 		// execution, not just at preview time or before COM initialization.
 		if err := t.native.checkLocation(path); err != nil {
 			return errRecyclePath
+		}
+		if err := t.native.checkBin(path); err != nil {
+			return recycleBinError(err)
 		}
 		performHR := op.perform()
 		// Microsoft requires this query even when PerformOperations failed.

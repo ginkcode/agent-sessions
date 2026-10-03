@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -72,9 +73,10 @@ func (p *Provider) Live(ctx context.Context) (map[string]provider.LiveInfo, erro
 }
 
 // pidMatchesProcStart verifies the pid is alive with the expected start time.
-// An empty procStart falls back to "pid exists".
+// An empty procStart falls back to "pid exists", as does Windows, which has
+// no comparable start time.
 func (p *Provider) pidMatchesProcStart(pid int, procStart string) bool {
-	if procStart == "" {
+	if procStart == "" || runtime.GOOS == "windows" {
 		return p.pidExists(pid)
 	}
 	expected, err := strconv.ParseInt(procStart, 10, 64)

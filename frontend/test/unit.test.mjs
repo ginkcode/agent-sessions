@@ -355,6 +355,26 @@ test('describeBlockedReason explains known reasons and keeps others raw', () => 
     describeBlockedReason('trash is not supported on this platform', 'Trash'),
     'Moving sessions to Trash is not supported on this system.'
   );
+  assert.equal(
+    describeBlockedReason('manage: safe Recycle Bin support is unavailable', 'Recycle Bin'),
+    'Moving sessions to Recycle Bin is not supported on this system.'
+  );
+  assert.match(
+    describeBlockedReason("this drive's Recycle Bin is turned off", 'Recycle Bin'),
+    /^The Recycle Bin is turned off for this drive .*deleted permanently\.$/
+  );
+  assert.match(
+    describeBlockedReason("the session is larger than this drive's Recycle Bin", 'Recycle Bin'),
+    /^The session is larger than this drive's Recycle Bin.*maximum size/
+  );
+  assert.match(
+    describeBlockedReason("this drive's Recycle Bin settings could not be verified", 'Recycle Bin'),
+    /could not be verified, so the session might be deleted permanently\.$/
+  );
+  assert.match(
+    describeBlockedReason('path is not supported by the Recycle Bin transport', 'Recycle Bin'),
+    /network or removable drive/
+  );
   assert.match(
     describeBlockedReason('permanent deletion is not allowed; enable it in settings first', 'Trash'),
     /^Permanent deletion is turned off\. Enable "Allow permanent deletion" in Settings/

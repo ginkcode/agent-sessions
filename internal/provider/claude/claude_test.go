@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/ginkcode/agent-sessions/internal/model"
@@ -11,6 +12,9 @@ import (
 )
 
 func TestLiveDetection(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("procfs fixture; see TestLiveDetectionWindows")
+	}
 	tmp := t.TempDir()
 	procFS := filepath.Join(tmp, "proc")
 	root := filepath.Join(tmp, "claude")
