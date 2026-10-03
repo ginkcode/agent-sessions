@@ -40,21 +40,28 @@ func TestClassifyImages(t *testing.T) {
 	for _, tc := range []struct {
 		name   string
 		images map[int]string
-		want   map[string]bool
+		want   map[string]string
 		err    error
 	}{
 		{name: "empty", err: ErrProcessUnknown},
 		{name: "missing image", images: map[int]string{1: ""}, err: ErrProcessUnknown},
-		{name: "idle", images: idleImages(), want: map[string]bool{}},
+		{name: "idle", images: idleImages(), want: map[string]string{}},
 		{
 			name: "native agents and aliases",
 			images: map[int]string{
 				1: `C:\Program Files\Claude\CLAUDE.EXE`, 2: "codex-x86_64-pc-windows-msvc.exe",
 				3: `D:/Apps/OPENCODE.exe`, 4: "claude-code.exe",
 			},
-			want: map[string]bool{"claude-code": true, "codex": true, "opencode": true},
+			want: map[string]string{"claude-code": "claude-code.exe", "codex": "codex-x86_64-pc-windows-msvc.exe", "opencode": "opencode.exe"},
 		},
-		{name: "unrelated", images: map[int]string{1: "claudette.exe", 2: "decodex.exe"}, want: map[string]bool{}},
+		{
+			// Without arguments a desktop app's server or helper service
+			// cannot be told apart from a session, so both block deletion.
+			name:   "helpers and servers block",
+			images: map[int]string{1: "codex-windows-sandbox-service.exe", 2: "opencode-cli.exe"},
+			want:   map[string]string{"codex": "codex-windows-sandbox-service.exe", "opencode": "opencode-cli.exe"},
+		},
+		{name: "unrelated", images: map[int]string{1: "claudette.exe", 2: "decodex.exe"}, want: map[string]string{}},
 		{name: "node", images: map[int]string{1: "Node.exe"}, err: errRuntimeHost},
 		{name: "nodejs", images: map[int]string{1: "nodejs"}, err: errRuntimeHost},
 		{name: "bun", images: map[int]string{1: `C:\bin\bun.exe`}, err: errRuntimeHost},
@@ -72,10 +79,20 @@ func TestClassifyImages(t *testing.T) {
 	}
 }
 
+func TestProcessSafetyErrorNamesExecutable(t *testing.T) {
+	err := processSafetyError(map[string]string{"opencode": "opencode-cli.exe"}, nil, "opencode")
+	if !errors.Is(err, ErrLive) || err.Error() != "session is live: agent process is running: opencode-cli.exe" {
+		t.Fatalf("got %v", err)
+	}
+	if err := processSafetyError(map[string]string{"opencode": "opencode-cli.exe"}, nil, "codex"); err != nil {
+		t.Fatalf("other agent blocked: %v", err)
+	}
+}
+
 func TestImageProcGuardDoesNotReadCommandLines(t *testing.T) {
 	g := newLiveGuard(fakeImageProc{images: map[int]string{1: "codex.exe"}})
 	live, err := g.procLive(context.Background())
-	if err != nil || !live["codex"] {
+	if err != nil || live["codex"] != "codex.exe" {
 		t.Fatalf("image guard = %v, %v", live, err)
 	}
 	for _, proc := range []fakeImageProc{{err: errors.New("private process path")}, {}} {

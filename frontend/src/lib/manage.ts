@@ -193,6 +193,8 @@ export function actionLabel(action: string, label: TrashLabel): string {
 
 const CANNOT_VERIFY_PREFIX = 'cannot verify whether the agent is running';
 const UNSAFE_CHILD_SUFFIX = ': child cannot be safely deleted';
+// Newer servers append the executable that made the agent live.
+const AGENT_RUNNING_PREFIX = 'session is live: agent process is running';
 
 /**
  * Turns a known backend block reason into readable guidance. Unrecognized
@@ -228,6 +230,10 @@ export function describeBlockedReason(reason: string, label: TrashLabel): string
       return 'A child session was active within the last 10 minutes.';
     case 'session is already covered by another selection':
       return 'Already included with another selected session.';
+  }
+  if (reason.startsWith(`${AGENT_RUNNING_PREFIX}: `)) {
+    const exe = reason.slice(AGENT_RUNNING_PREFIX.length + 2).trim();
+    return `An agent process is running (${exe}). Close it before deleting these sessions.`;
   }
   if (reason.startsWith(`${CANNOT_VERIFY_PREFIX}: `)) {
     const detail = reason.slice(CANNOT_VERIFY_PREFIX.length + 2).trim();

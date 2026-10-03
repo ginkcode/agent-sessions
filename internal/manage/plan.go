@@ -64,7 +64,7 @@ func (idx *catalogIndex) descendants(ref model.SessionRef) ([]model.SessionMeta,
 	return result, nil
 }
 
-func (m *Manager) procLiveMap(ctx context.Context) (map[string]bool, error) {
+func (m *Manager) procLiveMap(ctx context.Context) (map[string]string, error) {
 	return newLiveGuard(m.proc).procLive(ctx)
 }
 
@@ -116,7 +116,7 @@ func (m *Manager) plan(ctx context.Context, selected []model.SessionRef, all []m
 	return ops, items, nil
 }
 
-func (m *Manager) planOne(ctx context.Context, meta model.SessionMeta, idx *catalogIndex, cfg Config, procLive map[string]bool, procErr error) (operation, error) {
+func (m *Manager) planOne(ctx context.Context, meta model.SessionMeta, idx *catalogIndex, cfg Config, procLive map[string]string, procErr error) (operation, error) {
 	action := actionFor(meta.Ref.Agent)
 	if action == "" {
 		return operation{}, ErrUnsupportedAction

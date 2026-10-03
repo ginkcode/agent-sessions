@@ -123,8 +123,9 @@ func hasArg(argv []string, want string) bool {
 	return false
 }
 
-// procLive reports whether any codex or opencode process is currently running.
-func (g *liveGuard) procLive(ctx context.Context) (map[string]bool, error) {
+// procLive maps each agent with a running process to that process's
+// executable name.
+func (g *liveGuard) procLive(ctx context.Context) (map[string]string, error) {
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
@@ -144,9 +145,9 @@ func (g *liveGuard) procLive(ctx context.Context) (map[string]bool, error) {
 	if err != nil {
 		return nil, err
 	}
-	out := make(map[string]bool)
+	out := make(map[string]string)
 	for _, e := range entries {
-		out[e.agent] = true
+		out[e.agent] = e.agent
 	}
 	return out, nil
 }

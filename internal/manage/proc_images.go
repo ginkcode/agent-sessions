@@ -9,11 +9,14 @@ import (
 // classifyImages fails closed for script runtimes because an executable-only
 // snapshot cannot tell a background server from an interactive agent, nor
 // establish which program a Node/Bun/Deno process is hosting.
-func classifyImages(images map[int]string) (map[string]bool, error) {
+//
+// The result maps an agent to the executable that makes it live, so the
+// blocked reason can tell the user what to close.
+func classifyImages(images map[int]string) (map[string]string, error) {
 	if len(images) == 0 {
 		return nil, ErrProcessUnknown
 	}
-	live := make(map[string]bool)
+	live := make(map[string]string)
 	for _, image := range images {
 		if image == "" {
 			return nil, ErrProcessUnknown
@@ -22,6 +25,7 @@ func classifyImages(images map[int]string) (map[string]bool, error) {
 		if i := strings.LastIndexAny(name, `/\`); i >= 0 {
 			name = name[i+1:]
 		}
+		exe := name
 		name = strings.TrimSuffix(name, ".exe")
 		switch name {
 		case "node", "nodejs", "bun", "deno":
@@ -35,14 +39,17 @@ func classifyImages(images map[int]string) (map[string]bool, error) {
 				if agent == "claude" {
 					key = "claude-code"
 				}
-				live[key] = true
+				// Report the smallest name so repeated scans agree.
+				if live[key] == "" || exe < live[key] {
+					live[key] = exe
+				}
 			}
 		}
 	}
 	return live, nil
 }
 
-func processSafetyError(live map[string]bool, err error, agent string) error {
+func processSafetyError(live map[string]string, err error, agent string) error {
 	if err != nil {
 		// Only expose our fixed runtime-host explanation, never an arbitrary
 		// process-table error that might contain user paths or command lines.
@@ -51,8 +58,8 @@ func processSafetyError(live map[string]bool, err error, agent string) error {
 		}
 		return ErrProcessUnknown
 	}
-	if live[agent] {
-		return fmt.Errorf("%w: agent process is running", ErrLive)
+	if name := live[agent]; name != "" {
+		return fmt.Errorf("%w: agent process is running: %s", ErrLive, name)
 	}
 	return nil
 }

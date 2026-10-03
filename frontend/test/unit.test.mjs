@@ -381,6 +381,10 @@ test('describeBlockedReason explains known reasons and keeps others raw', () => 
     'The agent is running. Close it before deleting its sessions.'
   );
   assert.equal(
+    describeBlockedReason('session is live: agent process is running: opencode-cli.exe', 'Recycle Bin'),
+    'An agent process is running (opencode-cli.exe). Close it before deleting these sessions.'
+  );
+  assert.equal(
     describeBlockedReason('session is live: session was active within 10 minutes', 'Trash'),
     'The session was active within the last 10 minutes.'
   );

@@ -1223,7 +1223,7 @@ func TestProcLive_OpenCodeServersIgnored(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if live["opencode"] {
+	if live["opencode"] != "" {
 		t.Fatalf("opencode serve/acp must not count as live, got %v", live)
 	}
 
@@ -1232,7 +1232,7 @@ func TestProcLive_OpenCodeServersIgnored(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !live2["opencode"] {
+	if live2["opencode"] == "" {
 		t.Fatalf("interactive opencode must count as live, got %v", live2)
 	}
 }
