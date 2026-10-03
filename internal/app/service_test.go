@@ -511,6 +511,7 @@ func TestApp_Delegation(t *testing.T) {
 	svc, _ := setupTestService(t)
 	app := NewAppWithService(svc)
 	app.OnStartup(context.Background())
+	t.Cleanup(func() { _ = app.Close() })
 
 	groups, err := app.ListGroups(GroupModeDirAgent, FilterOpts{})
 	if err != nil {

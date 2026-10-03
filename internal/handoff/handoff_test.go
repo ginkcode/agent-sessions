@@ -10,6 +10,7 @@ import (
 	"github.com/ginkcode/agent-sessions/internal/handoff"
 	"github.com/ginkcode/agent-sessions/internal/model"
 	"github.com/ginkcode/agent-sessions/internal/testutil/golden"
+	"github.com/ginkcode/agent-sessions/internal/testutil/platform"
 )
 
 func sampleTranscripts() []model.Transcript {
@@ -257,7 +258,7 @@ func TestHandoffDelivery(t *testing.T) {
 		t.Fatalf("stat saved file: %v", err)
 	}
 	// Check file mode (0600)
-	if info.Mode().Perm() != 0o600 {
+	if platform.ModeBits && info.Mode().Perm() != 0o600 {
 		t.Errorf("expected 0600 file mode, got %o", info.Mode().Perm())
 	}
 }

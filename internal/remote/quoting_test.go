@@ -4,9 +4,12 @@ import (
 	"bytes"
 	"os/exec"
 	"testing"
+
+	"github.com/ginkcode/agent-sessions/internal/testutil/platform"
 )
 
 func TestQuotePOSIX_Evaluation(t *testing.T) {
+	platform.RequireCommand(t, "/bin/sh")
 	testCases := []string{
 		"",
 		"simple",
@@ -47,6 +50,7 @@ func TestQuotePOSIX_Evaluation(t *testing.T) {
 }
 
 func TestQuoteArgs_Evaluation(t *testing.T) {
+	platform.RequireCommand(t, "/bin/sh")
 	args := []string{
 		"echo",
 		"hello world",

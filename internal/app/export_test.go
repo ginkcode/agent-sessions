@@ -16,6 +16,7 @@ import (
 	"github.com/ginkcode/agent-sessions/internal/provider"
 	"github.com/ginkcode/agent-sessions/internal/provider/providertest"
 	"github.com/ginkcode/agent-sessions/internal/scan"
+	"github.com/ginkcode/agent-sessions/internal/testutil/platform"
 )
 
 const exportSessionID = "11111111-2222-3333-4444-555555555555"
@@ -121,7 +122,7 @@ func TestExportBundleRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if info.Mode().Perm() != 0o600 {
+	if platform.ModeBits && info.Mode().Perm() != 0o600 {
 		t.Fatalf("bundle mode = %o, want 0600", info.Mode().Perm())
 	}
 

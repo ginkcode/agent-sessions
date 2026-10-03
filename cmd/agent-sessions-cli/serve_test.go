@@ -16,6 +16,7 @@ import (
 	"github.com/ginkcode/agent-sessions/internal/index"
 	"github.com/ginkcode/agent-sessions/internal/paths"
 	"github.com/ginkcode/agent-sessions/internal/rpc"
+	"github.com/ginkcode/agent-sessions/internal/testutil/platform"
 )
 
 // rootsKey names the index the server's engine uses for roots.
@@ -373,6 +374,7 @@ func restoreDist(t *testing.T) {
 
 func assertNoDeps(t *testing.T, args []string, forbidden ...string) {
 	t.Helper()
+	platform.RequireCommand(t, "go")
 	cmd := exec.Command("go", append([]string{"list", "-deps"}, args...)...)
 	out, err := cmd.CombinedOutput()
 	if err != nil {

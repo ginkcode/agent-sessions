@@ -11,6 +11,7 @@ import (
 	"github.com/ginkcode/agent-sessions/internal/bundle"
 	"github.com/ginkcode/agent-sessions/internal/model"
 	"github.com/ginkcode/agent-sessions/internal/paths"
+	"github.com/ginkcode/agent-sessions/internal/testutil/platform"
 )
 
 func prepareClaudeRoot(t *testing.T, roots paths.Roots) {
@@ -270,7 +271,7 @@ func TestRestore_SuccessfulClaudeRestore(t *testing.T) {
 	if err != nil {
 		t.Fatalf("stat main jsonl: %v", err)
 	}
-	if perm := mainInfo.Mode().Perm(); perm != 0600 {
+	if perm := mainInfo.Mode().Perm(); platform.ModeBits && perm != 0o600 {
 		t.Errorf("expected 0600 permissions, got %o", perm)
 	}
 

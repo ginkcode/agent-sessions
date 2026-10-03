@@ -8,6 +8,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/ginkcode/agent-sessions/internal/testutil/platform"
 )
 
 func TestAskpass_RoundTrip(t *testing.T) {
@@ -32,7 +34,7 @@ func TestAskpass_RoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("stat socket dir failed: %v", err)
 	}
-	if info.Mode().Perm() != 0700 {
+	if platform.ModeBits && info.Mode().Perm() != 0o700 {
 		t.Errorf("socket dir perm = %o, want 0700", info.Mode().Perm())
 	}
 

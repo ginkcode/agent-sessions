@@ -10,6 +10,7 @@ import (
 
 	"github.com/ginkcode/agent-sessions/internal/bundle"
 	"github.com/ginkcode/agent-sessions/internal/model"
+	"github.com/ginkcode/agent-sessions/internal/testutil/platform"
 )
 
 func enableRestore(t *testing.T, m *Manager) {
@@ -214,7 +215,7 @@ func TestRestore_Codex_RewritesCWD(t *testing.T) {
 	if err != nil {
 		t.Fatalf("stat rollout: %v", err)
 	}
-	if info.Mode().Perm() != 0o600 {
+	if platform.ModeBits && info.Mode().Perm() != 0o600 {
 		t.Errorf("perm = %o, want 0600", info.Mode().Perm())
 	}
 	body, err := os.ReadFile(dest)

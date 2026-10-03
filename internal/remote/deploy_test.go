@@ -11,12 +11,15 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/ginkcode/agent-sessions/internal/testutil/platform"
 )
 
 // runUnpack executes the real unpack script with /bin/sh, as the remote
 // login shell would, feeding gz on stdin.
 func runUnpack(t *testing.T, targetDir, targetBin, sum string, gz []byte) (string, error) {
 	t.Helper()
+	platform.RequireCommand(t, "/bin/sh")
 	cmd := exec.Command("/bin/sh", "-c", unpackScript(targetDir, targetBin, sum, "t0k3n"))
 	cmd.Stdin = bytes.NewReader(gz)
 	var stderr bytes.Buffer

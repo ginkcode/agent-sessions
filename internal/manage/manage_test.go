@@ -18,6 +18,7 @@ import (
 
 	"github.com/ginkcode/agent-sessions/internal/model"
 	"github.com/ginkcode/agent-sessions/internal/paths"
+	"github.com/ginkcode/agent-sessions/internal/testutil/platform"
 )
 
 // fakeTrash records gio trash calls without touching the disk.
@@ -422,9 +423,7 @@ func TestPreview_SymlinkAnywhereRefused(t *testing.T) {
 	if err := os.Remove(meta.SourcePath); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Symlink(outside, meta.SourcePath); err != nil {
-		t.Fatal(err)
-	}
+	platform.Symlink(t, outside, meta.SourcePath)
 
 	p, err := m.Preview(context.Background(), []model.SessionRef{{Agent: model.AgentClaude, ID: id}}, catalog)
 	if err != nil {

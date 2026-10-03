@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/ginkcode/agent-sessions/internal/testutil/platform"
 )
 
 func TestGitResolver(t *testing.T) {
@@ -54,9 +56,7 @@ func TestGitResolver(t *testing.T) {
 
 	// 5. Symlinked cwd
 	symlinkCwd := filepath.Join(root, "symlink-cwd")
-	if err := os.Symlink(nestedSubdir, symlinkCwd); err != nil {
-		t.Fatal(err)
-	}
+	platform.Symlink(t, nestedSubdir, symlinkCwd)
 
 	// 6. Deleted cwd inside a repo
 	deletedCwd := filepath.Join(plainRepo, "to-be-deleted", "sub")

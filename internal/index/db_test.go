@@ -12,6 +12,7 @@ import (
 
 	"github.com/ginkcode/agent-sessions/internal/model"
 	"github.com/ginkcode/agent-sessions/internal/provider"
+	"github.com/ginkcode/agent-sessions/internal/testutil/platform"
 )
 
 func TestEmptyDBMigration(t *testing.T) {
@@ -352,7 +353,7 @@ func TestPermissionsAndPragmas(t *testing.T) {
 	if err != nil {
 		t.Fatalf("stat cache dir: %v", err)
 	}
-	if perm := dirInfo.Mode().Perm(); perm != 0o700 {
+	if perm := dirInfo.Mode().Perm(); platform.ModeBits && perm != 0o700 {
 		t.Errorf("expected cacheDir mode 0700, got %04o", perm)
 	}
 
@@ -361,7 +362,7 @@ func TestPermissionsAndPragmas(t *testing.T) {
 	if err != nil {
 		t.Fatalf("stat db file: %v", err)
 	}
-	if perm := dbInfo.Mode().Perm(); perm != 0o600 {
+	if perm := dbInfo.Mode().Perm(); platform.ModeBits && perm != 0o600 {
 		t.Errorf("expected index.db mode 0600, got %04o", perm)
 	}
 
@@ -378,7 +379,7 @@ func TestPermissionsAndPragmas(t *testing.T) {
 	// Check WAL permissions if present
 	walPath := db.Path() + "-wal"
 	if walInfo, err := os.Stat(walPath); err == nil {
-		if perm := walInfo.Mode().Perm(); perm != 0o600 {
+		if perm := walInfo.Mode().Perm(); platform.ModeBits && perm != 0o600 {
 			t.Errorf("expected WAL mode 0600, got %04o", perm)
 		}
 	}
@@ -412,9 +413,7 @@ func TestPermissionsAndPragmas(t *testing.T) {
 
 	// Test Symlink Rejection for cacheDir
 	symCacheDir := filepath.Join(tmpDir, "sym-cache")
-	if err := os.Symlink(cacheDir, symCacheDir); err != nil {
-		t.Fatalf("create symlink: %v", err)
-	}
+	platform.Symlink(t, cacheDir, symCacheDir)
 	_, err = Open(ctx, symCacheDir, "")
 	if err == nil {
 		t.Errorf("expected Open on symlink cache dir to fail, but succeeded")
@@ -427,9 +426,7 @@ func TestPermissionsAndPragmas(t *testing.T) {
 	}
 	targetDB := filepath.Join(targetDir, FileName(SchemaVersion(), ""))
 	realDB := filepath.Join(cacheDir, FileName(SchemaVersion(), ""))
-	if err := os.Symlink(realDB, targetDB); err != nil {
-		t.Fatalf("symlink db: %v", err)
-	}
+	platform.Symlink(t, realDB, targetDB)
 	_, err = Open(ctx, targetDir, "")
 	if err == nil {
 		t.Errorf("expected Open on symlink index.db to fail, but succeeded")

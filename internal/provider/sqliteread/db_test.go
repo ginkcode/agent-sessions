@@ -10,6 +10,8 @@ import (
 	"testing"
 
 	_ "modernc.org/sqlite" // Register the SQLite database/sql driver.
+
+	"github.com/ginkcode/agent-sessions/internal/testutil/platform"
 )
 
 // initDB creates a fresh database and executes statements from test code, never
@@ -201,6 +203,7 @@ func TestOpenMissingFile(t *testing.T) {
 
 func TestOpenBadPermissions(t *testing.T) {
 	t.Parallel()
+	platform.SkipWithoutModeBits(t)
 	if os.Geteuid() == 0 {
 		t.Skip("skipping permission test when running as root")
 	}
@@ -221,6 +224,7 @@ func TestOpenBadPermissions(t *testing.T) {
 
 func TestOpenUnwritableDirectorySurfacesSQLiteError(t *testing.T) {
 	t.Parallel()
+	platform.SkipWithoutModeBits(t)
 	if os.Geteuid() == 0 {
 		t.Skip("skipping directory permission test when running as root")
 	}

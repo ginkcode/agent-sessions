@@ -8,6 +8,7 @@ import (
 
 	"github.com/ginkcode/agent-sessions/internal/pathutil"
 	"github.com/ginkcode/agent-sessions/internal/provider"
+	"github.com/ginkcode/agent-sessions/internal/testutil/platform"
 )
 
 func TestDiscover_BasicTwoDayAndArchived(t *testing.T) {
@@ -130,9 +131,7 @@ func TestDiscover_SymlinkEscapeRejected(t *testing.T) {
 
 	// Create symlink pointing outside the root
 	escapeSymlink := filepath.Join(day, "rollout-escape.jsonl")
-	if err := os.Symlink(outsideRollout, escapeSymlink); err != nil {
-		t.Fatal(err)
-	}
+	platform.Symlink(t, outsideRollout, escapeSymlink)
 
 	// Also create a valid regular rollout file
 	validRollout := filepath.Join(day, "rollout-valid.jsonl")

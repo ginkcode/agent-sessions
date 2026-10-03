@@ -14,9 +14,10 @@ import (
 
 func TestNew(t *testing.T) {
 	t.Run("default git resolver", func(t *testing.T) {
-		p := New("/custom/root", nil)
-		if p.root != "/custom/root" {
-			t.Errorf("root = %q, want /custom/root", p.root)
+		root := filepath.Join(t.TempDir(), "custom", "root")
+		p := New(root, nil)
+		if p.root != root {
+			t.Errorf("root = %q, want %q", p.root, root)
 		}
 		if p.git == nil {
 			t.Errorf("git is nil, expected default GitResolver")
@@ -25,9 +26,11 @@ func TestNew(t *testing.T) {
 
 	t.Run("custom git resolver and clean path", func(t *testing.T) {
 		git := pathutil.NewGitResolver()
-		p := New("/custom/root/../root2/", git)
-		if p.root != "/custom/root2" {
-			t.Errorf("root = %q, want /custom/root2", p.root)
+		base := t.TempDir()
+		sep := string(filepath.Separator)
+		p := New(base+sep+"custom"+sep+"root"+sep+".."+sep+"root2"+sep, git)
+		if want := filepath.Join(base, "custom", "root2"); p.root != want {
+			t.Errorf("root = %q, want %q", p.root, want)
 		}
 		if p.git != git {
 			t.Errorf("git resolver not preserved")

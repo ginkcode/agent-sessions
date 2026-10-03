@@ -12,6 +12,7 @@ import (
 
 	"github.com/ginkcode/agent-sessions/internal/engine"
 	"github.com/ginkcode/agent-sessions/internal/model"
+	"github.com/ginkcode/agent-sessions/internal/testutil/platform"
 )
 
 type stubRemoteBackend struct {
@@ -252,7 +253,7 @@ func TestRemote_SaveHandoff(t *testing.T) {
 		t.Errorf("content = %q, want %q", string(data), stub.renderHandoff)
 	}
 	info, _ := os.Stat(dest)
-	if perm := info.Mode().Perm(); perm != 0600 {
+	if perm := info.Mode().Perm(); platform.ModeBits && perm != 0o600 {
 		t.Errorf("file permissions = %o, want 0600", perm)
 	}
 
@@ -326,7 +327,7 @@ func TestRemote_ExportBundle(t *testing.T) {
 		t.Errorf("content = %q, want %q", string(data), string(stub.exportArtifactData))
 	}
 	info, _ := os.Stat(localDest)
-	if perm := info.Mode().Perm(); perm != 0600 {
+	if perm := info.Mode().Perm(); platform.ModeBits && perm != 0o600 {
 		t.Errorf("permissions = %o, want 0600", perm)
 	}
 }

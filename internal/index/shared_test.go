@@ -11,6 +11,7 @@ import (
 
 	"github.com/ginkcode/agent-sessions/internal/model"
 	"github.com/ginkcode/agent-sessions/internal/provider"
+	"github.com/ginkcode/agent-sessions/internal/testutil/platform"
 )
 
 func commitOne(t *testing.T, db *DB, id string) {
@@ -66,7 +67,7 @@ func TestOpenSeedsFromLegacyDatabase(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if fi.Mode().Perm() != 0o600 {
+	if platform.ModeBits && fi.Mode().Perm() != 0o600 {
 		t.Errorf("seeded mode = %04o", fi.Mode().Perm())
 	}
 	if _, err := os.Stat(filepath.Join(dir, legacyFileName)); err != nil {

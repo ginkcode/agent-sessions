@@ -7,10 +7,13 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 
 	_ "modernc.org/sqlite"
+
+	"github.com/ginkcode/agent-sessions/internal/testutil/platform"
 )
 
 // fixtureDB creates a temporary SQLite store with no user or authentication
@@ -150,19 +153,21 @@ func TestDetectUnreadableOrCorruptDatabase(t *testing.T) {
 		t.Fatal(err)
 	}
 	fixtureLegacy(t, root)
+	// The error quotes the path, which escapes Windows backslashes.
+	quoted := strconv.Quote(path)
 	_, err := New(root, nil).Detect(t.Context())
-	if err == nil || !strings.Contains(err.Error(), path) {
+	if err == nil || !strings.Contains(err.Error(), quoted) {
 		t.Fatalf("corrupt db error = %v; want contextual error naming %s", err, path)
 	}
-	if os.Geteuid() == 0 {
-		return // root bypasses file permissions
+	if os.Geteuid() == 0 || !platform.ModeBits {
+		return // root bypasses file permissions; Windows has none to drop
 	}
 	if err := os.Chmod(path, 0); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = os.Chmod(path, 0o644) })
 	_, err = New(root, nil).Detect(t.Context())
-	if err == nil || !strings.Contains(err.Error(), path) {
+	if err == nil || !strings.Contains(err.Error(), quoted) {
 		t.Fatalf("unreadable db error = %v; want contextual error naming %s", err, path)
 	}
 }

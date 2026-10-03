@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"runtime"
 	"testing"
+
+	"github.com/ginkcode/agent-sessions/internal/testutil/platform"
 )
 
 func TestNormalizeDir(t *testing.T) {
@@ -15,9 +17,7 @@ func TestNormalizeDir(t *testing.T) {
 		t.Fatal(err)
 	}
 	link := filepath.Join(root, "link")
-	if err := os.Symlink(realDir, link); err != nil {
-		t.Fatal(err)
-	}
+	platform.Symlink(t, realDir, link)
 	volume := filepath.VolumeName(root)
 
 	tests := []struct {
@@ -50,9 +50,7 @@ func TestExists(t *testing.T) {
 		t.Fatal(err)
 	}
 	broken := filepath.Join(root, "broken")
-	if err := os.Symlink(filepath.Join(root, "nope"), broken); err != nil {
-		t.Fatal(err)
-	}
+	platform.Symlink(t, filepath.Join(root, "nope"), broken)
 
 	tests := []struct {
 		name string

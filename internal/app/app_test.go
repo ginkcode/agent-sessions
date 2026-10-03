@@ -27,6 +27,7 @@ func TestOnStartupStoresContext(t *testing.T) {
 	a := NewApp()
 	ctx := t.Context()
 	a.OnStartup(ctx)
+	t.Cleanup(func() { _ = a.Close() })
 	if a.ctx != ctx {
 		t.Error("OnStartup did not retain the runtime context")
 	}
@@ -66,6 +67,8 @@ func TestOnStartupCacheFirstLoadsCatalog(t *testing.T) {
 
 	// Cache-first startup must synchronously populate the catalog.
 	a.OnStartup(t.Context())
+	// Release the index before TempDir cleanup; Windows cannot delete open files.
+	t.Cleanup(func() { _ = a.Close() })
 
 	if m, ok := a.svc.Catalog().Get(model.SessionRef{Agent: model.AgentClaude, ID: "cached1"}); !ok || m.Title != "Cached Session" {
 		t.Errorf("expected cached1 in catalog after OnStartup, got %+v", m)

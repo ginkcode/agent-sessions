@@ -14,6 +14,7 @@ import (
 
 	"github.com/ginkcode/agent-sessions/internal/paths"
 	"github.com/ginkcode/agent-sessions/internal/rpc"
+	"github.com/ginkcode/agent-sessions/internal/testutil/platform"
 )
 
 func TestRandomArtifactToken(t *testing.T) {
@@ -57,6 +58,8 @@ func TestSession_StagingPath(t *testing.T) {
 }
 
 func TestSession_PutAndGetArtifact(t *testing.T) {
+	platform.RequireCommand(t, "sh")
+	platform.RequireCommand(t, "sha256sum")
 	stagingDir := t.TempDir()
 	s := NewTestSession("box", nil, &rpc.InitializeResult{
 		Roots: paths.Roots{Cache: stagingDir},

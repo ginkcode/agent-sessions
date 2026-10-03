@@ -701,6 +701,7 @@ func TestScanAbsentAndSchemaEdgeCases(t *testing.T) {
 		if err != nil {
 			t.Fatalf("first scan: %v", err)
 		}
+		_ = f.db.Close() // Windows cannot remove an open file.
 		if err := os.Remove(filepath.Join(f.root, dbName)); err != nil {
 			t.Fatal(err)
 		}

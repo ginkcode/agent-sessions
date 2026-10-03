@@ -14,6 +14,7 @@ import (
 	"github.com/ginkcode/agent-sessions/internal/provider"
 	"github.com/ginkcode/agent-sessions/internal/provider/providertest"
 	"github.com/ginkcode/agent-sessions/internal/scan"
+	"github.com/ginkcode/agent-sessions/internal/testutil/platform"
 )
 
 const testClaudeID = "0123abcd-0000-4000-8000-000000000001"
@@ -257,7 +258,7 @@ func TestManageConfigFilePerms(t *testing.T) {
 	if err != nil {
 		t.Fatalf("stat config: %v", err)
 	}
-	if fi.Mode().Perm()&0o077 != 0 {
+	if platform.ModeBits && fi.Mode().Perm()&0o077 != 0 {
 		t.Errorf("config perms %v leak to group/other", fi.Mode().Perm())
 	}
 }

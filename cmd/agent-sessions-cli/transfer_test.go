@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/ginkcode/agent-sessions/internal/paths"
+	"github.com/ginkcode/agent-sessions/internal/testutil/platform"
 )
 
 func TestTransfer_PutAndGet(t *testing.T) {
@@ -38,7 +39,7 @@ func TestTransfer_PutAndGet(t *testing.T) {
 	if err != nil {
 		t.Fatalf("staged file does not exist: %v", err)
 	}
-	if info.Mode().Perm() != 0600 {
+	if platform.ModeBits && info.Mode().Perm() != 0o600 {
 		t.Errorf("expected 0600 permissions, got %o", info.Mode().Perm())
 	}
 

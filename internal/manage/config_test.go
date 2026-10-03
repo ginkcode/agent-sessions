@@ -7,6 +7,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/ginkcode/agent-sessions/internal/testutil/platform"
 )
 
 // Two processes (two stores) changing different keys at once must both keep
@@ -62,7 +64,7 @@ func TestConfigUpdateConcurrentStores(t *testing.T) {
 			t.Errorf("config lost %q:\n%s", want, data)
 		}
 	}
-	if fi, err := os.Stat(path); err != nil || fi.Mode().Perm() != 0o600 {
+	if fi, err := os.Stat(path); err != nil || (platform.ModeBits && fi.Mode().Perm() != 0o600) {
 		t.Errorf("config mode: %v %v", fi, err)
 	}
 }

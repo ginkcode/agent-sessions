@@ -13,6 +13,7 @@ import (
 	"github.com/ginkcode/agent-sessions/internal/provider"
 	"github.com/ginkcode/agent-sessions/internal/provider/providertest"
 	"github.com/ginkcode/agent-sessions/internal/scan"
+	"github.com/ginkcode/agent-sessions/internal/testutil/platform"
 )
 
 func setupHandoffTest(t *testing.T) (*App, *Service, *providertest.Fake) {
@@ -220,7 +221,7 @@ func TestSaveHandoff(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if fi.Mode().Perm() != 0o600 {
+	if platform.ModeBits && fi.Mode().Perm() != 0o600 {
 		t.Errorf("expected 0600 mode, got %o", fi.Mode().Perm())
 	}
 

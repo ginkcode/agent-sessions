@@ -224,6 +224,7 @@ func TestLoadV2OnlyFallback(t *testing.T) {
 	if _, err := p.Blob(t.Context(), ref, "v1:id:file"); err == nil {
 		t.Errorf("invalid v1 Blob = %v", err)
 	}
+	_ = f.db.Close() // Windows cannot remove an open file.
 	if err := os.Remove(p.dbPath()); err != nil {
 		t.Fatal(err)
 	}

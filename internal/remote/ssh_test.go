@@ -7,8 +7,11 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/ginkcode/agent-sessions/internal/testutil/platform"
 )
 
 func TestBuildSSHArgs_Basic(t *testing.T) {
@@ -157,7 +160,7 @@ func TestControlDir_Permissions(t *testing.T) {
 	}
 
 	perm := info.Mode().Perm()
-	if perm != 0700 {
+	if platform.ModeBits && perm != 0o700 {
 		t.Errorf("expected 0700 permissions on control dir, got: %o", perm)
 	}
 }
@@ -165,6 +168,7 @@ func TestControlDir_Permissions(t *testing.T) {
 // The remote command line is run by the remote user's shell, as sshd does
 // with `$SHELL -c <line>`. LoginShell must expand there; the script must not.
 func TestBuildSSHArgs_LoginShellExpands(t *testing.T) {
+	platform.RequireCommand(t, "/bin/sh")
 	args, err := BuildSSHArgs("box", []string{LoginShell, "-lc", `printf '%s|' "$0" '$(whoami)'`}, SSHOptions{ControlMaster: "no"})
 	if err != nil {
 		t.Fatal(err)
@@ -182,6 +186,9 @@ func TestBuildSSHArgs_LoginShellExpands(t *testing.T) {
 }
 
 func TestControlDir_ShortEnoughForSockets(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows ssh has no ControlMaster sockets")
+	}
 	// A macOS-style $TMPDIR and a long runtime dir both fall back to /tmp.
 	long := "/var/folders/2h/qp6vs8qd5rs5w0vjh3hl7ckm0000gn/T/"
 	t.Setenv("XDG_RUNTIME_DIR", long+"runtime")
@@ -213,9 +220,7 @@ func TestCheckPrivateDir(t *testing.T) {
 	if err := os.Chmod(loose, 0o777); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Symlink(good, link); err != nil {
-		t.Fatal(err)
-	}
+	platform.Symlink(t, good, link)
 	if err := checkPrivateDir(good); err != nil {
 		t.Errorf("0700 dir rejected: %v", err)
 	}

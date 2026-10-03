@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"testing"
@@ -28,6 +29,9 @@ func fakeSSHPath(t *testing.T, mode string, extra map[string]string) string {
 	}
 	dir := t.TempDir()
 	bin := filepath.Join(dir, "ssh")
+	if runtime.GOOS == "windows" {
+		bin += ".exe"
+	}
 	// Copy, don't symlink. The test binary's path is reused across `go test`
 	// runs and a symlink would exec a previous build.
 	data, err := os.ReadFile(self)

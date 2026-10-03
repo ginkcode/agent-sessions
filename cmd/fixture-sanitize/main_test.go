@@ -10,6 +10,8 @@ import (
 	"strings"
 	"testing"
 	"unicode/utf8"
+
+	"github.com/ginkcode/agent-sessions/internal/testutil/platform"
 )
 
 func TestSanitizeNestedContent(t *testing.T) {
@@ -166,9 +168,7 @@ func TestRunRefusesProtectedPaths(t *testing.T) {
 		t.Fatal(err)
 	}
 	alias := filepath.Join(dir, "safe.jsonl")
-	if err := os.Symlink(protected, alias); err != nil {
-		t.Fatal(err)
-	}
+	platform.Symlink(t, protected, alias)
 	if err := checkInputPath(alias); err == nil {
 		t.Error("expected symlink to protected path to be refused")
 	}

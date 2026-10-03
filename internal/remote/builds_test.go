@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ginkcode/agent-sessions/internal/testutil/platform"
 	"github.com/ginkcode/agent-sessions/internal/version"
 )
 
@@ -32,6 +33,7 @@ func installBuild(t *testing.T, home, tag string, bin bool, mtime time.Time) str
 }
 
 func TestProbeScript_ListsInstalledBuilds(t *testing.T) {
+	platform.RequireCommand(t, "/bin/sh")
 	home := filepath.Join(t.TempDir(), "home dir")
 	now := time.Now()
 	installBuild(t, home, "1.2.0-aaaaaaaa", true, now.Add(-time.Hour))
@@ -56,6 +58,7 @@ func TestProbeScript_ListsInstalledBuilds(t *testing.T) {
 }
 
 func TestPruneScript_RemovesOnlyUnusedBuilds(t *testing.T) {
+	platform.RequireCommand(t, "/bin/sh")
 	home := t.TempDir()
 	old := time.Now().Add(-2 * PruneAfter)
 	stale := installBuild(t, home, "1.0.0-aaaaaaaa", true, old)
