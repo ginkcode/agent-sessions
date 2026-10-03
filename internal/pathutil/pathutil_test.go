@@ -16,8 +16,6 @@ func TestNormalizeDir(t *testing.T) {
 	if err := os.Mkdir(realDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	link := filepath.Join(root, "link")
-	platform.Symlink(t, realDir, link)
 	volume := filepath.VolumeName(root)
 
 	tests := []struct {
@@ -30,8 +28,6 @@ func TestNormalizeDir(t *testing.T) {
 		{name: "clean", in: filepath.Join(root, "a", "..", "b"), want: filepath.Join(root, "b")},
 		{name: "existing dir", in: realDir, want: realDir},
 		{name: "trailing slash", in: realDir + string(filepath.Separator), want: realDir},
-		{name: "symlink resolved", in: link, want: realDir},
-		{name: "symlink trailing slash", in: link + string(filepath.Separator), want: realDir},
 		{name: "missing dir kept", in: filepath.Join(root, "missing"), want: filepath.Join(root, "missing")},
 	}
 	for _, tt := range tests {
@@ -41,6 +37,15 @@ func TestNormalizeDir(t *testing.T) {
 			}
 		})
 	}
+	t.Run("symlink", func(t *testing.T) {
+		link := filepath.Join(root, "link")
+		platform.Symlink(t, realDir, link)
+		for _, in := range []string{link, link + string(filepath.Separator)} {
+			if got := NormalizeDir(in); got != realDir {
+				t.Errorf("NormalizeDir(%q) = %q, want %q", in, got, realDir)
+			}
+		}
+	})
 }
 
 func TestExists(t *testing.T) {
@@ -49,9 +54,6 @@ func TestExists(t *testing.T) {
 	if err := os.WriteFile(file, []byte("x"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	broken := filepath.Join(root, "broken")
-	platform.Symlink(t, filepath.Join(root, "nope"), broken)
-
 	tests := []struct {
 		name string
 		in   string
@@ -60,7 +62,6 @@ func TestExists(t *testing.T) {
 		{name: "dir", in: root, want: true},
 		{name: "file", in: file, want: true},
 		{name: "missing", in: filepath.Join(root, "missing"), want: false},
-		{name: "broken symlink", in: broken, want: false},
 		{name: "empty", in: "", want: false},
 	}
 	for _, tt := range tests {
@@ -70,6 +71,13 @@ func TestExists(t *testing.T) {
 			}
 		})
 	}
+	t.Run("broken symlink", func(t *testing.T) {
+		broken := filepath.Join(root, "broken")
+		platform.Symlink(t, filepath.Join(root, "nope"), broken)
+		if Exists(broken) {
+			t.Error("Exists(broken symlink) = true")
+		}
+	})
 }
 
 func TestSQLiteURI(t *testing.T) {

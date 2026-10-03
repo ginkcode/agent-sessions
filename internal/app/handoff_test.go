@@ -160,7 +160,7 @@ func TestHandoffCommand(t *testing.T) {
 		if err != nil {
 			t.Fatalf("handoff file was not written: %v", err)
 		}
-		if fi.Mode().Perm() != 0o600 {
+		if platform.ModeBits && fi.Mode().Perm() != 0o600 {
 			t.Errorf("expected 0600 file mode for %s, got %o", f, fi.Mode().Perm())
 		}
 	}

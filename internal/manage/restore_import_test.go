@@ -2,6 +2,7 @@ package manage
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -26,7 +27,8 @@ func enableRestore(t *testing.T, m *Manager) {
 }
 
 func makeOpenCodeBundle(rootID, childID, cwd string) *bundle.Bundle {
-	rootBody := []byte(`{"info":{"id":"` + rootID + `","directory":"` + cwd + `"},"messages":[{"id":"m1","role":"user","content":"Task"}]}`)
+	cwdJSON, _ := json.Marshal(cwd)
+	rootBody := []byte(`{"info":{"id":"` + rootID + `","directory":` + string(cwdJSON) + `},"messages":[{"id":"m1","role":"user","content":"Task"}]}`)
 	rootRel := "export/" + rootID + ".json"
 	rootZip := "native/opencode/" + rootRel
 	sessions := []bundle.SessionManifest{{
@@ -38,7 +40,7 @@ func makeOpenCodeBundle(rootID, childID, cwd string) *bundle.Bundle {
 	native := map[string][]byte{rootZip: rootBody}
 
 	if childID != "" {
-		childBody := []byte(`{"info":{"id":"` + childID + `","directory":"` + cwd + `"},"messages":[]}`)
+		childBody := []byte(`{"info":{"id":"` + childID + `","directory":` + string(cwdJSON) + `},"messages":[]}`)
 		childRel := "export/" + childID + ".json"
 		childZip := "native/opencode/" + childRel
 		sessions = append(sessions, bundle.SessionManifest{
@@ -75,8 +77,8 @@ func TestRestore_OpenCode_ImportArgvAndEnv(t *testing.T) {
 	m, _ := newTestManager(t, roots, WithExec(rec.exec))
 	enableRestore(t, m)
 
-	old := "/home/dev/original"
-	target := "/home/dev/restored"
+	old := localCWD("/home/dev/original")
+	target := localCWD("/home/dev/restored")
 	b := makeOpenCodeBundle("ses_root", "ses_child", old)
 	req := RestoreRequest{
 		Bundle:      b,
@@ -133,9 +135,9 @@ func TestRestore_OpenCode_CollisionBlocks(t *testing.T) {
 	m, _ := newTestManager(t, roots, WithExec(rec.exec))
 	enableRestore(t, m)
 
-	b := makeOpenCodeBundle("ses_root", "", "/home/dev/work")
+	b := makeOpenCodeBundle("ses_root", "", localCWD("/home/dev/work"))
 	catalog := []model.SessionMeta{opencodeMeta(roots.OpenCodeData, "ses_root")}
-	req := RestoreRequest{Bundle: b, TargetAgent: model.AgentOpenCode, TargetCWD: "/home/dev/work"}
+	req := RestoreRequest{Bundle: b, TargetAgent: model.AgentOpenCode, TargetCWD: localCWD("/home/dev/work")}
 
 	prev, err := m.PreviewRestore(context.Background(), req, catalog)
 	if err != nil {
@@ -155,8 +157,9 @@ func TestRestore_OpenCode_CollisionBlocks(t *testing.T) {
 }
 
 func makeCodexBundle(id, cwd string) *bundle.Bundle {
-	rollout := []byte(`{"timestamp":"2026-09-28T12:00:00Z","type":"session_meta","payload":{"id":"` + id + `","cwd":"` + cwd + `","cli_version":"0.158.0"}}` + "\n" +
-		`{"timestamp":"2026-09-28T12:00:01Z","type":"turn_context","payload":{"cwd":"` + cwd + `","model":"gpt-5-codex"}}` + "\n" +
+	cwdJSON, _ := json.Marshal(cwd)
+	rollout := []byte(`{"timestamp":"2026-09-28T12:00:00Z","type":"session_meta","payload":{"id":"` + id + `","cwd":` + string(cwdJSON) + `,"cli_version":"0.158.0"}}` + "\n" +
+		`{"timestamp":"2026-09-28T12:00:01Z","type":"turn_context","payload":{"cwd":` + string(cwdJSON) + `,"model":"gpt-5-codex"}}` + "\n" +
 		`{"timestamp":"2026-09-28T12:00:02Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"Task"}]}}` + "\n")
 	rel := "sessions/2026/09/28/rollout-2026-09-28T12-00-00-" + id + ".jsonl"
 	zip := "native/codex/" + rel
@@ -189,8 +192,8 @@ func TestRestore_Codex_RewritesCWD(t *testing.T) {
 	m, _ := newTestManager(t, roots, WithNow(func() time.Time { return fixed }))
 	enableRestore(t, m)
 
-	old := "/home/dev/original"
-	target := "/home/dev/restored"
+	old := localCWD("/home/dev/original")
+	target := localCWD("/home/dev/restored")
 	b := makeCodexBundle(uuidA, old)
 	req := RestoreRequest{Bundle: b, TargetAgent: model.AgentCodex, TargetCWD: target}
 
@@ -223,10 +226,12 @@ func TestRestore_Codex_RewritesCWD(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := string(body)
-	if strings.Count(text, `"cwd":"`+target+`"`) != 2 {
+	targetJSON, _ := json.Marshal(target)
+	originalJSON, _ := json.Marshal(old)
+	if strings.Count(text, `"cwd":`+string(targetJSON)) != 2 {
 		t.Errorf("want cwd rewritten in session_meta and turn_context:\n%s", text)
 	}
-	if strings.Contains(text, old) {
+	if strings.Contains(text, string(originalJSON)) {
 		t.Errorf("original cwd survived:\n%s", text)
 	}
 	if !strings.Contains(text, `"type":"response_item"`) {
@@ -242,12 +247,12 @@ func TestRestore_Codex_CollisionCopyRemapsID(t *testing.T) {
 	m, _ := newTestManager(t, roots)
 	enableRestore(t, m)
 
-	b := makeCodexBundle(uuidA, "/home/dev/work")
+	b := makeCodexBundle(uuidA, localCWD("/home/dev/work"))
 	catalog := []model.SessionMeta{codexMeta(roots.Codex, uuidA)}
 	req := RestoreRequest{
 		Bundle:      b,
 		TargetAgent: model.AgentCodex,
-		TargetCWD:   "/home/dev/restored",
+		TargetCWD:   localCWD("/home/dev/restored"),
 		Collision:   CollisionCopy,
 	}
 
@@ -287,11 +292,11 @@ func TestRestore_Codex_NoNative(t *testing.T) {
 	m, _ := newTestManager(t, roots)
 	enableRestore(t, m)
 
-	b := makeCodexBundle(uuidA, "/home/dev/work")
+	b := makeCodexBundle(uuidA, localCWD("/home/dev/work"))
 	b.Manifest.Profile = bundle.ProfileShareSafe
 	b.Manifest.Sessions[0].Native = nil
 	b.Native = nil
-	req := RestoreRequest{Bundle: b, TargetAgent: model.AgentCodex, TargetCWD: "/home/dev/work"}
+	req := RestoreRequest{Bundle: b, TargetAgent: model.AgentCodex, TargetCWD: localCWD("/home/dev/work")}
 	if _, err := m.PreviewRestore(context.Background(), req, nil); err != ErrRestoreNoNative {
 		t.Fatalf("want ErrRestoreNoNative, got %v", err)
 	}

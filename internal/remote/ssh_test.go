@@ -175,7 +175,8 @@ func TestBuildSSHArgs_LoginShellExpands(t *testing.T) {
 	}
 	line := args[len(args)-1]
 	cmd := exec.Command("/bin/sh", "-c", line)
-	cmd.Env = append(os.Environ(), "SHELL=/bin/sh")
+	// A synthetic home keeps host-specific login profiles out of this quoting test.
+	cmd.Env = append(os.Environ(), "SHELL=/bin/sh", "HOME="+t.TempDir())
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("run %q: %v: %s", line, err, out)

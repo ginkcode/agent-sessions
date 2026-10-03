@@ -245,6 +245,7 @@ func TestHandoffCLI(t *testing.T) {
 	// The handoff files go to the data dir; keep them out of the real one.
 	dataHome := t.TempDir()
 	t.Setenv("XDG_DATA_HOME", dataHome)
+	t.Setenv("LOCALAPPDATA", dataHome)
 
 	fake := providertest.NewFake(model.AgentClaude, "Claude Code")
 	now := time.Now()

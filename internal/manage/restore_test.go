@@ -2,8 +2,10 @@ package manage
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -30,12 +32,13 @@ func makeClaudeBundle(t *testing.T, profile bundle.Profile, rootID, oldCWD strin
 		encOld := EncodeClaudeProjectDir(oldCWD)
 		mainRel := "projects/" + encOld + "/" + rootID + ".jsonl"
 		mainZip := "native/claude-code/" + mainRel
-		mainData := []byte(`{"type":"user","uuid":"u1","sessionId":"` + rootID + `","cwd":"` + oldCWD + `","message":{"role":"user","content":"Task 1"}}` + "\n" +
-			`{"type":"assistant","uuid":"a1","sessionId":"` + rootID + `","cwd":"` + oldCWD + `","message":{"id":"m1","role":"assistant","content":[{"type":"text","text":"Done"}]}}` + "\n")
+		cwdJSON, _ := json.Marshal(oldCWD)
+		mainData := []byte(`{"type":"user","uuid":"u1","sessionId":"` + rootID + `","cwd":` + string(cwdJSON) + `,"message":{"role":"user","content":"Task 1"}}` + "\n" +
+			`{"type":"assistant","uuid":"a1","sessionId":"` + rootID + `","cwd":` + string(cwdJSON) + `,"message":{"id":"m1","role":"assistant","content":[{"type":"text","text":"Done"}]}}` + "\n")
 
 		subRel := "projects/" + encOld + "/" + rootID + "/subagents/agent-sub1.jsonl"
 		subZip := "native/claude-code/" + subRel
-		subData := []byte(`{"type":"user","uuid":"su1","sessionId":"` + rootID + `","agentId":"sub1","cwd":"` + oldCWD + `","message":{"role":"user","content":"Subtask 1"}}` + "\n")
+		subData := []byte(`{"type":"user","uuid":"su1","sessionId":"` + rootID + `","agentId":"sub1","cwd":` + string(cwdJSON) + `,"message":{"role":"user","content":"Subtask 1"}}` + "\n")
 
 		subMetaRel := "projects/" + encOld + "/" + rootID + "/subagents/agent-sub1.meta.json"
 		subMetaZip := "native/claude-code/" + subMetaRel
@@ -93,6 +96,9 @@ func TestEncodeClaudeProjectDir(t *testing.T) {
 		{"/home/user/space repo", "-home-user-space-repo"},
 		{"/home/user/a__b", "-home-user-a--b"},
 		{"/home/user/ü_world", "-home-user---world"},
+		{`C:\Users\dev\work`, "C--Users-dev-work"},
+		{`D:\Workspaces\space repo`, "D--Workspaces-space-repo"},
+		{`\\server\share\repo`, "--server-share-repo"},
 	}
 
 	for _, tc := range cases {
@@ -108,11 +114,11 @@ func TestRestore_AllowRestoreGating(t *testing.T) {
 	prepareClaudeRoot(t, roots)
 	mgr, _ := newTestManager(t, roots)
 
-	b := makeClaudeBundle(t, bundle.ProfileComplete, uuidA, "/home/dev/work")
+	b := makeClaudeBundle(t, bundle.ProfileComplete, uuidA, localCWD("/home/dev/work"))
 	req := RestoreRequest{
 		Bundle:      b,
 		TargetAgent: model.AgentClaude,
-		TargetCWD:   "/home/dev/restored",
+		TargetCWD:   localCWD("/home/dev/restored"),
 	}
 
 	// 1. Gated off by default
@@ -157,11 +163,11 @@ func TestRestore_ShareSafeBundleRejected(t *testing.T) {
 	cfg.AllowRestore = true
 	_ = mgr.SetConfig(cfg)
 
-	b := makeClaudeBundle(t, bundle.ProfileShareSafe, uuidA, "/home/dev/work")
+	b := makeClaudeBundle(t, bundle.ProfileShareSafe, uuidA, localCWD("/home/dev/work"))
 	req := RestoreRequest{
 		Bundle:      b,
 		TargetAgent: model.AgentClaude,
-		TargetCWD:   "/home/dev/restored",
+		TargetCWD:   localCWD("/home/dev/restored"),
 	}
 
 	_, err := mgr.PreviewRestore(context.Background(), req, nil)
@@ -180,11 +186,11 @@ func TestRestore_TokenValidation(t *testing.T) {
 	cfg.AllowRestore = true
 	_ = mgr.SetConfig(cfg)
 
-	b := makeClaudeBundle(t, bundle.ProfileComplete, uuidA, "/home/dev/work")
+	b := makeClaudeBundle(t, bundle.ProfileComplete, uuidA, localCWD("/home/dev/work"))
 	req := RestoreRequest{
 		Bundle:      b,
 		TargetAgent: model.AgentClaude,
-		TargetCWD:   "/home/dev/restored",
+		TargetCWD:   localCWD("/home/dev/restored"),
 	}
 
 	prev, err := mgr.PreviewRestore(context.Background(), req, nil)
@@ -209,7 +215,7 @@ func TestRestore_TokenValidation(t *testing.T) {
 
 	// Test 3: Modified request (e.g. changed TargetCWD) stales token
 	tamperedReq := req
-	tamperedReq.TargetCWD = "/home/dev/other"
+	tamperedReq.TargetCWD = localCWD("/home/dev/other")
 	_, err = mgr.Restore(context.Background(), tamperedReq, nil, prev.Token)
 	if err != ErrPreviewStale {
 		t.Errorf("expected ErrPreviewStale for tampered request, got %v", err)
@@ -225,8 +231,8 @@ func TestRestore_SuccessfulClaudeRestore(t *testing.T) {
 	cfg.AllowRestore = true
 	_ = mgr.SetConfig(cfg)
 
-	origCWD := "/home/dev/original"
-	targetCWD := "/home/dev/new-workspace"
+	origCWD := localCWD("/home/dev/original")
+	targetCWD := localCWD("/home/dev/new-workspace")
 
 	b := makeClaudeBundle(t, bundle.ProfileComplete, uuidA, origCWD)
 	req := RestoreRequest{
@@ -287,10 +293,12 @@ func TestRestore_SuccessfulClaudeRestore(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read main jsonl: %v", err)
 	}
-	if !strings.Contains(string(content), targetCWD) {
+	targetJSON, _ := json.Marshal(targetCWD)
+	originalJSON, _ := json.Marshal(origCWD)
+	if !strings.Contains(string(content), string(targetJSON)) {
 		t.Errorf("expected JSONL to contain target CWD %q, got:\n%s", targetCWD, string(content))
 	}
-	if strings.Contains(string(content), origCWD) {
+	if strings.Contains(string(content), string(originalJSON)) {
 		t.Errorf("expected JSONL not to contain original CWD %q", origCWD)
 	}
 }
@@ -304,7 +312,7 @@ func TestRestore_Collision_Block(t *testing.T) {
 	cfg.AllowRestore = true
 	_ = mgr.SetConfig(cfg)
 
-	b := makeClaudeBundle(t, bundle.ProfileComplete, uuidA, "/home/dev/work")
+	b := makeClaudeBundle(t, bundle.ProfileComplete, uuidA, localCWD("/home/dev/work"))
 	catalog := []model.SessionMeta{
 		claudeMainMeta(roots.Claude, uuidA),
 	}
@@ -339,7 +347,7 @@ func TestRestore_Collision_Copy(t *testing.T) {
 	cfg.AllowRestore = true
 	_ = mgr.SetConfig(cfg)
 
-	b := makeClaudeBundle(t, bundle.ProfileComplete, uuidA, "/home/dev/work")
+	b := makeClaudeBundle(t, bundle.ProfileComplete, uuidA, localCWD("/home/dev/work"))
 	catalog := []model.SessionMeta{
 		claudeMainMeta(roots.Claude, uuidA),
 	}
@@ -347,7 +355,7 @@ func TestRestore_Collision_Copy(t *testing.T) {
 	req := RestoreRequest{
 		Bundle:      b,
 		TargetAgent: model.AgentClaude,
-		TargetCWD:   "/home/dev/restored",
+		TargetCWD:   localCWD("/home/dev/restored"),
 		Collision:   CollisionCopy,
 	}
 
@@ -378,7 +386,7 @@ func TestRestore_Collision_Copy(t *testing.T) {
 	}
 
 	// Verify file created with newID
-	encTarget := EncodeClaudeProjectDir("/home/dev/restored")
+	encTarget := EncodeClaudeProjectDir(localCWD("/home/dev/restored"))
 	mainJSONL := filepath.Join(roots.Claude, "projects", encTarget, newID+".jsonl")
 	content, err := os.ReadFile(mainJSONL)
 	if err != nil {
@@ -404,11 +412,11 @@ func TestRestore_LiveRefusal(t *testing.T) {
 	cfg.AllowRestore = true
 	_ = mgr.SetConfig(cfg)
 
-	b := makeClaudeBundle(t, bundle.ProfileComplete, uuidA, "/home/dev/work")
+	b := makeClaudeBundle(t, bundle.ProfileComplete, uuidA, localCWD("/home/dev/work"))
 	req := RestoreRequest{
 		Bundle:      b,
 		TargetAgent: model.AgentClaude,
-		TargetCWD:   "/home/dev/restored",
+		TargetCWD:   localCWD("/home/dev/restored"),
 	}
 
 	prev, err := mgr.PreviewRestore(context.Background(), req, nil)
@@ -429,14 +437,14 @@ func TestRestore_NoOverwrite(t *testing.T) {
 	cfg.AllowRestore = true
 	_ = mgr.SetConfig(cfg)
 
-	targetCWD := "/home/dev/restored"
+	targetCWD := localCWD("/home/dev/restored")
 	encTarget := EncodeClaudeProjectDir(targetCWD)
 	destDir := filepath.Join(roots.Claude, "projects", encTarget)
 	_ = os.MkdirAll(destDir, 0o700)
 	destFile := filepath.Join(destDir, uuidA+".jsonl")
 	_ = os.WriteFile(destFile, []byte("pre-existing content"), 0o600)
 
-	b := makeClaudeBundle(t, bundle.ProfileComplete, uuidA, "/home/dev/work")
+	b := makeClaudeBundle(t, bundle.ProfileComplete, uuidA, localCWD("/home/dev/work"))
 	req := RestoreRequest{
 		Bundle:      b,
 		TargetAgent: model.AgentClaude,
@@ -473,4 +481,13 @@ func TestRestore_ProtectedPath(t *testing.T) {
 	if err := cm.ps.ensureWithinRoot(dest); err == nil || !strings.Contains(err.Error(), "protected") {
 		t.Fatalf("expected protected path refusal, got %v", err)
 	}
+}
+
+// localCWD maps a POSIX test directory to an absolute path on this machine:
+// restore targets must be local, so Windows gets a drive letter.
+func localCWD(posix string) string {
+	if runtime.GOOS == "windows" {
+		return `C:` + filepath.FromSlash(posix)
+	}
+	return posix
 }
