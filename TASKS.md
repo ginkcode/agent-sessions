@@ -227,7 +227,7 @@ Design: [docs/plan/M8.md](docs/plan/M8.md). Two-step decision: local-only first
 
 | ID | St | Task | Est | Deps | Done when |
 |---|---|---|---|---|---|
-| M8-01 | ⬜ | `internal/paths` Windows `FromEnv` (Claude/Codex profiles, `%LOCALAPPDATA%`/`%APPDATA%` roots; verify OpenCode's Windows data dir on a real machine) | 3 | – | `GOOS=windows` builds the CLI and desktop app; app boots and scans on Windows. |
+| M8-01 | 🟡 | `internal/paths` Windows `FromEnv` (Claude/Codex profiles, `%LOCALAPPDATA%`/`%APPDATA%` roots; verify OpenCode's Windows data dir on a real machine) | 3 | – | `GOOS=windows` builds the CLI and desktop app; app boots and scans on Windows. **Open:** the CLI builds and scans all three agents on a real Windows 11 machine; the desktop app boot waits on a Wails/NSIS build (M8-07). |
 | M8-02 | ⬜ | `explorer /select` for Reveal and `rundll32`/`explorer` for OpenURL via a per-GOOS `desktopOpen` helper | 2 | M8-01 | Reveal opens the file in Explorer; links open in the default browser. |
 | M8-03 | ⬜ | Windows path audit: grouping keys/labels, `pathutil` normalize + git resolver, Claude project-folder encoding, `tree.ts` path filter, export file-name fixtures (drive letters, backslashes, case-insensitivity) | 6 | M8-01 | Sessions recorded on Windows group, filter and label correctly; table tests with Windows-path fixtures pass on Linux. |
 | M8-04 | ⬜ | Live-session detection fallback: sessions never show live (no `/proc`); Windows process-API variant deferred | 1 | M8-01 | No crashes; LIVE badge absent on Windows; fallback documented. |

@@ -1,8 +1,10 @@
 package pathutil
 
 import (
+	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -69,5 +71,23 @@ func TestExists(t *testing.T) {
 				t.Errorf("Exists(%q) = %v, want %v", tt.in, got, tt.want)
 			}
 		})
+	}
+}
+
+func TestSQLiteURI(t *testing.T) {
+	params := url.Values{"mode": {"ro"}}
+	tests := []struct{ path, want string }{
+		{"/home/dev/a b.db", "file:///home/dev/a%20b.db?mode=ro"},
+	}
+	if runtime.GOOS == "windows" {
+		tests = []struct{ path, want string }{
+			{`C:\Users\dev\a b.db`, "file:///C:/Users/dev/a%20b.db?mode=ro"},
+			{`\\server\share\x.db`, "file:////server/share/x.db?mode=ro"},
+		}
+	}
+	for _, tt := range tests {
+		if got := SQLiteURI(tt.path, params); got != tt.want {
+			t.Errorf("SQLiteURI(%q) = %q, want %q", tt.path, got, tt.want)
+		}
 	}
 }

@@ -18,6 +18,7 @@ import (
 
 	"github.com/ginkcode/agent-sessions/internal/filelock"
 	"github.com/ginkcode/agent-sessions/internal/model"
+	"github.com/ginkcode/agent-sessions/internal/pathutil"
 	"github.com/ginkcode/agent-sessions/internal/provider"
 )
 
@@ -175,7 +176,7 @@ func roDSN(path string, queryOnly bool) string {
 	if queryOnly {
 		params.Add("_pragma", "query_only(1)")
 	}
-	return (&url.URL{Scheme: "file", Path: filepath.ToSlash(path), RawQuery: params.Encode()}).String()
+	return pathutil.SQLiteURI(path, params)
 }
 
 // appliedVersion is the newest migration recorded in db, 0 for none.

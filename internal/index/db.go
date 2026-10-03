@@ -18,6 +18,7 @@ import (
 
 	"github.com/ginkcode/agent-sessions/internal/model"
 	"github.com/ginkcode/agent-sessions/internal/paths"
+	"github.com/ginkcode/agent-sessions/internal/pathutil"
 	"github.com/ginkcode/agent-sessions/internal/provider"
 )
 
@@ -134,12 +135,7 @@ func Open(ctx context.Context, cacheDir, key string) (*DB, error) {
 	params.Add("_pragma", "journal_mode(WAL)")
 	params.Add("_pragma", "busy_timeout(5000)")
 	params.Add("_pragma", "foreign_keys(ON)")
-	uri := url.URL{
-		Scheme:   "file",
-		Path:     filepath.ToSlash(dbPath),
-		RawQuery: params.Encode(),
-	}
-	dsn := uri.String()
+	dsn := pathutil.SQLiteURI(dbPath, params)
 
 	restoreUmask := setPrivateUmask()
 	defer restoreUmask()

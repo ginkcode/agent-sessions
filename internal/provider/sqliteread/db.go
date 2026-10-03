@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 
 	_ "modernc.org/sqlite" // Register the SQLite database/sql driver.
+
+	"github.com/ginkcode/agent-sessions/internal/pathutil"
 )
 
 // schemaTables is the complete set of table names used by the OpenCode and
@@ -39,8 +41,7 @@ func dsn(path string) string {
 		"_pragma": {"busy_timeout(5000)"},
 		"_txlock": {"deferred"},
 	}
-	uri := url.URL{Scheme: "file", Path: path, RawQuery: params.Encode()}
-	return uri.String()
+	return pathutil.SQLiteURI(path, params)
 }
 
 // Open opens an existing SQLite database read-only. The caller must Close the

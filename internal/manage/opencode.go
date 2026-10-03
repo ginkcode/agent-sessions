@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/ginkcode/agent-sessions/internal/model"
+	"github.com/ginkcode/agent-sessions/internal/pathutil"
 	"github.com/ginkcode/agent-sessions/internal/provider/sqliteread"
 )
 
@@ -364,7 +365,7 @@ func (om *opencodeManager) deleteV1Rows(ctx context.Context, ids, eventIDs []str
 		"_pragma": {"busy_timeout(5000)", "foreign_keys(1)"},
 		"_txlock": {"immediate"},
 	}
-	dsn := (&url.URL{Scheme: "file", Path: abs, RawQuery: params.Encode()}).String()
+	dsn := pathutil.SQLiteURI(abs, params)
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return errors.New("cannot open opencode database writable")
