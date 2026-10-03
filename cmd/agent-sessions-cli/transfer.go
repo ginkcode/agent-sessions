@@ -120,13 +120,14 @@ func transferGet(targetFile string, removeAfter bool, stdout, stderr io.Writer) 
 		}
 		return 1
 	}
-	defer f.Close()
-
-	if _, err := io.Copy(stdout, f); err != nil {
+	_, err = io.Copy(stdout, f)
+	_ = f.Close()
+	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "agent-sessions-cli transfer: stream error: %v\n", err)
 		return 1
 	}
 
+	// Close before removing: Windows cannot delete an open file.
 	if removeAfter {
 		_ = os.Remove(targetFile)
 	}
