@@ -32,7 +32,9 @@ type dbCheckpoint struct {
 }
 
 const (
-	dbCheckpointVersion = 3
+	// Version 4 normalizes Windows CWDs and worktrees in their own style;
+	// older checkpoints are rescanned in full (see decodeCheckpoint).
+	dbCheckpointVersion = 4
 	genBoth             = GenV2 + "+" + GenV1
 )
 
@@ -239,7 +241,10 @@ func decodeCheckpoint(path string, prev provider.ScanState) (dbCheckpoint, bool,
 		}
 		return previous, true, nil
 	}
-	upgraded := previous.Version == 2
+	// Versions 2 and 3 hold valid IDs and generations, but their metas may
+	// carry CWDs and repository roots normalized by an older rule. A full
+	// rescan re-emits every session.
+	upgraded := previous.Version == 2 || previous.Version == 3
 	if upgraded {
 		previous.Version = dbCheckpointVersion
 	}

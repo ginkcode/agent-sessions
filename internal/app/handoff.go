@@ -8,6 +8,7 @@ import (
 	wruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 
 	"github.com/ginkcode/agent-sessions/internal/engine"
+	"github.com/ginkcode/agent-sessions/internal/handoff"
 )
 
 // HandoffRequest aliases engine.HandoffRequest.
@@ -33,10 +34,7 @@ func (a *App) HandoffCommand(req HandoffRequest) (string, error) {
 // document to the chosen file. If the dialog is cancelled, it returns an empty path.
 func (a *App) SaveHandoff(req HandoffRequest) (string, error) {
 	ctx := a.appCtx()
-	defaultName := "handoff.md"
-	if req.Ref.ID != "" {
-		defaultName = req.Ref.ID + "-handoff.md"
-	}
+	defaultName := handoffDefaultName(req.Ref.ID)
 
 	var destPath string
 	var err error
@@ -70,6 +68,18 @@ func (a *App) SaveHandoff(req HandoffRequest) (string, error) {
 	}
 
 	return r.backend.SaveHandoff(ctx, req, destPath)
+}
+
+// handoffDefaultName suggests a file name for a saved handoff document. It
+// reuses the handoff cache sanitizer, so Claude subagent IDs ("parent/agent")
+// and characters Windows rejects never reach the save dialog; IDs with nothing
+// usable left fall back to "handoff.md".
+func handoffDefaultName(id string) string {
+	p, err := handoff.PromptFilePath(".", id)
+	if err != nil {
+		return "handoff.md"
+	}
+	return filepath.Base(p)
 }
 
 func writeSecureLocalFile(destPath, content string) (string, error) {

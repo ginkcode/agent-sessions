@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -495,7 +494,7 @@ func handoffCmd(ctx context.Context, args []string, providers provider.Set, stdo
 		return 2
 	}
 
-	if *cwd != "" && !filepath.IsAbs(*cwd) {
+	if *cwd != "" && !pathutil.IsAbs(*cwd) {
 		_, _ = fmt.Fprintf(stderr, "cwd %q must be an absolute path\n", *cwd)
 		return 2
 	}

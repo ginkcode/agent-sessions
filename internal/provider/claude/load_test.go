@@ -333,3 +333,19 @@ func TestLoadCanceled(t *testing.T) {
 		t.Fatalf("Load canceled error = %v", err)
 	}
 }
+
+func TestClipOutputToolResultsRef(t *testing.T) {
+	tests := []struct{ out, ref string }{
+		{"Saved to /tmp/project/tool-results/t.txt", "file:t.txt"},
+		{`Saved to C:\Users\dev\project\tool-results\t.txt.`, "file:t.txt."},
+		{`Saved to "C:\p\tool-results\w.txt" then /x/tool-results/u.txt`, "file:u.txt"},
+		{`Saved to /x/tool-results/u.txt then C:\p\tool-results\w.txt`, "file:w.txt"},
+		{`Saved to C:\p\tool-results\..\x`, ""},
+		{"no reference", ""},
+	}
+	for _, tt := range tests {
+		if _, ref, _ := clipOutput(tt.out, 0, "t"); ref != tt.ref {
+			t.Errorf("clipOutput(%q) ref = %q, want %q", tt.out, ref, tt.ref)
+		}
+	}
+}

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/ginkcode/agent-sessions/internal/model"
+	"github.com/ginkcode/agent-sessions/internal/pathutil"
 )
 
 // SearchFilter narrows full-text search results.
@@ -266,11 +267,19 @@ WHERE fts_messages MATCH ?
 		sb.WriteString(" AND s.agent IN (" + strings.Join(ph, ",") + ")")
 	}
 	if dir != "" {
-		sb.WriteString(" AND (s.cwd = ? OR s.cwd LIKE ? ESCAPE '\\' OR s.repo_root = ? OR s.repo_root LIKE ? ESCAPE '\\')")
-		prefix, err := escapeLike(dir)
+		dir = pathutil.Clean(dir)
+		prefix, err := dirChildPattern(dir)
 		if err != nil {
 			return nil, err
 		}
+		// Windows paths compare case-insensitively (ASCII only, as SQLite
+		// folds); POSIX paths exactly, so children match with the
+		// case-sensitive GLOB rather than LIKE.
+		equal, child := " = ?", " GLOB ?"
+		if pathutil.IsWindows(dir) {
+			equal, child = " = ? COLLATE NOCASE", " LIKE ? ESCAPE '\\'"
+		}
+		sb.WriteString(" AND (s.cwd" + equal + " OR s.cwd" + child + " OR s.repo_root" + equal + " OR s.repo_root" + child + ")")
 		args = append(args, dir, prefix, dir, prefix)
 	}
 	sb.WriteString(" ORDER BY lexical ASC, s.updated_at DESC LIMIT ?")
@@ -301,18 +310,28 @@ WHERE fts_messages MATCH ?
 	return out, rows.Err()
 }
 
-// escapeLike builds a LIKE pattern matching dir and its path children,
-// with %, _ and \ escaped. The pattern ends with a path separator so
-// /repo does not match /repo-other.
-func escapeLike(dir string) (string, error) {
-	if !strings.HasPrefix(dir, "/") {
+// dirChildPattern builds a pattern matching the path children of dir: a GLOB
+// pattern with *, ? and [ escaped for a POSIX dir, and a LIKE pattern with %,
+// _ and \ escaped for a Windows one. A path separator in dir's style precedes
+// the trailing wildcard so /repo does not match /repo-other, nor C:\repo
+// C:\repo-other.
+func dirChildPattern(dir string) (string, error) {
+	if !pathutil.IsAbs(dir) {
 		return "", fmt.Errorf("search: dir filter must be an absolute path")
 	}
-	escaped := strings.ReplaceAll(dir, `\`, `\\`)
-	escaped = strings.ReplaceAll(escaped, `%`, `\%`)
-	escaped = strings.ReplaceAll(escaped, `_`, `\_`)
-	return escaped + "/", nil
+	dir = pathutil.Clean(dir)
+	sep := pathutil.Separator(dir)
+	dir = strings.TrimSuffix(dir, sep) + sep
+	if !pathutil.IsWindows(dir) {
+		return globEscaper.Replace(dir) + "*", nil
+	}
+	return likeEscaper.Replace(dir) + "%", nil
 }
+
+var (
+	globEscaper = strings.NewReplacer(`*`, `[*]`, `?`, `[?]`, `[`, `[[]`)
+	likeEscaper = strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
+)
 
 // renderSnippet converts a snippet() excerpt into safe HTML: the whole text
 // is HTML-escaped first, then the sentinel control chars — which cannot

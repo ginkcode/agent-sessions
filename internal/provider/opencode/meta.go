@@ -3,7 +3,6 @@ package opencode
 import (
 	"database/sql"
 	"math"
-	"path/filepath"
 
 	"github.com/ginkcode/agent-sessions/internal/model"
 	"github.com/ginkcode/agent-sessions/internal/pathutil"
@@ -30,7 +29,7 @@ func (p *Provider) finishMetas(metas []model.SessionMeta, origins map[string]met
 			d.Warn(p.dbPath(), 0, "session %q has a non-finite cost", meta.Ref.ID)
 			meta.CostUSD = 0
 		}
-		if origin.projectID != "global" && origin.worktree.Valid && origin.worktree.String != "/" && filepath.IsAbs(origin.worktree.String) {
+		if origin.projectID != "global" && origin.worktree.Valid && origin.worktree.String != "/" && pathutil.IsAbs(origin.worktree.String) {
 			meta.RepoRoot = pathutil.NormalizeDir(origin.worktree.String)
 		} else if repo, ok := p.git.Resolve(meta.CWD); ok {
 			meta.RepoRoot = repo.MainRoot

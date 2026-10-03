@@ -46,7 +46,9 @@ type checkpoint struct {
 	lineNo                int
 }
 
-const checkpointVersion = 3
+// checkpointVersion 4 normalizes Windows CWDs in their own style; a full
+// rescan replaces CWDs cached by earlier versions.
+const checkpointVersion = 4
 
 var ignoredRecordTypes = map[string]bool{
 	"attachment": true, "last-prompt": true, "mode": true,

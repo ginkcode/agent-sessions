@@ -42,7 +42,9 @@ type checkpoint struct {
 	lineNo    int
 }
 
-const checkpointVersion = 2
+// checkpointVersion 3 normalizes Windows CWDs in their own style; a full
+// rescan replaces CWDs cached by earlier versions.
+const checkpointVersion = 3
 
 // Rollout items known from Codex CLI source that are not conversational messages.
 // These are skipped safely without generating an unknown-type diagnostic.

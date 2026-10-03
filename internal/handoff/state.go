@@ -3,10 +3,10 @@ package handoff
 import (
 	"encoding/json"
 	"fmt"
-	"path/filepath"
 	"strings"
 
 	"github.com/ginkcode/agent-sessions/internal/model"
+	"github.com/ginkcode/agent-sessions/internal/pathutil"
 )
 
 // FileOp tracks operations on files.
@@ -20,13 +20,13 @@ const (
 
 // WorkingState captures the extracted context from tool executions.
 type WorkingState struct {
-	Files       map[string]FileOp `json:"files"`
-	Commands    []CommandRun      `json:"commands"`
-	LatestTodo  string            `json:"latestTodo,omitempty"`
-	Plans       []string          `json:"plans,omitempty"`
-	Subagents   []SubagentSummary `json:"subagents,omitempty"`
-	Errors      []string          `json:"errors,omitempty"`
-	Compaction  string            `json:"compaction,omitempty"`
+	Files      map[string]FileOp `json:"files"`
+	Commands   []CommandRun      `json:"commands"`
+	LatestTodo string            `json:"latestTodo,omitempty"`
+	Plans      []string          `json:"plans,omitempty"`
+	Subagents  []SubagentSummary `json:"subagents,omitempty"`
+	Errors     []string          `json:"errors,omitempty"`
+	Compaction string            `json:"compaction,omitempty"`
 }
 
 // CommandRun records a shell command invocation and its status.
@@ -97,7 +97,7 @@ func extractToolState(tool *model.ToolCall, state *WorkingState) {
 			p = input.Path
 		}
 		if p != "" {
-			cleanP := filepath.Clean(p)
+			cleanP := pathutil.Clean(p)
 			if nameLower == "write" {
 				if _, exists := state.Files[cleanP]; !exists {
 					state.Files[cleanP] = OpCreated
@@ -206,7 +206,7 @@ func extractPatchFiles(input string, state *WorkingState) {
 		if strings.HasPrefix(l, "*** ") || strings.HasPrefix(l, "--- ") || strings.HasPrefix(l, "+++ ") {
 			parts := strings.Fields(l)
 			if len(parts) >= 2 && parts[1] != "/dev/null" {
-				p := filepath.Clean(strings.TrimPrefix(parts[1], "a/"))
+				p := pathutil.Clean(strings.TrimPrefix(parts[1], "a/"))
 				p = strings.TrimPrefix(p, "b/")
 				if _, ok := state.Files[p]; !ok {
 					state.Files[p] = OpEdited

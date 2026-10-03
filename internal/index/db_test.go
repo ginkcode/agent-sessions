@@ -697,3 +697,27 @@ func TestDeleteSessionsRejectsInvalidRefsAndClosedDB(t *testing.T) {
 		t.Error("expected closed database error")
 	}
 }
+
+func TestDirChildPattern(t *testing.T) {
+	tests := []struct{ dir, want string }{
+		{"/repo", "/repo/*"},
+		{"/repo/", "/repo/*"},
+		{"/", "/*"},
+		{"/a_b/50%", `/a_b/50%/*`},
+		{"/a*b/c?/[x]", `/a[*]b/c[?]/[[]x]/*`},
+		{`C:\repo`, `C:\\repo\\%`},
+		{`C:\a_b\50%`, `C:\\a\_b\\50\%\\%`},
+		{`C:\`, `C:\\%`},
+		{`\\srv\share\a_b`, `\\\\srv\\share\\a\_b\\%`},
+	}
+	for _, tt := range tests {
+		if got, err := dirChildPattern(tt.dir); err != nil || got != tt.want {
+			t.Errorf("dirChildPattern(%q) = %q, %v; want %q", tt.dir, got, err, tt.want)
+		}
+	}
+	for _, dir := range []string{"", "repo", `repo\x`, `C:repo`} {
+		if _, err := dirChildPattern(dir); err == nil {
+			t.Errorf("dirChildPattern(%q) accepted a relative path", dir)
+		}
+	}
+}

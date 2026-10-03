@@ -29,8 +29,9 @@ const (
 	// toolResultsDir holds large tool outputs next to the session file.
 	toolResultsDir = "tool-results"
 	// toolResultsMarker appears in tool output text that references a
-	// file in the tool-results directory.
-	toolResultsMarker = "/" + toolResultsDir + "/"
+	// file in the tool-results directory; Windows writes backslashes.
+	toolResultsMarker        = "/" + toolResultsDir + "/"
+	toolResultsMarkerWindows = `\` + toolResultsDir + `\`
 )
 
 // rawRecord is the narrow decoding of one transcript line.
@@ -512,12 +513,16 @@ func (l *loader) attachment(rec *rawRecord) {
 
 // clipOutput applies the output size limit and tool-results file reference.
 func clipOutput(out string, start int64, toolUseID string) (string, ref string, truncated bool) {
-	if idx := strings.LastIndex(out, toolResultsMarker); idx >= 0 {
+	idx := strings.LastIndex(out, toolResultsMarker)
+	if win := strings.LastIndex(out, toolResultsMarkerWindows); win > idx {
+		idx = win
+	}
+	if idx >= 0 {
 		name := out[idx+len(toolResultsMarker):]
 		if end := strings.IndexAny(name, " \t\r\n\"'`)}]"); end >= 0 {
 			name = name[:end]
 		}
-		if name != "" && filepath.Base(name) == name && name != "." && name != ".." {
+		if name != "" && !strings.ContainsAny(name, `/\`) && name != "." && name != ".." {
 			return out, "file:" + name, true
 		}
 	}

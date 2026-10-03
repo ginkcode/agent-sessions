@@ -14,6 +14,7 @@ import (
 	"github.com/ginkcode/agent-sessions/internal/bundle"
 	"github.com/ginkcode/agent-sessions/internal/handoff"
 	"github.com/ginkcode/agent-sessions/internal/model"
+	"github.com/ginkcode/agent-sessions/internal/pathutil"
 )
 
 // BundleSummary details an inspected session bundle for review and import.
@@ -176,7 +177,7 @@ func (s *Service) buildBundleHandoffDoc(ctx context.Context, req BundleHandoffRe
 		return handoff.Doc{}, "", errors.New("bundle contains no transcripts")
 	}
 
-	if req.CWD != "" && !filepath.IsAbs(req.CWD) {
+	if req.CWD != "" && !pathutil.IsAbs(req.CWD) {
 		return handoff.Doc{}, "", errors.New("cwd must be an absolute path")
 	}
 

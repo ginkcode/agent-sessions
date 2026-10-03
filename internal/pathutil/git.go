@@ -77,8 +77,10 @@ func (g *GitResolver) putCached(paths []string, entry cacheEntry) {
 // Resolve walks up from dir to the filesystem root looking for a .git entry.
 // It reports ok=false when dir is not inside a Git repository or worktree.
 // A missing dir is handled by walking up from its nearest existing ancestor.
+// An absolute path in the other OS's style is never inside a local repository.
 func (g *GitResolver) Resolve(dir string) (RepoInfo, bool) {
-	if dir == "" {
+	dir = Clean(dir)
+	if dir == "" || isForeign(dir) {
 		return RepoInfo{}, false
 	}
 	if !filepath.IsAbs(dir) {

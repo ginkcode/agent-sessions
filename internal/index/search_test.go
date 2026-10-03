@@ -162,6 +162,19 @@ func TestSearchQueryParserAndSafety(t *testing.T) {
 	if len(hits) != 0 {
 		t.Errorf("expected 0 hits with non-matching Dir, got %d", len(hits))
 	}
+	for dir, want := range map[string]bool{
+		"/home/user": true, "/home": true, "/home/use": false, "/home/user/project/sub": false,
+		// POSIX paths are case-sensitive, for the dir and its children alike.
+		"/home/User": false, "/home/user/Project": false,
+	} {
+		hits, err = db.Search(ctx, "SQLite", index.SearchFilter{Dir: dir})
+		if err != nil {
+			t.Fatalf("Search with Dir %q: %v", dir, err)
+		}
+		if got := len(hits) > 0; got != want {
+			t.Errorf("Search with ancestor Dir %q matched = %t, want %t", dir, got, want)
+		}
+	}
 }
 
 func TestSearchVisibilityGuard(t *testing.T) {

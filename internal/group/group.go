@@ -2,12 +2,12 @@
 package group
 
 import (
-	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
 
 	"github.com/ginkcode/agent-sessions/internal/model"
+	"github.com/ginkcode/agent-sessions/internal/pathutil"
 )
 
 // GroupMode selects the order of the directory and agent group levels.
@@ -203,20 +203,27 @@ func groupPath(m model.SessionMeta, foldRepo bool) string {
 	if path == "" {
 		return ""
 	}
-	return filepath.Clean(path)
+	return pathutil.Clean(path)
 }
 
 func directoryKey(path string) string {
 	if path == "" {
 		return "dir:(unknown directory)"
 	}
-	return "dir:" + path
+	return "dir:" + pathKey(path)
+}
+
+func pathKey(path string) string {
+	if pathutil.IsWindows(path) {
+		return strings.ToLower(path)
+	}
+	return path
 }
 
 func agentKey(agent model.AgentID) string { return "agent:" + string(agent) }
 
 func dirAgentKey(path string, agent model.AgentID) string {
-	p := path
+	p := pathKey(path)
 	if p == "" {
 		p = "(unknown directory)"
 	}
@@ -224,7 +231,7 @@ func dirAgentKey(path string, agent model.AgentID) string {
 }
 
 func agentDirKey(agent model.AgentID, path string) string {
-	p := path
+	p := pathKey(path)
 	if p == "" {
 		p = "(unknown directory)"
 	}
@@ -256,16 +263,14 @@ func pathLabel(path, home string) string {
 	if home == "" {
 		return path
 	}
-	cleanHome := filepath.Clean(home)
-	cleanPath := filepath.Clean(path)
-	rel, err := filepath.Rel(cleanHome, cleanPath)
-	if err != nil || filepath.IsAbs(rel) || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+	rel, ok := pathutil.Rel(home, path)
+	if !ok {
 		return path
 	}
-	if rel == "." {
+	if rel == "" {
 		return "~"
 	}
-	return "~" + string(filepath.Separator) + rel
+	return "~" + pathutil.Separator(path) + rel
 }
 
 func sortGroups(nodes []*treeNode) {

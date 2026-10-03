@@ -9,6 +9,7 @@ import (
 
 	"github.com/ginkcode/agent-sessions/internal/handoff"
 	"github.com/ginkcode/agent-sessions/internal/model"
+	"github.com/ginkcode/agent-sessions/internal/pathutil"
 )
 
 // HandoffRequest configures the creation of a cross-agent handoff document.
@@ -106,7 +107,7 @@ func (s *Service) buildHandoffDoc(ctx context.Context, req HandoffRequest, conte
 		return handoff.Doc{}, model.SessionMeta{}, fmt.Errorf("%w: %s", ErrUnknownSession, req.Ref.Key())
 	}
 
-	if req.CWD != "" && !filepath.IsAbs(req.CWD) {
+	if req.CWD != "" && !pathutil.IsAbs(req.CWD) {
 		return handoff.Doc{}, model.SessionMeta{}, errors.New("cwd must be an absolute path")
 	}
 

@@ -208,6 +208,25 @@ func TestBuildPathsAndMissing(t *testing.T) {
 						session(meta(model.AgentOpenCode, "r", "", "/tmp/missing", "/home/user/repo/../repo", "Repo", 1, 1, 2, true), 1, 3))),
 			},
 		},
+		{
+			name: "Windows paths merge prefix and drive case under a Windows home",
+			input: []model.SessionMeta{
+				meta(model.AgentCodex, "w1", "", `\\?\c:\Users\Al\proj`, "", "Codex", 2, 1, 0, false),
+				meta(model.AgentClaude, "w2", "", `C:\users\al\proj\`, "", "Claude", 1, 0, 1, false),
+				meta(model.AgentClaude, "posix", "", "/Users/Al/proj", "", "POSIX", 3, 1, 0, false),
+			},
+			opts: Options{Home: `C:\Users\Al`},
+			want: []Node{
+				group(directoryKey("/Users/Al/proj"), "/Users/Al/proj", Directory, "/Users/Al/proj", "", 1, 1, false,
+					group(dirAgentKey("/Users/Al/proj", model.AgentClaude), "Claude Code", Agent, "", model.AgentClaude, 1, 1, false,
+						session(meta(model.AgentClaude, "posix", "", "/Users/Al/proj", "", "POSIX", 3, 1, 0, false), 1, 1))),
+				group(directoryKey(`C:\Users\Al\proj`), `~\proj`, Directory, `C:\Users\Al\proj`, "", 2, 2, false,
+					group(dirAgentKey(`C:\Users\Al\proj`, model.AgentClaude), "Claude Code", Agent, "", model.AgentClaude, 1, 1, false,
+						session(meta(model.AgentClaude, "w2", "", `C:\users\al\proj\`, "", "Claude", 1, 0, 1, false), 1, 1)),
+					group(dirAgentKey(`C:\Users\Al\proj`, model.AgentCodex), "Codex", Agent, "", model.AgentCodex, 1, 1, false,
+						session(meta(model.AgentCodex, "w1", "", `\\?\c:\Users\Al\proj`, "", "Codex", 2, 1, 0, false), 1, 1))),
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

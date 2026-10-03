@@ -479,6 +479,103 @@ test('search helpers preserve global jump indexes and active filters', () => {
   assert.equal(progressIncomplete({ done: 5, pending: 0, failed: 0, running: false }), false);
 });
 
+const WINDOWS_DIRS = [
+  'C:\\Users\\me\\repo',
+  'C:\\',
+  '\\\\fileserver\\share\\team-repo\\',
+  '\\\\?\\D:\\Workspaces\\x',
+  'C:/Users/me\\mixed/repo',
+];
+
+test('searchFilterFromApp passes Windows directories through unchanged', () => {
+  for (const dir of WINDOWS_DIRS) {
+    assert.deepEqual(searchFilterFromApp('codex', dir, 15), { agents: ['codex'], dir, limit: 15 });
+  }
+  // Only surrounding whitespace is trimmed; inner spaces and separators stay.
+  assert.deepEqual(searchFilterFromApp(undefined, '  C:\\Program Files\\app\\  '), {
+    dir: 'C:\\Program Files\\app\\', limit: 30,
+  });
+});
+
+test('tree helpers treat Windows and UNC keys as opaque strings', () => {
+  const drive = treeNode('dir-agent:C:\\Users\\me\\repo', 'directory', DEFAULT_COLLAPSE_THRESHOLD, 'agent');
+  const unc = treeNode('dir-agent:\\\\fileserver\\share\\team-repo\\', 'directory', 1, 'agent');
+  const root = { ...treeNode('dir-agent:C:\\', 'directory'), cwd: 'C:\\' };
+  const tree = [drive, unc, root];
+
+  assert.deepEqual([...defaultCollapsedKeys(tree)], ['dir-agent:C:\\Users\\me\\repo']);
+  assert.equal(isCollapsed('dir-agent:C:\\Users\\me\\repo', new Set(), defaultCollapsedKeys(tree)), true);
+  assert.equal(
+    isCollapsed('dir-agent:\\\\fileserver\\share\\team-repo\\', new Set(['dir-agent:\\\\fileserver\\share\\team-repo\\']), new Set()),
+    true
+  );
+
+  // Keys are matched exactly: no case folding or separator normalization.
+  const pruned = pruneKeys(
+    new Set([
+      'dir-agent:C:\\Users\\me\\repo',
+      'dir-agent:C:\\Users\\me\\repo/0',
+      'dir-agent:c:\\users\\me\\repo',
+      'dir-agent:C:/Users/me/repo',
+      'dir-agent:\\\\fileserver\\share\\team-repo\\',
+      'dir-agent:\\\\fileserver\\share\\team-repo',
+    ]),
+    tree
+  );
+  assert.deepEqual([...pruned].sort(), [
+    'dir-agent:C:\\Users\\me\\repo',
+    'dir-agent:C:\\Users\\me\\repo/0',
+    'dir-agent:\\\\fileserver\\share\\team-repo\\',
+  ].sort());
+
+  for (const cwd of WINDOWS_DIRS) {
+    assert.equal(nodeKind({ key: `dir-agent:${cwd}`, label: cwd, cwd, sessionCount: 1 }), 'directory');
+  }
+
+  const store = new Map();
+  globalThis.localStorage = {
+    getItem: (k) => store.get(k) ?? null,
+    setItem: (k, v) => store.set(k, String(v)),
+    removeItem: (k) => store.delete(k),
+    clear: () => store.clear(),
+  };
+  try {
+    const keys = new Set(WINDOWS_DIRS.map((cwd) => `dir-agent:${cwd}`));
+    saveCollapsedKeys(keys);
+    assert.deepEqual([...loadCollapsedKeys()], [...keys]);
+  } finally {
+    delete globalThis.localStorage;
+  }
+});
+
+test('MockBackendAPI path filter matches Windows cwd case-insensitively', async () => {
+  const backend = new MockBackendAPI();
+  const driveCwd = 'C:\\Users\\Me\\Repos\\Win-Client';
+  const uncCwd = '\\\\FileServer\\Share\\Team-Repo\\';
+  // Replace entries (not mutate them): the mock shares session objects
+  // between instances.
+  backend.sessions = backend.sessions.map((s, i) =>
+    i === 0 ? { ...s, cwd: driveCwd, archived: false } : i === 1 ? { ...s, cwd: uncCwd, archived: false } : s
+  );
+  const [drive, unc] = backend.sessions;
+
+  const byDrive = await backend.listSessions('', { path: ' c:\\users\\me\\repos ' });
+  assert.deepEqual(byDrive.map((s) => s.ref), [drive.ref]);
+  assert.equal(byDrive[0].cwd, driveCwd);
+
+  const byUNC = await backend.listSessions('', { path: '\\\\fileserver\\share' });
+  assert.deepEqual(byUNC.map((s) => s.ref), [unc.ref]);
+  assert.equal(byUNC[0].cwd, uncCwd);
+
+  const groups = await backend.listGroups('dir-agent', { path: 'WIN-CLIENT' });
+  assert.equal(groups.length, 1);
+  assert.equal(groups[0].key, `dir-agent:${driveCwd}`);
+  assert.equal(groups[0].cwd, driveCwd);
+
+  // The forward-slash spelling is a different substring.
+  assert.deepEqual(await backend.listSessions('', { path: 'c:/users/me' }), []);
+});
+
 test('safeSnippetHTML keeps only bare mark tags', () => {
   assert.equal(
     safeSnippetHTML('a <mark>b</mark> <img src=x onerror=alert(1)> <MARK>c</MARK>'),
