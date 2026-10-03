@@ -3,21 +3,54 @@ package manage
 import (
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 )
 
-// classifyImages fails closed for script runtimes because an executable-only
-// snapshot cannot tell a background server from an interactive agent, nor
-// establish which program a Node/Bun/Deno process is hosting.
+// windowsAgentServices are always-on helpers installed by agent desktop apps.
+// They never host a session; a running Codex session still shows its own
+// codex executable, which is checked like any other.
+var windowsAgentServices = map[string]bool{
+	// Service CodexSandboxService.OpenAI.Codex, run by services.exe whenever
+	// the ChatGPT desktop app is installed.
+	"codex-windows-sandbox-service": true,
+}
+
+// agentServer reports whether argv runs an agent's server/daemon subcommand
+// (including editor-hosted ACP servers such as Zed's `opencode acp`). These
+// host many sessions and are not themselves a session being edited in a
+// terminal. Sessions they are actively using stay protected by the
+// per-session recent-activity check. Shared by the Linux and Windows guards.
+func agentServer(agent string, argv []string) bool {
+	switch agent {
+	case "codex":
+		return hasArg(argv, "app-server")
+	case "opencode":
+		return hasArg(argv, "serve") || hasArg(argv, "acp")
+	}
+	return false
+}
+
+// classifyImages fails closed for script runtimes because an executable
+// snapshot cannot establish which program a Node/Bun/Deno process is hosting.
+// Codex and OpenCode executables mirror the Linux guard: args reads the
+// arguments of only those processes so their server modes can be ignored.
+// Arguments are matched, never returned or shown; unreadable ones block.
 //
 // The result maps an agent to the executable that makes it live, so the
 // blocked reason can tell the user what to close.
-func classifyImages(images map[int]string) (map[string]string, error) {
+func classifyImages(images map[int]string, args func(pid int, image string) ([]string, error)) (map[string]string, error) {
 	if len(images) == 0 {
 		return nil, ErrProcessUnknown
 	}
-	live := make(map[string]string)
-	for _, image := range images {
+	type match struct {
+		pid        int
+		image, exe string
+		agent      string
+	}
+	var matches []match
+	runtime := false
+	for pid, image := range images {
 		if image == "" {
 			return nil, ErrProcessUnknown
 		}
@@ -27,23 +60,52 @@ func classifyImages(images map[int]string) (map[string]string, error) {
 		}
 		exe := name
 		name = strings.TrimSuffix(name, ".exe")
+		if windowsAgentServices[name] {
+			continue
+		}
 		switch name {
 		case "node", "nodejs", "bun", "deno":
-			return nil, fmt.Errorf("%w: %w", ErrProcessUnknown, errRuntimeHost)
+			runtime = true
+			continue
 		}
 		for _, agent := range []string{"claude", "codex", "opencode"} {
 			// Include platform/version-suffixed binaries (for example the
 			// vendored codex-x86_64-pc-windows-msvc executable).
 			if name == agent || strings.HasPrefix(name, agent+"-") {
-				key := agent
-				if agent == "claude" {
-					key = "claude-code"
-				}
-				// Report the smallest name so repeated scans agree.
-				if live[key] == "" || exe < live[key] {
-					live[key] = exe
-				}
+				matches = append(matches, match{pid: pid, image: image, exe: exe, agent: agent})
 			}
+		}
+	}
+	if runtime {
+		return nil, fmt.Errorf("%w: %w", ErrProcessUnknown, errRuntimeHost)
+	}
+	// Visit in a stable order so repeated scans give the same answer.
+	sort.Slice(matches, func(i, j int) bool {
+		if matches[i].exe != matches[j].exe {
+			return matches[i].exe < matches[j].exe
+		}
+		return matches[i].pid < matches[j].pid
+	})
+	live := make(map[string]string)
+	for _, m := range matches {
+		key := m.agent
+		if m.agent == "claude" {
+			// Claude has no server mode to exempt.
+			key = "claude-code"
+		} else {
+			if args == nil {
+				return nil, ErrProcessUnknown
+			}
+			argv, err := args(m.pid, m.image)
+			if err != nil || len(argv) == 0 {
+				return nil, ErrProcessUnknown
+			}
+			if agentServer(m.agent, argv) {
+				continue
+			}
+		}
+		if live[key] == "" {
+			live[key] = m.exe
 		}
 	}
 	return live, nil

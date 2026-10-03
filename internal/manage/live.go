@@ -15,11 +15,14 @@ type ProcFS interface {
 	Cmdlines() (map[int][]string, error) // pid -> argv
 }
 
-// imageProcFS supplies only executable names, not arguments. Windows uses
-// this conservative scan for all three agents, including Claude: its provider
-// detector cannot prove that a Windows PID is idle through /proc.
+// imageProcFS supplies executable names, and arguments only on request for
+// processes already identified as Codex or OpenCode. Windows uses this scan
+// for all three agents, including Claude: its provider detector cannot prove
+// that a Windows PID is idle through /proc.
 type imageProcFS interface {
 	Images() (map[int]string, error)
+	// Args returns pid's arguments, or an error if pid no longer runs image.
+	Args(pid int, image string) ([]string, error)
 }
 
 // ErrProcessUnknown blocks deletion when process safety cannot be established.
@@ -58,11 +61,7 @@ type procEntry struct {
 }
 
 // scanProcs finds running codex and opencode processes by reading
-// /proc/*/cmdline. Daemon/server subcommands (including editor-hosted ACP
-// servers such as Zed's `opencode acp`) are excluded: they host many
-// sessions and are not themselves a session being edited in a terminal.
-// Sessions they are actively using stay protected by the per-session
-// recent-activity check.
+// /proc/*/cmdline. Server subcommands are excluded; see agentServer.
 func (g *liveGuard) scanProcs() (map[string]procEntry, error) {
 	if g.proc == nil {
 		return nil, errors.New("manage: process table unavailable")
@@ -82,19 +81,8 @@ func (g *liveGuard) scanProcs() (map[string]procEntry, error) {
 		} else {
 			bin = baseName(argv[0])
 		}
-		agent := ""
-		switch bin {
-		case "codex":
-			if hasArg(argv, "app-server") {
-				continue
-			}
-			agent = "codex"
-		case "opencode":
-			if hasArg(argv, "serve") || hasArg(argv, "acp") {
-				continue
-			}
-			agent = "opencode"
-		default:
+		agent := bin
+		if (agent != "codex" && agent != "opencode") || agentServer(agent, argv) {
 			continue
 		}
 		out[fmt.Sprintf("%s:%d", agent, pid)] = procEntry{agent: agent, pid: pid}
@@ -139,7 +127,7 @@ func (g *liveGuard) procLive(ctx context.Context) (map[string]string, error) {
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		return classifyImages(table)
+		return classifyImages(table, images.Args)
 	}
 	entries, err := g.scanProcs()
 	if err != nil {

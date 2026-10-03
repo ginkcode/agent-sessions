@@ -16,6 +16,7 @@ import (
 type fakeImageProc struct {
 	images map[int]string
 	err    error
+	args   map[int][]string // default: the image alone (interactive)
 }
 
 func (fakeImageProc) Cmdlines() (map[int][]string, error) {
@@ -23,6 +24,13 @@ func (fakeImageProc) Cmdlines() (map[int][]string, error) {
 }
 
 func (p fakeImageProc) Images() (map[int]string, error) { return p.images, p.err }
+
+func (p fakeImageProc) Args(pid int, image string) ([]string, error) {
+	if argv, ok := p.args[pid]; ok {
+		return argv, nil
+	}
+	return []string{image}, nil
+}
 
 func idleImages() map[int]string { return map[int]string{1: "explorer.exe"} }
 
@@ -40,6 +48,7 @@ func TestClassifyImages(t *testing.T) {
 	for _, tc := range []struct {
 		name   string
 		images map[int]string
+		args   map[int][]string
 		want   map[string]string
 		err    error
 	}{
@@ -55,20 +64,42 @@ func TestClassifyImages(t *testing.T) {
 			want: map[string]string{"claude-code": "claude-code.exe", "codex": "codex-x86_64-pc-windows-msvc.exe", "opencode": "opencode.exe"},
 		},
 		{
-			// Without arguments a desktop app's server or helper service
-			// cannot be told apart from a session, so both block deletion.
-			name:   "helpers and servers block",
-			images: map[int]string{1: "codex-windows-sandbox-service.exe", 2: "opencode-cli.exe"},
-			want:   map[string]string{"codex": "codex-windows-sandbox-service.exe", "opencode": "opencode-cli.exe"},
+			// The processes seen on a real machine with the ChatGPT and
+			// OpenCode desktop apps installed and no agent session running.
+			name:   "desktop helpers and servers",
+			images: map[int]string{1: "codex-windows-sandbox-service.exe", 2: "opencode-cli.exe", 3: "codex.exe"},
+			args: map[int][]string{
+				2: {`C:\Users\u\AppData\Roaming\ai.opencode.desktop\cli\2.0.22\opencode-cli.exe`, "serve", "--port", "4096"},
+				3: {"codex", "app-server"},
+			},
+			want: map[string]string{},
 		},
+		{name: "opencode acp", images: map[int]string{1: "opencode.exe"}, args: map[int][]string{1: {"opencode", "acp"}}, want: map[string]string{}},
+		{
+			name:   "interactive beside server",
+			images: map[int]string{1: "opencode-cli.exe", 2: "opencode.exe"},
+			args:   map[int][]string{1: {"opencode-cli", "serve"}, 2: {"opencode", "run"}},
+			want:   map[string]string{"opencode": "opencode.exe"},
+		},
+		{
+			// A server word as the program name or another agent's
+			// subcommand does not exempt.
+			name:   "only own subcommands exempt",
+			images: map[int]string{1: "codex.exe", 2: "opencode.exe"},
+			args:   map[int][]string{1: {"serve"}, 2: {"opencode", "app-server"}},
+			want:   map[string]string{"codex": "codex.exe", "opencode": "opencode.exe"},
+		},
+		{name: "claude is never exempt", images: map[int]string{1: "claude.exe"}, args: map[int][]string{1: {"claude", "serve"}}, want: map[string]string{"claude-code": "claude.exe"}},
+		{name: "unreadable arguments", images: map[int]string{1: "opencode-cli.exe"}, args: map[int][]string{1: nil}, err: ErrProcessUnknown},
 		{name: "unrelated", images: map[int]string{1: "claudette.exe", 2: "decodex.exe"}, want: map[string]string{}},
 		{name: "node", images: map[int]string{1: "Node.exe"}, err: errRuntimeHost},
 		{name: "nodejs", images: map[int]string{1: "nodejs"}, err: errRuntimeHost},
 		{name: "bun", images: map[int]string{1: `C:\bin\bun.exe`}, err: errRuntimeHost},
 		{name: "deno", images: map[int]string{1: "deno.EXE"}, err: errRuntimeHost},
+		{name: "runtime beside server", images: map[int]string{1: "opencode-cli.exe", 2: "bun.exe"}, args: map[int][]string{1: {"opencode-cli", "serve"}}, err: errRuntimeHost},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			got, err := classifyImages(tc.images)
+			got, err := classifyImages(tc.images, fakeImageProc{args: tc.args}.Args)
 			if !errors.Is(err, tc.err) || tc.err == nil && !reflect.DeepEqual(got, tc.want) {
 				t.Fatalf("classifyImages = %v, %v; want %v, %v", got, err, tc.want, tc.err)
 			}
@@ -76,6 +107,31 @@ func TestClassifyImages(t *testing.T) {
 				t.Errorf("unknown process state must block: %v", err)
 			}
 		})
+	}
+}
+
+func TestClassifyImagesReadsOnlyCodexAndOpenCodeArgs(t *testing.T) {
+	images := map[int]string{
+		1: "explorer.exe", 2: "claude.exe", 3: "codex-windows-sandbox-service.exe",
+		4: "codex.exe", 5: "opencode-cli.exe", 6: "notepad.exe",
+	}
+	var read []int
+	_, err := classifyImages(images, func(pid int, image string) ([]string, error) {
+		if images[pid] != image {
+			t.Errorf("pid %d read as %q", pid, image)
+		}
+		read = append(read, pid)
+		return []string{image, "serve"}, nil
+	})
+	if err != nil || !reflect.DeepEqual(read, []int{4, 5}) {
+		t.Fatalf("arguments read for %v, %v; want only Codex and OpenCode", read, err)
+	}
+	failing := func(int, string) ([]string, error) { return nil, errors.New(`private C:\Users\u`) }
+	if _, err := classifyImages(map[int]string{1: "codex.exe"}, failing); !errors.Is(err, ErrProcessUnknown) || strings.Contains(err.Error(), "private") {
+		t.Fatalf("unreadable arguments must fail closed without detail: %v", err)
+	}
+	if _, err := classifyImages(map[int]string{1: "codex.exe"}, nil); !errors.Is(err, ErrProcessUnknown) {
+		t.Fatalf("missing argument reader must fail closed: %v", err)
 	}
 }
 
@@ -205,7 +261,8 @@ type changingImageProc struct {
 	images map[int]string
 }
 
-func (*changingImageProc) Cmdlines() (map[int][]string, error) { return nil, ErrProcessUnknown }
+func (*changingImageProc) Cmdlines() (map[int][]string, error)        { return nil, ErrProcessUnknown }
+func (*changingImageProc) Args(_ int, image string) ([]string, error) { return []string{image}, nil }
 func (p *changingImageProc) Images() (map[int]string, error) {
 	p.calls++
 	if p.calls >= p.block {
