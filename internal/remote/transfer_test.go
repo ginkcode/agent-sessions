@@ -79,13 +79,15 @@ func TestSession_PutAndGetArtifact(t *testing.T) {
 
 		switch action {
 		case "put":
-			// Helper script in sh: read stdin to target file, calculate sha256
+			// Helper script in sh: read stdin to target file, calculate sha256.
+			// The file goes in on stdin: given a name with a backslash (any
+			// Windows path), sha256sum prefixes its output line with "\".
 			target := filepath.Join(stagingDir, "staging", token)
 			_ = os.MkdirAll(filepath.Dir(target), 0700)
 			script := `
 				target="$1"
 				cat > "$target"
-				sum=$(sha256sum "$target" | cut -d' ' -f1)
+				sum=$(sha256sum < "$target" | cut -d' ' -f1)
 				printf "sha256:%s\n" "$sum"
 			`
 			cmd := exec.CommandContext(ctx, "sh", "-c", script, "sh", target)

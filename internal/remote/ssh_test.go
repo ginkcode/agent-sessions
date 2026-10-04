@@ -202,6 +202,8 @@ func TestControlDir_ShortEnoughForSockets(t *testing.T) {
 }
 
 func TestCheckPrivateDir(t *testing.T) {
+	// Elsewhere checkPrivateDir accepts any directory (privatedir_other.go).
+	platform.SkipWithoutModeBits(t)
 	root := t.TempDir()
 	good := filepath.Join(root, "good")
 	loose := filepath.Join(root, "loose")
