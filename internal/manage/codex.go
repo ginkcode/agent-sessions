@@ -197,6 +197,7 @@ func runStandalone(ctx context.Context, argv []string, dir string, env []string)
 		return err
 	}
 	cmd := exec.CommandContext(ctx, bin, argv[1:]...) //nolint:gosec
+	hideConsole(cmd)
 	cmd.Dir = dir
 	cmd.Env = withPathPrefix(append(os.Environ(), env...), filepath.Dir(bin))
 	var buf bytes.Buffer
@@ -223,6 +224,7 @@ func runCapture(ctx context.Context, argv []string, dir string, env []string) ([
 		return nil, err
 	}
 	cmd := exec.CommandContext(ctx, bin, argv[1:]...) //nolint:gosec
+	hideConsole(cmd)
 	cmd.Dir = dir
 	cmd.Env = withPathPrefix(append(os.Environ(), env...), filepath.Dir(bin))
 	var stdout, stderr bytes.Buffer
