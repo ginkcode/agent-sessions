@@ -1,7 +1,6 @@
 package remote
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -20,7 +19,7 @@ func TestBuildSSHArgs_Basic(t *testing.T) {
 		NoTTY:       true,
 	}
 
-	args, err := BuildSSHArgs("prod-box", []string{"echo", "hello world"}, opts)
+	args, err := buildSSHArgs("prod-box", []string{"echo", "hello world"}, opts, false)
 	if err != nil {
 		t.Fatalf("BuildSSHArgs failed: %v", err)
 	}
@@ -88,7 +87,7 @@ func TestBuildSSHArgs_Options(t *testing.T) {
 		ExtraOptions:        []string{"StrictHostKeyChecking=ask"},
 	}
 
-	args, err := BuildSSHArgs("staging", nil, opts)
+	args, err := buildSSHArgs("staging", nil, opts, false)
 	if err != nil {
 		t.Fatalf("BuildSSHArgs failed: %v", err)
 	}
@@ -118,13 +117,8 @@ func TestBuildSSHCmd_Environment(t *testing.T) {
 		AskpassToken:  "secret-tok-123",
 	}
 
-	cmd, err := BuildSSHCmd(context.Background(), "myhost", []string{"true"}, opts)
-	if err != nil {
-		t.Fatalf("BuildSSHCmd failed: %v", err)
-	}
-
 	envMap := make(map[string]string)
-	for _, env := range cmd.Env {
+	for _, env := range sshEnvironment(opts, false) {
 		parts := strings.SplitN(env, "=", 2)
 		if len(parts) == 2 {
 			envMap[parts[0]] = parts[1]

@@ -124,6 +124,10 @@ func newConnection(emitter engine.Emitter) *connection {
 		localActive: true,
 		stopMaster:  newMasterStopper,
 	}
+	if !remote.SupportsSSHAskpass() {
+		c.opts.ControlMaster = "no"
+		return c
+	}
 	broker, err := remote.NewAskpassBroker(func(id, prompt string) {
 		c.emitAskpass(id, prompt)
 	})
@@ -394,7 +398,10 @@ func (c *connection) dialLoop(ctx context.Context, gen uint64, alias string, dia
 
 // permanentDialError reports failures that a reconnect cannot fix.
 func permanentDialError(err error) bool {
-	return errors.Is(err, remote.ErrServerBundleNotFound) ||
+	return errors.Is(err, remote.ErrSSHClientNotFound) ||
+		errors.Is(err, remote.ErrSSHAuthentication) ||
+		errors.Is(err, remote.ErrSSHHostKey) ||
+		errors.Is(err, remote.ErrServerBundleNotFound) ||
 		errors.Is(err, remote.ErrServerVersionMismatch) ||
 		errors.Is(err, remote.ErrUnsupportedOS) ||
 		errors.Is(err, remote.ErrUnsupportedArch) ||

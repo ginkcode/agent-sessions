@@ -222,8 +222,9 @@ flows/UI (M7-15…17), packaging (M7-18), and QA (M7-19…20).
 
 ## M8 — Windows support (≈ 46 h)
 
-Design: [docs/plan/M8.md](docs/plan/M8.md). Two-step decision: local-only first
-(M8-01…07); remote over SSH later (M8-08…09), gated on askpass security.
+Design: [docs/plan/M8.md](docs/plan/M8.md). Local-first (M8-01…07), then
+key/agent-only SSH (M8-09, requested 2026-10-04). Password/passphrase dialogs
+remain gated on the M8-08 named-pipe credential channel.
 
 | ID | St | Task | Est | Deps | Done when |
 |---|---|---|---|---|---|
@@ -235,7 +236,7 @@ Design: [docs/plan/M8.md](docs/plan/M8.md). Two-step decision: local-only first
 | M8-06 | ⬜ | PowerShell command quoting for resume/handoff commands (decide PS5 vs PS7 target; single-line handoff pointer kept) | 4 | M8-01 | Pasted commands work in the target shell on a real Windows machine. |
 | M8-07 | 🟡 | CI `windows-latest` job (tests + `GOOS=windows` build assert), NSIS installer in release.yml, remote-server bundling, SmartScreen note | 6 | M8-01 | CI green on Windows; installer artifact published; unsigned warning documented. **Done:** the suite passes on Windows; the CI job tests and builds the CLI and desktop app (not yet run on GitHub). **Open:** NSIS installer, release bundling, SmartScreen note. |
 | M8-08 | ⬜ | Askpass over a per-user named pipe with DACL (replaces the skipped Unix peer-UID/private-dir checks); re-enable no-listening-socket assertions | 8 | M8-07 | Password channel is scoped to the current user; security review passes. |
-| M8-09 | ⬜ | Native Windows SSH without ControlMaster: persistent stdio RPC session; separate setup/transfers; keys/agent gated by noninteractive probe; client discovery, prerequisite guidance and hidden console windows | 5 | M8-08 | Windows client connects to Linux over persistent RPC; Refresh/browse/delete/export work without per-action reconnects; setup/transfers use noninteractive auth; reconnect/disconnect work without master commands. |
+| M8-09 | 🟡 | Native Windows SSH without ControlMaster: persistent stdio RPC session; separate setup/transfers; keys/agent gated by noninteractive probe; client discovery, prerequisite guidance and hidden console windows | 5 | M8-01 | Windows client connects to Linux over persistent RPC; Refresh/browse/delete/export work without per-action reconnects; setup/transfers use noninteractive auth; reconnect/disconnect work without master commands. **Done (2026-10-04):** native client discovery, explicit no-mux/batch options, hidden spawns, no Windows askpass listener, bounded probe/stderr and visible error details; read-only native `lit` check succeeds. **Open:** GUI connect/deploy/reconnect/transfer QA. M8-08 is required only for future credential dialogs. |
 | M8-10 | ⬜ | QA: real-machine pass over scan, search, export/import, handoff, Recycle Bin delete, PowerShell paste, install + first launch | 6 | M8-01…07 | Checklist in `docs/plan/M8.md` signed off. |
 
 ---
@@ -252,8 +253,8 @@ Design: [docs/plan/M8.md](docs/plan/M8.md). Two-step decision: local-only first
 | M5 macOS & distribution | 6 | 20 | 0 | 1 | 5 |
 | M6 Portable sessions | 17 | 60 | 15 | 0 | 2 |
 | M7 Remote over SSH | 20 | 65 | 1 | 0 | 19 |
-| M8 Windows support | 10 | 46 | 2 | 3 | 5 |
-| **Total** | **132** | **≈ 414 h** | **66** | **21** | **45** |
+| M8 Windows support | 10 | 46 | 2 | 5 | 3 |
+| **Total** | **132** | **≈ 414 h** | **66** | **23** | **43** |
 
 **Critical path to the MVP:**
 

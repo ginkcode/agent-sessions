@@ -1,11 +1,9 @@
 package remote
 
 import (
-	"bufio"
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"os/exec"
 	"sync"
 	"time"
@@ -32,8 +30,7 @@ type Session struct {
 
 	sshCmdFunc func(ctx context.Context, alias string, remoteCmd []string, opts SSHOptions) (*exec.Cmd, error)
 
-	stderrMu sync.Mutex
-	stderr   []byte
+	stderr sshStderr
 
 	waitOnce sync.Once
 	waitErr  error
@@ -115,9 +112,8 @@ func DialSession(ctx context.Context, alias string, opts SSHOptions, bin string,
 	return startServe(ctx, alias, opts, bin, clientEnv, emitter)
 }
 
-// handshakeTimeout bounds the preface scan plus initialize. The ssh master
-// is already up from the probe, so this covers only the remote login shell
-// and server startup.
+// handshakeTimeout bounds SSH authentication, the remote login shell,
+// preface scan and initialize. Windows authenticates again without a master.
 var handshakeTimeout = 60 * time.Second
 
 // heartbeatInterval paces the heartbeats that keep the remote server from
@@ -163,16 +159,6 @@ func startServe(ctx context.Context, alias string, opts SSHOptions, bin string, 
 		cancel()
 		return nil, err
 	}
-	stderr, err := cmd.StderrPipe()
-	if err != nil {
-		cancel()
-		return nil, err
-	}
-	if err := cmd.Start(); err != nil {
-		cancel()
-		return nil, fmt.Errorf("start remote server: %w", err)
-	}
-
 	s := &Session{
 		alias:  alias,
 		opts:   opts,
@@ -181,7 +167,13 @@ func startServe(ctx context.Context, alias string, opts SSHOptions, bin string, 
 		cmd:    cmd,
 		done:   make(chan struct{}),
 	}
-	go s.drainStderr(stderr)
+	cmd.Stderr = &s.stderr
+	// Cancellation must also release readers if a proxy child retains stdout.
+	context.AfterFunc(runCtx, func() { _ = stdout.Close() })
+	if err := cmd.Start(); err != nil {
+		cancel()
+		return nil, fmt.Errorf("start remote server: %w", err)
+	}
 	go s.wait()
 
 	// Bound the handshake: a login shell that stalls, or streams output with
@@ -201,6 +193,9 @@ func startServe(ctx context.Context, alias string, opts SSHOptions, bin string, 
 		_ = s.Close()
 		if missing {
 			return nil, fmt.Errorf("%w: %s", ErrServerMissing, bin)
+		}
+		if failure := sshFailure(s.waitErr, s.Stderr()); failure != nil && (errors.Is(failure, ErrSSHAuthentication) || errors.Is(failure, ErrSSHHostKey)) {
+			return nil, fmt.Errorf("remote server handshake: %w", failure)
 		}
 		return nil, fmt.Errorf("remote server handshake: %w%s", handshakeErr(ctx, runCtx, err), s.stderrSuffix())
 	}
@@ -245,41 +240,16 @@ func heartbeat(ctx context.Context, client *rpc.Client, every time.Duration) {
 	}
 }
 
-func (s *Session) drainStderr(r io.Reader) {
-	br := bufio.NewReader(r)
-	buf := make([]byte, 4096)
-	for {
-		n, err := br.Read(buf)
-		if n > 0 {
-			s.stderrMu.Lock()
-			s.stderr = append(s.stderr, buf[:n]...)
-			if len(s.stderr) > stderrCap {
-				s.stderr = s.stderr[len(s.stderr)-stderrCap:]
-			}
-			s.stderrMu.Unlock()
-		}
-		if err != nil {
-			return
-		}
-	}
-}
-
 func (s *Session) stderrSuffix() string {
-	s.stderrMu.Lock()
-	defer s.stderrMu.Unlock()
-	if len(s.stderr) == 0 {
-		return ""
+	if msg := s.Stderr(); msg != "" {
+		return " (stderr: " + msg + ")"
 	}
-	return " (stderr: " + string(s.stderr) + ")"
+	return ""
 }
 
 // Stderr returns the remote stderr retained so far. It is for diagnostics;
 // askpass answers never travel on this stream.
-func (s *Session) Stderr() string {
-	s.stderrMu.Lock()
-	defer s.stderrMu.Unlock()
-	return string(s.stderr)
-}
+func (s *Session) Stderr() string { return s.stderr.String() }
 
 func (s *Session) wait() {
 	s.waitOnce.Do(func() {

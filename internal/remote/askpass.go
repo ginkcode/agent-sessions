@@ -57,6 +57,9 @@ type AskpassBroker struct {
 
 // NewAskpassBroker creates a new askpass unix socket broker with a secure token.
 func NewAskpassBroker(handler AskpassPromptHandler) (*AskpassBroker, error) {
+	if !SupportsSSHAskpass() {
+		return nil, ErrSSHAskpassUnsupported
+	}
 	// Generate random 16-byte token
 	tokBytes := make([]byte, 16)
 	if _, err := rand.Read(tokBytes); err != nil {
@@ -256,6 +259,9 @@ func sendAskpassResponse(conn net.Conn, resp AskpassResponse) error {
 // RunAskpassHelper is invoked when os.Getenv("AGENT_SESSIONS_ASKPASS_SOCK") is present.
 // It connects to the broker, transmits the prompt, and writes the answer to stdout.
 func RunAskpassHelper(ctx context.Context, sockPath, token, prompt string, stdout, stderr io.Writer) error {
+	if !SupportsSSHAskpass() {
+		return ErrSSHAskpassUnsupported
+	}
 	if sockPath == "" {
 		sockPath = os.Getenv("AGENT_SESSIONS_ASKPASS_SOCK")
 	}

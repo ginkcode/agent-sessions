@@ -1,12 +1,27 @@
 <script lang="ts">
   import { connectionStore } from '../../stores/connection.svelte';
+  import { connectionBanner } from '../../guidance';
 
-  let isReconnecting = $derived(connectionStore.phase === 'reconnecting');
+  // Generation of the last attempt that reached the host. A connect attempt
+  // keeps its generation across automatic reconnects, so a later failure in
+  // the same generation is a lost session, not a failed first connect.
+  let connectedGeneration = $state<number | undefined>(undefined);
+  $effect(() => {
+    if (connectionStore.phase === 'connected') {
+      connectedGeneration = connectionStore.generation;
+    }
+  });
+
+  let message = $derived(
+    connectionBanner({
+      phase: connectionStore.phase,
+      host: connectionStore.host,
+      error: connectionStore.error,
+      wasConnected:
+        connectedGeneration !== undefined && connectedGeneration === connectionStore.generation,
+    }),
+  );
   let isDisconnected = $derived(connectionStore.phase === 'disconnected');
-  let visible = $derived(isReconnecting || isDisconnected);
-  // The backend reports "connection lost" only when a live session dropped;
-  // anything else is a failed connect attempt.
-  let wasLost = $derived(connectionStore.error === 'connection lost');
 
   function handleSwitchLocal() {
     void connectionStore.disconnect();
@@ -19,35 +34,25 @@
   }
 </script>
 
-{#if visible}
-  <div class="reconnect-banner" role="alert" class:reconnecting={isReconnecting}>
+{#if message}
+  <div class="reconnect-banner" role="alert" class:reconnecting={message.retrying}>
     <div class="banner-content">
       <span class="banner-icon" aria-hidden="true">
-        {#if isReconnecting}
+        {#if message.retrying}
           <span class="spinner"></span>
         {:else}
           ⚠️
         {/if}
       </span>
-      <div class="banner-text" title={connectionStore.error || undefined}>
-        {#if isReconnecting && wasLost}
-          <span>
-            Connection to <strong>{connectionStore.host}</strong> lost. Automatically reconnecting…
-          </span>
-        {:else if isReconnecting}
-          <span>
-            Could not connect to <strong>{connectionStore.host}</strong>
-            {#if connectionStore.error}
-              — {connectionStore.error}
-            {/if}. Retrying…
-          </span>
-        {:else}
-          <span>
-            Disconnected from <strong>{connectionStore.host}</strong>
-            {#if connectionStore.error}
-              — {connectionStore.error}
+      <div class="banner-text">
+        <p class="banner-summary">{message.before}<strong>{message.host}</strong>{message.after}</p>
+        {#if message.detail}
+          <div class="banner-detail">
+            {#if message.detailLabel}
+              <span class="detail-label">{message.detailLabel}</span>
             {/if}
-          </span>
+            <pre class="detail-text">{message.detail}</pre>
+          </div>
         {/if}
       </div>
     </div>
@@ -68,7 +73,8 @@
   .reconnect-banner {
     display: flex;
     justify-content: space-between;
-    align-items: center;
+    align-items: flex-start;
+    gap: 12px;
     padding: 8px 16px;
     background: #7f1d1d;
     color: #fef2f2;
@@ -84,14 +90,16 @@
 
   .banner-content {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     gap: 10px;
-    overflow: hidden;
+    flex: 1;
+    min-width: 0;
   }
 
   .banner-icon {
     display: flex;
     align-items: center;
+    min-height: 1.4em;
     font-size: 1rem;
     flex-shrink: 0;
   }
@@ -112,9 +120,44 @@
   }
 
   .banner-text {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    flex: 1;
+    min-width: 0;
+  }
+
+  .banner-summary {
+    margin: 0;
+    line-height: 1.4;
+    overflow-wrap: anywhere;
+  }
+
+  /* Raw SSH errors can be long and multi-line: wrap them, keep them
+     selectable for copying, and scroll rather than grow the banner. */
+  .banner-detail {
+    margin-top: 4px;
+  }
+
+  .detail-label {
+    display: block;
+    font-size: 0.72rem;
+    opacity: 0.85;
+    margin-bottom: 2px;
+  }
+
+  .detail-text {
+    margin: 0;
+    max-height: 7.5em;
+    overflow-y: auto;
+    padding: 4px 8px;
+    border-radius: 4px;
+    background: rgba(0, 0, 0, 0.2);
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    line-height: 1.4;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    user-select: text;
+    -webkit-user-select: text;
+    cursor: text;
   }
 
   .banner-actions {

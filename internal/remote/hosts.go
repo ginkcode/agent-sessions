@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -218,17 +217,16 @@ func ResolveHost(ctx context.Context, sshBin string, alias string, configFile st
 	if err := ValidateHostAlias(alias); err != nil {
 		return nil, err
 	}
-	if sshBin == "" {
-		sshBin = "ssh"
-	}
-
 	var args []string
 	if configFile != "" {
 		args = append(args, "-F", configFile)
 	}
 	args = append(args, "-G", "--", alias)
 
-	cmd := exec.CommandContext(ctx, sshBin, args...)
+	cmd, err := newSSHCommand(ctx, sshBin, args...)
+	if err != nil {
+		return nil, err
+	}
 	out, err := cmd.Output()
 	if err != nil {
 		return nil, fmt.Errorf("ssh -G failed: %w", err)

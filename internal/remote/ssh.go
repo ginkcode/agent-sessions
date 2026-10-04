@@ -6,6 +6,9 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
+	"strings"
+	"time"
 )
 
 // SSHOptions configures ssh invocation parameters.
@@ -75,6 +78,10 @@ func DefaultControlPath() (string, error) {
 // BuildSSHArgs builds safe, argv-only arguments for the ssh client.
 // It enforces flag validation, immune to shell expansion and flag injection.
 func BuildSSHArgs(alias string, remoteCmd []string, opts SSHOptions) ([]string, error) {
+	return buildSSHArgs(alias, remoteCmd, opts, runtime.GOOS == "windows")
+}
+
+func buildSSHArgs(alias string, remoteCmd []string, opts SSHOptions, windows bool) ([]string, error) {
 	if err := ValidateHostAlias(alias); err != nil {
 		return nil, err
 	}
@@ -94,8 +101,12 @@ func BuildSSHArgs(alias string, remoteCmd []string, opts SSHOptions) ([]string, 
 		args = append(args, "-F", opts.ConfigFile)
 	}
 
+	batch := "no"
+	if windows {
+		batch = "yes"
+	}
 	args = append(args,
-		"-o", "BatchMode=no",
+		"-o", "BatchMode="+batch,
 		"-o", "ExitOnForwardFailure=yes",
 		"-o", fmt.Sprintf("ServerAliveInterval=%d", interval),
 		"-o", fmt.Sprintf("ServerAliveCountMax=%d", countMax),
@@ -105,7 +116,11 @@ func BuildSSHArgs(alias string, remoteCmd []string, opts SSHOptions) ([]string, 
 	if cm == "" {
 		cm = "auto"
 	}
-	if cm != "no" {
+	if windows {
+		// Explicitly override config-file defaults. Windows OpenSSH has no
+		// multiplexing; do not even allocate a Unix control socket directory.
+		args = append(args, "-o", "ControlMaster=no", "-o", "ControlPath=none", "-o", "ControlPersist=no")
+	} else if cm != "no" {
 		cPath := opts.ControlPath
 		if cPath == "" {
 			var err error
@@ -125,7 +140,7 @@ func BuildSSHArgs(alias string, remoteCmd []string, opts SSHOptions) ([]string, 
 		)
 	}
 
-	if opts.NoTTY {
+	if opts.NoTTY || windows {
 		args = append(args, "-T")
 	} else if opts.ForceTTY {
 		args = append(args, "-t")
@@ -162,33 +177,68 @@ func BuildSSHCmd(ctx context.Context, alias string, remoteCmd []string, opts SSH
 		return nil, err
 	}
 
-	bin := opts.Binary
-	if bin == "" {
-		bin = "ssh"
+	cmd, err := newSSHCommand(ctx, opts.Binary, args...)
+	if err != nil {
+		return nil, err
 	}
+	cmd.Env = sshEnvironment(opts, runtime.GOOS == "windows")
+	return cmd, nil
+}
 
+// SupportsSSHAskpass is false until Windows has a current-user-restricted
+// named-pipe credential channel. Unix socket permission stubs are not enough.
+func SupportsSSHAskpass() bool { return runtime.GOOS != "windows" }
+
+func newSSHCommand(ctx context.Context, bin string, args ...string) (*exec.Cmd, error) {
+	if bin == "" {
+		var err error
+		bin, err = defaultSSHBinary()
+		if err != nil {
+			return nil, err
+		}
+	}
 	cmd := exec.CommandContext(ctx, bin, args...)
-	cmd.Env = os.Environ()
+	prepareSSHCommand(cmd)
+	// Proxy helpers may retain pipes after ssh exits. Bound their drain rather
+	// than letting cancellation wait indefinitely on another process.
+	cmd.WaitDelay = 5 * time.Second
+	return cmd, nil
+}
+
+func sshEnvironment(opts SSHOptions, windows bool) []string {
+	env := os.Environ()
+	if windows {
+		var clean []string
+		for _, entry := range env {
+			key, _, _ := strings.Cut(entry, "=")
+			switch strings.ToUpper(key) {
+			case "SSH_ASKPASS", "SSH_ASKPASS_REQUIRE", "AGENT_SESSIONS_ASKPASS_SOCK", "AGENT_SESSIONS_ASKPASS_TOKEN":
+				continue
+			}
+			clean = append(clean, entry)
+		}
+		return append(clean, "SSH_ASKPASS_REQUIRE=never")
+	}
 
 	// Configure askpass environment
 	if opts.AskpassBinary != "" {
-		cmd.Env = append(cmd.Env,
+		env = append(env,
 			"SSH_ASKPASS="+opts.AskpassBinary,
 			"SSH_ASKPASS_REQUIRE=force",
 		)
 	}
 	if opts.AskpassSock != "" {
-		cmd.Env = append(cmd.Env, "AGENT_SESSIONS_ASKPASS_SOCK="+opts.AskpassSock)
+		env = append(env, "AGENT_SESSIONS_ASKPASS_SOCK="+opts.AskpassSock)
 	}
 	if opts.AskpassToken != "" {
-		cmd.Env = append(cmd.Env, "AGENT_SESSIONS_ASKPASS_TOKEN="+opts.AskpassToken)
+		env = append(env, "AGENT_SESSIONS_ASKPASS_TOKEN="+opts.AskpassToken)
 	}
 	if os.Getenv("DISPLAY") == "" {
 		// A non-empty DISPLAY is required by OpenSSH on some UNIX systems to invoke SSH_ASKPASS
-		cmd.Env = append(cmd.Env, "DISPLAY=dummy:0")
+		env = append(env, "DISPLAY=dummy:0")
 	}
 
-	return cmd, nil
+	return env
 }
 
 // StopControlMaster gracefully shuts down the multiplexed connection for an alias.
@@ -196,8 +246,8 @@ func StopControlMaster(ctx context.Context, sshBin string, alias string, opts SS
 	if err := ValidateHostAlias(alias); err != nil {
 		return err
 	}
-	if sshBin == "" {
-		sshBin = "ssh"
+	if runtime.GOOS == "windows" || opts.ControlMaster == "no" {
+		return nil
 	}
 
 	cPath := opts.ControlPath
@@ -215,6 +265,9 @@ func StopControlMaster(ctx context.Context, sshBin string, alias string, opts SS
 	}
 	args = append(args, "-O", "exit", "-o", "ControlPath="+cPath, "--", alias)
 
-	cmd := exec.CommandContext(ctx, sshBin, args...)
+	cmd, err := newSSHCommand(ctx, sshBin, args...)
+	if err != nil {
+		return err
+	}
 	return cmd.Run()
 }

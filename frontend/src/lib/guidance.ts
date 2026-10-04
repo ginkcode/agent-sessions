@@ -1,4 +1,4 @@
-import type { AgentID } from './types';
+import type { AgentID, ConnectionPhase } from './types';
 import { ALL_AGENTS } from './portable';
 
 export interface ToastMessage {
@@ -60,5 +60,90 @@ export function copyFailed(what: string, err: unknown): ToastMessage {
     title: `Couldn't copy ${what}`,
     body: err instanceof Error ? err.message : String(err),
     tone: 'error',
+  };
+}
+
+/** The error the backend reports when a live session to the host dropped. */
+export const CONNECTION_LOST = 'connection lost';
+
+export interface ConnectionBannerInput {
+  phase: ConnectionPhase;
+  host?: string;
+  error?: string;
+  /** The current connect attempt reached the host before (same generation). */
+  wasConnected?: boolean;
+}
+
+export interface ConnectionBannerMessage {
+  /** `lost`: a live session dropped; `failed`: the host was never reached. */
+  kind: 'lost' | 'failed' | 'disconnected';
+  retrying: boolean;
+  /** Summary text around the host name, which is rendered emphasized. */
+  before: string;
+  host: string;
+  after: string;
+  /** Full error text, kept apart from the summary so it can wrap. */
+  detail?: string;
+  detailLabel?: string;
+}
+
+/**
+ * Normalizes a connection error for display: Windows line endings, trailing
+ * spaces and blank edges go; the content and its line breaks stay.
+ */
+export function connectionErrorDetail(error: string | undefined): string | undefined {
+  if (!error) return undefined;
+  const text = error
+    .replace(/\r\n?/g, '\n')
+    .split('\n')
+    .map((line) => line.trimEnd())
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+  return text || undefined;
+}
+
+/**
+ * Describes a dropped or failed remote connection for the banner, or null
+ * when there is nothing to report. A failed first connect is told apart from
+ * a live session that was lost; the raw error is detail, not summary.
+ */
+export function connectionBanner(input: ConnectionBannerInput): ConnectionBannerMessage | null {
+  const { phase } = input;
+  if (phase !== 'reconnecting' && phase !== 'disconnected') return null;
+  const retrying = phase === 'reconnecting';
+  const host = input.host || 'the host';
+  const error = connectionErrorDetail(input.error);
+  const lostNow = error === CONNECTION_LOST;
+  const detail = lostNow ? undefined : error;
+
+  if (lostNow || input.wasConnected) {
+    return {
+      kind: 'lost',
+      retrying,
+      before: 'Connection to ',
+      host,
+      after: retrying ? ' lost. Automatically reconnecting…' : ' lost.',
+      detail,
+      detailLabel: detail ? 'Last reconnect attempt failed:' : undefined,
+    };
+  }
+  if (detail) {
+    return {
+      kind: 'failed',
+      retrying,
+      before: 'Could not connect to ',
+      host,
+      after: retrying ? '. Retrying…' : '.',
+      detail,
+      detailLabel: 'Error:',
+    };
+  }
+  return {
+    kind: 'disconnected',
+    retrying,
+    before: retrying ? 'Reconnecting to ' : 'Disconnected from ',
+    host,
+    after: retrying ? '…' : '.',
   };
 }

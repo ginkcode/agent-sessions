@@ -5,9 +5,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/ginkcode/agent-sessions/internal/rpc"
 )
@@ -62,9 +62,28 @@ func NormalizeArch(m string) (string, error) {
 	}
 }
 
+const probeTimeout = 45 * time.Second
+
 // ProbeHost probes a remote machine via SSH to detect OS, architecture, $HOME,
 // and which server builds of appVersion are installed.
 func ProbeHost(ctx context.Context, alias string, opts SSHOptions, appVersion string) (*HostProbe, error) {
+	var timeout time.Duration
+	if !SupportsSSHAskpass() {
+		timeout = probeTimeout
+	}
+	return probeHost(ctx, alias, opts, appVersion, timeout)
+}
+
+func probeHost(ctx context.Context, alias string, opts SSHOptions, appVersion string, timeout time.Duration) (*HostProbe, error) {
+	parent := ctx
+	// Unix credential prompts retain their own two-minute timeout; Windows
+	// must authenticate noninteractively, so its entire probe is bounded.
+	if timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, timeout)
+		defer cancel()
+	}
+	opts.NoTTY = true
 	nonce := rpc.GenerateNonce()
 	preface := rpc.FormatPreface(nonce)
 
@@ -81,26 +100,33 @@ func ProbeHost(ctx context.Context, alias string, opts SSHOptions, appVersion st
 	if err != nil {
 		return nil, err
 	}
-	stderr, err := cmd.StderrPipe()
-	if err != nil {
-		return nil, err
-	}
+	defer stdout.Close()
+	var stderrBuf sshStderr
+	cmd.Stderr = &stderrBuf
+	// Killing ssh alone need not close a ProxyCommand child's copy of stdout.
+	// Closing our read end also interrupts a stalled preface/output scan.
+	stopClose := context.AfterFunc(ctx, func() { _ = stdout.Close() })
+	defer stopClose()
 
 	if err := cmd.Start(); err != nil {
 		return nil, fmt.Errorf("start ssh probe: %w", err)
 	}
 
-	var stderrBuf strings.Builder
-	go func() {
-		_, _ = io.Copy(&stderrBuf, stderr)
-	}()
-
-	// Wait for nonce preface (skipping login shell banners up to 64 KiB)
+	// Wait for nonce preface (skipping login shell banners up to 64 KiB).
 	r, err := rpc.WaitForPreface(ctx, stdout, nonce)
 	if err != nil {
-		_ = cmd.Process.Kill()
-		_ = cmd.Wait()
-		return nil, fmt.Errorf("probe handshake: %w (stderr: %s)", err, stderrBuf.String())
+		// Give an exiting ssh time to preserve its status (not a forced kill),
+		// but kill a malformed/stalled producer that has not exited on its own.
+		kill := time.AfterFunc(250*time.Millisecond, func() { _ = cmd.Process.Kill() })
+		waitErr := cmd.Wait()
+		kill.Stop()
+		if ctx.Err() != nil {
+			return nil, sshFailure(probeContextError(parent, ctx, timeout), stderrBuf.String())
+		}
+		if waitErr != nil {
+			return nil, fmt.Errorf("SSH probe: %w", sshFailure(waitErr, stderrBuf.String()))
+		}
+		return nil, fmt.Errorf("probe handshake: %w", sshFailure(err, stderrBuf.String()))
 	}
 
 	scanner := bufio.NewScanner(r)
@@ -118,10 +144,21 @@ func ProbeHost(ctx context.Context, alias string, opts SSHOptions, appVersion st
 		}
 	}
 
-	_ = cmd.Wait()
-
+	// Stop reading before Wait, which closes StdoutPipe. Any later output is
+	// outside the bounded probe response and must not stall the child.
+	_ = stdout.Close()
+	waitErr := cmd.Wait()
+	if ctx.Err() != nil {
+		return nil, sshFailure(probeContextError(parent, ctx, timeout), stderrBuf.String())
+	}
+	if waitErr != nil {
+		return nil, fmt.Errorf("SSH probe: %w", sshFailure(waitErr, stderrBuf.String()))
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, fmt.Errorf("probe output: %w", err)
+	}
 	if len(lines) < 3 {
-		return nil, fmt.Errorf("probe output truncated (got %d lines, want at least 3, stderr: %s)", len(lines), stderrBuf.String())
+		return nil, fmt.Errorf("probe output truncated (got %d lines, want at least 3)", len(lines))
 	}
 
 	goOS, err := NormalizeOS(lines[0])
@@ -146,6 +183,13 @@ func ProbeHost(ctx context.Context, alias string, opts SSHOptions, appVersion st
 		}
 	}
 	return probe, nil
+}
+
+func probeContextError(parent, run context.Context, timeout time.Duration) error {
+	if parent.Err() != nil {
+		return parent.Err()
+	}
+	return fmt.Errorf("SSH probe timed out after %v: %w", timeout, run.Err())
 }
 
 // isBuildTag reports whether tag is a build dir of appVersion:

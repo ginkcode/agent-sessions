@@ -57,6 +57,14 @@ const PruneAfter = 30 * 24 * time.Hour
 // unpackScript), checks `version` output, and prunes older builds. localGzPath may be empty to locate the bundle for probe.OS/Arch.
 // It returns the absolute remote path of the installed binary.
 func DeployServer(ctx context.Context, alias string, opts SSHOptions, probe *HostProbe, localGzPath string) (string, error) {
+	// Setup uses separate SSH authentications on Windows, without a mux master.
+	// Bound its upload/verification sequence, not the persistent session or
+	// Unix setup, which may include interactive credential prompts.
+	if !SupportsSSHAskpass() {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, 5*time.Minute)
+		defer cancel()
+	}
 	if probe == nil {
 		return "", fmt.Errorf("deploy: nil probe")
 	}
@@ -183,14 +191,10 @@ func runRemote(ctx context.Context, alias string, opts SSHOptions, stdout io.Wri
 	if stdout != nil {
 		cmd.Stdout = stdout
 	}
-	var stderr strings.Builder
+	var stderr sshStderr
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
-		msg := strings.TrimSpace(stderr.String())
-		if msg == "" {
-			return err
-		}
-		return fmt.Errorf("%w (stderr: %s)", err, msg)
+		return sshFailure(err, stderr.String())
 	}
 	return nil
 }

@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { formatTokens, formatCost, formatBytes, formatVersion } from '../src/lib/format.ts';
 import { isThemeMode, nextThemeMode, resolveTheme, themeButtonTitle } from '../src/lib/theme.ts';
-import { copiedGuidance, copyFailed } from '../src/lib/guidance.ts';
+import { copiedGuidance, copyFailed, connectionBanner, connectionErrorDetail, CONNECTION_LOST } from '../src/lib/guidance.ts';
 import { formatRelativeTime, formatAbsoluteTime, isKnownTime, formatAgo } from '../src/lib/date.ts';
 import { highlightCode, detectLanguage } from '../src/lib/highlight.ts';
 import { renderMarkdown } from '../src/lib/markdown.ts';
@@ -497,41 +497,50 @@ let deleteDialogModule;
 
 // Store imports resolve per render to the fixture set for that render.
 function fixtureStore(name) {
-  return `const ${name} = new Proxy({}, { get: (_, key) => globalThis.__deleteDialogFixture.${name}[key] });`;
+  return `const ${name} = new Proxy({}, { get: (_, key) => globalThis.__componentFixture.${name}[key] });`;
 }
 
-// Server-renders the real dialog with plain store fixtures. Only the
-// dialog's own store imports are replaced; helpers are the real modules.
-async function renderDeleteDialog(fixture) {
-  if (!deleteDialogModule) {
-    const [{ readFileSync }, { fileURLToPath }, { compile }] = await Promise.all([
-      import('node:fs'),
-      import('node:url'),
-      import('svelte/compiler'),
-    ]);
-    const filename = fileURLToPath(DELETE_DIALOG_URL);
-    let code = compile(readFileSync(filename, 'utf8'), { generate: 'server', filename }).js.code;
-    const replacements = [
-      ["'svelte/internal/server'", JSON.stringify(import.meta.resolve('svelte/internal/server'))],
-      ["'../../manage'", JSON.stringify(new URL('../../manage.ts', DELETE_DIALOG_URL).href)],
-      ["'../../format'", JSON.stringify(new URL('../../format.ts', DELETE_DIALOG_URL).href)],
-      ["import { manage } from '../../stores/manage.svelte';", fixtureStore('manage')],
-      ["import { connectionStore } from '../../stores/connection.svelte';", fixtureStore('connectionStore')],
-      ["import { link } from '../../stores/link.svelte';", fixtureStore('link')],
-    ];
-    for (const [from, to] of replacements) {
-      assert.ok(code.includes(from), `compiled dialog no longer contains ${from}`);
-      code = code.replace(from, to);
-    }
-    deleteDialogModule = await import(`data:text/javascript,${encodeURIComponent(code)}`);
+// Compiles a real component for server rendering. Only the listed imports
+// are replaced: store imports with fixtures, helpers with the real modules.
+async function loadServerComponent(url, replacements) {
+  const [{ readFileSync }, { fileURLToPath }, { compile }] = await Promise.all([
+    import('node:fs'),
+    import('node:url'),
+    import('svelte/compiler'),
+  ]);
+  const filename = fileURLToPath(url);
+  let code = compile(readFileSync(filename, 'utf8'), { generate: 'server', filename }).js.code;
+  replacements = [
+    ["'svelte/internal/server'", JSON.stringify(import.meta.resolve('svelte/internal/server'))],
+    ...replacements,
+  ];
+  for (const [from, to] of replacements) {
+    assert.ok(code.includes(from), `compiled ${filename} no longer contains ${from}`);
+    code = code.replace(from, to);
   }
+  return import(`data:text/javascript,${encodeURIComponent(code)}`);
+}
+
+async function renderWithFixture(module, fixture, props = {}) {
   const { render } = await import('svelte/server');
-  globalThis.__deleteDialogFixture = fixture;
+  globalThis.__componentFixture = fixture;
   try {
-    return render(deleteDialogModule.default, { props: { open: true, onClose() {} } }).body;
+    return render(module.default, { props }).body;
   } finally {
-    delete globalThis.__deleteDialogFixture;
+    delete globalThis.__componentFixture;
   }
+}
+
+// Server-renders the real dialog with plain store fixtures.
+async function renderDeleteDialog(fixture) {
+  deleteDialogModule ??= await loadServerComponent(DELETE_DIALOG_URL, [
+    ["'../../manage'", JSON.stringify(new URL('../../manage.ts', DELETE_DIALOG_URL).href)],
+    ["'../../format'", JSON.stringify(new URL('../../format.ts', DELETE_DIALOG_URL).href)],
+    ["import { manage } from '../../stores/manage.svelte';", fixtureStore('manage')],
+    ["import { connectionStore } from '../../stores/connection.svelte';", fixtureStore('connectionStore')],
+    ["import { link } from '../../stores/link.svelte';", fixtureStore('link')],
+  ]);
+  return renderWithFixture(deleteDialogModule, fixture, { open: true, onClose() {} });
 }
 
 function deleteDialogFixture({ preview = null, lastResult = null, allowPermanentDelete = false, canTrash = true, dataHost } = {}) {
@@ -615,6 +624,107 @@ test('delete dialog keeps disabled remote policy and all-blocked actions neutral
   assert.match(allBlocked, /Cannot verify whether the agent is running\. A Node\.js, Bun or Deno process may host an agent/);
   assert.deepEqual(renderedButtons(allBlocked).at(-1), { text: 'Delete', disabled: true });
   assert.doesNotMatch(allBlocked, /Confirm to move|Move to Recycle Bin/);
+});
+
+// Synthetic Windows OpenSSH failure: CRLF stderr wrapped in the probe error.
+const WINDOWS_SSH_ERROR =
+  'probe handshake: exit status 255 (stderr: ssh: connect to host box.example port 22: Connection timed out\r\n' +
+  'kex_exchange_identification: read: Connection reset by peer   \r\n\r\n\r\n\r\n' +
+  'C:\\Windows\\System32\\OpenSSH\\ssh.exe: Permission denied (publickey,keyboard-interactive).\r\n)';
+
+test('connectionErrorDetail keeps line breaks but drops CRLF and blank edges', () => {
+  assert.equal(connectionErrorDetail(undefined), undefined);
+  assert.equal(connectionErrorDetail('  \r\n '), undefined);
+  assert.equal(
+    connectionErrorDetail(WINDOWS_SSH_ERROR),
+    'probe handshake: exit status 255 (stderr: ssh: connect to host box.example port 22: Connection timed out\n' +
+      'kex_exchange_identification: read: Connection reset by peer\n\n' +
+      'C:\\Windows\\System32\\OpenSSH\\ssh.exe: Permission denied (publickey,keyboard-interactive).\n)',
+  );
+});
+
+test('connectionBanner separates a failed connect from a lost session', () => {
+  assert.equal(connectionBanner({ phase: 'local' }), null);
+  assert.equal(connectionBanner({ phase: 'connecting', host: 'box', error: 'x' }), null);
+  assert.equal(connectionBanner({ phase: 'connected', host: 'box' }), null);
+
+  const failed = connectionBanner({ phase: 'disconnected', host: 'box', error: WINDOWS_SSH_ERROR });
+  assert.equal(failed.kind, 'failed');
+  assert.equal(failed.retrying, false);
+  assert.equal(`${failed.before}${failed.host}${failed.after}`, 'Could not connect to box.');
+  assert.equal(failed.detail, connectionErrorDetail(WINDOWS_SSH_ERROR));
+  assert.equal(failed.detailLabel, 'Error:');
+
+  const retrying = connectionBanner({ phase: 'reconnecting', host: 'box', error: 'dial failed' });
+  assert.equal(retrying.kind, 'failed');
+  assert.equal(`${retrying.before}${retrying.host}${retrying.after}`, 'Could not connect to box. Retrying…');
+  assert.equal(retrying.detail, 'dial failed');
+
+  const lost = connectionBanner({ phase: 'reconnecting', host: 'box', error: CONNECTION_LOST });
+  assert.equal(lost.kind, 'lost');
+  assert.equal(`${lost.before}${lost.host}${lost.after}`, 'Connection to box lost. Automatically reconnecting…');
+  assert.equal(lost.detail, undefined, 'the lost marker is summary, not detail');
+  assert.equal(connectionBanner({ phase: 'disconnected', host: 'box', error: CONNECTION_LOST }).after, ' lost.');
+
+  // A reconnect that fails after a live session dropped is still a lost session.
+  const lostThenFailed = connectionBanner({ phase: 'reconnecting', host: 'box', error: 'dial failed', wasConnected: true });
+  assert.equal(lostThenFailed.kind, 'lost');
+  assert.equal(lostThenFailed.detail, 'dial failed');
+  assert.equal(lostThenFailed.detailLabel, 'Last reconnect attempt failed:');
+
+  const plain = connectionBanner({ phase: 'disconnected', host: 'box' });
+  assert.equal(plain.kind, 'disconnected');
+  assert.equal(`${plain.before}${plain.host}${plain.after}`, 'Disconnected from box.');
+  assert.equal(plain.detail, undefined);
+});
+
+const RECONNECT_BANNER_URL = new URL('../src/lib/components/common/ReconnectBanner.svelte', import.meta.url);
+let reconnectBannerModule;
+
+async function renderReconnectBanner(connectionStore) {
+  reconnectBannerModule ??= await loadServerComponent(RECONNECT_BANNER_URL, [
+    ["'../../guidance'", JSON.stringify(new URL('../../guidance.ts', RECONNECT_BANNER_URL).href)],
+    ["import { connectionStore } from '../../stores/connection.svelte';", fixtureStore('connectionStore')],
+  ]);
+  return renderWithFixture(reconnectBannerModule, {
+    connectionStore: { generation: 1, connect() {}, disconnect() {}, ...connectionStore },
+  });
+}
+
+function bannerDetail(html) {
+  return html.match(/<pre class="detail-text[^"]*">([\s\S]*?)<\/pre>/)?.[1];
+}
+
+function unescapeHTML(text) {
+  return text.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, '&');
+}
+
+test('reconnect banner shows a failed connect error as wrapping detail with Retry', async () => {
+  const html = await renderReconnectBanner({ phase: 'disconnected', host: 'box', error: WINDOWS_SSH_ERROR });
+  const summary = html.match(/<p class="banner-summary[^"]*">([\s\S]*?)<\/p>/)[1].replace(/<!--[\s\S]*?-->/g, '');
+  assert.equal(summary, 'Could not connect to <strong>box</strong>.');
+  assert.doesNotMatch(summary, /Connection timed out/, 'the raw error stays out of the summary');
+  assert.match(html, /Error:/);
+  assert.equal(unescapeHTML(bannerDetail(html)), connectionErrorDetail(WINDOWS_SSH_ERROR));
+  assert.doesNotMatch(html, /\btitle=/, 'no single-line tooltip copy of the error');
+  assert.doesNotMatch(html, /Disconnected from|lost/);
+  assert.deepEqual(renderedButtons(html).map(b => b.text), ['Retry', 'Switch to Local']);
+});
+
+test('reconnect banner keeps a lost session apart from a retrying failed connect', async () => {
+  const lost = await renderReconnectBanner({ phase: 'reconnecting', host: 'box', error: CONNECTION_LOST });
+  assert.match(lost, /Connection to <strong>box<\/strong> lost\. Automatically reconnecting…/);
+  assert.equal(bannerDetail(lost), undefined);
+  assert.match(lost, /class="spinner/);
+  assert.deepEqual(renderedButtons(lost).map(b => b.text), ['Switch to Local']);
+
+  const retrying = await renderReconnectBanner({ phase: 'reconnecting', host: 'box', error: 'dial tcp: i/o timeout' });
+  assert.match(retrying, /Could not connect to <strong>box<\/strong>\. Retrying…/);
+  assert.equal(bannerDetail(retrying), 'dial tcp: i/o timeout');
+  assert.deepEqual(renderedButtons(retrying).map(b => b.text), ['Switch to Local']);
+
+  assert.doesNotMatch(await renderReconnectBanner({ phase: 'connected', host: 'box' }), /reconnect-banner/);
+  assert.doesNotMatch(await renderReconnectBanner({ phase: 'local' }), /reconnect-banner/);
 });
 
 test('mock settings gate deletion and preview tokens bind to selection', async () => {

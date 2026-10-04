@@ -314,43 +314,49 @@ func TestConnection_ShutdownBlocksConnect(t *testing.T) {
 type markerBackend struct{ engine.Backend }
 
 func TestConnection_PermanentDialErrorStopsRetrying(t *testing.T) {
-	c := newConnection(nil)
-	var mu sync.Mutex
-	calls := 0
-	c.dial = func(ctx context.Context, alias string, opts remote.SSHOptions, env map[string]string, emitter engine.Emitter) (*remote.Session, error) {
-		mu.Lock()
-		calls++
-		mu.Unlock()
-		return nil, fmt.Errorf("locate server bundle: %w", remote.ErrServerBundleNotFound)
-	}
 	prev := reconnectBackoff
 	reconnectBackoff = []time.Duration{time.Millisecond}
 	t.Cleanup(func() { reconnectBackoff = prev })
-
-	if err := c.Connect(context.Background(), "box"); err != nil {
-		t.Fatal(err)
+	for _, failure := range []error{remote.ErrServerBundleNotFound, remote.ErrSSHClientNotFound, remote.ErrSSHAuthentication, remote.ErrSSHHostKey} {
+		t.Run(failure.Error(), func(t *testing.T) {
+			c := newConnection(nil)
+			defer c.Shutdown()
+			var mu sync.Mutex
+			calls := 0
+			c.dial = func(ctx context.Context, alias string, opts remote.SSHOptions, env map[string]string, emitter engine.Emitter) (*remote.Session, error) {
+				mu.Lock()
+				calls++
+				mu.Unlock()
+				return nil, fmt.Errorf("connect prerequisite: %w", failure)
+			}
+			if err := c.Connect(context.Background(), "box"); err != nil {
+				t.Fatal(err)
+			}
+			deadline := time.Now().Add(2 * time.Second)
+			for time.Now().Before(deadline) && c.snapshot().Phase != ConnDisconnected {
+				time.Sleep(5 * time.Millisecond)
+			}
+			time.Sleep(50 * time.Millisecond)
+			st := c.snapshot()
+			if st.Phase != ConnDisconnected || st.Host != "box" || !strings.Contains(st.Error, failure.Error()) {
+				t.Fatalf("state = %+v", st)
+			}
+			mu.Lock()
+			got := calls
+			mu.Unlock()
+			if got != 1 {
+				t.Fatalf("dial calls = %d, want 1", got)
+			}
+		})
 	}
-	deadline := time.Now().Add(2 * time.Second)
-	for time.Now().Before(deadline) && c.snapshot().Phase != ConnDisconnected {
-		time.Sleep(5 * time.Millisecond)
-	}
-	time.Sleep(50 * time.Millisecond)
-	st := c.snapshot()
-	if st.Phase != ConnDisconnected || st.Host != "box" || !strings.Contains(st.Error, "no bundled server") {
-		t.Fatalf("state = %+v", st)
-	}
-	mu.Lock()
-	defer mu.Unlock()
-	if calls != 1 {
-		t.Fatalf("dial calls = %d, want 1", calls)
-	}
-	c.Disconnect()
 }
 
 // Leaving a host on purpose closes its ssh master; a retry of the same host
 // keeps it for the next dial.
 func TestConnection_ExplicitLeaveStopsMaster(t *testing.T) {
 	c := newConnection(nil)
+	// Test the multiplexed policy on any OS; Windows defaults are tested separately.
+	c.opts.ControlMaster = "auto"
 	var mu sync.Mutex
 	var stopped []string
 	c.stopMaster = func(_ context.Context, alias string, _ remote.SSHOptions) error {

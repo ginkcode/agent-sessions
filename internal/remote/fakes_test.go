@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/ginkcode/agent-sessions/internal/rpc"
 )
@@ -57,6 +58,36 @@ func sshFakeMain() int {
 	}
 	stdin, _ := readStdin()
 	switch mode {
+	case "no-console":
+		if fakeConsoleVisible() {
+			_, _ = os.Stderr.WriteString("unexpected console\n")
+			return 1
+		}
+		return 0
+	case "auth-fail":
+		_, _ = os.Stderr.WriteString("Permission denied (publickey).\n")
+		return 255
+	case "hostkey-fail":
+		_, _ = os.Stderr.WriteString("Host key verification failed.\n")
+		return 255
+	case "network-fail":
+		_, _ = os.Stderr.WriteString("ssh: connect to host box port 22: Connection refused\n")
+		return 255
+	case "large-stderr":
+		_, _ = os.Stderr.WriteString(strings.Repeat("x", 2*stderrCap))
+		time.Sleep(25 * time.Millisecond)
+		_, _ = os.Stderr.WriteString("\nlast diagnostic\n")
+		return 255
+	case "remote-denied":
+		_, _ = os.Stderr.WriteString("mkdir: Permission denied\n")
+		return 1
+	case "hang":
+		_, _ = os.Stderr.WriteString("waiting for SSH peer\n")
+		time.Sleep(time.Minute)
+		return 0
+	case "probe-slow":
+		time.Sleep(150 * time.Millisecond)
+		return fakeProbe(args, true)
 	case "probe-ok":
 		return fakeProbe(args, true)
 	case "probe-freebsd":
