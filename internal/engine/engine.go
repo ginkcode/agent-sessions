@@ -450,7 +450,7 @@ func (e *Engine) Diagnostics(_ context.Context) (provider.Diagnostics, error) {
 	return e.svc.Diagnostics()
 }
 
-func (e *Engine) ensureManage(ctx context.Context) (*manage.Manager, error) {
+func (e *Engine) ensureManage() (*manage.Manager, error) {
 	e.manageMu.Lock()
 	defer e.manageMu.Unlock()
 
@@ -475,21 +475,7 @@ func (e *Engine) ensureManage(ctx context.Context) (*manage.Manager, error) {
 	if e.svc != nil {
 		if p, ok := e.svc.Providers().Get(model.AgentClaude); ok {
 			if ld, ok := p.(provider.LiveDetector); ok {
-				opts = append(opts, manage.WithLiveFunc(func(_ context.Context, agent, id string) (bool, error) {
-					if agent != string(model.AgentClaude) {
-						return false, nil
-					}
-					parent := id
-					if i := strings.Index(id, "/agent-"); i > 0 {
-						parent = id[:i]
-					}
-					live, err := ld.Live(ctx)
-					if err != nil {
-						return false, err
-					}
-					_, ok := live[parent]
-					return ok, nil
-				}))
+				opts = append(opts, manage.WithLiveFunc(claudeLiveFunc(ld)))
 			}
 		}
 	}
@@ -502,12 +488,34 @@ func (e *Engine) ensureManage(ctx context.Context) (*manage.Manager, error) {
 	return mgr, nil
 }
 
+// claudeLiveFunc reports whether a Claude session, or the parent of a
+// subagent, is running. It checks with each call's own context: the manager
+// outlives the call that created it, and an RPC server cancels every
+// request's context once it has answered.
+func claudeLiveFunc(ld provider.LiveDetector) manage.LiveFunc {
+	return func(ctx context.Context, agent, id string) (bool, error) {
+		if agent != string(model.AgentClaude) {
+			return false, nil
+		}
+		parent := id
+		if i := strings.Index(id, "/agent-"); i > 0 {
+			parent = id[:i]
+		}
+		live, err := ld.Live(ctx)
+		if err != nil {
+			return false, err
+		}
+		_, ok := live[parent]
+		return ok, nil
+	}
+}
+
 // PreviewDelete plans a destructive action over the given sessions.
 func (e *Engine) PreviewDelete(ctx context.Context, refs []model.SessionRef) (DeletePreview, error) {
 	if len(refs) == 0 {
 		return DeletePreview{}, errors.New("manage: no sessions specified")
 	}
-	mgr, err := e.ensureManage(ctx)
+	mgr, err := e.ensureManage()
 	if err != nil {
 		return DeletePreview{}, err
 	}
@@ -532,7 +540,7 @@ func (e *Engine) DeleteSessions(ctx context.Context, refs []model.SessionRef, to
 	if strings.TrimSpace(token) == "" {
 		return DeleteReport{}, ErrPreviewStale
 	}
-	mgr, err := e.ensureManage(ctx)
+	mgr, err := e.ensureManage()
 	if err != nil {
 		return DeleteReport{}, err
 	}
@@ -601,7 +609,7 @@ func (e *Engine) forget(ctx context.Context, refs []model.SessionRef) {
 
 // GetSettings surfaces the current manage configuration.
 func (e *Engine) GetSettings(ctx context.Context) (Settings, error) {
-	mgr, err := e.ensureManage(ctx)
+	mgr, err := e.ensureManage()
 	if err != nil {
 		return Settings{}, err
 	}
@@ -614,7 +622,7 @@ func (e *Engine) GetSettings(ctx context.Context) (Settings, error) {
 
 // SetManageEnabled toggles destructive actions.
 func (e *Engine) SetManageEnabled(ctx context.Context, enabled bool) (Settings, error) {
-	mgr, err := e.ensureManage(ctx)
+	mgr, err := e.ensureManage()
 	if err != nil {
 		return Settings{}, err
 	}
@@ -627,7 +635,7 @@ func (e *Engine) SetManageEnabled(ctx context.Context, enabled bool) (Settings, 
 
 // SetAllowPermanentDelete toggles the permanent-delete allowance.
 func (e *Engine) SetAllowPermanentDelete(ctx context.Context, allow bool) (Settings, error) {
-	mgr, err := e.ensureManage(ctx)
+	mgr, err := e.ensureManage()
 	if err != nil {
 		return Settings{}, err
 	}
@@ -670,7 +678,7 @@ func (e *Engine) ClearHandoffCache(_ context.Context) (HandoffCacheInfo, error) 
 
 // PreviewExport estimates an export without writing anything.
 func (e *Engine) PreviewExport(ctx context.Context, req ExportRequest) (ExportPreview, error) {
-	mgr, err := e.ensureManage(ctx)
+	mgr, err := e.ensureManage()
 	if err != nil {
 		return ExportPreview{}, err
 	}
@@ -679,7 +687,7 @@ func (e *Engine) PreviewExport(ctx context.Context, req ExportRequest) (ExportPr
 
 // ExportBundle writes the bundle to destPath.
 func (e *Engine) ExportBundle(ctx context.Context, req ExportRequest, destPath string) (string, error) {
-	mgr, err := e.ensureManage(ctx)
+	mgr, err := e.ensureManage()
 	if err != nil {
 		return "", err
 	}
