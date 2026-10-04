@@ -16,6 +16,7 @@ import {
 } from '../manage';
 import { appState } from './appState.svelte';
 import { link } from './link.svelte';
+import { launcher } from './launcher.svelte';
 import { isDisconnectedError, isStaleReply } from '../link';
 
 export class ManageStore {
@@ -69,6 +70,7 @@ export class ManageStore {
     this.settingsDialogOpen = true;
     this.firstEnableWarningVisible = false;
     void this.loadHandoffCache();
+    void launcher.refresh();
   }
 
   async loadHandoffCache(): Promise<void> {

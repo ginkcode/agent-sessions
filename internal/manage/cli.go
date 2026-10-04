@@ -7,9 +7,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"path/filepath"
-	"runtime"
-	"sort"
 	"strings"
 	"unicode"
 
@@ -21,59 +18,21 @@ import (
 // of its usual install locations.
 var ErrCLINotFound = errors.New("CLI not found")
 
-// cliInstallDirs lists where provider CLIs install themselves outside the
-// system PATH, relative to the home directory. A desktop launcher does not
-// read shell rc files, so PATH additions made there (for example the OpenCode
-// installer's ~/.opencode/bin) are missing when the app starts from a menu.
-var cliInstallDirs = map[string][]string{
-	"opencode": {".opencode/bin", ".bun/bin", ".local/bin", ".npm-global/bin"},
-	"codex":    {".local/bin", ".npm-global/bin", ".bun/bin", ".volta/bin"},
-}
-
-// cliSystemDirs are absolute install locations shared by all CLIs.
-var cliSystemDirs = []string{"/usr/local/bin", "/opt/homebrew/bin", "/home/linuxbrew/.linuxbrew/bin"}
-
-// resolveCLI returns an absolute path for name: PATH first, then the known
-// install locations, then the newest nvm Node version. On Windows the
-// locations are those of launch.Find, which include the copies bundled with
-// the desktop apps (OpenCode Desktop's opencode-cli.exe, Codex desktop's
+// resolveCLI returns an absolute path for name: PATH first, then the
+// locations launch.Find searches. A desktop launcher does not read shell rc
+// files, so PATH additions made there are missing when the app starts from
+// a menu. On Windows the locations include the copies bundled with the
+// desktop apps (OpenCode Desktop's opencode-cli.exe, Codex desktop's
 // codex.exe) that desktop-only users have instead of a CLI on PATH.
 func resolveCLI(name string) (string, error) {
 	if p, err := exec.LookPath(name); err == nil {
 		return p, nil
 	}
-	if runtime.GOOS == "windows" {
-		exe, err := launch.Find(name)
-		if err != nil {
-			return "", fmt.Errorf("%s %w on PATH or in its usual install locations", name, ErrCLINotFound)
-		}
-		return exe.Path, nil
+	exe, err := launch.Find(name)
+	if err != nil {
+		return "", fmt.Errorf("%s %w on PATH or in its usual install locations", name, ErrCLINotFound)
 	}
-	var dirs []string
-	home, _ := os.UserHomeDir()
-	if home != "" {
-		if name == "opencode" {
-			if d := os.Getenv("OPENCODE_INSTALL_DIR"); d != "" {
-				dirs = append(dirs, d)
-			}
-		}
-		for _, rel := range cliInstallDirs[name] {
-			dirs = append(dirs, filepath.Join(home, rel))
-		}
-	}
-	dirs = append(dirs, cliSystemDirs...)
-	if home != "" {
-		nvm, _ := filepath.Glob(filepath.Join(home, ".nvm/versions/node/*/bin"))
-		sort.Sort(sort.Reverse(sort.StringSlice(nvm)))
-		dirs = append(dirs, nvm...)
-	}
-	for _, dir := range dirs {
-		p := filepath.Join(dir, name)
-		if fi, err := os.Stat(p); err == nil && fi.Mode().IsRegular() && fi.Mode().Perm()&0o111 != 0 {
-			return p, nil
-		}
-	}
-	return "", fmt.Errorf("%s %w on PATH or in its usual install locations", name, ErrCLINotFound)
+	return exe.Path, nil
 }
 
 // withPathPrefix puts dir first on PATH so a script CLI (an npm shim that

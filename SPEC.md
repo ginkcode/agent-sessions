@@ -241,8 +241,8 @@ Three-pane layout:
 | Action | Milestone | Notes |
 |---|---|---|
 | Copy resume command | M1 | Per-provider command plus `cd <cwd>`. On Windows a local command uses PowerShell 5.1 syntax (`Set-Location -LiteralPath …; & …`); remote commands stay POSIX (M8-06). |
-| Open in terminal | M8, Windows | Local Resume and Continue in open a PowerShell console in the session directory running the agent CLI, found on PATH or where standalone installs, desktop apps and editor extensions keep it (see [docs/plan/M8.md](docs/plan/M8.md) M8-11). Remote sessions keep Copy. |
-| Open terminal in cwd | M3 | Configurable terminal command (`x-terminal-emulator`, `gnome-terminal`, `kitty`, …; `open -a Terminal` on macOS). |
+| Open in terminal | M8 | Local Resume and Continue in open a new terminal window in the session directory running the agent CLI, found on PATH or where standalone installs, desktop apps and editor extensions keep it. Windows uses a PowerShell console (see [docs/plan/M8.md](docs/plan/M8.md) M8-11). Linux and macOS use the terminal app chosen in Settings from the ones installed (GNOME Terminal, Ptyxis, Console, Konsole, Ghostty, kitty, …; Terminal, iTerm2, Ghostty on macOS), or one picked automatically (M8-12). Remote sessions keep Copy. |
+| Open terminal in cwd | M3 | A plain shell in the session directory, in the same chosen terminal. |
 | Reveal source file | M1 | `xdg-open` / `open -R`. |
 | Export session | M3 | Markdown, JSON (unified model), HTML. |
 | Export bundle | M6 | Portable `<title>.agent-session.zip` (manifest v1, see [docs/plan/M6.md](docs/plan/M6.md)). **Complete (private)** is the default and includes the verbatim native records, so it can be restored; **share-safe** is redacted and handoff-only. The dialog warns that a complete bundle can contain secrets. |
@@ -297,7 +297,10 @@ Three-pane layout:
 `$XDG_CONFIG_HOME/agent-sessions/config.toml`:
 - Per-provider enable flag and root path overrides (supporting multiple roots,
   e.g. several `CLAUDE_CONFIG_DIR`s).
-- Default grouping, hidden directories, terminal command, theme.
+- Default grouping, hidden directories, theme.
+- The terminal app (`[terminal] app`): an id of an installed terminal, never
+  a command; empty means Automatic. It belongs to this computer, whichever
+  host is selected.
 
 ## 11. macOS port (M5)
 

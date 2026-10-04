@@ -20,6 +20,8 @@ import type {
   HandoffPreview,
   HandoffCacheInfo,
   LaunchInfo,
+  TerminalSettings,
+  TerminalOption,
   HandoffReport,
   ExportRequest,
   ExportPreview,
@@ -115,6 +117,9 @@ export class MockBackendAPI {
   private askpassReplies: Record<string, string> = {};
   /** Terminal support the mock reports; tests can enable it. */
   launch: LaunchInfo = { terminal: false, shell: 'posix' };
+  /** Terminal apps "installed", and the one chosen ('' is Automatic). */
+  terminals: TerminalOption[] = [];
+  chosenTerminal = '';
   /** Commands "opened" in a terminal, newest last. */
   openedTerminals: string[] = [];
 
@@ -380,6 +385,34 @@ export class MockBackendAPI {
     return { ...this.launch };
   }
 
+  // Mirrors the backend: only an installed terminal can be chosen.
+  async terminalSettings(): Promise<TerminalSettings> {
+    if (!this.launch.chooseTerminal) {
+      return { choose: false, selected: '', selectedName: '', missing: false, auto: null, options: [] };
+    }
+    const id = this.chosenTerminal;
+    const found = this.terminals.find((t) => t.id === id);
+    return {
+      choose: true,
+      selected: id,
+      selectedName: id ? (found?.name ?? id) : '',
+      missing: id !== '' && !found,
+      auto: this.terminals[0] ? { ...this.terminals[0] } : null,
+      options: this.terminals.map((t) => ({ ...t })),
+    };
+  }
+
+  async setTerminal(id: string): Promise<TerminalSettings> {
+    if (!this.launch.chooseTerminal) {
+      throw new Error('opening a terminal is not supported on this platform yet; copy the command instead');
+    }
+    if (id && !this.terminals.some((t) => t.id === id)) {
+      throw new Error(`terminal "${id}" is not installed on this computer`);
+    }
+    this.chosenTerminal = id;
+    return this.terminalSettings();
+  }
+
   // Mirrors the backend: terminals open for local sessions only.
   private async openTerminal(build: () => Promise<string>): Promise<void> {
     if (!this.launch.terminal) {
@@ -387,6 +420,10 @@ export class MockBackendAPI {
     }
     if (this.connState.phase !== 'local') {
       throw new Error('open in terminal works for local sessions only; use Copy command and paste it into a shell on the host');
+    }
+    const terminal = await this.terminalSettings();
+    if (terminal.missing) {
+      throw new Error(`${terminal.selectedName} was not found. Choose another terminal in Settings, or use Copy command`);
     }
     this.openedTerminals.push(await build());
   }

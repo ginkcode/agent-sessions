@@ -5,12 +5,10 @@ import (
 	"bytes"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 	"sync"
-	"time"
 
-	"github.com/ginkcode/agent-sessions/internal/filelock"
+	"github.com/ginkcode/agent-sessions/internal/configfile"
 )
 
 // Config holds the user's opt-in settings for destructive session management
@@ -54,10 +52,6 @@ func (cs *ConfigStore) Save(cfg Config) error {
 	return err
 }
 
-// configLockWait bounds how long Update waits for another process holding
-// the config lock, so a stalled holder cannot hang the settings RPCs.
-const configLockWait = 10 * time.Second
-
 // Update reads the file, applies fn and writes the result atomically, under
 // a lock other processes take too. Apps and remote servers of several
 // versions may share this file, so a change must start from what is on disk
@@ -71,13 +65,9 @@ func (cs *ConfigStore) Update(fn func(*Config)) (Config, error) {
 	if cs.path == "" {
 		return Config{}, fmt.Errorf("manage: empty config path")
 	}
-	dir := filepath.Dir(cs.path)
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return Config{}, fmt.Errorf("manage: create config dir: %w", err)
-	}
-	lock, err := filelock.Acquire(cs.path+".lock", configLockWait)
+	lock, err := configfile.Lock(cs.path)
 	if err != nil {
-		return Config{}, fmt.Errorf("manage: lock config: %w", err)
+		return Config{}, fmt.Errorf("manage: %w", err)
 	}
 	defer func() { _ = lock.Unlock() }()
 
@@ -158,46 +148,12 @@ func saveConfig(path string, cfg Config) error {
 		return fmt.Errorf("manage: empty config path")
 	}
 
-	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return fmt.Errorf("manage: create config dir: %w", err)
-	}
-	// Enforce 0700 on existing directory as well
-	_ = os.Chmod(dir, 0o700)
-
 	var existing []byte
 	if data, err := os.ReadFile(path); err == nil {
 		existing = data
 	}
-
-	updated := updateManageSection(existing, cfg)
-
-	tmp, err := os.CreateTemp(dir, "config-*.tmp")
-	if err != nil {
-		return fmt.Errorf("manage: create temp config: %w", err)
-	}
-	tmpName := tmp.Name()
-	defer func() {
-		_ = tmp.Close()
-		_ = os.Remove(tmpName)
-	}()
-
-	if err := tmp.Chmod(0o600); err != nil {
-		return fmt.Errorf("manage: chmod temp config: %w", err)
-	}
-
-	if _, err := tmp.Write(updated); err != nil {
-		return fmt.Errorf("manage: write temp config: %w", err)
-	}
-	if err := tmp.Sync(); err != nil {
-		return fmt.Errorf("manage: sync temp config: %w", err)
-	}
-	if err := tmp.Close(); err != nil {
-		return fmt.Errorf("manage: close temp config: %w", err)
-	}
-
-	if err := os.Rename(tmpName, path); err != nil {
-		return fmt.Errorf("manage: replace config: %w", err)
+	if err := configfile.WriteAtomic(path, updateManageSection(existing, cfg)); err != nil {
+		return fmt.Errorf("manage: %w", err)
 	}
 	return nil
 }

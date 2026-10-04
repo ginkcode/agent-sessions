@@ -2,8 +2,7 @@ package launch
 
 import (
 	"errors"
-	"fmt"
-	"os"
+	"runtime"
 
 	"github.com/ginkcode/agent-sessions/internal/provider"
 )
@@ -15,12 +14,22 @@ var ErrUnsupported = errors.New("opening a terminal is not supported on this pla
 // Supported reports whether OpenTerminal works on this platform.
 func Supported() bool { return terminalSupported }
 
-// OpenTerminal opens a new console window that runs cmd in its directory.
-// The agent is started by the absolute path Find returns, never through
-// PATH lookups inside the new shell. It returns once the window started.
+// OpenTerminal opens a new terminal window that runs cmd in its directory:
+// a Windows PowerShell console on Windows, the automatically chosen terminal
+// app elsewhere (OpenIn opens a given one). The agent is started by the
+// absolute path Find returns, never through PATH lookups inside the new
+// shell. It returns once the window started.
 func OpenTerminal(cmd provider.Command) error {
 	if !terminalSupported {
 		return ErrUnsupported
+	}
+	if runtime.GOOS != "windows" {
+		env := SystemTerminalEnv()
+		t, err := env.Resolve(env.Detect(), "")
+		if err != nil {
+			return err
+		}
+		return OpenIn(t, cmd)
 	}
 	script, err := terminalScript(cmd, Find)
 	if err != nil {
@@ -30,18 +39,10 @@ func OpenTerminal(cmd provider.Command) error {
 }
 
 // terminalScript checks cmd and renders the PowerShell line the console
-// runs. The directory must exist: starting the agent somewhere else would
-// resume or hand off in the wrong project.
+// runs.
 func terminalScript(cmd provider.Command, find func(string) (Executable, error)) (string, error) {
-	if len(cmd.Argv) == 0 {
-		return "", errors.New("no command to run")
-	}
-	if cmd.Dir == "" {
-		return "", errors.New("the session has no working directory to open")
-	}
-	info, err := os.Stat(cmd.Dir)
-	if err != nil || !info.IsDir() {
-		return "", fmt.Errorf("working directory %s does not exist", cmd.Dir)
+	if err := checkCommand(cmd); err != nil {
+		return "", err
 	}
 	exe, err := find(cmd.Argv[0])
 	if err != nil {

@@ -19,6 +19,7 @@ import type {
   HandoffPreview,
   HandoffCacheInfo,
   LaunchInfo,
+  TerminalSettings,
   ExportRequest,
   ExportPreview,
   BundleSummary,
@@ -41,6 +42,8 @@ export interface BackendAPI {
   getBlob(ref: SessionRef, key: string): Promise<BlobResponse>;
   copyResumeCommand(ref: SessionRef): Promise<string>;
   launchInfo(): Promise<LaunchInfo>;
+  terminalSettings(): Promise<TerminalSettings>;
+  setTerminal(id: string): Promise<TerminalSettings>;
   openResumeInTerminal(ref: SessionRef): Promise<void>;
   openHandoffInTerminal(req: HandoffRequest): Promise<void>;
   openBundleHandoffInTerminal(req: BundleHandoffRequest): Promise<void>;
@@ -87,6 +90,8 @@ interface WailsAppBinding {
   GetBlob(ref: SessionRef, key: string): Promise<BlobResponse>;
   CopyResumeCommand(ref: SessionRef): Promise<string>;
   LaunchInfo(): Promise<LaunchInfo>;
+  TerminalSettings(): Promise<TerminalSettings>;
+  SetTerminal(id: string): Promise<TerminalSettings>;
   OpenResumeInTerminal(ref: SessionRef): Promise<void>;
   OpenHandoffInTerminal(req: HandoffRequest): Promise<void>;
   OpenBundleHandoffInTerminal(req: BundleHandoffRequest): Promise<void>;
@@ -224,6 +229,22 @@ class WailsBackendAPI implements BackendAPI {
   async launchInfo(): Promise<LaunchInfo> {
     try {
       return await this.binding.LaunchInfo();
+    } catch (e) {
+      throw normalizeError(e);
+    }
+  }
+
+  async terminalSettings(): Promise<TerminalSettings> {
+    try {
+      return await this.binding.TerminalSettings();
+    } catch (e) {
+      throw normalizeError(e);
+    }
+  }
+
+  async setTerminal(id: string): Promise<TerminalSettings> {
+    try {
+      return await this.binding.SetTerminal(id);
     } catch (e) {
       throw normalizeError(e);
     }
@@ -523,6 +544,8 @@ const UNGUARDED = new Set<string>([
   'openURL',
   'appVersion',
   'launchInfo',
+  'terminalSettings',
+  'setTerminal',
   'listHosts',
   'connect',
   'disconnect',

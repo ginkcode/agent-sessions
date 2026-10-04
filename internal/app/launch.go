@@ -15,6 +15,8 @@ import (
 type LaunchInfo struct {
 	// Terminal is true when "Open in terminal" works for local sessions.
 	Terminal bool `json:"terminal"`
+	// ChooseTerminal is true where Settings chooses the terminal app.
+	ChooseTerminal bool `json:"chooseTerminal"`
 	// Shell is the syntax of locally copied commands: "powershell" or "posix".
 	// Remote commands are always POSIX.
 	Shell string `json:"shell"`
@@ -32,7 +34,7 @@ type localLauncher interface {
 
 // LaunchInfo reports the local terminal support and copy-command shell.
 func (a *App) LaunchInfo() LaunchInfo {
-	info := LaunchInfo{Terminal: a.terminalSupported(), Shell: "posix"}
+	info := LaunchInfo{Terminal: a.terminalAvailable(), ChooseTerminal: launch.ChooseTerminal(), Shell: "posix"}
 	if runtime.GOOS == "windows" {
 		info.Shell = "powershell"
 	}
@@ -76,14 +78,15 @@ func (a *App) openInTerminal(build func(localLauncher) (provider.Command, error)
 	if !ok {
 		return launch.ErrUnsupported
 	}
+	open, err := a.terminalOpener()
+	if err != nil {
+		return err
+	}
 	cmd, err := build(l)
 	if err != nil {
 		return err
 	}
-	if a.terminalOverride != nil {
-		return a.terminalOverride(cmd)
-	}
-	return launch.OpenTerminal(cmd)
+	return open(cmd)
 }
 
 func (a *App) terminalSupported() bool {

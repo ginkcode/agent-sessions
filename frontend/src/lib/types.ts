@@ -290,8 +290,32 @@ export interface HandoffPreview {
 export interface LaunchInfo {
   /** Open in terminal works for local sessions. */
   terminal: boolean;
+  /** Settings chooses the terminal app (Linux, macOS); absent on older backends. */
+  chooseTerminal?: boolean;
   /** Syntax of locally copied commands; remote commands are always POSIX. */
   shell: 'powershell' | 'posix';
+}
+
+/** A terminal app installed on this computer. */
+export interface TerminalOption {
+  id: string;
+  name: string;
+}
+
+/** The terminal this computer opens sessions in. Local, whichever host is selected. */
+export interface TerminalSettings {
+  /** False where the terminal is fixed (Windows PowerShell). */
+  choose: boolean;
+  /** Chosen terminal id; empty means Automatic. */
+  selected: string;
+  selectedName: string;
+  /** The chosen terminal is no longer installed. */
+  missing: boolean;
+  /** What Automatic opens; null when no terminal is installed. */
+  auto: TerminalOption | null;
+  options: TerminalOption[];
+  /** A note for this platform, such as macOS asking for permission. */
+  hint?: string;
 }
 
 /** Handoff files kept in the app data directory. */

@@ -13,6 +13,7 @@ import (
 
 	"github.com/ginkcode/agent-sessions/internal/engine"
 	"github.com/ginkcode/agent-sessions/internal/index"
+	"github.com/ginkcode/agent-sessions/internal/launch"
 	"github.com/ginkcode/agent-sessions/internal/manage"
 	"github.com/ginkcode/agent-sessions/internal/model"
 	"github.com/ginkcode/agent-sessions/internal/paths"
@@ -43,6 +44,10 @@ type App struct {
 	saveDialogOverride func(ctx context.Context, defaultName string) (string, error)
 	// terminalOverride replaces launch.OpenTerminal in tests.
 	terminalOverride func(provider.Command) error
+	// terminalEnv and openInOverride replace terminal detection and
+	// launch.OpenIn in tests.
+	terminalEnv    *launch.TerminalEnv
+	openInOverride func(launch.TerminalApp, provider.Command) error
 
 	events            *catalogBus
 	wailsEvents       engine.Emitter

@@ -5,6 +5,7 @@ package launch
 import (
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"unsafe"
 
@@ -12,6 +13,9 @@ import (
 )
 
 const terminalSupported = true
+
+// detach is a no-op: terminal apps are only started on Linux and macOS.
+func detach(*exec.Cmd) {}
 
 // startTerminal runs script in a new console of the system Windows
 // PowerShell, which every Windows 10/11 machine has. Windows 11 shows the

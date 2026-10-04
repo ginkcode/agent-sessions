@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/ginkcode/agent-sessions/internal/testutil/platform"
 )
 
 // fakeHome is a Windows-like user profile under a temp dir.
@@ -229,5 +231,69 @@ func TestExpandKeepsGlobCharsInBase(t *testing.T) {
 	got := expand(base, []string{"*", "x.exe"})
 	if len(got) != 1 || got[0] != want {
 		t.Fatalf("expand = %q, want %q", got, want)
+	}
+}
+
+func TestFindPosixInstallDirs(t *testing.T) {
+	platform.SkipWithoutModeBits(t)
+	home := t.TempDir()
+	sys := t.TempDir()
+	env := map[string]string{}
+	f := finder{
+		goos:       "linux",
+		getenv:     func(k string) string { return env[k] },
+		lookPath:   func(string) (string, error) { return "", errors.New("not found") },
+		home:       home,
+		systemDirs: []string{sys},
+	}
+	exe := func(path string, mode os.FileMode) string {
+		t.Helper()
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte("#!/bin/sh\n"), mode); err != nil {
+			t.Fatal(err)
+		}
+		return path
+	}
+
+	if _, err := f.find("claude"); !errors.Is(err, ErrAgentNotFound) || !strings.Contains(err.Error(), "Claude Code was not found on PATH") {
+		t.Fatalf("nothing installed: %v", err)
+	}
+	// Node versions sort newest first by name, as before.
+	exe(filepath.Join(home, ".nvm", "versions", "node", "v20.1.0", "bin", "codex"), 0o755)
+	nvm := exe(filepath.Join(home, ".nvm", "versions", "node", "v22.3.0", "bin", "codex"), 0o755)
+	if got, err := f.find("codex"); err != nil || got.Path != nvm || got.OnPath || len(got.Args) != 0 {
+		t.Fatalf("nvm: %+v, %v", got, err)
+	}
+	system := exe(filepath.Join(sys, "codex"), 0o755)
+	if got, _ := f.find("codex"); got.Path != system {
+		t.Fatalf("system dir beats nvm: %q", got.Path)
+	}
+	// A file without execute bits is not a CLI.
+	exe(filepath.Join(home, ".local", "bin", "codex"), 0o644)
+	if got, _ := f.find("codex"); got.Path != system {
+		t.Fatalf("non-executable chosen: %q", got.Path)
+	}
+	local := exe(filepath.Join(home, ".npm-global", "bin", "codex"), 0o755)
+	if got, _ := f.find("codex"); got.Path != local {
+		t.Fatalf("home install beats system dir: %q", got.Path)
+	}
+
+	claude := exe(filepath.Join(home, ".local", "bin", "claude"), 0o755)
+	if got, _ := f.find("claude"); got.Path != claude {
+		t.Fatalf("native claude: %q", got.Path)
+	}
+
+	custom := exe(filepath.Join(t.TempDir(), "opencode"), 0o755)
+	exe(filepath.Join(home, ".opencode", "bin", "opencode"), 0o755)
+	env["OPENCODE_INSTALL_DIR"] = filepath.Dir(custom)
+	if got, _ := f.find("opencode"); got.Path != custom {
+		t.Fatalf("OPENCODE_INSTALL_DIR: %q", got.Path)
+	}
+	// PATH still wins.
+	f.lookPath = func(string) (string, error) { return "/usr/bin/opencode", nil }
+	if got, _ := f.find("opencode"); got.Path != "/usr/bin/opencode" || !got.OnPath {
+		t.Fatalf("PATH: %+v", got)
 	}
 }

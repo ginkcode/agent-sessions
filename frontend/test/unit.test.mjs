@@ -31,6 +31,7 @@ import {
   deleteButtonLabel,
 } from '../src/lib/manage.ts';
 import { MockBackendAPI, highlightedSnippet } from '../src/lib/mock/mockApi.ts';
+import { terminalOptions } from '../src/lib/terminal.ts';
 import {
   StaleReplyError,
   blockedReason,
@@ -1717,6 +1718,93 @@ test('MockBackendAPI opens terminals only when supported and local', async () =>
   await mock.connect('dev-box');
   await assert.rejects(mock.openResumeInTerminal(meta.ref), /local sessions only/);
   assert.equal(mock.openedTerminals.length, 2);
+});
+
+test('MockBackendAPI chooses only installed terminals and refuses a missing one', async () => {
+  const mock = new MockBackendAPI();
+  const [meta] = await mock.listSessions('', {}, { field: 'updatedAt', dir: 'desc' });
+  assert.equal((await mock.terminalSettings()).choose, false);
+  await assert.rejects(mock.setTerminal('kitty'), /not supported/);
+
+  mock.launch = { terminal: true, chooseTerminal: true, shell: 'posix' };
+  mock.terminals = [{ id: 'konsole', name: 'Konsole' }, { id: 'kitty', name: 'kitty' }];
+  let s = await mock.terminalSettings();
+  assert.deepEqual([s.selected, s.auto?.id, s.options.length, s.missing], ['', 'konsole', 2, false]);
+  s = await mock.setTerminal('kitty');
+  assert.deepEqual([s.selected, s.selectedName, s.missing], ['kitty', 'kitty', false]);
+  await assert.rejects(mock.setTerminal('/bin/sh'), /not installed/);
+  await mock.openResumeInTerminal(meta.ref);
+  assert.equal(mock.openedTerminals.length, 1);
+
+  mock.terminals = [{ id: 'konsole', name: 'Konsole' }];
+  s = await mock.terminalSettings();
+  assert.deepEqual([s.selected, s.missing], ['kitty', true]);
+  await assert.rejects(mock.openResumeInTerminal(meta.ref), /kitty was not found\. Choose another terminal in Settings/);
+  assert.equal(mock.openedTerminals.length, 1);
+  assert.equal((await mock.setTerminal('')).selected, '');
+});
+
+test('terminalOptions names what Automatic opens and keeps a missing choice', () => {
+  const base = { choose: true, selected: '', selectedName: '', missing: false, auto: null, options: [] };
+  assert.deepEqual(terminalOptions(base), [{ value: '', label: 'Automatic (none found)' }]);
+  const found = { ...base, auto: { id: 'ptyxis', name: 'Ptyxis' }, options: [{ id: 'ptyxis', name: 'Ptyxis' }, { id: 'kitty', name: 'kitty' }] };
+  assert.deepEqual(terminalOptions(found).map((o) => o.label), ['Automatic (Ptyxis)', 'Ptyxis', 'kitty']);
+  const missing = { ...found, selected: 'ghostty', selectedName: 'Ghostty', missing: true };
+  assert.deepEqual(terminalOptions(missing).at(-1), { value: 'ghostty', label: 'Ghostty (not found)' });
+});
+
+const SETTINGS_DIALOG_URL = new URL('../src/lib/components/common/ManageSettingsDialog.svelte', import.meta.url);
+const DROPDOWN_URL = new URL('../src/lib/components/common/Dropdown.svelte', import.meta.url);
+let settingsDialogModule;
+
+async function renderSettingsDialog(launcher) {
+  if (!settingsDialogModule) {
+    globalThis.__dropdown = (await loadServerComponent(DROPDOWN_URL, [])).default;
+    const lib = (rel) => JSON.stringify(new URL(rel, SETTINGS_DIALOG_URL).href);
+    settingsDialogModule = await loadServerComponent(SETTINGS_DIALOG_URL, [
+      ["'../../format'", lib('../../format.ts')],
+      ["'../../terminal'", lib('../../terminal.ts')],
+      ["import Dropdown from './Dropdown.svelte';", 'const Dropdown = globalThis.__dropdown;'],
+      ["import { manage } from '../../stores/manage.svelte';", fixtureStore('manage')],
+      ["import { launcher } from '../../stores/launcher.svelte';", fixtureStore('launcher')],
+    ]);
+  }
+  const manage = {
+    settingsDialogOpen: true, settings: { enabled: false, allowPermanentDelete: false }, loadingSettings: false,
+    settingsError: null, firstEnableWarningVisible: false, handoffCache: null, handoffCacheError: null, handoffCacheBusy: false,
+  };
+  return renderWithFixture(settingsDialogModule, { manage, launcher: { terminalError: null, terminal: null, ...launcher } });
+}
+
+test('Settings shows the terminal choice only where it can be chosen', async () => {
+  const windows = await renderSettingsDialog({ info: { terminal: true, chooseTerminal: false, shell: 'powershell' } });
+  assert.match(windows, /<h2 id="settings-title"[^>]*>Settings<\/h2>/);
+  assert.doesNotMatch(windows, /Terminal \(this computer\)/);
+
+  const info = { terminal: true, chooseTerminal: true, shell: 'posix' };
+  const terminal = {
+    choose: true, selected: '', selectedName: '', missing: false,
+    auto: { id: 'konsole', name: 'Konsole' }, options: [{ id: 'konsole', name: 'Konsole' }],
+  };
+  const auto = await renderSettingsDialog({ info, terminal });
+  assert.match(auto, /Terminal \(this computer\)/);
+  assert.match(auto, /Automatic \(Konsole\)/);
+  assert.doesNotMatch(auto, /no longer installed|macOS/);
+
+  const missing = await renderSettingsDialog({ info, terminal: { ...terminal, selected: 'kitty', selectedName: 'kitty', missing: true } });
+  assert.match(missing, /kitty \(not found\)/);
+  assert.match(missing, /kitty is no longer installed/);
+
+  const none = await renderSettingsDialog({ info, terminal: { ...terminal, auto: null, options: [] } });
+  assert.match(none, /Automatic \(none found\)/);
+  assert.match(none, /No supported terminal app was found/);
+
+  const mac = await renderSettingsDialog({ info, terminal: { ...terminal, hint: 'The first time, macOS asks whether Agent Sessions may control the terminal app.' } });
+  assert.match(mac, /macOS asks whether Agent Sessions may control/);
+
+  const failed = await renderSettingsDialog({ info, terminalError: 'read settings: permission denied' });
+  assert.match(failed, /read settings: permission denied/);
+  assert.doesNotMatch(failed, /Looking for terminal apps/);
 });
 
 const SESSION_HEADER_URL = new URL('../src/lib/components/transcript/SessionHeader.svelte', import.meta.url);

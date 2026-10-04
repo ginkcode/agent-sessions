@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"slices"
+	"sort"
 	"strings"
 )
 
@@ -29,14 +30,19 @@ type Executable struct {
 // Find locates the CLI for an agent command name ("claude", "codex" or
 // "opencode"). On Windows it also looks where the agents' installers, desktop
 // apps and editor extensions keep their own copy, because desktop-only users
-// rarely have one on PATH. It searches on every call: updates rename the
-// versioned folders.
+// rarely have one on PATH. Elsewhere it looks in the usual install
+// directories: an app started from a desktop menu or Finder never read the
+// shell rc files that add them to PATH. It searches on every call: updates
+// rename the versioned folders.
 func Find(name string) (Executable, error) {
+	home, _ := os.UserHomeDir()
 	return finder{
-		goos:     runtime.GOOS,
-		goarch:   runtime.GOARCH,
-		getenv:   os.Getenv,
-		lookPath: exec.LookPath,
+		goos:       runtime.GOOS,
+		goarch:     runtime.GOARCH,
+		getenv:     os.Getenv,
+		lookPath:   exec.LookPath,
+		home:       home,
+		systemDirs: posixSystemDirs,
 	}.find(name)
 }
 
@@ -44,6 +50,9 @@ type finder struct {
 	goos, goarch string
 	getenv       func(string) string
 	lookPath     func(string) (string, error)
+	// home and systemDirs are searched outside Windows.
+	home       string
+	systemDirs []string
 }
 
 func (f finder) find(name string) (Executable, error) {
@@ -63,8 +72,15 @@ func (f finder) find(name string) (Executable, error) {
 				return Executable{Path: path, Args: slices.Clone(loc.args)}, nil
 			}
 		}
+	} else {
+		for _, dir := range f.posixDirs(name) {
+			p := filepath.Join(dir, name)
+			if fi, err := os.Stat(p); err == nil && fi.Mode().IsRegular() && fi.Mode().Perm()&0o111 != 0 {
+				return Executable{Path: p}, nil
+			}
+		}
 	}
-	return Executable{}, fmt.Errorf("%w: %s", ErrAgentNotFound, installHint(name))
+	return Executable{}, fmt.Errorf("%w: %s", ErrAgentNotFound, f.installHint(name))
 }
 
 // bundleArgs also recognizes a bundled CLI put on PATH. Reuse the lookup
@@ -107,6 +123,43 @@ func (f finder) desktopAlias(name, path string) bool {
 	}
 	local := f.getenv("LOCALAPPDATA")
 	return local != "" && strings.EqualFold(filepath.Clean(filepath.Dir(path)), filepath.Join(local, "Microsoft", "WindowsApps"))
+}
+
+// posixInstallDirs lists where agent CLIs install themselves outside the
+// system PATH, relative to the home directory: their installers, npm's
+// user prefix, bun and volta. The OpenCode installer adds ~/.opencode/bin
+// to PATH in the shell rc files only.
+var posixInstallDirs = map[string][]string{
+	"claude":   {".local/bin", ".claude/local", ".npm-global/bin", ".bun/bin", ".volta/bin"},
+	"opencode": {".opencode/bin", ".bun/bin", ".local/bin", ".npm-global/bin"},
+	"codex":    {".local/bin", ".npm-global/bin", ".bun/bin", ".volta/bin"},
+}
+
+// posixSystemDirs are absolute install locations shared by all CLIs.
+var posixSystemDirs = []string{"/usr/local/bin", "/opt/homebrew/bin", "/home/linuxbrew/.linuxbrew/bin"}
+
+// posixDirs returns the directories to search for name, in order: a custom
+// OpenCode install dir, the per-CLI home dirs, the system dirs, then nvm's
+// Node versions, the newest first.
+func (f finder) posixDirs(name string) []string {
+	var dirs []string
+	if name == "opencode" {
+		if d := f.getenv("OPENCODE_INSTALL_DIR"); d != "" {
+			dirs = append(dirs, d)
+		}
+	}
+	if f.home != "" {
+		for _, rel := range posixInstallDirs[name] {
+			dirs = append(dirs, filepath.Join(f.home, rel))
+		}
+	}
+	dirs = append(dirs, f.systemDirs...)
+	if f.home != "" {
+		nvm := expand(filepath.Join(f.home, ".nvm", "versions", "node"), []string{"*", "bin"})
+		sort.Sort(sort.Reverse(sort.StringSlice(nvm)))
+		dirs = append(dirs, nvm...)
+	}
+	return dirs
 }
 
 // location is a path below a per-user directory variable. Parts may hold
@@ -170,6 +223,8 @@ func windowsLocations(name, goarch string) []location {
 	return locs
 }
 
+var agentLabels = map[string]string{"claude": "Claude Code", "codex": "Codex", "opencode": "OpenCode"}
+
 // editorDirs are the per-user directories of VS Code and its forks that
 // install the same extensions.
 var editorDirs = []string{".vscode", ".vscode-insiders", ".cursor"}
@@ -214,7 +269,13 @@ func newestFile(paths []string) string {
 	return best
 }
 
-func installHint(name string) string {
+func (f finder) installHint(name string) string {
+	if f.goos != "windows" {
+		if label, ok := agentLabels[name]; ok {
+			return label + " was not found on PATH or in its usual install locations. Install it, then try again"
+		}
+		return fmt.Sprintf("%s was not found on PATH", name)
+	}
 	switch name {
 	case "claude":
 		return "Claude Code was not found. Install Claude Code, Claude Desktop or the Claude Code extension for VS Code, then try again"

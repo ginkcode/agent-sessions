@@ -37,9 +37,12 @@ func captureTerminal(a *App) *[]provider.Command {
 
 func TestLaunchInfo(t *testing.T) {
 	a, _, _ := setupHandoffTest(t)
+	if launch.ChooseTerminal() {
+		fakeTerminals(t, a, "kitty")
+	}
 	info := a.LaunchInfo()
-	if info.Terminal != launch.Supported() {
-		t.Errorf("Terminal = %v, want %v", info.Terminal, launch.Supported())
+	if info.Terminal != launch.Supported() || info.ChooseTerminal != launch.ChooseTerminal() {
+		t.Errorf("LaunchInfo = %+v, want terminal %v", info, launch.Supported())
 	}
 	want := "posix"
 	if runtime.GOOS == "windows" {

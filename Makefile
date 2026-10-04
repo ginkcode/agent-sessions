@@ -159,6 +159,12 @@ package-macos: check-app-icons
 	rm -f build/agent-sessions-arm64 build/agent-sessions-amd64
 	rm -rf "build/bin/Agent Sessions.app" build/dmg
 	mv build/bin/agent-sessions.app "build/bin/Agent Sessions.app"
+	# Open in terminal drives Terminal, iTerm2 or Ghostty with Apple Events.
+	# Without a usage description macOS refuses them (-1743) instead of
+	# asking the user.
+	plutil -replace NSAppleEventsUsageDescription -string \
+		"Agent Sessions opens your terminal app to resume a session or continue it in another agent." \
+		"build/bin/Agent Sessions.app/Contents/Info.plist"
 	# Servers go in before codesign so the signature covers them.
 	$(MAKE) remote-servers REMOTE_DIR="build/bin/Agent Sessions.app/Contents/Resources/remote"
 	codesign --force --deep --sign - "build/bin/Agent Sessions.app"

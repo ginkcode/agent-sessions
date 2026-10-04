@@ -106,8 +106,8 @@
         <button
           type="button"
           class="icon-button settings-toggle"
-          title="Session management settings"
-          aria-label="Session management settings"
+          title="Settings"
+          aria-label="Settings"
           onclick={() => manage.openSettings()}
         >
           <svg
