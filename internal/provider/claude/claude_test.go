@@ -12,8 +12,11 @@ import (
 )
 
 func TestLiveDetection(t *testing.T) {
-	if runtime.GOOS == "windows" {
+	switch runtime.GOOS {
+	case "windows":
 		t.Skip("procfs fixture; see TestLiveDetectionWindows")
+	case "darwin":
+		t.Skip("procfs fixture; see TestLiveDetectionDarwin")
 	}
 	tmp := t.TempDir()
 	procFS := filepath.Join(tmp, "proc")

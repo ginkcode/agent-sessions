@@ -313,6 +313,17 @@ func checkRecorded(t *testing.T, out, dir, bin string, args []string) {
 	}
 }
 
+// fakeLoginShell stands in for the user's shell, which the script runs last.
+// It is a script because true is /bin/true on Linux but /usr/bin/true on macOS.
+func fakeLoginShell(t *testing.T) string {
+	t.Helper()
+	path := filepath.Join(platform.TempDir(t), "login-shell")
+	if err := os.WriteFile(path, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
 func posixTrickyDir(t *testing.T) string {
 	dir := filepath.Join(platform.TempDir(t), `it's "a" $HOME `+"`x`"+` \ ünï !dir`)
 	if err := os.Mkdir(dir, 0o755); err != nil {
@@ -329,7 +340,7 @@ func TestPosixScriptRunsAgentExactly(t *testing.T) {
 	out := filepath.Join(platform.TempDir(t), "out")
 	agent := recordingAgent(t, out)
 	argv := append([]string{agent}, posixTrickyArgs...)
-	script := posixScript(argv, dir, "/bin/true")
+	script := posixScript(argv, dir, fakeLoginShell(t))
 
 	// As Linux terminals run it: an argv vector.
 	c := exec.Command("/bin/sh", "-c", script)
@@ -361,7 +372,7 @@ func TestPosixScriptStopsOutsideDir(t *testing.T) {
 	}
 	dir := posixTrickyDir(t)
 	out := filepath.Join(platform.TempDir(t), "out")
-	script := posixScript([]string{recordingAgent(t, out), "x"}, dir, "/bin/true")
+	script := posixScript([]string{recordingAgent(t, out), "x"}, dir, fakeLoginShell(t))
 	if err := os.Remove(dir); err != nil {
 		t.Fatal(err)
 	}
@@ -381,7 +392,7 @@ func TestBootstrapLineInUserShells(t *testing.T) {
 	dir := posixTrickyDir(t)
 	out := filepath.Join(platform.TempDir(t), "out")
 	agent := recordingAgent(t, out)
-	line := bootstrapLine(posixScript(append([]string{agent}, posixTrickyArgs...), dir, "/bin/true"))
+	line := bootstrapLine(posixScript(append([]string{agent}, posixTrickyArgs...), dir, fakeLoginShell(t)))
 	// Nothing in the line is special to any shell inside single quotes.
 	if strings.ContainsAny(line, "\n%!") || strings.Count(line, "'") != 4 || strings.Contains(line, `\\`) {
 		t.Fatalf("line has special characters: %s", line)
@@ -409,14 +420,19 @@ func TestBootstrapLineInUserShells(t *testing.T) {
 }
 
 func TestLoginShell(t *testing.T) {
-	platform.RequireCommand(t, "sh")
-	sh, _ := exec.LookPath("sh")
-	sh, _ = filepath.Abs(sh)
+	// The check reads execute bits, which Windows does not have; the login
+	// shell is only used on Linux and macOS.
+	platform.SkipWithoutModeBits(t)
+	sh := fakeLoginShell(t)
+	plain := filepath.Join(filepath.Dir(sh), "not-executable")
+	if err := os.WriteFile(plain, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
 	env := func(v string) func(string) string { return func(string) string { return v } }
 	if got := loginShell("linux", env(sh)); got != sh {
 		t.Errorf("SHELL ignored: %q", got)
 	}
-	for _, bad := range []string{"", "zsh", "/nonexistent/zsh"} {
+	for _, bad := range []string{"", "zsh", "/nonexistent/zsh", plain} {
 		if got := loginShell("darwin", env(bad)); got != "/bin/zsh" {
 			t.Errorf("darwin %q: %q", bad, got)
 		}

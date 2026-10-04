@@ -253,9 +253,11 @@ func TestExitCodes(t *testing.T) {
 
 func TestHandoffCLI(t *testing.T) {
 	// The handoff files go to the data dir; keep them out of the real one.
+	// macOS puts it under $HOME/Library/Application Support.
 	dataHome := t.TempDir()
 	t.Setenv("XDG_DATA_HOME", dataHome)
 	t.Setenv("LOCALAPPDATA", dataHome)
+	t.Setenv("HOME", dataHome)
 
 	fake := providertest.NewFake(model.AgentClaude, "Claude Code")
 	now := time.Now()
