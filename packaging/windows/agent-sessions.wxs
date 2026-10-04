@@ -1,0 +1,104 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Windows Installer package, built by wixl from msitools (WiX v3 syntax) in
+  `make package-windows`, which defines:
+    Version    numeric x.y.z: MSI versions take no -beta.1 suffix
+    BinDir     directory holding agent-sessions.exe
+    RemoteDir  directory holding the gzipped headless servers
+    IconFile   the app icon (.ico)
+
+  Per-user install in %LOCALAPPDATA%\Programs\Agent Sessions: no UAC prompt,
+  and the app only reads the current user's sessions anyway. Per-user
+  components use an HKCU value as key path, as Windows Installer expects.
+
+  Never change UpgradeCode: it is how a new MSI finds and replaces the
+  installed version.
+-->
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <Product Id="*" Name="Agent Sessions" Manufacturer="ginkcode" Language="1033"
+           Version="$(var.Version)" UpgradeCode="D7786BE1-BF16-4887-9C3B-345C5D87CD95">
+    <Package InstallerVersion="500" Compressed="yes" InstallScope="perUser"
+             Manufacturer="ginkcode" Description="Agent Sessions installer"
+             Comments="Browse and manage agentic coding tool sessions"/>
+    <Media Id="1" Cabinet="app.cab" EmbedCab="yes"/>
+
+    <!-- A pre-release and its final release share x.y.z, so the final one
+         must be allowed to replace the same version. -->
+    <MajorUpgrade AllowSameVersionUpgrades="yes"
+                  DowngradeErrorMessage="A newer version of Agent Sessions is already installed."/>
+
+    <!-- The app renders in WebView2. Windows 11 ships it and Windows 10 gets
+         it with Edge; an MSI cannot easily run its bootstrapper, so refuse
+         with a pointer instead. Keys and the 0.0.0.0 rule are from
+         Microsoft's WebView2 distribution guide. -->
+    <Property Id="WEBVIEW2_MACHINE">
+      <RegistrySearch Id="WebView2Machine" Root="HKLM" Type="raw" Name="pv"
+                      Key="SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}"/>
+    </Property>
+    <Property Id="WEBVIEW2_USER">
+      <RegistrySearch Id="WebView2User" Root="HKCU" Type="raw" Name="pv"
+                      Key="Software\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}"/>
+    </Property>
+    <Condition Message="Agent Sessions needs the Microsoft Edge WebView2 Runtime. Install it from https://go.microsoft.com/fwlink/p/?LinkId=2124703 and run this installer again.">Installed OR (WEBVIEW2_MACHINE AND WEBVIEW2_MACHINE &lt;&gt; "0.0.0.0") OR (WEBVIEW2_USER AND WEBVIEW2_USER &lt;&gt; "0.0.0.0")</Condition>
+
+    <Icon Id="AppIcon.ico" SourceFile="$(var.IconFile)"/>
+    <Property Id="ARPPRODUCTICON" Value="AppIcon.ico"/>
+    <Property Id="ARPNOMODIFY" Value="1"/>
+    <Property Id="ARPNOREPAIR" Value="1"/>
+
+    <Directory Id="TARGETDIR" Name="SourceDir">
+      <Directory Id="LocalAppDataFolder">
+        <Directory Id="ProgramsDir" Name="Programs">
+          <Directory Id="INSTALLDIR" Name="Agent Sessions">
+            <Component Id="App" Guid="*">
+              <RegistryValue Root="HKCU" Key="Software\ginkcode\Agent Sessions" Name="App"
+                             Type="integer" Value="1" KeyPath="yes"/>
+              <File Id="AppExe" Name="agent-sessions.exe" Source="$(var.BinDir)/agent-sessions.exe"/>
+              <RemoveFolder Id="RemoveInstallDir" On="uninstall"/>
+            </Component>
+            <!-- The app looks for the servers in remote\ next to its exe.
+                 One file per platform in REMOTE_PLATFORMS (Makefile). -->
+            <Directory Id="RemoteDir" Name="remote">
+              <Component Id="RemoteServers" Guid="*">
+                <RegistryValue Root="HKCU" Key="Software\ginkcode\Agent Sessions" Name="RemoteServers"
+                               Type="integer" Value="1" KeyPath="yes"/>
+                <File Id="ServerLinuxAmd64" Name="agent-sessions-cli-linux-amd64.gz"
+                      Source="$(var.RemoteDir)/agent-sessions-cli-linux-amd64.gz"/>
+                <File Id="ServerLinuxArm64" Name="agent-sessions-cli-linux-arm64.gz"
+                      Source="$(var.RemoteDir)/agent-sessions-cli-linux-arm64.gz"/>
+                <File Id="ServerDarwinAmd64" Name="agent-sessions-cli-darwin-amd64.gz"
+                      Source="$(var.RemoteDir)/agent-sessions-cli-darwin-amd64.gz"/>
+                <File Id="ServerDarwinArm64" Name="agent-sessions-cli-darwin-arm64.gz"
+                      Source="$(var.RemoteDir)/agent-sessions-cli-darwin-arm64.gz"/>
+                <RemoveFolder Id="RemoveRemoteDir" On="uninstall"/>
+              </Component>
+            </Directory>
+          </Directory>
+        </Directory>
+      </Directory>
+      <Directory Id="ProgramMenuFolder">
+        <Component Id="StartMenuShortcut" Guid="*">
+          <RegistryValue Root="HKCU" Key="Software\ginkcode\Agent Sessions" Name="StartMenuShortcut"
+                         Type="integer" Value="1" KeyPath="yes"/>
+          <Shortcut Id="StartMenuShortcut" Name="Agent Sessions" Target="[INSTALLDIR]agent-sessions.exe"
+                    WorkingDirectory="INSTALLDIR"/>
+        </Component>
+      </Directory>
+      <Directory Id="DesktopFolder">
+        <Component Id="DesktopShortcut" Guid="*">
+          <RegistryValue Root="HKCU" Key="Software\ginkcode\Agent Sessions" Name="DesktopShortcut"
+                         Type="integer" Value="1" KeyPath="yes"/>
+          <Shortcut Id="DesktopShortcut" Name="Agent Sessions" Target="[INSTALLDIR]agent-sessions.exe"
+                    WorkingDirectory="INSTALLDIR"/>
+        </Component>
+      </Directory>
+    </Directory>
+
+    <Feature Id="Main" Level="1">
+      <ComponentRef Id="App"/>
+      <ComponentRef Id="RemoteServers"/>
+      <ComponentRef Id="StartMenuShortcut"/>
+      <ComponentRef Id="DesktopShortcut"/>
+    </Feature>
+  </Product>
+</Wix>

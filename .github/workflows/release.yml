@@ -129,12 +129,13 @@ jobs:
           path: dist/*.dmg
           if-no-files-found: error
 
-  # Wails cross-compiles the Windows app, and NSIS builds the installer on
-  # Linux, so this reuses the Makefile's bash recipes unchanged. CI's
+  # Wails cross-compiles the Windows app and wixl builds the .msi on Linux,
+  # so this reuses the Makefile's bash recipes unchanged. CI's
   # windows-test-build job covers the native Windows build and tests.
+  # 24.04 for wixl 0.103: 22.04's 0.101 lacks AllowSameVersionUpgrades.
   windows:
     needs: [version, test]
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
@@ -145,19 +146,19 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
           cache-dependency-path: frontend/package-lock.json
-      - name: Install NSIS
+      - name: Install wixl
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends nsis
+          sudo apt-get install -y --no-install-recommends wixl
       - run: npm ci
         working-directory: frontend
       - run: go install github.com/wailsapp/wails/v2/cmd/wails@${{ env.WAILS_VERSION }}
-      - name: Build NSIS installer
+      - name: Build .msi
         run: make package-windows VERSION=${{ needs.version.outputs.version }}
       - uses: actions/upload-artifact@v7
         with:
           name: windows-amd64
-          path: dist/*.exe
+          path: dist/*.msi
           if-no-files-found: error
 
   remote-servers:

@@ -17,6 +17,7 @@ APPICON := frontend/assets/Icon-universal.png
 # Headless servers the desktop app deploys over SSH. CGO stays off: these
 # binaries have no GUI. Cross targets need a Go toolchain that can produce
 # them (CI does); `make remote-servers HOST=1` builds only the host pair.
+# packaging/windows/agent-sessions.wxs lists one file per platform.
 REMOTE_PLATFORMS ?= linux/amd64 linux/arm64 darwin/amd64 darwin/arm64
 REMOTE_DIR ?= build/remote
 
@@ -160,35 +161,40 @@ package-macos: check-app-icons
 	hdiutil create -volname "Agent Sessions" -srcfolder build/dmg -ov -format UDZO dist/agent-sessions_$(VERSION)_macos_universal.dmg || \
 		{ sleep 5; hdiutil create -volname "Agent Sessions" -srcfolder build/dmg -ov -format UDZO dist/agent-sessions_$(VERSION)_macos_universal.dmg; }
 
-# Windows amd64 NSIS installer in dist/, cross-compiled on Linux or macOS.
-# Requires the Wails CLI, jq and makensis (apt install nsis); Wails only
-# warns when makensis is missing, so check first. The installer script is
-# packaging/windows/project.nsi; build/windows is regenerated each run. The
-# installer is not code-signed, so SmartScreen warns on first run.
+# Windows amd64 .msi in dist/, cross-compiled on Linux. Requires the Wails
+# CLI, jq and wixl (apt install wixl, 0.102 or later for
+# AllowSameVersionUpgrades). The package is described in
+# packaging/windows/agent-sessions.wxs; build/windows is regenerated each run
+# so the icon and version resources follow the current sources. The package
+# is not code-signed, so SmartScreen warns on first run.
 package-windows: check-app-icons
-	@command -v makensis >/dev/null 2>&1 || { echo 'makensis not found: install NSIS (apt install nsis)' >&2; exit 1; }
-	@command -v jq >/dev/null 2>&1 || { echo 'jq not found: install it (apt install jq)' >&2; exit 1; }
+	@for tool in jq wixl; do \
+		command -v $$tool >/dev/null 2>&1 || { echo "$$tool not found: install it (apt install $$tool)" >&2; exit 1; }; \
+	done
 	cd frontend && npm run build
 	$(MAKE) remote-servers
 	# Same absolute projectdir as package-macos. The version is pinned to
-	# VERSION so the app, the installer and VI_VERSION agree.
+	# VERSION so the exe and the package agree.
 	@set -e; \
 	root=$$(pwd); \
-	version='$(VERSION)'; \
 	backup=$$(mktemp ./wails.json.release.XXXXXX); \
 	cp -p wails.json "$$backup"; \
 	rm -rf build/windows; \
-	mkdir -p build/windows/installer; \
+	mkdir -p build; \
 	cp "$(APPICON)" build/appicon.png; \
-	cp packaging/windows/project.nsi build/windows/installer/; \
-	printf '!define VI_VERSION "%s.0"\n' "$${version%%-*}" > build/windows/installer/version.nsh; \
 	trap 'mv "$$backup" wails.json' EXIT; \
-	jq --arg root "$$root" --arg version "$$version" \
+	jq --arg root "$$root" --arg version '$(VERSION)' \
 		'.projectdir = ($$root + "/cmd/agent-sessions") | .["build:dir"] = ($$root + "/build") | .info.productVersion = $$version' \
 		"$$backup" > wails.json; \
-	$(WAILS) build -platform windows/amd64 -tags desktop -clean -s -m -nosyncgomod -skipbindings -trimpath -nsis -ldflags "$(LDFLAGS)"
+	$(WAILS) build -platform windows/amd64 -tags desktop -clean -s -m -nosyncgomod -skipbindings -trimpath -ldflags "$(LDFLAGS)"
 	mkdir -p dist
-	mv build/bin/agent-sessions-amd64-installer.exe dist/agent-sessions_$(VERSION)_windows_amd64_setup.exe
+	@set -e; \
+	root=$$(pwd); \
+	version='$(VERSION)'; \
+	set -x; \
+	wixl -a x64 -o dist/agent-sessions_$(VERSION)_windows_amd64.msi \
+		-D Version="$${version%%-*}" -D BinDir="$$root/build/bin" -D RemoteDir="$$root/build/remote" \
+		-D IconFile="$$root/build/windows/icon.ico" packaging/windows/agent-sessions.wxs
 
 # Release tags (see make help). Pushing v<VERSION> runs
 # .github/workflows/release.yml, which refuses a tag that does not match
@@ -251,7 +257,7 @@ help:
 	@printf '\nPackaging (writes dist/)\n'
 	@printf '  %-22s %s\n' 'package-linux' '.deb and .rpm for ARCH (default: host)'
 	@printf '  %-22s %s\n' 'package-macos' 'Universal .dmg (macOS only)'
-	@printf '  %-22s %s\n' 'package-windows' 'amd64 NSIS installer (needs makensis, jq)'
+	@printf '  %-22s %s\n' 'package-windows' 'amd64 .msi (needs wixl, jq)'
 	@printf '\nReleases (current: v$(VERSION))\n'
 	@printf '  %-22s %s\n' 'version' 'Show the version and whether its tag exists'
 	@printf '  %-22s %s\n' 'tags' 'List release tags, newest first'
