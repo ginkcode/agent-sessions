@@ -205,8 +205,17 @@ func BuildLaunchCommand(target model.AgentID, prompt string, promptFilePath stri
 
 // LaunchCommand returns the argv and directory that start the target agent
 // with the prompt (or the pointer to the prompt file).
+//
+// Claude Code does not read outside its working directories without asking,
+// and the handoff files live in the app's data directory, not the project.
+// --add-dir grants that directory for the session. It takes several
+// directories, so it goes after the prompt.
 func LaunchCommand(target model.AgentID, prompt string, promptFilePath string, cwd string) provider.Command {
-	return provider.Command{Argv: LaunchArgv(target, LaunchPrompt(prompt, promptFilePath)), Dir: cwd}
+	argv := LaunchArgv(target, LaunchPrompt(prompt, promptFilePath))
+	if target == model.AgentClaude && promptFilePath != "" {
+		argv = append(argv, "--add-dir", filepath.Dir(promptFilePath))
+	}
+	return provider.Command{Argv: argv, Dir: cwd}
 }
 
 // LaunchArgv returns the CLI argv for invoking the target agent with the prompt.

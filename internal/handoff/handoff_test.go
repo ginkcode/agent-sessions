@@ -3,6 +3,7 @@ package handoff_test
 import (
 	"encoding/json"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -247,6 +248,12 @@ func TestHandoffDelivery(t *testing.T) {
 		if cmdFile != expected {
 			t.Errorf("expected pointer command, got: %.200s", cmdFile)
 		}
+	}
+
+	// Claude gets read access to the handoff directory, after the prompt.
+	if got, want := posix(model.AgentClaude, "Short prompt", promptFile, "/tmp/dir"),
+		"cd /tmp/dir && claude 'Read /data/handoffs/sess-123-handoff.md completely to restore the context of an earlier session, then follow its instructions and wait for my next request.' --add-dir "+launch.ShellEscape(filepath.Dir(promptFile)); got != want {
+		t.Errorf("claude pointer command = %s", got)
 	}
 
 	// BuildLaunchCommand formats the same command for this platform's shell.
