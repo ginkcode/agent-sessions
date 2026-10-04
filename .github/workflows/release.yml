@@ -129,6 +129,37 @@ jobs:
           path: dist/*.dmg
           if-no-files-found: error
 
+  # Wails cross-compiles the Windows app, and NSIS builds the installer on
+  # Linux, so this reuses the Makefile's bash recipes unchanged. CI's
+  # windows-test-build job covers the native Windows build and tests.
+  windows:
+    needs: [version, test]
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install NSIS
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends nsis
+      - run: npm ci
+        working-directory: frontend
+      - run: go install github.com/wailsapp/wails/v2/cmd/wails@${{ env.WAILS_VERSION }}
+      - name: Build NSIS installer
+        run: make package-windows VERSION=${{ needs.version.outputs.version }}
+      - uses: actions/upload-artifact@v7
+        with:
+          name: windows-amd64
+          path: dist/*.exe
+          if-no-files-found: error
+
   remote-servers:
     needs: [version, test]
     runs-on: ubuntu-22.04
@@ -147,7 +178,7 @@ jobs:
 
   release:
     if: github.ref_type == 'tag'
-    needs: [linux, macos, remote-servers]
+    needs: [linux, macos, windows, remote-servers]
     runs-on: ubuntu-latest
     permissions:
       contents: write

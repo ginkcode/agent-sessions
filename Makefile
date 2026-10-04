@@ -11,7 +11,7 @@ NFPM ?= $(GO) run github.com/goreleaser/nfpm/v2/cmd/nfpm@v2.47.0
 # macOS icns and the Windows ico.
 APPICON := frontend/assets/Icon-universal.png
 
-.PHONY: test test-ssh lint fmt cli fuzz-smoke golden build clean dev app gui-build check-gui-deps package-linux package-macos \
+.PHONY: test test-ssh lint fmt cli fuzz-smoke golden build clean dev app gui-build check-gui-deps package-linux package-macos package-windows \
 	remote-servers version tags set-version tag untag release help check-app-icons app-icon
 
 # Headless servers the desktop app deploys over SSH. CGO stays off: these
@@ -160,6 +160,35 @@ package-macos: check-app-icons
 	hdiutil create -volname "Agent Sessions" -srcfolder build/dmg -ov -format UDZO dist/agent-sessions_$(VERSION)_macos_universal.dmg || \
 		{ sleep 5; hdiutil create -volname "Agent Sessions" -srcfolder build/dmg -ov -format UDZO dist/agent-sessions_$(VERSION)_macos_universal.dmg; }
 
+# Windows amd64 NSIS installer in dist/, cross-compiled on Linux or macOS.
+# Requires the Wails CLI and makensis (apt install nsis); Wails only warns
+# when makensis is missing, so check first. The installer script is
+# packaging/windows/project.nsi; build/windows is regenerated each run. The
+# installer is not code-signed, so SmartScreen warns on first run.
+package-windows: check-app-icons
+	@command -v makensis >/dev/null 2>&1 || { echo 'makensis not found: install NSIS (apt install nsis)' >&2; exit 1; }
+	cd frontend && npm run build
+	$(MAKE) remote-servers
+	# Same absolute projectdir as package-macos. The version is pinned to
+	# VERSION so the app, the installer and VI_VERSION agree.
+	@set -e; \
+	root=$$(pwd); \
+	version='$(VERSION)'; \
+	backup=$$(mktemp ./wails.json.release.XXXXXX); \
+	cp -p wails.json "$$backup"; \
+	rm -rf build/windows; \
+	mkdir -p build/windows/installer; \
+	cp "$(APPICON)" build/appicon.png; \
+	cp packaging/windows/project.nsi build/windows/installer/; \
+	printf '!define VI_VERSION "%s.0"\n' "$${version%%-*}" > build/windows/installer/version.nsh; \
+	trap 'mv "$$backup" wails.json' EXIT; \
+	jq --arg root "$$root" --arg version "$$version" \
+		'.projectdir = ($$root + "/cmd/agent-sessions") | .["build:dir"] = ($$root + "/build") | .info.productVersion = $$version' \
+		"$$backup" > wails.json; \
+	$(WAILS) build -platform windows/amd64 -tags desktop -clean -s -m -nosyncgomod -skipbindings -trimpath -nsis -ldflags "$(LDFLAGS)"
+	mkdir -p dist
+	mv build/bin/agent-sessions-amd64-installer.exe dist/agent-sessions_$(VERSION)_windows_amd64_setup.exe
+
 # Release tags (see make help). Pushing v<VERSION> runs
 # .github/workflows/release.yml, which refuses a tag that does not match
 # wails.json.
@@ -221,6 +250,7 @@ help:
 	@printf '\nPackaging (writes dist/)\n'
 	@printf '  %-22s %s\n' 'package-linux' '.deb and .rpm for ARCH (default: host)'
 	@printf '  %-22s %s\n' 'package-macos' 'Universal .dmg (macOS only)'
+	@printf '  %-22s %s\n' 'package-windows' 'amd64 NSIS installer (needs makensis)'
 	@printf '\nReleases (current: v$(VERSION))\n'
 	@printf '  %-22s %s\n' 'version' 'Show the version and whether its tag exists'
 	@printf '  %-22s %s\n' 'tags' 'List release tags, newest first'

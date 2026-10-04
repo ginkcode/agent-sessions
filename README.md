@@ -31,8 +31,9 @@ bin/agent-sessions-cli detect
 ## Release
 
 Pushing a `v<version>` tag runs `.github/workflows/release.yml`: it tests,
-then builds a universal macOS `.dmg` and Linux `.deb`/`.rpm` packages (amd64
-and arm64), and publishes them as the GitHub Release for that tag. The tag
+then builds a universal macOS `.dmg`, Linux `.deb`/`.rpm` packages (amd64
+and arm64) and a Windows amd64 installer, and publishes them as the GitHub
+Release for that tag. The tag
 must match `info.productVersion` in `wails.json`. Tags with a suffix
 (`v0.2.0-beta.1`) publish as pre-releases.
 
@@ -45,7 +46,12 @@ make untag                 # delete a local tag created by mistake
 ```
 
 The macOS app is not notarized, so first launch needs right-click → Open.
+The Windows installer is not code-signed, so SmartScreen shows "Windows
+protected your PC" on first run: choose More info → Run anyway. It installs
+for the current user in `%LOCALAPPDATA%\Programs\Agent Sessions` without an
+admin prompt.
 
 Local equivalents write to `dist/`: `make package-linux` (needs
-`libgtk-3-dev` and `libwebkit2gtk-4.1-dev`) and `make package-macos`
-(macOS with the Wails CLI).
+`libgtk-3-dev` and `libwebkit2gtk-4.1-dev`), `make package-macos`
+(macOS with the Wails CLI) and `make package-windows` (Linux or macOS with
+the Wails CLI and NSIS).
