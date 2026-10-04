@@ -28,8 +28,10 @@ func TestConnection_LocalByDefault(t *testing.T) {
 
 func TestConnection_RejectsBadAlias(t *testing.T) {
 	c := newConnection(nil)
-	if err := c.Connect(context.Background(), "-oProxyCommand=x"); err == nil {
-		t.Fatal("expected invalid alias")
+	for _, host := range []string{"-oProxyCommand=x", "wsl:bad name", "wsl:-d", "wsl:"} {
+		if err := c.Connect(context.Background(), host); !errors.Is(err, remote.ErrInvalidHostAlias) {
+			t.Fatalf("Connect(%q) = %v, want invalid alias", host, err)
+		}
 	}
 	if c.snapshot().Phase != ConnLocal {
 		t.Fatal("failed connect changed phase")
@@ -317,19 +319,32 @@ func TestConnection_PermanentDialErrorStopsRetrying(t *testing.T) {
 	prev := reconnectBackoff
 	reconnectBackoff = []time.Duration{time.Millisecond}
 	t.Cleanup(func() { reconnectBackoff = prev })
-	for _, failure := range []error{remote.ErrServerBundleNotFound, remote.ErrSSHClientNotFound, remote.ErrSSHAuthentication, remote.ErrSSHHostKey} {
+	for _, tc := range []struct {
+		host    string
+		failure error
+	}{
+		{"box", remote.ErrServerBundleNotFound},
+		{"box", remote.ErrSSHClientNotFound},
+		{"box", remote.ErrSSHAuthentication},
+		{"box", remote.ErrSSHHostKey},
+		{"wsl:Ubuntu", remote.ErrWSLNotInstalled},
+		{"wsl:Ubuntu", remote.ErrWSLDistroNotFound},
+	} {
+		failure := tc.failure
 		t.Run(failure.Error(), func(t *testing.T) {
 			c := newConnection(nil)
 			defer c.Shutdown()
 			var mu sync.Mutex
 			calls := 0
+			var aliases []string
 			c.dial = func(ctx context.Context, alias string, opts remote.SSHOptions, env map[string]string, emitter engine.Emitter) (*remote.Session, error) {
 				mu.Lock()
 				calls++
+				aliases = append(aliases, alias)
 				mu.Unlock()
 				return nil, fmt.Errorf("connect prerequisite: %w", failure)
 			}
-			if err := c.Connect(context.Background(), "box"); err != nil {
+			if err := c.Connect(context.Background(), tc.host); err != nil {
 				t.Fatal(err)
 			}
 			deadline := time.Now().Add(2 * time.Second)
@@ -338,14 +353,14 @@ func TestConnection_PermanentDialErrorStopsRetrying(t *testing.T) {
 			}
 			time.Sleep(50 * time.Millisecond)
 			st := c.snapshot()
-			if st.Phase != ConnDisconnected || st.Host != "box" || !strings.Contains(st.Error, failure.Error()) {
+			if st.Phase != ConnDisconnected || st.Host != tc.host || !strings.Contains(st.Error, failure.Error()) {
 				t.Fatalf("state = %+v", st)
 			}
 			mu.Lock()
-			got := calls
+			got, gotAliases := calls, aliases
 			mu.Unlock()
-			if got != 1 {
-				t.Fatalf("dial calls = %d, want 1", got)
+			if got != 1 || gotAliases[0] != tc.host {
+				t.Fatalf("dial calls = %d %q, want 1 to %s", got, gotAliases, tc.host)
 			}
 		})
 	}

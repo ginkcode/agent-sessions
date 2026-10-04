@@ -64,11 +64,11 @@ func NormalizeArch(m string) (string, error) {
 
 const probeTimeout = 45 * time.Second
 
-// ProbeHost probes a remote machine via SSH to detect OS, architecture, $HOME,
+// ProbeHost probes a remote machine via SSH or WSL to detect OS, architecture, $HOME,
 // and which server builds of appVersion are installed.
 func ProbeHost(ctx context.Context, alias string, opts SSHOptions, appVersion string) (*HostProbe, error) {
 	var timeout time.Duration
-	if !SupportsSSHAskpass() {
+	if _, wsl := ParseWSLTarget(alias); wsl || !SupportsSSHAskpass() {
 		timeout = probeTimeout
 	}
 	return probeHost(ctx, alias, opts, appVersion, timeout)
@@ -77,7 +77,8 @@ func ProbeHost(ctx context.Context, alias string, opts SSHOptions, appVersion st
 func probeHost(ctx context.Context, alias string, opts SSHOptions, appVersion string, timeout time.Duration) (*HostProbe, error) {
 	parent := ctx
 	// Unix credential prompts retain their own two-minute timeout; Windows
-	// must authenticate noninteractively, so its entire probe is bounded.
+	// must authenticate noninteractively and WSL has no prompts, so their
+	// entire probe is bounded.
 	if timeout > 0 {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, timeout)
@@ -91,7 +92,7 @@ func probeHost(ctx context.Context, alias string, opts SSHOptions, appVersion st
 
 	// Run inside login shell $SHELL -lc to load PATH and env
 	shellCmd := []string{LoginShell, "-lc", remoteScript}
-	cmd, err := BuildSSHCmd(ctx, alias, shellCmd, opts)
+	cmd, err := BuildHostCmd(ctx, alias, shellCmd, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -109,7 +110,7 @@ func probeHost(ctx context.Context, alias string, opts SSHOptions, appVersion st
 	defer stopClose()
 
 	if err := cmd.Start(); err != nil {
-		return nil, fmt.Errorf("start ssh probe: %w", err)
+		return nil, fmt.Errorf("start probe: %w", err)
 	}
 
 	// Wait for nonce preface (skipping login shell banners up to 64 KiB).
@@ -124,7 +125,7 @@ func probeHost(ctx context.Context, alias string, opts SSHOptions, appVersion st
 			return nil, sshFailure(probeContextError(parent, ctx, timeout), stderrBuf.String())
 		}
 		if waitErr != nil {
-			return nil, fmt.Errorf("SSH probe: %w", sshFailure(waitErr, stderrBuf.String()))
+			return nil, fmt.Errorf("probe: %w", sshFailure(waitErr, stderrBuf.String()))
 		}
 		return nil, fmt.Errorf("probe handshake: %w", sshFailure(err, stderrBuf.String()))
 	}
@@ -152,7 +153,7 @@ func probeHost(ctx context.Context, alias string, opts SSHOptions, appVersion st
 		return nil, sshFailure(probeContextError(parent, ctx, timeout), stderrBuf.String())
 	}
 	if waitErr != nil {
-		return nil, fmt.Errorf("SSH probe: %w", sshFailure(waitErr, stderrBuf.String()))
+		return nil, fmt.Errorf("probe: %w", sshFailure(waitErr, stderrBuf.String()))
 	}
 	if err := scanner.Err(); err != nil {
 		return nil, fmt.Errorf("probe output: %w", err)
@@ -189,7 +190,7 @@ func probeContextError(parent, run context.Context, timeout time.Duration) error
 	if parent.Err() != nil {
 		return parent.Err()
 	}
-	return fmt.Errorf("SSH probe timed out after %v: %w", timeout, run.Err())
+	return fmt.Errorf("probe timed out after %v: %w", timeout, run.Err())
 }
 
 // isBuildTag reports whether tag is a build dir of appVersion:

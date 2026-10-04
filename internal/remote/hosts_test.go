@@ -81,6 +81,10 @@ Host web-prod
 # Flag-like alias should be skipped
 Host -bad-flag
     User evil
+
+# wsl: is reserved for WSL distributions
+Host wsl:box
+    HostName box.example
 `
 	if err := os.WriteFile(cfgPath, []byte(content), 0600); err != nil {
 		t.Fatal(err)

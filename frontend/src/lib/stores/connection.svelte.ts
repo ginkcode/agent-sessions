@@ -4,12 +4,14 @@ import {
   subscribeAskpassPrompt,
 } from '../api';
 import { targetKey } from '../tree';
+import { hostLabel } from '../hosts';
 import type {
   AskpassPrompt,
   ConnectionPhase,
   ConnectionState,
   HostCapabilities,
   HostEntry,
+  WSLEntry,
 } from '../types';
 import { appState } from './appState.svelte';
 import { manage } from './manage.svelte';
@@ -39,6 +41,7 @@ export class ConnectionStore {
   hosts = $state<HostEntry[]>([]);
   loadingHosts = $state(false);
   hostsError = $state<string | null>(null);
+  wslDistros = $state<WSLEntry[]>([]);
 
   pendingAskpass = $state<AskpassPrompt | null>(null);
 
@@ -52,7 +55,7 @@ export class ConnectionStore {
   }
 
   get currentHost(): string {
-    return this.host || 'Local';
+    return this.host ? hostLabel(this.host) : 'Local';
   }
 
   get canTrash(): boolean {
@@ -118,12 +121,24 @@ export class ConnectionStore {
   async refreshHosts(): Promise<void> {
     this.loadingHosts = true;
     this.hostsError = null;
+    // Neither list waits for or fails with the other.
+    const wsl = this.refreshWSLDistros();
     try {
       this.hosts = (await api.listHosts()) || [];
     } catch (err: any) {
       this.hostsError = err?.message || 'Failed to list hosts';
     } finally {
       this.loadingHosts = false;
+    }
+    await wsl;
+  }
+
+  private async refreshWSLDistros(): Promise<void> {
+    try {
+      this.wslDistros = (await api.listWSLDistros()) || [];
+    } catch {
+      // The section is left out; SSH hosts still connect.
+      this.wslDistros = [];
     }
   }
 

@@ -29,8 +29,10 @@ coding tools (Claude Code, Codex CLI, OpenCode, …).
   and a handoff prompt the user pastes or launches themselves).
 - Syncing sessions across machines or general background network access. Remote
   browsing over SSH (M7) uses only the user's existing system `ssh` and
-  `~/.ssh/config` to connect directly to hosts they choose; the app never opens
-  listening ports, connects to telemetry services, or makes unprompted network calls.
+  `~/.ssh/config` to connect directly to hosts they choose. On Windows, a WSL
+  distribution the user picks is browsed the same way through the system
+  `wsl.exe`, with no ssh involved (M8-13). The app never opens listening
+  ports, connects to telemetry services, or makes unprompted network calls.
 - Editing transcripts.
 
 ---
@@ -240,8 +242,8 @@ Three-pane layout:
 
 | Action | Milestone | Notes |
 |---|---|---|
-| Copy resume command | M1 | Per-provider command plus `cd <cwd>`. On Windows a local command uses PowerShell 5.1 syntax (`Set-Location -LiteralPath …; & …`); remote commands stay POSIX (M8-06). |
-| Open in terminal | M8 | Local Resume and Continue in open a new terminal window in the session directory running the agent CLI, found on PATH or where standalone installs, desktop apps and editor extensions keep it. Windows uses a PowerShell console (see [docs/plan/M8.md](docs/plan/M8.md) M8-11). Linux and macOS use the terminal app chosen in Settings from the ones installed (GNOME Terminal, Ptyxis, Console, Konsole, Ghostty, kitty, …; Terminal, iTerm2, Ghostty on macOS), or one picked automatically (M8-12). Remote sessions keep Copy. |
+| Copy resume command | M1 | Per-provider command plus `cd <cwd>`. On Windows a local command uses PowerShell 5.1 syntax (`Set-Location -LiteralPath …; & …`); remote commands stay POSIX (M8-06), to paste into a shell opened with `ssh <alias>` or, for a WSL distribution, `wsl -d <distro>` (M8-13). |
+| Open in terminal | M8 | Local Resume and Continue in open a new terminal window in the session directory running the agent CLI, found on PATH or where standalone installs, desktop apps and editor extensions keep it. Windows uses a PowerShell console (see [docs/plan/M8.md](docs/plan/M8.md) M8-11). Linux and macOS use the terminal app chosen in Settings from the ones installed (GNOME Terminal, Ptyxis, Console, Konsole, Ghostty, kitty, …; Terminal, iTerm2, Ghostty on macOS), or one picked automatically (M8-12). On Windows, a WSL distribution's sessions open a console that runs the distribution's Linux agent in the project directory and stays open in the user's shell; the script is built by the server in the distribution, which skips a Windows copy of the agent that WSL's appended PATH finds (M8-13). SSH sessions keep Copy. |
 | Open terminal in cwd | M3 | A plain shell in the session directory, in the same chosen terminal. |
 | Reveal source file | M1 | `xdg-open` / `open -R`. |
 | Export session | M3 | Markdown, JSON (unified model), HTML. |
@@ -278,6 +280,10 @@ Three-pane layout:
 - Network use only through the user's own system `ssh`, to hosts they explicitly
   pick. No listening ports, no telemetry, and no network calls on the remote
   beyond the ssh session stdio process.
+- A WSL distribution is reached through the system `wsl.exe` on the same
+  machine, not the network: no ssh, keys or `~/.ssh/config`. The host picker
+  reads the registered distributions from the current user's registry and
+  starts nothing until the user connects.
 - Never read credential files (`.credentials.json`, `auth.json`, OpenCode
   `credential`/`account` tables).
 - Treat transcript content as untrusted when rendering: sanitize markdown/HTML
@@ -334,6 +340,7 @@ Three-pane layout:
 | M5 | macOS build, signing, packaging (Linux: AppImage/.deb; macOS: .dmg). |
 | M6 | Portable session bundles (export, import, opt-in native restore) and cross-agent handoff. |
 | M7 | Remote over SSH (VS Code Remote-SSH style): headless server via system SSH, browse, search, and manage remote sessions with full local UI fidelity. |
+| M8 | Windows support: paths, Recycle Bin, PowerShell commands, open in terminal, MSI; key/agent-only SSH; WSL distributions as remotes through `wsl.exe` (see [docs/plan/M8.md](docs/plan/M8.md)). |
 
 ## 14. Open questions
 

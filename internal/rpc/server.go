@@ -12,7 +12,10 @@ import (
 	"time"
 
 	"github.com/ginkcode/agent-sessions/internal/engine"
+	"github.com/ginkcode/agent-sessions/internal/launch"
+	"github.com/ginkcode/agent-sessions/internal/model"
 	"github.com/ginkcode/agent-sessions/internal/paths"
+	"github.com/ginkcode/agent-sessions/internal/provider"
 	"github.com/ginkcode/agent-sessions/internal/version"
 )
 
@@ -541,12 +544,63 @@ func (s *Server) dispatch(ctx context.Context, req Request) (any, error) {
 		}
 		return backend.RenderBundleHandoff(ctx, p.Req)
 
+	case "resumeTerminalScript":
+		var p CopyResumeCommandParams
+		if err := json.Unmarshal(req.Params, &p); err != nil {
+			return nil, &ResponseError{Code: CodeInvalidParams, Message: err.Error()}
+		}
+		return terminalScript(backend, req.Method, func(l terminalLauncher) (provider.Command, error) {
+			return l.ResumeLaunch(ctx, p.Ref)
+		})
+
+	case "handoffTerminalScript":
+		var p HandoffCommandParams
+		if err := json.Unmarshal(req.Params, &p); err != nil {
+			return nil, &ResponseError{Code: CodeInvalidParams, Message: err.Error()}
+		}
+		return terminalScript(backend, req.Method, func(l terminalLauncher) (provider.Command, error) {
+			return l.HandoffLaunch(ctx, p.Req)
+		})
+
+	case "bundleHandoffTerminalScript":
+		var p BundleHandoffCommandParams
+		if err := json.Unmarshal(req.Params, &p); err != nil {
+			return nil, &ResponseError{Code: CodeInvalidParams, Message: err.Error()}
+		}
+		return terminalScript(backend, req.Method, func(l terminalLauncher) (provider.Command, error) {
+			return l.BundleHandoffLaunch(ctx, p.Req)
+		})
+
 	default:
 		return nil, &ResponseError{
 			Code:    CodeMethodNotFound,
 			Message: fmt.Sprintf("method not found: %s", req.Method),
 		}
 	}
+}
+
+// terminalLauncher builds the agent commands a terminal runs. The engine is
+// one; a backend that is not cannot open terminals.
+type terminalLauncher interface {
+	ResumeLaunch(context.Context, model.SessionRef) (provider.Command, error)
+	HandoffLaunch(context.Context, engine.HandoffRequest) (provider.Command, error)
+	BundleHandoffLaunch(context.Context, engine.BundleHandoffRequest) (provider.Command, error)
+}
+
+var _ terminalLauncher = (*engine.Engine)(nil)
+
+// terminalScript builds a command and renders the script a terminal runs for
+// it, with the agent found on this machine. The client opens the window.
+func terminalScript(backend engine.Backend, method string, build func(terminalLauncher) (provider.Command, error)) (string, error) {
+	l, ok := backend.(terminalLauncher)
+	if !ok {
+		return "", &ResponseError{Code: CodeMethodNotFound, Message: fmt.Sprintf("method not supported: %s", method)}
+	}
+	cmd, err := build(l)
+	if err != nil {
+		return "", err
+	}
+	return launch.PosixTerminalScript(cmd)
 }
 
 // Close closes the server.

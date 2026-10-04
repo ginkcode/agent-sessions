@@ -4,6 +4,7 @@ package launch
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -31,20 +32,26 @@ func startTerminal(script, dir string) error {
 }
 
 // startConsole starts PowerShell with script in dir and returns its process
-// handle. os/exec cannot be used: it always passes standard handles (NUL
-// when unset), so PowerShell and the agent would read NUL instead of the
-// new console, and PowerShell exits at once despite -NoExit. Without
-// STARTF_USESTDHANDLES the child uses its own console.
+// handle.
 func startConsole(script, dir string, flags uint32) (windows.Handle, error) {
 	ps, err := windowsPowerShell()
 	if err != nil {
 		return 0, err
 	}
-	app, err := windows.UTF16PtrFromString(ps)
+	return startProcess(ps, []string{ps, "-NoLogo", "-NoExit", "-Command", script}, dir, flags)
+}
+
+// startProcess starts app with argv in dir and returns its process handle.
+// os/exec cannot be used: it always passes standard handles (NUL when
+// unset), so the shell and the agent would read NUL instead of the new
+// console, and PowerShell exits at once despite -NoExit. Without
+// STARTF_USESTDHANDLES the child uses its own console.
+func startProcess(app string, argv []string, dir string, flags uint32) (windows.Handle, error) {
+	appPtr, err := windows.UTF16PtrFromString(app)
 	if err != nil {
 		return 0, err
 	}
-	cmdline, err := windows.UTF16PtrFromString(windows.ComposeCommandLine([]string{ps, "-NoLogo", "-NoExit", "-Command", script}))
+	cmdline, err := windows.UTF16PtrFromString(windows.ComposeCommandLine(argv))
 	if err != nil {
 		return 0, err
 	}
@@ -55,11 +62,46 @@ func startConsole(script, dir string, flags uint32) (windows.Handle, error) {
 	si := &windows.StartupInfo{}
 	si.Cb = uint32(unsafe.Sizeof(*si))
 	var pi windows.ProcessInformation
-	if err := windows.CreateProcess(app, cmdline, nil, nil, false, flags|windows.CREATE_UNICODE_ENVIRONMENT, nil, cwd, si, &pi); err != nil {
+	if err := windows.CreateProcess(appPtr, cmdline, nil, nil, false, flags|windows.CREATE_UNICODE_ENVIRONMENT, nil, cwd, si, &pi); err != nil {
 		return 0, err
 	}
 	windows.CloseHandle(pi.Thread)
 	return pi.Process, nil
+}
+
+// OpenWSLTerminal opens a new console running script with /bin/sh in
+// distro. The script, from PosixTerminalScript, enters the session's
+// directory itself and ends in the user's shell, so the window stays as
+// -NoExit keeps PowerShell's.
+func OpenWSLTerminal(distro, script string) error {
+	wsl, err := WSLBinary()
+	if err != nil {
+		return err
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return err
+	}
+	h, err := startProcess(wsl, append([]string{wsl}, WSLExecArgs(distro, script)...), home, windows.CREATE_NEW_CONSOLE)
+	if err != nil {
+		return err
+	}
+	return windows.CloseHandle(h)
+}
+
+// WSLBinary returns the system wsl.exe, or ErrWSLNotInstalled.
+func WSLBinary() (string, error) {
+	notInstalled := fmt.Errorf("%w; install it with 'wsl --install' in a terminal", ErrWSLNotInstalled)
+	dir, err := windows.GetSystemDirectory()
+	if err != nil {
+		return "", notInstalled
+	}
+	path := filepath.Join(dir, "wsl.exe")
+	info, err := os.Stat(path)
+	if err != nil || info.IsDir() {
+		return "", notInstalled
+	}
+	return path, nil
 }
 
 // windowsPowerShell returns the system powershell.exe, never whichever one a

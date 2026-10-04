@@ -54,7 +54,7 @@ func (s *Session) PutArtifact(ctx context.Context, token string, src io.Reader) 
 
 	cmdBuilder := s.sshCmdFunc
 	if cmdBuilder == nil {
-		cmdBuilder = BuildSSHCmd
+		cmdBuilder = BuildHostCmd
 	}
 
 	cmd, err := cmdBuilder(ctx, s.alias, s.transferArgs("put", token), opts)
@@ -95,7 +95,7 @@ func (s *Session) GetArtifact(ctx context.Context, token string, remove bool, ds
 
 	cmdBuilder := s.sshCmdFunc
 	if cmdBuilder == nil {
-		cmdBuilder = BuildSSHCmd
+		cmdBuilder = BuildHostCmd
 	}
 
 	cmd, err := cmdBuilder(ctx, s.alias, remoteCmd, opts)

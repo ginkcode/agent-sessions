@@ -2,6 +2,7 @@ import { api } from '../api';
 import type { LaunchInfo, TerminalSettings } from '../types';
 import { errorText } from '../manage';
 import { link } from './link.svelte';
+import { canOpenTerminal } from '../terminal';
 
 /** Whether this machine can open sessions in a terminal, and its shell. */
 export class LauncherStore {
@@ -48,9 +49,12 @@ export class LauncherStore {
     }
   }
 
-  /** Open in terminal is offered for local data on a supporting platform. */
+  /**
+   * Open in terminal is offered for local data on a supporting platform,
+   * and for a WSL distribution's data where this computer can open it.
+   */
   get canOpen(): boolean {
-    return this.info.terminal && !link.dataHost;
+    return canOpenTerminal(this.info, link.dataHost);
   }
 
   /** The shell a copied command is meant for; remote ones are POSIX. */

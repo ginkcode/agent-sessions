@@ -31,7 +31,8 @@ import {
   deleteButtonLabel,
 } from '../src/lib/manage.ts';
 import { MockBackendAPI, highlightedSnippet } from '../src/lib/mock/mockApi.ts';
-import { terminalOptions } from '../src/lib/terminal.ts';
+import { canOpenTerminal, terminalOptions } from '../src/lib/terminal.ts';
+import { hostLabel, shellCommand, wslDistro } from '../src/lib/hosts.ts';
 import {
   StaleReplyError,
   blockedReason,
@@ -75,6 +76,7 @@ import {
   RequestSequence,
 } from '../src/lib/catalog.ts';
 import {
+  createAPI,
   subscribeCatalogChanged,
   subscribeIndexProgress,
   subscribeConnectionState,
@@ -505,8 +507,8 @@ const DELETE_DIALOG_URL = new URL('../src/lib/components/common/DeleteConfirmDia
 let deleteDialogModule;
 
 // Store imports resolve per render to the fixture set for that render.
-function fixtureStore(name) {
-  return `const ${name} = new Proxy({}, { get: (_, key) => globalThis.__componentFixture.${name}[key] });`;
+function fixtureStore(name, fixture = '__componentFixture') {
+  return `const ${name} = new Proxy({}, { get: (_, key) => globalThis.${fixture}.${name}[key] });`;
 }
 
 // Compiles a real component for server rendering. Only the listed imports
@@ -518,7 +520,29 @@ async function loadServerComponent(url, replacements) {
     import('svelte/compiler'),
   ]);
   const filename = fileURLToPath(url);
-  let code = compile(readFileSync(filename, 'utf8'), { generate: 'server', filename }).js.code;
+  const code = compile(readFileSync(filename, 'utf8'), { generate: 'server', filename }).js.code;
+  return importCompiled(filename, code, replacements);
+}
+
+// Compiles a real .svelte.ts store module for the server the same way: types
+// are stripped, runes compiled, and only the listed imports replaced.
+async function loadServerModule(url, replacements) {
+  const [{ readFileSync }, { fileURLToPath }, { compileModule }, { default: ts }] = await Promise.all([
+    import('node:fs'),
+    import('node:url'),
+    import('svelte/compiler'),
+    import('typescript'),
+  ]);
+  const filename = fileURLToPath(url);
+  const js = ts.transpileModule(readFileSync(filename, 'utf8'), {
+    fileName: filename,
+    compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext, useDefineForClassFields: true },
+  }).outputText;
+  const code = compileModule(js, { generate: 'server', filename: filename.replace(/\.ts$/, '.js') }).js.code;
+  return importCompiled(filename, code, replacements);
+}
+
+async function importCompiled(filename, code, replacements) {
   replacements = [
     ["'svelte/internal/server'", JSON.stringify(import.meta.resolve('svelte/internal/server'))],
     ...replacements,
@@ -545,6 +569,7 @@ async function renderDeleteDialog(fixture) {
   deleteDialogModule ??= await loadServerComponent(DELETE_DIALOG_URL, [
     ["'../../manage'", JSON.stringify(new URL('../../manage.ts', DELETE_DIALOG_URL).href)],
     ["'../../format'", JSON.stringify(new URL('../../format.ts', DELETE_DIALOG_URL).href)],
+    ["'../../hosts'", JSON.stringify(new URL('../../hosts.ts', DELETE_DIALOG_URL).href)],
     ["import { manage } from '../../stores/manage.svelte';", fixtureStore('manage')],
     ["import { connectionStore } from '../../stores/connection.svelte';", fixtureStore('connectionStore')],
     ["import { link } from '../../stores/link.svelte';", fixtureStore('link')],
@@ -626,6 +651,15 @@ test('delete dialog keeps disabled remote policy and all-blocked actions neutral
     dataHost: 'linux-host', canTrash: false, allowPermanentDelete: true,
   }));
   assert.deepEqual(renderedButtons(remoteAllowed).at(-1), { text: 'Delete Permanently', disabled: false });
+
+  // A WSL distribution is named by its label, never the raw wsl: host.
+  const wsl = await renderDeleteDialog(deleteDialogFixture({
+    preview: deletePreview([previewItem('synthetic', 'claude-code')], 'Trash'),
+    dataHost: 'wsl:Ubuntu', canTrash: false, allowPermanentDelete: false,
+  }));
+  assert.match(wsl, /<span class="host-pill[^"]*">Ubuntu \(WSL\)<\/span>/);
+  assert.match(wsl, /Trash is not supported on Ubuntu \(WSL\)\./);
+  assert.doesNotMatch(wsl, /wsl:Ubuntu/);
 
   const allBlocked = await renderDeleteDialog(deleteDialogFixture({
     preview: deletePreview([previewItem('synthetic', 'claude-code', { blocked: RUNTIME_UNKNOWN })], 'Recycle Bin'),
@@ -1674,7 +1708,7 @@ test('copiedGuidance distinguishes a full document from a launch prompt', () => 
   assert.equal(doc.code, undefined);
 });
 
-test('resumeButtonTitle offers the terminal for local sessions only', () => {
+test('resumeButtonTitle offers the terminal for local sessions, never over SSH', () => {
   assert.equal(
     resumeButtonTitle(undefined, true),
     'Resume this session in a new terminal window. Use ▾ to copy the command instead',
@@ -1703,7 +1737,7 @@ test('openedGuidance and openFailed describe Open in terminal', () => {
   assert.equal(failed.tone, 'error');
 });
 
-test('MockBackendAPI opens terminals only when supported and local', async () => {
+test('MockBackendAPI opens terminals only when supported and not over SSH', async () => {
   const mock = new MockBackendAPI();
   const [meta] = await mock.listSessions('', {}, { field: 'updatedAt', dir: 'desc' });
   assert.deepEqual(await mock.launchInfo(), { terminal: false, shell: 'posix' });
@@ -1716,7 +1750,7 @@ test('MockBackendAPI opens terminals only when supported and local', async () =>
   assert.match(mock.openedTerminals[1], /codex/);
 
   await mock.connect('dev-box');
-  await assert.rejects(mock.openResumeInTerminal(meta.ref), /local sessions only/);
+  await assert.rejects(mock.openResumeInTerminal(meta.ref), /local and WSL sessions only/);
   assert.equal(mock.openedTerminals.length, 2);
 });
 
@@ -1865,11 +1899,12 @@ let handoffDialogModule;
 
 async function renderHandoffDialog(fixture) {
   const lib = (rel) => JSON.stringify(new URL(rel, HANDOFF_DIALOG_URL).href);
+  globalThis.__remoteCommandNote ??= (await loadRemoteCommandNote()).default;
   handoffDialogModule ??= await loadServerComponent(HANDOFF_DIALOG_URL, [
     ["'../../portable'", lib('../../portable.ts')],
     ["'../../format'", lib('../../format.ts')],
     ["import AgentIcon from './AgentIcon.svelte';", 'const AgentIcon = () => {};'],
-    ["import RemoteCommandNote from './RemoteCommandNote.svelte';", 'const RemoteCommandNote = () => {};'],
+    ["import RemoteCommandNote from './RemoteCommandNote.svelte';", 'const RemoteCommandNote = globalThis.__remoteCommandNote;'],
     ["import MarkdownDoc from './MarkdownDoc.svelte';", 'const MarkdownDoc = () => {};'],
     ["import { handoff } from '../../stores/handoff.svelte';", fixtureStore('handoff')],
     ["import { link } from '../../stores/link.svelte';", fixtureStore('link')],
@@ -1912,4 +1947,444 @@ test('copyFailed reports the error as an error toast', () => {
   assert.equal(t.title, "Couldn't copy resume command");
   assert.equal(t.body, 'not connected');
   assert.equal(t.tone, 'error');
+});
+
+// --- WSL distributions as hosts ---
+
+test('host helpers name WSL distributions and the shell that opens them', () => {
+  assert.equal(wslDistro('wsl:Ubuntu'), 'Ubuntu');
+  assert.equal(wslDistro('wsl:Ubuntu-22.04'), 'Ubuntu-22.04');
+  for (const host of [undefined, '', 'wsl:', 'plgl', 'wsl-box', 'my-wsl:Ubuntu']) {
+    assert.equal(wslDistro(host), undefined, `${host} is not a WSL distribution`);
+  }
+
+  assert.equal(hostLabel('wsl:Ubuntu'), 'Ubuntu (WSL)');
+  assert.equal(hostLabel('wsl:Ubuntu-22.04'), 'Ubuntu-22.04 (WSL)');
+  assert.equal(hostLabel('plgl'), 'plgl');
+  assert.equal(hostLabel('wsl-box'), 'wsl-box');
+
+  assert.equal(shellCommand('wsl:Ubuntu'), 'wsl -d Ubuntu');
+  assert.equal(shellCommand('wsl:Ubuntu-22.04'), 'wsl -d Ubuntu-22.04');
+  assert.equal(shellCommand('plgl'), 'ssh plgl');
+  assert.equal(shellCommand('wsl-box'), 'ssh wsl-box');
+});
+
+test('canOpenTerminal gates Open in terminal for local, WSL, SSH and older backends', () => {
+  const cases = [
+    // [name, launch info, data host, expected]
+    ['local with a terminal', { terminal: true, shell: 'posix' }, undefined, true],
+    ['local without a terminal', { terminal: false, shell: 'posix' }, undefined, false],
+    ['local ignores WSL support', { terminal: false, wsl: true, shell: 'powershell' }, undefined, false],
+    ['WSL with a terminal', { terminal: true, wsl: true, shell: 'powershell' }, 'wsl:Ubuntu', true],
+    ['WSL without a local terminal', { terminal: false, wsl: true, shell: 'powershell' }, 'wsl:Ubuntu', true],
+    ['WSL not installed', { terminal: true, wsl: false, shell: 'powershell' }, 'wsl:Ubuntu', false],
+    ['older backend without wsl', { terminal: true, shell: 'powershell' }, 'wsl:Ubuntu', false],
+    ['empty WSL distribution', { terminal: true, wsl: true, shell: 'powershell' }, 'wsl:', false],
+    ['SSH host', { terminal: true, wsl: true, shell: 'powershell' }, 'plgl', false],
+    ['SSH host named like WSL', { terminal: true, wsl: true, shell: 'powershell' }, 'wsl-box', false],
+    ['SSH from an older backend', { terminal: true, shell: 'posix' }, 'plgl', false],
+  ];
+  for (const [name, info, host, expected] of cases) {
+    assert.equal(canOpenTerminal(info, host), expected, name);
+  }
+});
+
+const LAUNCHER_STORE_URL = new URL('../src/lib/stores/launcher.svelte.ts', import.meta.url);
+let launcherStoreModule;
+
+// The real LauncherStore with plain api and link fixtures.
+async function loadLauncherStore() {
+  const lib = (rel) => JSON.stringify(new URL(rel, LAUNCHER_STORE_URL).href);
+  launcherStoreModule ??= await loadServerModule(LAUNCHER_STORE_URL, [
+    ["import { api } from '../api';", fixtureStore('api', '__storeFixture')],
+    ["'../manage'", lib('../manage.ts')],
+    ["import { link } from './link.svelte';", fixtureStore('link', '__storeFixture')],
+    ["'../terminal'", lib('../terminal.ts')],
+  ]);
+  return launcherStoreModule;
+}
+
+test('LauncherStore offers Open in terminal for local and WSL data only', async () => {
+  const { LauncherStore } = await loadLauncherStore();
+  const run = async (launchInfo, dataHost) => {
+    globalThis.__storeFixture = { api: { launchInfo }, link: { dataHost } };
+    try {
+      const store = new LauncherStore();
+      await store.init();
+      return { canOpen: store.canOpen, copyShell: store.copyShell };
+    } finally {
+      delete globalThis.__storeFixture;
+    }
+  };
+  const windows = async () => ({ terminal: true, wsl: true, shell: 'powershell' });
+  assert.deepEqual(await run(windows, undefined), { canOpen: true, copyShell: 'powershell' });
+  assert.deepEqual(await run(windows, 'wsl:Ubuntu'), { canOpen: true, copyShell: 'posix' });
+  assert.deepEqual(await run(windows, 'plgl'), { canOpen: false, copyShell: 'posix' });
+  // An older backend reports no wsl field, or lacks launchInfo entirely.
+  assert.equal((await run(async () => ({ terminal: true, shell: 'powershell' }), 'wsl:Ubuntu')).canOpen, false);
+  const missing = async () => { throw new Error('ListWSLDistros is not a function'); };
+  assert.deepEqual(await run(missing, undefined), { canOpen: false, copyShell: 'posix' });
+  assert.equal((await run(missing, 'wsl:Ubuntu')).canOpen, false);
+});
+
+const CONNECTION_STORE_URL = new URL('../src/lib/stores/connection.svelte.ts', import.meta.url);
+let connectionStoreModule;
+
+// The real ConnectionStore with fixture api and stores; nothing global.
+async function loadConnectionStore() {
+  const lib = (rel) => JSON.stringify(new URL(rel, CONNECTION_STORE_URL).href);
+  const store = (name, file) => [`import { ${name} } from './${file}.svelte';`, fixtureStore(name, '__storeFixture')];
+  connectionStoreModule ??= await loadServerModule(CONNECTION_STORE_URL, [
+    [
+      "import { api, subscribeConnectionState, subscribeAskpassPrompt } from '../api';",
+      fixtureStore('api', '__storeFixture') +
+        'const subscribeConnectionState = () => () => {}; const subscribeAskpassPrompt = () => () => {};',
+    ],
+    ["'../tree'", lib('../tree.ts')],
+    ["'../hosts'", lib('../hosts.ts')],
+    store('appState', 'appState'),
+    store('manage', 'manage'),
+    store('search', 'search'),
+    store('handoff', 'handoff'),
+    store('exporter', 'export'),
+    store('importer', 'importer'),
+    store('link', 'link'),
+  ]);
+  return connectionStoreModule;
+}
+
+function deferred() {
+  let resolve, reject;
+  const promise = new Promise((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
+
+async function withStoreFixture(api, fn) {
+  globalThis.__storeFixture = { api, link: {} };
+  try {
+    return await fn();
+  } finally {
+    delete globalThis.__storeFixture;
+  }
+}
+
+test('ConnectionStore lists WSL distributions and SSH hosts independently', async () => {
+  const { ConnectionStore } = await loadConnectionStore();
+  const distros = [{ name: 'Ubuntu', host: 'wsl:Ubuntu', default: true }, { name: 'Debian', host: 'wsl:Debian' }];
+
+  // SSH config fails: the WSL section still fills.
+  await withStoreFixture({
+    listHosts: async () => { throw new Error('read ~/.ssh/config: permission denied'); },
+    listWSLDistros: async () => distros,
+  }, async () => {
+    const store = new ConnectionStore();
+    await store.refreshHosts();
+    assert.equal(store.hostsError, 'read ~/.ssh/config: permission denied');
+    assert.deepEqual(store.hosts, []);
+    assert.deepEqual(store.wslDistros, distros);
+    assert.equal(store.loadingHosts, false);
+  });
+
+  // WSL listing fails: the SSH hosts list without an error.
+  await withStoreFixture({
+    listHosts: async () => [{ name: 'plgl' }],
+    listWSLDistros: async () => { throw new Error('wsl.exe failed'); },
+  }, async () => {
+    const store = new ConnectionStore();
+    store.wslDistros = distros;
+    await store.refreshHosts();
+    assert.equal(store.hostsError, null);
+    assert.deepEqual(store.hosts, [{ name: 'plgl' }]);
+    assert.deepEqual(store.wslDistros, [], 'a failed listing drops stale distributions');
+  });
+
+  // Neither waits for the other: each list lands as soon as it arrives.
+  const ssh = deferred();
+  const wsl = deferred();
+  await withStoreFixture({ listHosts: () => ssh.promise, listWSLDistros: () => wsl.promise }, async () => {
+    const store = new ConnectionStore();
+    const refreshing = store.refreshHosts();
+    assert.equal(store.loadingHosts, true);
+    wsl.resolve(distros);
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.deepEqual(store.wslDistros, distros, 'WSL lands while SSH is still loading');
+    assert.equal(store.loadingHosts, true);
+    ssh.resolve(null);
+    await refreshing;
+    assert.deepEqual(store.hosts, []);
+    assert.equal(store.loadingHosts, false);
+  });
+
+  // An older backend's api reports no distributions.
+  await withStoreFixture({ listHosts: async () => [{ name: 'plgl' }], listWSLDistros: async () => null }, async () => {
+    const store = new ConnectionStore();
+    await store.refreshHosts();
+    assert.deepEqual(store.wslDistros, []);
+    assert.deepEqual(store.hosts, [{ name: 'plgl' }]);
+  });
+});
+
+test('ConnectionStore shows a WSL host by its distribution label', async () => {
+  const { ConnectionStore } = await loadConnectionStore();
+  const store = new ConnectionStore();
+  assert.equal(store.currentHost, 'Local');
+  store.host = 'wsl:Ubuntu';
+  assert.equal(store.currentHost, 'Ubuntu (WSL)');
+  store.host = 'plgl';
+  assert.equal(store.currentHost, 'plgl');
+});
+
+const HOST_SELECTOR_URL = new URL('../src/lib/components/sidebar/HostSelector.svelte', import.meta.url);
+let hostSelectorModule;
+
+// Server-renders the real HostSelector with its menu open: the compiled
+// initial state is flipped here, in the test, not by a production prop.
+async function renderHostSelector(connectionStore) {
+  hostSelectorModule ??= await loadServerComponent(HOST_SELECTOR_URL, [
+    ["import { connectionStore } from '../../stores/connection.svelte';", fixtureStore('connectionStore')],
+    ["import HostEnvDialog from '../common/HostEnvDialog.svelte';", 'const HostEnvDialog = () => {};'],
+    ["'../../link'", JSON.stringify(new URL('../../link.ts', HOST_SELECTOR_URL).href)],
+    ['let menuOpen = false;', 'let menuOpen = true;'],
+  ]);
+  return renderWithFixture(hostSelectorModule, { connectionStore });
+}
+
+// A real ConnectionStore whose lists come from the mock backend.
+async function hostSelectorStore(mock, state = {}) {
+  const { ConnectionStore } = await loadConnectionStore();
+  const store = new ConnectionStore();
+  await withStoreFixture(mock, () => store.refreshHosts());
+  Object.assign(store, state);
+  return store;
+}
+
+function textOf(html) {
+  return unescapeHTML(html.replace(/<!--[\s\S]*?-->/g, '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ')).trim();
+}
+
+test('HostSelector lists WSL distributions above SSH hosts', async () => {
+  const html = await renderHostSelector(await hostSelectorStore(new MockBackendAPI()));
+  const text = textOf(html);
+  const wsl = text.indexOf('WSL 🐧 Ubuntu');
+  const ssh = text.indexOf('SSH Hosts');
+  assert.ok(text.indexOf('Local') < wsl && wsl >= 0 && wsl < ssh, text);
+  assert.match(text, /Local ✓ WSL 🐧 Ubuntu Default distribution ⚙ 🐧 Debian ⚙ SSH Hosts/);
+  assert.equal(text.split('Default distribution').length - 1, 1, 'only the default distribution is marked');
+  assert.ok(text.indexOf('dev-box') > ssh && text.indexOf('prod-server') > ssh);
+  assert.match(html, /aria-label="Configure environment overrides for Ubuntu"/);
+  assert.match(html, /aria-label="Configure environment overrides for Debian"/);
+  assert.equal(html.split('title="Configure environment overrides"').length - 1, 4, 'two WSL and two SSH env buttons');
+  assert.match(html, /placeholder="Connect to SSH alias…"/);
+  assert.doesNotMatch(html, /wsl:Ubuntu|wsl:Debian/, 'raw wsl: hosts stay out of the menu');
+  assert.match(html, /<span class="host-name[^"]*">Local<\/span>/);
+});
+
+test('HostSelector shows a connected distribution by label and checks its row', async () => {
+  const store = await hostSelectorStore(new MockBackendAPI(), { phase: 'connected', host: 'wsl:Debian' });
+  const html = await renderHostSelector(store);
+  assert.match(html, /<span class="host-name[^"]*">Debian \(WSL\)<\/span>/);
+  assert.match(html, /title="Connected to Debian \(WSL\)"/);
+  assert.match(textOf(html), /💻 Local WSL 🐧 Ubuntu Default distribution ⚙ 🐧 Debian ⚙ ✓ SSH Hosts/);
+  assert.equal(textOf(html).split('✓').length - 1, 1, 'only the connected distribution is checked');
+  assert.match(textOf(html), /Disconnect/);
+});
+
+test('HostSelector leaves out the WSL section when there are no distributions', async () => {
+  const mock = new MockBackendAPI();
+  mock.setMockWSLDistros([]);
+  const html = await renderHostSelector(await hostSelectorStore(mock));
+  const text = textOf(html);
+  assert.doesNotMatch(text, /\bWSL\b|Default distribution|Ubuntu|Debian/);
+  assert.match(text, /Local ✓ SSH Hosts ↻ 🌐 dev-box/);
+
+  // A failed SSH listing is shown in the SSH section; WSL still lists.
+  const failed = await hostSelectorStore({
+    listHosts: async () => { throw new Error('ssh config unreadable'); },
+    listWSLDistros: async () => [{ name: 'Ubuntu', host: 'wsl:Ubuntu', default: true }],
+  });
+  const failedText = textOf(await renderHostSelector(failed));
+  assert.match(failedText, /WSL 🐧 Ubuntu Default distribution ⚙ SSH Hosts ↻ ssh config unreadable Go/);
+  assert.doesNotMatch(failedText, /No SSH config hosts found/);
+});
+
+const REMOTE_COMMAND_NOTE_URL = new URL('../src/lib/components/common/RemoteCommandNote.svelte', import.meta.url);
+let remoteCommandNoteModule;
+
+async function loadRemoteCommandNote() {
+  remoteCommandNoteModule ??= await loadServerComponent(REMOTE_COMMAND_NOTE_URL, [
+    ["'../../hosts'", JSON.stringify(new URL('../../hosts.ts', REMOTE_COMMAND_NOTE_URL).href)],
+  ]);
+  return remoteCommandNoteModule;
+}
+
+test('RemoteCommandNote opens a WSL shell with wsl -d and an SSH host with ssh', async () => {
+  const note = await loadRemoteCommandNote();
+  const wsl = await renderWithFixture(note, {}, { host: 'wsl:Ubuntu' });
+  assert.match(wsl, /Run this on <strong>Ubuntu \(WSL\)<\/strong>/);
+  assert.match(wsl, /<code[^>]*>wsl -d Ubuntu<\/code>/);
+  assert.doesNotMatch(wsl, /ssh|wsl:Ubuntu/);
+
+  const ssh = await renderWithFixture(note, {}, { host: 'plgl' });
+  assert.match(ssh, /Run this on <strong>plgl<\/strong>/);
+  assert.match(ssh, /<code[^>]*>ssh plgl<\/code>/);
+  assert.doesNotMatch(ssh, /wsl/);
+});
+
+test('guidance names a WSL distribution and opens its shell with wsl -d', () => {
+  const launch = copiedGuidance('launch', { host: 'wsl:Ubuntu', agent: 'codex', shell: 'powershell' });
+  assert.match(launch.body, /^Open a shell on Ubuntu \(WSL\), then paste it there\. Codex starts/);
+  assert.equal(launch.code, 'wsl -d Ubuntu');
+  const resume = copiedGuidance('resume', { host: 'wsl:Ubuntu' });
+  assert.match(resume.body, /^Open a shell on Ubuntu \(WSL\), then paste it there\./);
+  assert.equal(resume.code, 'wsl -d Ubuntu');
+  const prompt = copiedGuidance('prompt', { host: 'wsl:Ubuntu', agent: 'claude-code' });
+  assert.equal(prompt.body, 'Start Claude Code in the project directory on Ubuntu (WSL) and paste it as your first message.');
+
+  assert.equal(
+    resumeButtonTitle('wsl:Ubuntu', true),
+    'Resume this session in a new terminal window. Use ▾ to copy the command instead',
+  );
+  assert.equal(
+    resumeButtonTitle('wsl:Ubuntu'),
+    'Copy shell command to resume this session. Run it on Ubuntu (WSL): open a shell with "wsl -d Ubuntu", then paste it.',
+  );
+  assert.equal(
+    resumeButtonTitle('plgl', true),
+    'Copy shell command to resume this session. Run it on plgl: open a shell with "ssh plgl", then paste it.',
+  );
+});
+
+test('connection banner and blocked reasons name a WSL distribution by label', async () => {
+  const failed = connectionBanner({ phase: 'disconnected', host: 'wsl:Ubuntu', error: 'wsl.exe: distribution not found' });
+  assert.equal(failed.host, 'Ubuntu (WSL)');
+  assert.equal(`${failed.before}${failed.host}${failed.after}`, 'Could not connect to Ubuntu (WSL).');
+  const lost = connectionBanner({ phase: 'reconnecting', host: 'wsl:Ubuntu', error: CONNECTION_LOST });
+  assert.equal(`${lost.before}${lost.host}${lost.after}`, 'Connection to Ubuntu (WSL) lost. Automatically reconnecting…');
+  assert.equal(connectionBanner({ phase: 'disconnected' }).host, 'the host');
+
+  const html = await renderReconnectBanner({ phase: 'disconnected', host: 'wsl:Ubuntu', error: 'wsl.exe: distribution not found' });
+  assert.match(html, /Could not connect to <strong>Ubuntu \(WSL\)<\/strong>\./);
+  assert.doesNotMatch(html, /wsl:Ubuntu/);
+
+  // Switching from Local to a distribution locks the Local data.
+  let r = nextLink({ dataHost: undefined, phase: 'local' }, 'connecting', 'wsl:Debian');
+  let link = { dataHost: r.dataHost, phase: 'connecting' };
+  assert.equal(
+    blockedReason(link, 'wsl:Debian'),
+    'Not connected to Debian (WSL). The sessions shown are Local; changes are disabled until Debian (WSL) connects or you switch back to Local.',
+  );
+  // A dropped distribution keeps its data stale.
+  r = nextLink({ ...link, phase: 'connecting' }, 'connected', 'wsl:Debian');
+  link = { dataHost: r.dataHost, phase: 'disconnected' };
+  assert.equal(link.dataHost, 'wsl:Debian');
+  assert.equal(blockedReason(link, 'wsl:Debian'), 'Not connected to Debian (WSL). Changes are disabled until it reconnects.');
+});
+
+test('SessionHeader offers Open in terminal for a WSL session where the computer can open it', async () => {
+  const wslInfo = { terminal: false, wsl: true, shell: 'powershell' };
+  const split = await renderSessionHeader({
+    link: { dataHost: 'wsl:Ubuntu' },
+    launcher: { canOpen: canOpenTerminal(wslInfo, 'wsl:Ubuntu') },
+  });
+  assert.match(split, /class="action-btn resume-btn resume-main[^"]*"[^>]*title="Resume this session in a new terminal window/);
+  assert.match(split, /aria-label="More ways to resume"/);
+
+  // An older backend without WSL support only copies, with WSL guidance.
+  const older = await renderSessionHeader({
+    link: { dataHost: 'wsl:Ubuntu' },
+    launcher: { canOpen: canOpenTerminal({ terminal: true, shell: 'powershell' }, 'wsl:Ubuntu') },
+  });
+  assert.doesNotMatch(older, /More ways to resume/);
+  assert.match(unescapeHTML(older), /title="Copy shell command to resume this session\. Run it on Ubuntu \(WSL\): open a shell with "wsl -d Ubuntu", then paste it\."/);
+});
+
+test('HandoffDialog offers Open in Terminal for a WSL session and notes wsl -d', async () => {
+  const wsl = await renderHandoffDialog({
+    link: { dataHost: 'wsl:Ubuntu' },
+    launcher: { canOpen: canOpenTerminal({ terminal: false, wsl: true, shell: 'powershell' }, 'wsl:Ubuntu') },
+  });
+  assert.match(wsl, /class="btn primary-btn[^"]*"[^>]*>\s*Open in Terminal/);
+  assert.match(wsl, /Run this on <strong>Ubuntu \(WSL\)<\/strong>/);
+  assert.match(wsl, /<code[^>]*>wsl -d Ubuntu<\/code>/);
+
+  const ssh = await renderHandoffDialog({
+    link: { dataHost: 'plgl' },
+    launcher: { canOpen: canOpenTerminal({ terminal: true, wsl: true, shell: 'powershell' }, 'plgl') },
+  });
+  assert.doesNotMatch(ssh, /Open in Terminal/);
+  assert.match(ssh, /<code[^>]*>ssh plgl<\/code>/);
+
+  const local = await renderHandoffDialog({ launcher: { canOpen: true } });
+  assert.doesNotMatch(local, /Run this on/);
+});
+
+test('MockBackendAPI lists WSL distributions and opens a connected one in a terminal', async () => {
+  const mock = new MockBackendAPI();
+  const distros = await mock.listWSLDistros();
+  assert.deepEqual(distros, [
+    { name: 'Ubuntu', host: 'wsl:Ubuntu', default: true },
+    { name: 'Debian', host: 'wsl:Debian' },
+  ]);
+  distros[0].name = 'changed';
+  assert.equal((await mock.listWSLDistros())[0].name, 'Ubuntu', 'callers get copies');
+  for (const d of await mock.listWSLDistros()) {
+    assert.equal(wslDistro(d.host), d.name);
+  }
+
+  const [meta] = await mock.listSessions('', {}, { field: 'updatedAt', dir: 'desc' });
+  mock.launch = { terminal: false, wsl: true, shell: 'powershell' };
+  await mock.connect('wsl:Ubuntu');
+  assert.deepEqual(
+    [(await mock.connectionState()).phase, (await mock.connectionState()).host],
+    ['connected', 'wsl:Ubuntu'],
+  );
+  // WSL opens without a local terminal app.
+  await mock.openResumeInTerminal(meta.ref);
+  await mock.openHandoffInTerminal({ ref: meta.ref, target: 'codex', budget: 80000, includeReasoning: false, redactSecrets: false });
+  assert.equal(mock.openedTerminals.length, 2);
+
+  // A dropped distribution refuses until it reconnects.
+  mock.setMockConnectionState({ phase: 'reconnecting' });
+  await assert.rejects(mock.openResumeInTerminal(meta.ref), /remote disconnected/);
+  mock.setMockConnectionState({ phase: 'connected' });
+  mock.launch = { terminal: true, wsl: false, shell: 'powershell' };
+  await assert.rejects(mock.openResumeInTerminal(meta.ref), /WSL is not installed/);
+  assert.equal(mock.openedTerminals.length, 2);
+
+  // SSH never opens, even where WSL and a terminal do.
+  mock.launch = { terminal: true, wsl: true, shell: 'powershell' };
+  await mock.connect('dev-box');
+  await assert.rejects(mock.openResumeInTerminal(meta.ref), /local and WSL sessions only/);
+  assert.equal(mock.openedTerminals.length, 2);
+
+  await mock.disconnect();
+  await mock.openResumeInTerminal(meta.ref);
+  assert.equal(mock.openedTerminals.length, 3);
+
+  mock.setMockWSLDistros([]);
+  assert.deepEqual(await mock.listWSLDistros(), []);
+});
+
+test('Wails listWSLDistros reports no distributions on an older backend', async () => {
+  const hadWindow = 'window' in globalThis;
+  const previous = globalThis.window;
+  const App = {};
+  globalThis.window = { go: { app: { App } } };
+  try {
+    const backend = createAPI();
+    assert.ok(!(backend instanceof MockBackendAPI));
+    assert.deepEqual(await backend.listWSLDistros(), [], 'binding missing');
+    App.ListWSLDistros = async () => null;
+    assert.deepEqual(await backend.listWSLDistros(), [], 'null list');
+    App.ListWSLDistros = async () => [{ name: 'Ubuntu', host: 'wsl:Ubuntu', default: true }];
+    assert.deepEqual(await backend.listWSLDistros(), [{ name: 'Ubuntu', host: 'wsl:Ubuntu', default: true }]);
+    App.ListWSLDistros = () => Promise.reject('wsl.exe failed');
+    await assert.rejects(backend.listWSLDistros(), (err) => err instanceof Error && err.message === 'wsl.exe failed');
+  } finally {
+    if (hadWindow) globalThis.window = previous;
+    else delete globalThis.window;
+  }
 });

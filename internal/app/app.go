@@ -48,6 +48,8 @@ type App struct {
 	// launch.OpenIn in tests.
 	terminalEnv    *launch.TerminalEnv
 	openInOverride func(launch.TerminalApp, provider.Command) error
+	// wslTerminalOverride replaces launch.OpenWSLTerminal in tests.
+	wslTerminalOverride func(distro, script string) error
 
 	events            *catalogBus
 	wailsEvents       engine.Emitter

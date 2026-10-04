@@ -70,7 +70,8 @@
   function handleManualConnect(e: Event) {
     e.preventDefault();
     const alias = manualHost.trim();
-    if (!alias) return;
+    // WSL distros are picked from their own section, never typed.
+    if (!alias || alias.startsWith('wsl:')) return;
     closeMenu();
     manualHost = '';
     void connectionStore.connect(alias);
@@ -131,6 +132,47 @@
         {/if}
       </button>
 
+      {#if connectionStore.wslDistros.length > 0}
+        <div class="menu-divider"></div>
+        <div class="menu-section-header">WSL</div>
+        <div class="hosts-list">
+          {#each connectionStore.wslDistros as distro}
+            <div
+              class="menu-item host-row"
+              class:selected={connectionStore.isRemote && connectionStore.host === distro.host}
+              role="menuitem"
+              tabindex="0"
+              onclick={() => handleSelectHost(distro.host)}
+              onkeydown={(e) => {
+                if (e.key === 'Enter') handleSelectHost(distro.host);
+              }}
+            >
+              <span class="item-icon">🐧</span>
+              <div class="host-details">
+                <span class="item-label">{distro.name}</span>
+                {#if distro.default}
+                  <span class="item-sub">Default distribution</span>
+                {/if}
+              </div>
+              <div class="host-row-actions">
+                <button
+                  type="button"
+                  class="env-btn"
+                  title="Configure environment overrides"
+                  aria-label="Configure environment overrides for {distro.name}"
+                  onclick={(e) => handleOpenEnv(e, distro.host)}
+                >
+                  ⚙
+                </button>
+                {#if connectionStore.isRemote && connectionStore.host === distro.host}
+                  <span class="item-check">✓</span>
+                {/if}
+              </div>
+            </div>
+          {/each}
+        </div>
+      {/if}
+
       <div class="menu-divider"></div>
 
       <div class="menu-section-header with-action">
@@ -147,6 +189,8 @@
 
       {#if connectionStore.loadingHosts}
         <div class="menu-note">Loading hosts…</div>
+      {:else if connectionStore.hostsError}
+        <div class="menu-note">{connectionStore.hostsError}</div>
       {:else if connectionStore.hosts.length === 0}
         <div class="menu-note">No SSH config hosts found</div>
       {:else if visibleHosts.length === 0}
@@ -197,13 +241,13 @@
         <input
           type="text"
           class="manual-input"
-          placeholder="Connect to alias…"
+          placeholder="Connect to SSH alias…"
           bind:value={manualHost}
         />
         <button
           type="submit"
           class="manual-btn"
-          disabled={!manualHost.trim()}
+          disabled={!manualHost.trim() || manualHost.trim().startsWith('wsl:')}
         >
           Go
         </button>

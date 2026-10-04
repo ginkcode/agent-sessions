@@ -1,5 +1,6 @@
 import type { AgentID, ConnectionPhase, LaunchInfo } from './types';
 import { ALL_AGENTS } from './portable';
+import { hostLabel, shellCommand } from './hosts';
 
 export interface ToastMessage {
   title: string;
@@ -28,8 +29,8 @@ export function copiedGuidance(
   const { host } = opts;
   const agent = agentLabel(opts.agent);
   const local = opts.shell === 'powershell' ? 'Paste it into PowerShell.' : 'Paste it into a terminal.';
-  const where = host ? `Open a shell on ${host}, then paste it there.` : local;
-  const code = host ? `ssh ${host}` : undefined;
+  const where = host ? `Open a shell on ${hostLabel(host)}, then paste it there.` : local;
+  const code = host ? shellCommand(host) : undefined;
 
   switch (kind) {
     case 'resume':
@@ -47,7 +48,7 @@ export function copiedGuidance(
     case 'prompt':
       return {
         title: 'Prompt copied',
-        body: `Start ${agent} in the project directory${host ? ` on ${host}` : ''} and paste it as your first message.`,
+        body: `Start ${agent} in the project directory${host ? ` on ${hostLabel(host)}` : ''} and paste it as your first message.`,
       };
     case 'doc':
       return {
@@ -136,7 +137,7 @@ export function connectionBanner(input: ConnectionBannerInput): ConnectionBanner
   const { phase } = input;
   if (phase !== 'reconnecting' && phase !== 'disconnected') return null;
   const retrying = phase === 'reconnecting';
-  const host = input.host || 'the host';
+  const host = input.host ? hostLabel(input.host) : 'the host';
   const error = connectionErrorDetail(input.error);
   const lostNow = error === CONNECTION_LOST;
   const detail = lostNow ? undefined : error;

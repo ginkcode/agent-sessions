@@ -183,7 +183,7 @@ func verifyRemoteVersion(ctx context.Context, alias string, opts SSHOptions, bin
 // is the ssh process stdin (used to stream the gzip archive).
 func runRemote(ctx context.Context, alias string, opts SSHOptions, stdout io.Writer, stdin io.Reader, script string) error {
 	opts.NoTTY = true
-	cmd, err := BuildSSHCmd(ctx, alias, []string{LoginShell, "-lc", script}, opts)
+	cmd, err := BuildHostCmd(ctx, alias, []string{LoginShell, "-lc", script}, opts)
 	if err != nil {
 		return err
 	}

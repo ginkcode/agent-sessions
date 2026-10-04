@@ -29,6 +29,7 @@
   import { api } from './lib/api';
   import { formatVersion } from './lib/format';
   import { themeButtonTitle } from './lib/theme';
+  import { hostLabel } from './lib/hosts';
 
   let isWails = $state(false);
   let appVersion = $state('');
@@ -271,9 +272,9 @@
   {#if stale}
     <div class="stale-overlay" role="status">
       {#if link.locked && !link.stale}
-        Connecting to <strong>{link.host}</strong>… Changes are disabled until the connection is established or you switch back to Local.
+        Connecting to <strong>{link.host && hostLabel(link.host)}</strong>… Changes are disabled until the connection is established or you switch back to Local.
       {:else}
-        Showing data last loaded from <strong>{link.dataHost}</strong>. Changes are disabled until it reconnects.
+        Showing data last loaded from <strong>{link.dataHost && hostLabel(link.dataHost)}</strong>. Changes are disabled until it reconnects.
       {/if}
     </div>
   {/if}

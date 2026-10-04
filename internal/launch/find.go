@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"runtime"
 	"slices"
@@ -43,6 +44,7 @@ func Find(name string) (Executable, error) {
 		lookPath:   exec.LookPath,
 		home:       home,
 		systemDirs: posixSystemDirs,
+		mountInfo:  func() ([]byte, error) { return os.ReadFile("/proc/self/mountinfo") },
 	}.find(name)
 }
 
@@ -53,10 +55,18 @@ type finder struct {
 	// home and systemDirs are searched outside Windows.
 	home       string
 	systemDirs []string
+	// mountInfo reads /proc/self/mountinfo inside WSL. Nil, like a failed
+	// read, leaves only the default /mnt/<letter> drive layout to go by.
+	mountInfo func() ([]byte, error)
 }
 
 func (f finder) find(name string) (Executable, error) {
-	if path, err := f.lookPath(name); err == nil && !f.desktopAlias(name, path) {
+	onWindows := f.wslWindowsDrive()
+	path, err := f.lookPath(name)
+	var windowsCopy string
+	if err == nil && onWindows(path) {
+		windowsCopy = path
+	} else if err == nil && !f.desktopAlias(name, path) {
 		if abs, err := filepath.Abs(path); err == nil {
 			path = abs
 		}
@@ -76,11 +86,126 @@ func (f finder) find(name string) (Executable, error) {
 		for _, dir := range f.posixDirs(name) {
 			p := filepath.Join(dir, name)
 			if fi, err := os.Stat(p); err == nil && fi.Mode().IsRegular() && fi.Mode().Perm()&0o111 != 0 {
+				if onWindows(p) {
+					if windowsCopy == "" {
+						windowsCopy = p
+					}
+					continue
+				}
 				return Executable{Path: p}, nil
 			}
 		}
 	}
+	if windowsCopy != "" {
+		return Executable{}, fmt.Errorf("%w: %s is a Windows program; install %s inside the WSL distribution", ErrAgentNotFound, windowsCopy, name)
+	}
 	return Executable{}, fmt.Errorf("%w: %s", ErrAgentNotFound, f.installHint(name))
+}
+
+// wslWindowsDrive returns the test for a path on a mounted Windows drive,
+// which reports false everywhere but inside WSL. WSL appends the Windows
+// PATH, so a distro whose login PATH lacks the agent would otherwise find the
+// Windows copy and run it on the distro's files; the install directories are
+// searched instead, and skip such copies too.
+//
+// A path is judged by where its symlinks lead, on the mount that holds it:
+// drvfs, which WSL 2 serves over 9p, is a Windows drive wherever wsl.conf's
+// automount root puts it, and any other mount, even one at /mnt/d, is Linux.
+// Without the mount table, a path below /mnt/<letter>/ counts as a drive.
+func (f finder) wslWindowsDrive() func(string) bool {
+	if f.goos != "linux" || f.getenv("WSL_DISTRO_NAME") == "" {
+		return func(string) bool { return false }
+	}
+	var mounts []mount
+	if f.mountInfo != nil {
+		if data, err := f.mountInfo(); err == nil {
+			mounts = parseMountInfo(data)
+		}
+	}
+	return func(file string) bool {
+		if !path.IsAbs(file) {
+			if abs, err := filepath.Abs(file); err == nil {
+				file = abs
+			}
+		}
+		if resolved, err := filepath.EvalSymlinks(file); err == nil {
+			file = resolved
+		}
+		file = path.Clean(filepath.ToSlash(file))
+		if len(mounts) == 0 {
+			rest, ok := strings.CutPrefix(file, "/mnt/")
+			return ok && len(rest) >= 2 && rest[1] == '/'
+		}
+		return onWindowsMount(mounts, file)
+	}
+}
+
+// mount is one line of /proc/self/mountinfo.
+type mount struct {
+	point   string
+	windows bool
+}
+
+// parseMountInfo reads the mount points and whether each is a Windows drive:
+// drvfs under WSL 1, 9p with aname=drvfs under WSL 2. Malformed lines are
+// skipped.
+func parseMountInfo(data []byte) []mount {
+	var out []mount
+	for _, line := range strings.Split(string(data), "\n") {
+		fields := strings.Split(line, " ")
+		// ID parent dev root point options [optional...] - fstype source super
+		sep := slices.Index(fields, "-")
+		if sep < 6 || len(fields) < sep+3 {
+			continue
+		}
+		fstype := fields[sep+1]
+		windows := fstype == "drvfs"
+		if fstype == "9p" && len(fields) > sep+3 {
+			for _, opt := range strings.FieldsFunc(fields[sep+3], func(r rune) bool { return r == ',' || r == ';' }) {
+				if opt == "aname=drvfs" {
+					windows = true
+				}
+			}
+		}
+		out = append(out, mount{point: unescapeMount(fields[4]), windows: windows})
+	}
+	return out
+}
+
+// unescapeMount decodes the \ooo escapes mountinfo writes for space, tab,
+// newline and backslash in a mount point.
+func unescapeMount(s string) string {
+	if !strings.Contains(s, `\`) {
+		return s
+	}
+	var b strings.Builder
+	for i := 0; i < len(s); i++ {
+		if s[i] == '\\' && i+3 < len(s) && isOctal(s[i+1]) && isOctal(s[i+2]) && isOctal(s[i+3]) {
+			b.WriteByte((s[i+1]-'0')<<6 | (s[i+2]-'0')<<3 | (s[i+3] - '0'))
+			i += 3
+			continue
+		}
+		b.WriteByte(s[i])
+	}
+	return b.String()
+}
+
+func isOctal(c byte) bool { return c >= '0' && c <= '7' }
+
+// onWindowsMount reports whether the innermost mount holding path is a
+// Windows drive. Of mounts on the same point, the last listed is on top.
+func onWindowsMount(mounts []mount, file string) bool {
+	best, windows := -1, false
+	for _, m := range mounts {
+		p := path.Clean(m.point)
+		if p != "/" && file != p && !strings.HasPrefix(file, p+"/") {
+			continue
+		}
+		if len(p) >= best {
+			best, windows = len(p), m.windows
+		}
+	}
+	return windows
 }
 
 // bundleArgs also recognizes a bundled CLI put on PATH. Reuse the lookup

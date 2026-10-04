@@ -30,9 +30,11 @@ import type {
   ConnectionState,
   HostCapabilities,
   HostEntry,
+  WSLEntry,
 } from '../types.js';
 import { mockSessions, mockMessages, mockBlobs, mockDiagnostics } from './fixtures.js';
 import { refKey } from '../manage.js';
+import { wslDistro } from '../hosts.js';
 
 function searchNeedle(query: string): string {
   const words = query
@@ -102,6 +104,11 @@ export class MockBackendAPI {
   private hosts: HostEntry[] = [
     { name: 'dev-box', hostName: '192.168.1.50', user: 'dev', port: 22 },
     { name: 'prod-server', hostName: 'prod.example.com', user: 'admin', port: 22 },
+  ];
+  /** WSL distributions "registered" on this computer. */
+  private wslDistros: WSLEntry[] = [
+    { name: 'Ubuntu', host: 'wsl:Ubuntu', default: true },
+    { name: 'Debian', host: 'wsl:Debian' },
   ];
   private connState: ConnectionState = {
     phase: 'local',
@@ -413,13 +420,21 @@ export class MockBackendAPI {
     return this.terminalSettings();
   }
 
-  // Mirrors the backend: terminals open for local sessions only.
+  // Mirrors the backend: local sessions use the chosen terminal; WSL uses
+  // the distro's console, while SSH sessions only offer Copy command.
   private async openTerminal(build: () => Promise<string>): Promise<void> {
+    const distro = wslDistro(this.connState.host);
+    if (this.connState.phase !== 'local' && distro) {
+      if (!this.launch.wsl) throw new Error('WSL is not installed');
+      if (this.connState.phase !== 'connected') throw new Error('remote disconnected');
+      this.openedTerminals.push(await build());
+      return;
+    }
     if (!this.launch.terminal) {
       throw new Error('opening a terminal is not supported on this platform yet; copy the command instead');
     }
     if (this.connState.phase !== 'local') {
-      throw new Error('open in terminal works for local sessions only; use Copy command and paste it into a shell on the host');
+      throw new Error('open in terminal works for local and WSL sessions only; use Copy command and paste it into a shell on the host');
     }
     const terminal = await this.terminalSettings();
     if (terminal.missing) {
@@ -757,6 +772,14 @@ export class MockBackendAPI {
 
   async listHosts(): Promise<HostEntry[]> {
     return [...this.hosts];
+  }
+
+  async listWSLDistros(): Promise<WSLEntry[]> {
+    return this.wslDistros.map((d) => ({ ...d }));
+  }
+
+  setMockWSLDistros(distros: WSLEntry[]): void {
+    this.wslDistros = distros.map((d) => ({ ...d }));
   }
 
   setMockHosts(hosts: HostEntry[]): void {

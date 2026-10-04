@@ -1,4 +1,11 @@
-import type { TerminalSettings } from './types';
+import type { LaunchInfo, TerminalSettings } from './types';
+import { wslDistro } from './hosts';
+
+/** Whether Open in terminal works for data from host (undefined is Local). */
+export function canOpenTerminal(info: LaunchInfo, host: string | undefined): boolean {
+  if (!host) return info.terminal;
+  return Boolean(info.wsl && wslDistro(host));
+}
 
 /**
  * The terminal choices Settings lists: Automatic, naming what it opens, then

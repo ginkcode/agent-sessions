@@ -43,8 +43,13 @@ type Session struct {
 // completes the JSON-RPC initialize handshake. clientEnv is filtered to the
 // server's allowlist by the server itself.
 func StartSession(ctx context.Context, alias string, opts SSHOptions, clientEnv map[string]string, emitter engine.Emitter) (*Session, error) {
-	if err := ValidateHostAlias(alias); err != nil {
+	if err := ValidateHost(alias); err != nil {
 		return nil, err
+	}
+	if distro, ok := ParseWSLTarget(alias); ok {
+		if err := CheckWSLDistro(distro); err != nil {
+			return nil, err
+		}
 	}
 	probe, err := ProbeHost(ctx, alias, opts, version.Current())
 	if err != nil {
@@ -76,7 +81,8 @@ func StartSession(ctx context.Context, alias string, opts SSHOptions, clientEnv 
 var ErrServerMissing = errors.New("remote server build is missing")
 
 // exitServerMissing is the start script's exit status for ErrServerMissing.
-const exitServerMissing = 87
+// Not 87: wsl.exe reports that status as -1.
+const exitServerMissing = 86
 
 // chooseServer returns the installed build to run, or "" and the local
 // bundle to deploy. The build must be this bundle's own, matched by
@@ -103,7 +109,7 @@ func chooseServer(probe *HostProbe) (bin, bundle string) {
 // DialSession starts an already-installed server binary. Tests use it to skip
 // probe and deploy.
 func DialSession(ctx context.Context, alias string, opts SSHOptions, bin string, clientEnv map[string]string, emitter engine.Emitter) (*Session, error) {
-	if err := ValidateHostAlias(alias); err != nil {
+	if err := ValidateHost(alias); err != nil {
 		return nil, err
 	}
 	if bin == "" {
@@ -144,7 +150,7 @@ func startServe(ctx context.Context, alias string, opts SSHOptions, bin string, 
 	opts.NoTTY = true
 
 	runCtx, cancel := context.WithCancel(ctx)
-	cmd, err := BuildSSHCmd(runCtx, alias, []string{LoginShell, "-lc", script}, opts)
+	cmd, err := BuildHostCmd(runCtx, alias, []string{LoginShell, "-lc", script}, opts)
 	if err != nil {
 		cancel()
 		return nil, err

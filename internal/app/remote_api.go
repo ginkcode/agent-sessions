@@ -1,6 +1,8 @@
 package app
 
 import (
+	"errors"
+
 	"github.com/ginkcode/agent-sessions/internal/remote"
 )
 
@@ -19,6 +21,23 @@ func (a *App) ListHosts() ([]HostEntry, error) {
 			User:     h.User,
 			Port:     h.Port,
 		})
+	}
+	return out, nil
+}
+
+// ListWSLDistros returns this computer's WSL distributions, or none where
+// WSL is not installed.
+func (a *App) ListWSLDistros() ([]WSLEntry, error) {
+	distros, err := remote.ListWSLDistros()
+	if errors.Is(err, remote.ErrWSLNotInstalled) {
+		return []WSLEntry{}, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	out := make([]WSLEntry, 0, len(distros))
+	for _, d := range distros {
+		out = append(out, WSLEntry{Name: d.Name, Host: remote.WSLTarget(d.Name), Default: d.Default})
 	}
 	return out, nil
 }

@@ -5,6 +5,7 @@
     saveHostEnv,
   } from '../../stores/connection.svelte';
   import { api } from '../../api';
+  import { hostLabel } from '../../hosts';
 
   interface Props {
     open: boolean;
@@ -76,7 +77,7 @@
       aria-labelledby="host-env-title"
     >
       <header class="dialog-header">
-        <h2 id="host-env-title">Environment Overrides: {host}</h2>
+        <h2 id="host-env-title">Environment Overrides: {hostLabel(host)}</h2>
         <button
           type="button"
           class="dialog-close"
@@ -90,7 +91,7 @@
 
       <div class="dialog-body">
         <p class="body-intro">
-          Set environment variable overrides passed to <code>agent-sessions</code> on <strong>{host}</strong>.
+          Set environment variable overrides passed to <code>agent-sessions</code> on <strong>{hostLabel(host)}</strong>.
           These are applied during session startup.
         </p>
 

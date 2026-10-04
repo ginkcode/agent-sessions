@@ -431,18 +431,37 @@ func loginShell(goos string, getenv func(string) string) string {
 // escapes, so the line holds no character any of those shells treats
 // specially inside single quotes: no quote, backslash pair, %, ! or newline.
 func bootstrapLine(script string) string {
+	return `exec /bin/sh -c '` + octalDecoder + `' sh '` + OctalEscape(script) + `'`
+}
+
+// octalDecoder is the /bin/sh script that runs its first argument, a script
+// in OctalEscape form.
+const octalDecoder = `eval "$(printf "$1")"`
+
+// OctalEscape writes s as a printf format that prints s: letters, digits and
+// " /._,:=+@-" stay, every other byte becomes a \ooo escape.
+func OctalEscape(s string) string {
 	var b strings.Builder
-	b.WriteString(`exec /bin/sh -c 'eval "$(printf "$1")"' sh '`)
-	for i := 0; i < len(script); i++ {
-		c := script[i]
+	for i := 0; i < len(s); i++ {
+		c := s[i]
 		if c < 0x80 && (c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || strings.IndexByte(" /._,:=+@-", c) >= 0) {
 			b.WriteByte(c)
 		} else {
 			fmt.Fprintf(&b, `\%03o`, c)
 		}
 	}
-	b.WriteByte('\'')
 	return b.String()
+}
+
+// PosixTerminalScript returns the script a terminal runs for cmd, with the
+// agent and the user's shell found on this machine. A server builds it for
+// a desktop that opens the window elsewhere, as for a WSL distro.
+func PosixTerminalScript(cmd provider.Command) (string, error) {
+	argv, err := posixArgv(cmd, Find)
+	if err != nil {
+		return "", err
+	}
+	return posixScript(argv, cmd.Dir, loginShell(runtime.GOOS, os.Getenv)), nil
 }
 
 // startDetached starts a terminal in its own session, so it outlives the

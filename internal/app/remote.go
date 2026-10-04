@@ -61,6 +61,14 @@ type HostEntry struct {
 	Port     int    `json:"port,omitempty"`
 }
 
+// WSLEntry is a WSL distribution the host picker offers.
+type WSLEntry struct {
+	Name string `json:"name"`
+	// Host is what Connect takes for it: "wsl:<name>".
+	Host    string `json:"host"`
+	Default bool   `json:"default,omitempty"`
+}
+
 // sessionDialer starts a remote serve session. Tests replace it.
 type sessionDialer func(ctx context.Context, alias string, opts remote.SSHOptions, clientEnv map[string]string, emitter engine.Emitter) (*remote.Session, error)
 
@@ -267,7 +275,7 @@ func (c *connection) setPhase(gen uint64, phase, host, errMsg string, caps rpc.C
 // host, calls fail as disconnected meanwhile. A newer Connect or Disconnect
 // cancels this one.
 func (c *connection) Connect(ctx context.Context, alias string) error {
-	if err := remote.ValidateHostAlias(alias); err != nil {
+	if err := remote.ValidateHost(alias); err != nil {
 		return err
 	}
 	c.mu.Lock()
@@ -406,6 +414,8 @@ func permanentDialError(err error) bool {
 		errors.Is(err, remote.ErrUnsupportedOS) ||
 		errors.Is(err, remote.ErrUnsupportedArch) ||
 		errors.Is(err, remote.ErrInvalidHostAlias) ||
+		errors.Is(err, remote.ErrWSLNotInstalled) ||
+		errors.Is(err, remote.ErrWSLDistroNotFound) ||
 		errors.Is(err, rpc.ErrProtocolMismatch)
 }
 

@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { hostLabel, shellCommand } from '../../hosts';
+
   interface Props {
     host: string;
   }
@@ -8,10 +10,11 @@
 
 <!-- Commands for a remote session are built for that host. ssh with a
      command runs a non-interactive shell, which often lacks the PATH that
-     finds npm or nvm installed agents, so the user runs them interactively. -->
+     finds npm or nvm installed agents, so the user runs them interactively.
+     A WSL distribution's shell opens with wsl -d instead. -->
 <p class="remote-note">
-  Run this on <strong>{host}</strong>: open an interactive shell there with
-  <code>ssh {host}</code>, then paste the command. Your login shell loads the PATH that finds the
+  Run this on <strong>{hostLabel(host)}</strong>: open an interactive shell there with
+  <code>{shellCommand(host)}</code>, then paste the command. Your login shell loads the PATH that finds the
   agent, even when it was installed with npm or nvm.
 </p>
 

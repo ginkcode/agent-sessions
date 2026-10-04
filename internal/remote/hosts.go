@@ -149,8 +149,9 @@ func parseConfigRecursive(path, sshDir, home string, visited map[string]bool) ([
 		case "host":
 			currentAliases = nil
 			for _, pat := range args {
-				// Skip wildcards and negations
-				if strings.ContainsAny(pat, "*?") || strings.HasPrefix(pat, "!") {
+				// Skip wildcards and negations, and the wsl: targets the
+				// app reserves for WSL distributions.
+				if strings.ContainsAny(pat, "*?") || strings.HasPrefix(pat, "!") || strings.HasPrefix(pat, WSLPrefix) {
 					continue
 				}
 				if err := ValidateHostAlias(pat); err != nil {

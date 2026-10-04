@@ -500,3 +500,27 @@ func (c *Client) RenderBundleHandoff(ctx context.Context, req engine.BundleHando
 	err := c.call(ctx, "renderBundleHandoff", RenderBundleHandoffParams{Req: req}, &out)
 	return out, err
 }
+
+// ResumeTerminalScript returns the script a terminal runs to resume ref on
+// the server's machine, with the agent found there.
+func (c *Client) ResumeTerminalScript(ctx context.Context, ref model.SessionRef) (string, error) {
+	var out string
+	err := c.call(ctx, "resumeTerminalScript", CopyResumeCommandParams{Ref: ref}, &out)
+	return out, err
+}
+
+// HandoffTerminalScript writes the handoff files on the server's machine and
+// returns the script a terminal runs to start the target agent there.
+func (c *Client) HandoffTerminalScript(ctx context.Context, req engine.HandoffRequest) (string, error) {
+	var out string
+	err := c.call(ctx, "handoffTerminalScript", HandoffCommandParams{Req: req}, &out)
+	return out, err
+}
+
+// BundleHandoffTerminalScript does what HandoffTerminalScript does for an
+// opened bundle.
+func (c *Client) BundleHandoffTerminalScript(ctx context.Context, req engine.BundleHandoffRequest) (string, error) {
+	var out string
+	err := c.call(ctx, "bundleHandoffTerminalScript", BundleHandoffCommandParams{Req: req}, &out)
+	return out, err
+}

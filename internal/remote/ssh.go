@@ -156,18 +156,32 @@ func buildSSHArgs(alias string, remoteCmd []string, opts SSHOptions, windows boo
 	args = append(args, "--", alias)
 
 	if len(remoteCmd) > 0 {
-		if remoteCmd[0] == LoginShell {
-			line := `"$SHELL"`
-			if rest := remoteCmd[1:]; len(rest) > 0 {
-				line += " " + QuoteArgs(rest)
-			}
-			args = append(args, line)
-		} else {
-			args = append(args, QuoteArgs(remoteCmd))
-		}
+		args = append(args, remoteLine(remoteCmd, `"$SHELL"`))
 	}
 
 	return args, nil
+}
+
+// remoteLine renders remoteCmd as one POSIX shell line, with shell in place
+// of a leading LoginShell.
+func remoteLine(remoteCmd []string, shell string) string {
+	if len(remoteCmd) > 0 && remoteCmd[0] == LoginShell {
+		line := shell
+		if rest := remoteCmd[1:]; len(rest) > 0 {
+			line += " " + QuoteArgs(rest)
+		}
+		return line
+	}
+	return QuoteArgs(remoteCmd)
+}
+
+// BuildHostCmd runs remoteCmd on host: through wsl.exe for a WSL
+// distribution, else through ssh.
+func BuildHostCmd(ctx context.Context, host string, remoteCmd []string, opts SSHOptions) (*exec.Cmd, error) {
+	if distro, ok := ParseWSLTarget(host); ok {
+		return buildWSLCmd(ctx, distro, remoteCmd)
+	}
+	return BuildSSHCmd(ctx, host, remoteCmd, opts)
 }
 
 // BuildSSHCmd constructs an exec.Cmd configured with SSH options and environment.
@@ -245,6 +259,9 @@ func sshEnvironment(opts SSHOptions, windows bool) []string {
 func StopControlMaster(ctx context.Context, sshBin string, alias string, opts SSHOptions) error {
 	if err := ValidateHostAlias(alias); err != nil {
 		return err
+	}
+	if _, wsl := ParseWSLTarget(alias); wsl {
+		return nil
 	}
 	if runtime.GOOS == "windows" || opts.ControlMaster == "no" {
 		return nil

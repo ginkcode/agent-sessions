@@ -294,6 +294,8 @@ export interface LaunchInfo {
   chooseTerminal?: boolean;
   /** Syntax of locally copied commands; remote commands are always POSIX. */
   shell: 'powershell' | 'posix';
+  /** Open in terminal also works for a WSL distribution's sessions; absent on older backends. */
+  wsl?: boolean;
 }
 
 /** A terminal app installed on this computer. */
@@ -436,6 +438,13 @@ export interface HostEntry {
   hostName?: string;
   user?: string;
   port?: number;
+}
+
+/** A WSL distribution on this Windows computer; host is "wsl:<name>". */
+export interface WSLEntry {
+  name: string;
+  host: string;
+  default?: boolean;
 }
 
 export interface AskpassPrompt {

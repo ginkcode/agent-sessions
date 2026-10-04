@@ -9,7 +9,8 @@ import (
 
 // The launch methods return what the copy-command methods format, as argv
 // plus directory, so the desktop app can start the agent in a terminal. They
-// are local only: not part of Backend or the remote protocol.
+// are not part of Backend: a remote server renders their command into a
+// terminal script instead (rpc's *TerminalScript methods).
 
 // ResumeLaunch returns the provider resume command for a session.
 func (e *Engine) ResumeLaunch(_ context.Context, ref model.SessionRef) (provider.Command, error) {

@@ -220,11 +220,12 @@ flows/UI (M7-15…17), packaging (M7-18), and QA (M7-19…20).
 
 ---
 
-## M8 — Windows support (≈ 56 h)
+## M8 — Windows support (≈ 62 h)
 
 Design: [docs/plan/M8.md](docs/plan/M8.md). Local-first (M8-01…07), then
-key/agent-only SSH (M8-09, requested 2026-10-04). Password/passphrase dialogs
-remain gated on the M8-08 named-pipe credential channel.
+key/agent-only SSH (M8-09, requested 2026-10-04) and WSL distributions as
+remotes (M8-13, approved 2026-10-04). Password/passphrase dialogs remain
+gated on the M8-08 named-pipe credential channel.
 
 | ID | St | Task | Est | Deps | Done when |
 |---|---|---|---|---|---|
@@ -238,8 +239,9 @@ remain gated on the M8-08 named-pipe credential channel.
 | M8-08 | ⬜ | Askpass over a per-user named pipe with DACL (replaces the skipped Unix peer-UID/private-dir checks); re-enable no-listening-socket assertions | 8 | M8-07 | Password channel is scoped to the current user; security review passes. |
 | M8-09 | 🟡 | Native Windows SSH without ControlMaster: persistent stdio RPC session; separate setup/transfers; keys/agent gated by noninteractive probe; client discovery, prerequisite guidance and hidden console windows | 5 | M8-01 | Windows client connects to Linux over persistent RPC; Refresh/browse/delete/export work without per-action reconnects; setup/transfers use noninteractive auth; reconnect/disconnect work without master commands. **Done (2026-10-04):** native client discovery, explicit no-mux/batch options, hidden spawns, no Windows askpass listener, bounded probe/stderr and visible error details; read-only native `lit` check succeeds. **Open:** GUI connect/deploy/reconnect/transfer QA. M8-08 is required only for future credential dialogs. |
 | M8-10 | ⬜ | QA: real-machine pass over scan, search, export/import, handoff, Recycle Bin delete, PowerShell paste, install + first launch | 6 | M8-01…07 | Checklist in `docs/plan/M8.md` signed off. |
-| M8-11 | 🟡 | Open in terminal on Windows for local Resume and Continue in (handoff and bundle import): find the agent CLI on PATH or where standalone installs, desktop apps (Claude, Codex, OpenCode) and VS Code/Cursor extensions keep it; open a PowerShell console in the session directory | 5 | M8-06 | One click starts the agent in the right directory for a desktop-only install; remote sessions keep Copy. **Done (2026-10-04):** `internal/launch` (search, quoting, argument checks, `CREATE_NEW_CONSOLE` without `-EncodedCommand` or execution-policy flags), app bindings refusing remote data, `Resume ▾` split button and dialog buttons. **Open:** GUI check on a real machine (M8-10). |
+| M8-11 | 🟡 | Open in terminal on Windows for local Resume and Continue in (handoff and bundle import): find the agent CLI on PATH or where standalone installs, desktop apps (Claude, Codex, OpenCode) and VS Code/Cursor extensions keep it; open a PowerShell console in the session directory | 5 | M8-06 | One click starts the agent in the right directory for a desktop-only install; SSH sessions keep Copy (WSL: M8-13). **Done (2026-10-04):** `internal/launch` (search, quoting, argument checks, `CREATE_NEW_CONSOLE` without `-EncodedCommand` or execution-policy flags), app bindings refusing remote data, `Resume ▾` split button and dialog buttons. **Open:** GUI check on a real machine (M8-10). |
 | M8-12 | 🟡 | Open in terminal on Linux and macOS: detect installed terminal apps, choose one in Settings (Automatic by default), open the agent in a new window of it | 5 | M8-11 | Resume and Continue in open the agent in the chosen terminal on GNOME, KDE and a Mac. **Done (2026-10-04):** `internal/launch` catalog (11 Linux terminals; Terminal, iTerm2, Ghostty on macOS), file-only detection, one `/bin/sh` script per window, AppleScript with values as arguments only; `[terminal] app` in the local config; Settings dropdown; `NSAppleEventsUsageDescription` in the packaged app; `macos-test` CI job. **Open:** real-desktop QA on Linux and macOS, and the first macOS CI run. |
+| M8-13 | 🟡 | WSL as a remote: the Windows host picker lists the user's registered distributions (`docker-desktop*` hidden, default marked) as `wsl:<distro>` targets; the M7 probe/deploy/serve/transfer stack runs through `wsl.exe` with no ssh, keys or ssh config; Open in terminal for Resume and Continue in (handoff, bundle) runs the distribution's Linux agent | 6 | M8-09, M8-11, M8-12 | Sessions in a WSL distribution browse, search, live-update, export and import like an SSH host's; Open in terminal starts the Linux agent in the project inside the distribution and the window stays open. **Done (2026-10-04):** registry-only listing; validated distribution names; `wsl.exe -d <distro> --exec /bin/sh` with an octal-escaped script and hidden window; the bundled Linux amd64/arm64 servers; missing `wsl.exe` or distribution stops retries; the server builds the terminal script and skips a Windows copy of the agent on the appended PATH; the console opens with `CREATE_NEW_CONSOLE` and ends in the login shell; SSH Open in terminal unchanged (copy only); WSL copy stays POSIX with `wsl -d <distro>` guidance. Opt-in smokes against Ubuntu pass (listing, probe, binary pipe, exit status, no-window `CreateProcess`). **Open:** real WSL GUI QA: sessions, live updates, export/import; resume/handoff/bundle directory and window survival; cold distribution boot; missing distribution without retries; disconnect. No real agent started yet. |
 
 ---
 
@@ -255,8 +257,8 @@ remain gated on the M8-08 named-pipe credential channel.
 | M5 macOS & distribution | 6 | 20 | 0 | 1 | 5 |
 | M6 Portable sessions | 17 | 60 | 15 | 0 | 2 |
 | M7 Remote over SSH | 20 | 65 | 1 | 0 | 19 |
-| M8 Windows support | 12 | 56 | 2 | 8 | 2 |
-| **Total** | **134** | **≈ 424 h** | **66** | **26** | **42** |
+| M8 Windows support | 13 | 62 | 2 | 9 | 2 |
+| **Total** | **135** | **≈ 430 h** | **66** | **27** | **42** |
 
 **Critical path to the MVP:**
 

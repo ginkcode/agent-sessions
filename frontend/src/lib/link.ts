@@ -1,4 +1,5 @@
 import type { ConnectionPhase, HostEntry } from './types';
+import { hostLabel, shellCommand, wslDistro } from './hosts';
 
 // Bumped each time the stores reset for a new backend.
 let currentEpoch = 0;
@@ -115,9 +116,10 @@ export function isLocked(link: LinkState): boolean {
 export function blockedReason(link: LinkState, host: string | undefined): string | null {
   if (!isLocked(link)) return null;
   if (isStale(link)) {
-    return `Not connected to ${link.dataHost}. Changes are disabled until it reconnects.`;
+    return `Not connected to ${hostLabel(link.dataHost!)}. Changes are disabled until it reconnects.`;
   }
-  return `Not connected to ${host}. The sessions shown are Local; changes are disabled until ${host} connects or you switch back to Local.`;
+  const label = host ? hostLabel(host) : host;
+  return `Not connected to ${label}. The sessions shown are Local; changes are disabled until ${label} connects or you switch back to Local.`;
 }
 
 /**
@@ -135,11 +137,13 @@ export function filterHosts(hosts: HostEntry[], query: string): HostEntry[] {
 /**
  * Tooltip for the Resume button. A remote session's command is built for
  * that host and has to be pasted into an interactive shell there. A local
- * session opens in a terminal where the platform supports it.
+ * or WSL session opens in a terminal where this computer supports it.
  */
 export function resumeButtonTitle(host: string | undefined, terminal = false): string {
-  if (!host && terminal) return 'Resume this session in a new terminal window. Use ▾ to copy the command instead';
+  if (terminal && (!host || wslDistro(host))) {
+    return 'Resume this session in a new terminal window. Use ▾ to copy the command instead';
+  }
   const base = 'Copy shell command to resume this session';
   if (!host) return base;
-  return `${base}. Run it on ${host}: open a shell with "ssh ${host}", then paste it.`;
+  return `${base}. Run it on ${hostLabel(host)}: open a shell with "${shellCommand(host)}", then paste it.`;
 }

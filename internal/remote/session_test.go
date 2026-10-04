@@ -46,9 +46,11 @@ func TestDialSession(t *testing.T) {
 }
 
 func TestDialSession_RejectsBadAlias(t *testing.T) {
-	_, err := DialSession(context.Background(), "-oProxyCommand=x", SSHOptions{}, "/bin/true", nil, nil)
-	if err == nil {
-		t.Fatal("expected alias rejection")
+	for _, alias := range []string{"-oProxyCommand=x", "wsl:-d", "wsl:bad name"} {
+		_, err := DialSession(context.Background(), alias, SSHOptions{}, "/bin/true", nil, nil)
+		if !errors.Is(err, ErrInvalidHostAlias) {
+			t.Errorf("DialSession(%q) = %v, want ErrInvalidHostAlias", alias, err)
+		}
 	}
 }
 

@@ -26,6 +26,7 @@ import type {
   BundleHandoffRequest,
   ConnectionState,
   HostEntry,
+  WSLEntry,
   AskpassPrompt,
 } from './types';
 import { MockBackendAPI } from './mock/mockApi';
@@ -71,6 +72,7 @@ export interface BackendAPI {
   clearHandoffCache(): Promise<HandoffCacheInfo>;
   scan(): Promise<void>;
   listHosts(): Promise<HostEntry[]>;
+  listWSLDistros(): Promise<WSLEntry[]>;
   connect(alias: string): Promise<void>;
   disconnect(): Promise<void>;
   connectionState(): Promise<ConnectionState>;
@@ -119,6 +121,7 @@ interface WailsAppBinding {
   Scan(): Promise<void>;
   Ping(name: string): Promise<string>;
   ListHosts(): Promise<HostEntry[]>;
+  ListWSLDistros?(): Promise<WSLEntry[]>;
   Connect(alias: string): Promise<void>;
   Disconnect(): Promise<void>;
   ConnectionState(): Promise<ConnectionState>;
@@ -444,6 +447,16 @@ class WailsBackendAPI implements BackendAPI {
     }
   }
 
+  async listWSLDistros(): Promise<WSLEntry[]> {
+    try {
+      // Older backends lack the binding: no distributions.
+      if (!this.binding.ListWSLDistros) return [];
+      return (await this.binding.ListWSLDistros()) || [];
+    } catch (e) {
+      throw normalizeError(e);
+    }
+  }
+
   async connect(alias: string): Promise<void> {
     try {
       await this.binding.Connect(alias);
@@ -547,6 +560,7 @@ const UNGUARDED = new Set<string>([
   'terminalSettings',
   'setTerminal',
   'listHosts',
+  'listWSLDistros',
   'connect',
   'disconnect',
   'connectionState',

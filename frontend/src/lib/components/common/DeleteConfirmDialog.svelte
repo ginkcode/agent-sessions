@@ -10,6 +10,7 @@
     deleteButtonLabel,
   } from '../../manage';
   import { formatBytes } from '../../format';
+  import { hostLabel } from '../../hosts';
   import { manage } from '../../stores/manage.svelte';
   import { connectionStore } from '../../stores/connection.svelte';
   import { link } from '../../stores/link.svelte';
@@ -28,7 +29,7 @@
   let blockedGroups = $derived(groupBlockedReasons(manage.preview));
   // The host the previewed sessions came from, even while it is dropped.
   let isRemote = $derived(link.dataHost !== undefined);
-  let remoteHost = $derived(link.dataHost ?? 'Local');
+  let remoteHost = $derived(link.dataHost ? hostLabel(link.dataHost) : 'Local');
   let trashSupported = $derived(connectionStore.canTrash);
   let trashDisabledOnRemote = $derived(isRemote && !trashSupported);
   let blockedByTrashPolicy = $derived(

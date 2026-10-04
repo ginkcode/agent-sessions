@@ -208,7 +208,7 @@ func (m *mockBackend) RenderBundleHandoff(ctx context.Context, req engine.Bundle
 	return "rendered bundle handoff", nil
 }
 
-func setupPipePair(mock *mockBackend) (*Server, *Client, func()) {
+func setupPipePair(mock engine.Backend) (*Server, *Client, func()) {
 	// clientWriter -> serverReader
 	c2sReader, c2sWriter := io.Pipe()
 	// serverWriter -> clientReader
