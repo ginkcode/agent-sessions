@@ -8,7 +8,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
-	"strings"
 	"testing"
 	"time"
 
@@ -61,6 +60,22 @@ func runScript(t *testing.T, script string) (fakeRun, bool) {
 	return r, true
 }
 
+// sameDir reports whether two paths name one directory. String comparison
+// is not enough: TEMP may hold an 8.3 short name (RUNNER~1) while the agent
+// sees the long one.
+func sameDir(t *testing.T, a, b string) bool {
+	t.Helper()
+	ai, err := os.Stat(a)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bi, err := os.Stat(b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return os.SameFile(ai, bi)
+}
+
 // trickyDir makes a directory whose name PowerShell would mangle if quoting
 // were wrong.
 func trickyDir(t *testing.T) string {
@@ -107,7 +122,7 @@ func TestPowerShellScriptPassesArgsExactly(t *testing.T) {
 	if !reflect.DeepEqual(r.Args, trickyArgs) {
 		t.Errorf("args =\n %q\nwant\n %q", r.Args, trickyArgs)
 	}
-	if !strings.EqualFold(filepath.Clean(r.WD), filepath.Clean(dir)) {
+	if !sameDir(t, r.WD, dir) {
 		t.Errorf("wd = %q, want %q", r.WD, dir)
 	}
 }
@@ -172,7 +187,7 @@ func TestConsoleGivesAgentTheConsole(t *testing.T) {
 	if !r.Console {
 		t.Error("agent stdin is not the console")
 	}
-	if !reflect.DeepEqual(r.Args, []string{"--resume", "s1"}) || !strings.EqualFold(filepath.Clean(r.WD), filepath.Clean(dir)) {
+	if !reflect.DeepEqual(r.Args, []string{"--resume", "s1"}) || !sameDir(t, r.WD, dir) {
 		t.Errorf("run = %+v", r)
 	}
 }
