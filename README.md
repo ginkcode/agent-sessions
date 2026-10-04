@@ -54,4 +54,4 @@ admin prompt.
 Local equivalents write to `dist/`: `make package-linux` (needs
 `libgtk-3-dev` and `libwebkit2gtk-4.1-dev`), `make package-macos`
 (macOS with the Wails CLI) and `make package-windows` (Linux or macOS with
-the Wails CLI and NSIS).
+the Wails CLI, `jq` and NSIS).

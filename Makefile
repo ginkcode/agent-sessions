@@ -161,12 +161,13 @@ package-macos: check-app-icons
 		{ sleep 5; hdiutil create -volname "Agent Sessions" -srcfolder build/dmg -ov -format UDZO dist/agent-sessions_$(VERSION)_macos_universal.dmg; }
 
 # Windows amd64 NSIS installer in dist/, cross-compiled on Linux or macOS.
-# Requires the Wails CLI and makensis (apt install nsis); Wails only warns
-# when makensis is missing, so check first. The installer script is
+# Requires the Wails CLI, jq and makensis (apt install nsis); Wails only
+# warns when makensis is missing, so check first. The installer script is
 # packaging/windows/project.nsi; build/windows is regenerated each run. The
 # installer is not code-signed, so SmartScreen warns on first run.
 package-windows: check-app-icons
 	@command -v makensis >/dev/null 2>&1 || { echo 'makensis not found: install NSIS (apt install nsis)' >&2; exit 1; }
+	@command -v jq >/dev/null 2>&1 || { echo 'jq not found: install it (apt install jq)' >&2; exit 1; }
 	cd frontend && npm run build
 	$(MAKE) remote-servers
 	# Same absolute projectdir as package-macos. The version is pinned to
@@ -250,7 +251,7 @@ help:
 	@printf '\nPackaging (writes dist/)\n'
 	@printf '  %-22s %s\n' 'package-linux' '.deb and .rpm for ARCH (default: host)'
 	@printf '  %-22s %s\n' 'package-macos' 'Universal .dmg (macOS only)'
-	@printf '  %-22s %s\n' 'package-windows' 'amd64 NSIS installer (needs makensis)'
+	@printf '  %-22s %s\n' 'package-windows' 'amd64 NSIS installer (needs makensis, jq)'
 	@printf '\nReleases (current: v$(VERSION))\n'
 	@printf '  %-22s %s\n' 'version' 'Show the version and whether its tag exists'
 	@printf '  %-22s %s\n' 'tags' 'List release tags, newest first'
