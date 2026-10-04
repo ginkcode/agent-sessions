@@ -58,6 +58,28 @@ func TestResolveCLIFindsInstallDirOutsidePath(t *testing.T) {
 	}
 }
 
+func TestResolveCLIFindsWindowsDesktopCLI(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("Windows install locations")
+	}
+	profile := t.TempDir()
+	local := filepath.Join(profile, "AppData", "Local")
+	t.Setenv("USERPROFILE", profile)
+	t.Setenv("APPDATA", filepath.Join(profile, "AppData", "Roaming"))
+	t.Setenv("LOCALAPPDATA", local)
+	t.Setenv("PATH", t.TempDir())
+	if _, err := resolveCLI("opencode"); !errors.Is(err, ErrCLINotFound) {
+		t.Fatalf("want ErrCLINotFound before install, got %v", err)
+	}
+
+	// OpenCode Desktop bundles the CLI; desktop-only users have no other.
+	bin := filepath.Join(local, "Programs", "@opencodedesktop", "resources", "opencode-cli.exe")
+	writeScript(t, bin, "")
+	if got, err := resolveCLI("opencode"); err != nil || got != bin {
+		t.Fatalf("resolveCLI = %q, %v; want %q", got, err, bin)
+	}
+}
+
 func TestRunStandaloneReportsCLIFailure(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("shell scripts")

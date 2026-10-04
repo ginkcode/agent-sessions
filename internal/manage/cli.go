@@ -8,10 +8,12 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"unicode"
 
+	"github.com/ginkcode/agent-sessions/internal/launch"
 	"github.com/ginkcode/agent-sessions/internal/redact"
 )
 
@@ -32,10 +34,20 @@ var cliInstallDirs = map[string][]string{
 var cliSystemDirs = []string{"/usr/local/bin", "/opt/homebrew/bin", "/home/linuxbrew/.linuxbrew/bin"}
 
 // resolveCLI returns an absolute path for name: PATH first, then the known
-// install locations, then the newest nvm Node version.
+// install locations, then the newest nvm Node version. On Windows the
+// locations are those of launch.Find, which include the copies bundled with
+// the desktop apps (OpenCode Desktop's opencode-cli.exe, Codex desktop's
+// codex.exe) that desktop-only users have instead of a CLI on PATH.
 func resolveCLI(name string) (string, error) {
 	if p, err := exec.LookPath(name); err == nil {
 		return p, nil
+	}
+	if runtime.GOOS == "windows" {
+		exe, err := launch.Find(name)
+		if err != nil {
+			return "", fmt.Errorf("%s %w on PATH or in its usual install locations", name, ErrCLINotFound)
+		}
+		return exe.Path, nil
 	}
 	var dirs []string
 	home, _ := os.UserHomeDir()
