@@ -557,12 +557,34 @@ func TestRefreshNoDBStillAppliesCatalog(t *testing.T) {
 	}
 }
 
+type gatedScanProvider struct {
+	*providertest.Fake
+	release <-chan struct{}
+}
+
+func (p *gatedScanProvider) Scan(ctx context.Context, prev provider.ScanState) (provider.ScanResult, error) {
+	result, err := p.Fake.Scan(ctx, prev)
+	if err != nil {
+		return result, err
+	}
+	select {
+	case <-p.release:
+		return result, nil
+	case <-ctx.Done():
+		return provider.ScanResult{}, ctx.Err()
+	}
+}
+
 // TestDelayedProviderDoesNotBlockCachedOrOtherProvider verifies that a slow
 // provider does not block cached listing or another fast provider.
 func TestDelayedProviderDoesNotBlockCachedOrOtherProvider(t *testing.T) {
-	slow := providertest.NewFake(model.AgentCodex, "SlowCodex")
+	release := make(chan struct{})
+	slow := &gatedScanProvider{
+		Fake:    providertest.NewFake(model.AgentCodex, "SlowCodex"),
+		release: release,
+	}
 	slow.DetectionData = provider.Detection{Present: true}
-	slow.ScanDelay = 200 * time.Millisecond
+	slow.ScanStarted = make(chan struct{}, 1)
 	slow.Sessions = []model.SessionMeta{refresherMeta(model.AgentCodex, "slow1", time.Now().UTC())}
 	slow.StateOverride = &provider.ScanState{Sources: map[string]provider.SourceState{}}
 
@@ -594,29 +616,72 @@ func TestDelayedProviderDoesNotBlockCachedOrOtherProvider(t *testing.T) {
 		}
 	})
 
+	ctx, cancel := context.WithCancel(context.Background())
 	bootstrapDone := make(chan struct{})
+	var bootstrapErr error
+	var cachedReadDone chan struct{}
+	releaseSlow := sync.OnceFunc(func() { close(release) })
+	t.Cleanup(func() {
+		cancel()
+		releaseSlow()
+		<-bootstrapDone
+		if cachedReadDone != nil {
+			<-cachedReadDone
+		}
+	})
 	go func() {
 		defer close(bootstrapDone)
-		_ = r.Bootstrap(context.Background())
+		bootstrapErr = r.Bootstrap(ctx)
 	}()
 
-	// Fast provider must complete well before slow provider finishes
+	// Hold the slow scan until the cache and fast provider have been checked.
+	// Timeouts only guard against deadlocks, not provider execution speed.
+	select {
+	case <-slow.ScanStarted:
+	case <-time.After(10 * time.Second):
+		t.Fatal("slow provider scan never entered")
+	}
+
+	cachedRead := make(chan bool, 1)
+	cachedReadDone = make(chan struct{})
+	go func() {
+		defer close(cachedReadDone)
+		_, ok := r.catalog.Get(cached.Ref)
+		cachedRead <- ok
+	}()
+	select {
+	case ok := <-cachedRead:
+		if !ok {
+			t.Error("cached1 must remain readable while slow provider is blocked")
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("cached listing blocked on slow provider")
+	}
+
 	select {
 	case <-fastFinished:
-		// Succeeded: fast finished while slow is still delayed!
-		// Verify catalog now has cached1 and fast1, but not yet slow1
 		if _, ok := r.catalog.Get(model.SessionRef{Agent: model.AgentClaude, ID: "fast1"}); !ok {
 			t.Error("fast1 must be in catalog")
 		}
 		if _, ok := r.catalog.Get(model.SessionRef{Agent: model.AgentCodex, ID: "slow1"}); ok {
 			t.Error("slow1 should not yet be in catalog")
 		}
-	case <-time.After(150 * time.Millisecond):
-		t.Fatal("fast provider did not complete within expected time")
+	case <-time.After(10 * time.Second):
+		t.Fatalf("fast provider did not finish while slow provider was blocked; scan errors: %v", r.ScanErrors())
 	}
 
-	// Wait for full bootstrap to finish
-	<-bootstrapDone
+	releaseSlow()
+	select {
+	case <-bootstrapDone:
+	case <-time.After(10 * time.Second):
+		t.Fatal("bootstrap did not finish after releasing slow provider")
+	}
+	if bootstrapErr != nil {
+		t.Fatalf("Bootstrap failed: %v", bootstrapErr)
+	}
+	if errs := r.ScanErrors(); len(errs) != 0 {
+		t.Fatalf("Bootstrap scan errors: %v", errs)
+	}
 
 	// Now slow1 must also be in catalog
 	if _, ok := r.catalog.Get(model.SessionRef{Agent: model.AgentCodex, ID: "slow1"}); !ok {
