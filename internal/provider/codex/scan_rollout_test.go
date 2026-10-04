@@ -10,9 +10,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/tidwall/gjson"
+
 	"github.com/ginkcode/agent-sessions/internal/model"
 	"github.com/ginkcode/agent-sessions/internal/provider"
-	"github.com/tidwall/gjson"
+	"github.com/ginkcode/agent-sessions/internal/testutil/platform"
 )
 
 // writeRollout writes a rollout with content under root/sessions/<date>/ and
@@ -91,7 +93,7 @@ func writeBasic(t *testing.T, root string) string {
 }
 
 func TestScan_FixtureMeta(t *testing.T) {
-	root := t.TempDir()
+	root := platform.TempDir(t)
 	writeBasic(t, root)
 	p := New(root, nil)
 
@@ -152,7 +154,7 @@ func TestScan_FixtureMeta(t *testing.T) {
 }
 
 func TestScan_UnchangedSkipsAndIncrementalAppend(t *testing.T) {
-	root := t.TempDir()
+	root := platform.TempDir(t)
 	path := writeBasic(t, root)
 	p := New(root, nil)
 	ctx := context.Background()
@@ -232,7 +234,7 @@ func TestScan_UnchangedSkipsAndIncrementalAppend(t *testing.T) {
 }
 
 func TestScan_PartialFinalLine(t *testing.T) {
-	root := t.TempDir()
+	root := platform.TempDir(t)
 	path := writeBasic(t, root)
 
 	// Truncated tail without newline: must not be consumed into the checkpoint.
@@ -287,7 +289,7 @@ func TestScan_PartialFinalLine(t *testing.T) {
 }
 
 func TestScan_ShrinkRescansFully(t *testing.T) {
-	root := t.TempDir()
+	root := platform.TempDir(t)
 	path := writeBasic(t, root)
 	p := New(root, nil)
 	ctx := context.Background()
@@ -320,7 +322,7 @@ func TestScan_ShrinkRescansFully(t *testing.T) {
 }
 
 func TestScan_Removal(t *testing.T) {
-	root := t.TempDir()
+	root := platform.TempDir(t)
 	writeBasic(t, root)
 	p := New(root, nil)
 	ctx := context.Background()
@@ -348,7 +350,7 @@ func TestScan_Removal(t *testing.T) {
 }
 
 func TestScan_ArchivedRollout(t *testing.T) {
-	root := t.TempDir()
+	root := platform.TempDir(t)
 	writeRollout(t, root, "33333333-3333-3333-3333-333333333333",
 		line("2026-09-20T08:15:00Z", "session_meta",
 			`{"id":"33333333-3333-3333-3333-333333333333","cwd":"/tmp/proj","cli_version":"0.156.1"}`), true)
@@ -367,7 +369,7 @@ func TestScan_ArchivedRollout(t *testing.T) {
 }
 
 func TestScan_ActivePreferredOverArchivedDuplicate(t *testing.T) {
-	root := t.TempDir()
+	root := platform.TempDir(t)
 	const id = "44444444-4444-4444-4444-444444444444"
 	content := line("2026-09-20T08:15:00Z", "session_meta", `{"id":"`+id+`","cwd":"/tmp/proj"}`) +
 		line("2026-09-20T08:16:00Z", "response_item", `{"type":"message","role":"user","content":[{"type":"input_text","text":"Active"}]}`)
@@ -391,7 +393,7 @@ func TestScan_ActivePreferredOverArchivedDuplicate(t *testing.T) {
 }
 
 func TestScan_MissingSessionIDFallsBackToFilename(t *testing.T) {
-	root := t.TempDir()
+	root := platform.TempDir(t)
 	content := line("2026-09-28T12:00:00Z", "response_item", `{"type":"message","role":"user","content":[{"type":"input_text","text":"hi"}]}`)
 	writeRollout(t, root, "55555555-5555-5555-5555-555555555555", content, false)
 	p := New(root, nil)
@@ -409,7 +411,7 @@ func TestScan_MissingSessionIDFallsBackToFilename(t *testing.T) {
 }
 
 func TestScan_MalformedLinesAreDiagnostics(t *testing.T) {
-	root := t.TempDir()
+	root := platform.TempDir(t)
 	content := line("2026-09-28T12:00:00Z", "session_meta", `{"id":"66666666-6666-6666-6666-666666666666","cwd":"/tmp"}`) +
 		"{not json}\n" +
 		line("2026-09-28T12:00:01Z", "response_item", `{"type":"message"}`) + "\n" +
@@ -437,7 +439,7 @@ func TestScan_MalformedLinesAreDiagnostics(t *testing.T) {
 }
 
 func TestScan_EmptyRootNoRemovals(t *testing.T) {
-	root := t.TempDir()
+	root := platform.TempDir(t)
 	p := New(root, nil)
 	res, err := p.Scan(context.Background(), provider.ScanState{})
 	if err != nil {
@@ -449,7 +451,7 @@ func TestScan_EmptyRootNoRemovals(t *testing.T) {
 }
 
 func TestScan_CanceledContext(t *testing.T) {
-	root := t.TempDir()
+	root := platform.TempDir(t)
 	writeBasic(t, root)
 	p := New(root, nil)
 	ctx, cancel := context.WithCancel(context.Background())
@@ -461,7 +463,7 @@ func TestScan_CanceledContext(t *testing.T) {
 
 // A cancelled scan must not commit state, so a later scan sees all sessions.
 func TestScan_CanceledScanDoesNotCorruptState(t *testing.T) {
-	root := t.TempDir()
+	root := platform.TempDir(t)
 	writeBasic(t, root)
 	p := New(root, nil)
 	ctx, cancel := context.WithCancel(context.Background())
@@ -479,7 +481,7 @@ func TestScan_CanceledScanDoesNotCorruptState(t *testing.T) {
 }
 
 func TestScan_RobustUnknownTypes(t *testing.T) {
-	root := t.TempDir()
+	root := platform.TempDir(t)
 	content := line("2026-09-28T12:00:00Z", "session_meta", `{"id":"77777777-7777-7777-7777-777777777777","cwd":"/tmp"}`) +
 		line("2026-09-28T12:00:01Z", "inter_agent_communication", `{}`) +
 		line("2026-09-28T12:00:02Z", "token_usage_record", `{}`) +
@@ -506,7 +508,7 @@ func TestScan_RobustUnknownTypes(t *testing.T) {
 }
 
 func TestScan_DeveloperRoleNotCounted(t *testing.T) {
-	root := t.TempDir()
+	root := platform.TempDir(t)
 	content := line("2026-09-28T12:00:00Z", "session_meta", `{"id":"88888888-8888-8888-8888-888888888888","cwd":"/tmp"}`) +
 		line("2026-09-28T12:00:01Z", "response_item", `{"type":"message","role":"developer","content":[{"type":"input_text","text":"dev instructions"}]}`) +
 		line("2026-09-28T12:00:02Z", "response_item", `{"type":"message","role":"system","content":[{"type":"input_text","text":"sys"}]}`)
@@ -526,7 +528,7 @@ func TestScan_DeveloperRoleNotCounted(t *testing.T) {
 }
 
 func TestScan_CompactedNotCounted(t *testing.T) {
-	root := t.TempDir()
+	root := platform.TempDir(t)
 	content := line("2026-09-28T12:00:00Z", "session_meta", `{"id":"99999999-9999-9999-9999-999999999999","cwd":"/tmp"}`) +
 		line("2026-09-28T12:00:01Z", "compacted", `{"message":"summary","replacement_history":[{"type":"message","role":"user","content":[{"type":"input_text","text":"replacement user"}]}]}`)
 	writeRollout(t, root, "99999999-9999-9999-9999-999999999999", content, false)
@@ -557,7 +559,7 @@ func TestTitleSkipsAttachmentOnlyLatestPrompt(t *testing.T) {
 }
 
 func TestCheckpointRoundTrip(t *testing.T) {
-	root := t.TempDir()
+	root := platform.TempDir(t)
 	writeBasic(t, root)
 	p := New(root, nil)
 	res, err := p.Scan(context.Background(), provider.ScanState{})
@@ -603,7 +605,7 @@ func TestIdFromRolloutPath(t *testing.T) {
 // provider error rather than a false removal, and a later healthy scan must
 // still see the session.
 func TestScan_UnreadableSourceRetainsState(t *testing.T) {
-	root := t.TempDir()
+	root := platform.TempDir(t)
 	path := writeBasic(t, root)
 	p := New(root, nil)
 	ctx := context.Background()
@@ -648,7 +650,7 @@ func TestScan_UnreadableSourceRetainsState(t *testing.T) {
 // A previously scanned path replaced by a directory still exists, so removal
 // cannot be proven: Scan must fail instead of reporting a false removal.
 func TestScan_SourceReplacedByDirectoryFails(t *testing.T) {
-	root := t.TempDir()
+	root := platform.TempDir(t)
 	path := writeBasic(t, root)
 	p := New(root, nil)
 	ctx := context.Background()
@@ -674,7 +676,7 @@ func TestScan_SourceReplacedByDirectoryFails(t *testing.T) {
 
 // scanSource must error, not warn, when a discovered path cannot be inspected.
 func TestScanSource_InspectionFailuresAreErrors(t *testing.T) {
-	root := t.TempDir()
+	root := platform.TempDir(t)
 	p := New(root, nil)
 	ctx := context.Background()
 
@@ -694,7 +696,7 @@ func TestScanSource_InspectionFailuresAreErrors(t *testing.T) {
 }
 
 func TestScan_NilGitResolver(t *testing.T) {
-	root := t.TempDir()
+	root := platform.TempDir(t)
 	content := line("2026-09-28T12:00:00Z", "session_meta", `{"id":"aaaa1111-1111-1111-1111-111111111111","cwd":"/tmp/definitely-missing-cwd"}`)
 	writeRollout(t, root, "aaaa1111-1111-1111-1111-111111111111", content, false)
 	p := New(root, nil)

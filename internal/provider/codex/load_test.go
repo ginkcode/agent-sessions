@@ -14,11 +14,12 @@ import (
 
 	"github.com/ginkcode/agent-sessions/internal/model"
 	"github.com/ginkcode/agent-sessions/internal/provider"
+	"github.com/ginkcode/agent-sessions/internal/testutil/platform"
 )
 
 func syntheticRollout(t *testing.T, lines ...string) (*Provider, model.SessionRef, string) {
 	t.Helper()
-	root := t.TempDir()
+	root := platform.TempDir(t)
 	path := filepath.Join(root, "sessions", "2026", "09", "28", "rollout-2026-09-28T12-00-00-fixture.jsonl")
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		t.Fatal(err)
@@ -218,7 +219,7 @@ func TestLoadIndexPathValidationAndCancellation(t *testing.T) {
 		t.Errorf("Blob cancellation: %v", err)
 	}
 	// A DB row pointing to an outside root must not become a Blob/Load source.
-	outside := filepath.Join(t.TempDir(), "rollout-outside.jsonl")
+	outside := filepath.Join(platform.TempDir(t), "rollout-outside.jsonl")
 	if err := os.WriteFile(outside, []byte(record("session_meta", `{"id":"outside"}`)), 0o600); err != nil {
 		t.Fatal(err)
 	}

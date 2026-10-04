@@ -202,9 +202,15 @@ func (p *Provider) indexRolloutPath(raw string) (string, error) {
 		candidate = filepath.Join(p.root, candidate)
 	}
 	candidate = filepath.Clean(candidate)
-	rel, err := filepath.Rel(p.root, candidate)
-	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-		return "", fmt.Errorf("rollout_path %q is outside Codex root", raw)
+	if _, ok := lexicallyWithin(p.root, candidate); !ok {
+		rel, ok := lexicallyWithin(p.configured, candidate)
+		if !ok {
+			return "", fmt.Errorf("rollout_path %q is outside Codex root", raw)
+		}
+		// Written under the root as configured (a symlinked ~/.codex, or a
+		// short name on Windows): use the resolved root's form, which is the
+		// path discovery reports for the same file.
+		candidate = filepath.Join(p.root, rel)
 	}
 	name := filepath.Base(candidate)
 	if !strings.HasPrefix(name, "rollout-") || !strings.HasSuffix(name, ".jsonl") {
@@ -228,6 +234,15 @@ func (p *Provider) indexRolloutPath(raw string) (string, error) {
 		return "", fmt.Errorf("close rollout_path %q: %w", raw, err)
 	}
 	return candidate, nil
+}
+
+// lexicallyWithin returns path relative to root when path is root or below it.
+func lexicallyWithin(root, path string) (string, bool) {
+	rel, err := filepath.Rel(root, path)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return "", false
+	}
+	return rel, true
 }
 
 // mergeIndexedMeta gives nonempty index metadata precedence, while retaining

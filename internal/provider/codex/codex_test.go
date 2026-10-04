@@ -12,6 +12,7 @@ import (
 
 	"github.com/ginkcode/agent-sessions/internal/model"
 	"github.com/ginkcode/agent-sessions/internal/provider"
+	"github.com/ginkcode/agent-sessions/internal/testutil/platform"
 )
 
 func TestProviderBasics(t *testing.T) {
@@ -56,7 +57,7 @@ func TestProviderBasics(t *testing.T) {
 }
 
 func TestDetect_MissingRoot(t *testing.T) {
-	missing := filepath.Join(t.TempDir(), "nonexistent-codex-root")
+	missing := filepath.Join(platform.TempDir(t), "nonexistent-codex-root")
 	p := New(missing, nil)
 
 	det, err := p.Detect(context.Background())
@@ -72,7 +73,7 @@ func TestDetect_MissingRoot(t *testing.T) {
 }
 
 func TestDetect_FileNotDir(t *testing.T) {
-	tmp := t.TempDir()
+	tmp := platform.TempDir(t)
 	filePath := filepath.Join(tmp, "not-a-dir")
 	if err := os.WriteFile(filePath, []byte("plain file"), 0o644); err != nil {
 		t.Fatal(err)
@@ -89,7 +90,7 @@ func TestDetect_FileNotDir(t *testing.T) {
 }
 
 func TestDetect_EmptyRoot(t *testing.T) {
-	empty := t.TempDir()
+	empty := platform.TempDir(t)
 	p := New(empty, nil)
 
 	det, err := p.Detect(context.Background())
@@ -102,7 +103,7 @@ func TestDetect_EmptyRoot(t *testing.T) {
 }
 
 func TestDetect_WithRollouts(t *testing.T) {
-	root := t.TempDir()
+	root := platform.TempDir(t)
 	dayDir := filepath.Join(root, "sessions", "2026", "09", "28")
 	if err := os.MkdirAll(dayDir, 0o755); err != nil {
 		t.Fatal(err)
@@ -124,7 +125,7 @@ func TestDetect_WithRollouts(t *testing.T) {
 
 func TestDetect_ThreadsIndex(t *testing.T) {
 	t.Run("empty threads table", func(t *testing.T) {
-		root := t.TempDir()
+		root := platform.TempDir(t)
 		dbPath := filepath.Join(root, "state_5.sqlite")
 		db, err := sql.Open("sqlite", dbPath)
 		if err != nil {
@@ -150,7 +151,7 @@ func TestDetect_ThreadsIndex(t *testing.T) {
 	})
 
 	t.Run("populated threads table", func(t *testing.T) {
-		root := t.TempDir()
+		root := platform.TempDir(t)
 		dbPath := filepath.Join(root, "state_5.sqlite")
 		db, err := sql.Open("sqlite", dbPath)
 		if err != nil {
@@ -176,7 +177,7 @@ func TestDetect_ThreadsIndex(t *testing.T) {
 	})
 
 	t.Run("corrupt threads index", func(t *testing.T) {
-		root := t.TempDir()
+		root := platform.TempDir(t)
 		dbPath := filepath.Join(root, "state_5.sqlite")
 		if err := os.WriteFile(dbPath, []byte("not a sqlite db"), 0o644); err != nil {
 			t.Fatal(err)
@@ -205,7 +206,7 @@ func TestDetect_ThreadsIndex(t *testing.T) {
 }
 
 func TestDetect_ContextCanceled(t *testing.T) {
-	root := t.TempDir()
+	root := platform.TempDir(t)
 	p := New(root, nil)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -217,7 +218,7 @@ func TestDetect_ContextCanceled(t *testing.T) {
 }
 
 func TestWatchPaths(t *testing.T) {
-	root := t.TempDir()
+	root := platform.TempDir(t)
 	p := New(root, nil)
 
 	wp := p.WatchPaths()

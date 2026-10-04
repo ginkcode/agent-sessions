@@ -13,6 +13,7 @@ import (
 
 	"github.com/ginkcode/agent-sessions/internal/model"
 	"github.com/ginkcode/agent-sessions/internal/provider"
+	"github.com/ginkcode/agent-sessions/internal/testutil/platform"
 )
 
 const (
@@ -91,7 +92,7 @@ func metaByID(t *testing.T, res provider.ScanResult, id string) model.SessionMet
 }
 
 func TestScanIndex_PopulatedMergesCountsAndAncestry(t *testing.T) {
-	root := t.TempDir()
+	root := platform.TempDir(t)
 	parentPath := indexRollout(t, root, indexID, false)
 	childPath := indexRollout(t, root, childID, true)
 	unindexed := indexRollout(t, root, orphanID, false)
@@ -131,7 +132,7 @@ func TestScanIndex_PopulatedMergesCountsAndAncestry(t *testing.T) {
 }
 
 func TestScanIndex_EdgeChangeOnUnchangedRollouts(t *testing.T) {
-	root := t.TempDir()
+	root := platform.TempDir(t)
 	parent := indexRollout(t, root, indexID, false)
 	child := indexRollout(t, root, childID, false)
 	db := stateDB(t, root, "state_5.sqlite", stateSQL)
@@ -161,7 +162,7 @@ func TestScanIndex_EdgeChangeOnUnchangedRollouts(t *testing.T) {
 }
 
 func TestScanIndex_ChangedTitleOnUnchangedRolloutAndFallback(t *testing.T) {
-	root := t.TempDir()
+	root := platform.TempDir(t)
 	path := indexRollout(t, root, indexID, false)
 	db := stateDB(t, root, "state_5.sqlite", stateSQL)
 	insertThread(t, db, indexID, path, "First index title", 0)
@@ -205,7 +206,7 @@ func TestScanIndex_ChangedTitleOnUnchangedRolloutAndFallback(t *testing.T) {
 func TestScanIndex_EmptyMissingAndCorruptFallback(t *testing.T) {
 	for _, mode := range []string{"missing", "empty", "corrupt", "missing-table"} {
 		t.Run(mode, func(t *testing.T) {
-			root := t.TempDir()
+			root := platform.TempDir(t)
 			indexRollout(t, root, indexID, false)
 			switch mode {
 			case "empty":
@@ -229,7 +230,7 @@ func TestScanIndex_EmptyMissingAndCorruptFallback(t *testing.T) {
 }
 
 func TestScanIndex_LockedFallback(t *testing.T) {
-	root := t.TempDir()
+	root := platform.TempDir(t)
 	indexRollout(t, root, indexID, false)
 	db := stateDB(t, root, "state_5.sqlite", stateSQL)
 	conn, err := db.Conn(context.Background())
@@ -251,7 +252,7 @@ func TestScanIndex_LockedFallback(t *testing.T) {
 }
 
 func TestScanIndex_OptionalColumnsSecondsFallback(t *testing.T) {
-	root := t.TempDir()
+	root := platform.TempDir(t)
 	path := indexRollout(t, root, indexID, false)
 	db := stateDB(t, root, "state_1.sqlite", `CREATE TABLE threads (id TEXT, rollout_path TEXT, title TEXT, created_at INTEGER, updated_at INTEGER)`)
 	if _, err := db.Exec(`INSERT INTO threads VALUES (?,?,?,?,?)`, indexID, path, "Older title", int64(100), int64(200)); err != nil {
@@ -271,7 +272,7 @@ func TestScanIndex_OptionalColumnsSecondsFallback(t *testing.T) {
 }
 
 func TestScanIndex_DuplicateIDUsesMatchingPathAndNoDuplicate(t *testing.T) {
-	root := t.TempDir()
+	root := platform.TempDir(t)
 	indexRollout(t, root, indexID, false)
 	archived := indexRollout(t, root, indexID, true)
 	db := stateDB(t, root, "state_5.sqlite", stateSQL)
@@ -296,9 +297,41 @@ func TestScanIndex_DuplicateIDUsesMatchingPathAndNoDuplicate(t *testing.T) {
 	}
 }
 
+// Codex writes rollout_path under its home as configured. When that is a
+// symlink (or a Windows short name), the index row still applies, and the
+// session keeps the path discovery reports.
+func TestScanIndex_RolloutPathUnderSymlinkedRoot(t *testing.T) {
+	base := platform.TempDir(t)
+	home := filepath.Join(base, "codex-home")
+	if err := os.Mkdir(home, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(base, "codex-link")
+	platform.Symlink(t, home, link)
+	indexRollout(t, link, indexID, false)
+	archived := indexRollout(t, link, indexID, true)
+	db := stateDB(t, link, "state_5.sqlite", stateSQL)
+	insertThread(t, db, indexID, archived, "Archived index", 1)
+	res, err := New(link, nil).Scan(context.Background(), provider.ScanState{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rel, err := filepath.Rel(link, archived)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := filepath.Join(home, rel)
+	if len(res.Changed) != 1 || res.Changed[0].Title != "Archived index" || res.Changed[0].SourcePath != want {
+		t.Errorf("index row under the symlinked root not applied (want %s): %+v", want, res.Changed)
+	}
+	if warningContains(res.Diag, "outside Codex root") {
+		t.Errorf("rollout_path rejected: %+v", res.Diag.Warnings)
+	}
+}
+
 func TestScanIndex_MissingFileNotVisibleAndPathEscapeRejected(t *testing.T) {
-	root := t.TempDir()
-	outside := t.TempDir()
+	root := platform.TempDir(t)
+	outside := platform.TempDir(t)
 	outsidePath := indexRollout(t, outside, outsideID, false)
 	db := stateDB(t, root, "state_5.sqlite", stateSQL)
 	insertThread(t, db, missingID, filepath.Join(root, "sessions", "missing", "rollout-nope.jsonl"), "Ghost", 0)
@@ -332,8 +365,8 @@ func TestScanIndex_MissingFileNotVisibleAndPathEscapeRejected(t *testing.T) {
 }
 
 func TestScanIndex_SymlinkEscapeAndExtraExplicitSource(t *testing.T) {
-	root := t.TempDir()
-	outside := t.TempDir()
+	root := platform.TempDir(t)
+	outside := platform.TempDir(t)
 	outsidePath := indexRollout(t, outside, outsideID, false)
 	link := filepath.Join(root, "sessions", "2026", "09", "28", "rollout-linked.jsonl")
 	if err := os.MkdirAll(filepath.Dir(link), 0o755); err != nil {

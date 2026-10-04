@@ -11,7 +11,7 @@ import (
 )
 
 func TestNormalizeDir(t *testing.T) {
-	root := t.TempDir()
+	root := platform.TempDir(t)
 	realDir := filepath.Join(root, "real")
 	if err := os.Mkdir(realDir, 0o755); err != nil {
 		t.Fatal(err)
@@ -49,7 +49,7 @@ func TestNormalizeDir(t *testing.T) {
 }
 
 func TestExists(t *testing.T) {
-	root := t.TempDir()
+	root := platform.TempDir(t)
 	file := filepath.Join(root, "file.txt")
 	if err := os.WriteFile(file, []byte("x"), 0o644); err != nil {
 		t.Fatal(err)

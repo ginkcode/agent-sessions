@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"syscall"
 	"testing"
@@ -15,6 +16,19 @@ import (
 // reports 0666/0777 and access is governed by the profile's ACLs instead, so
 // tests assert modes only when this is true.
 const ModeBits = runtime.GOOS != "windows"
+
+// TempDir returns t.TempDir() with symlinks and Windows 8.3 short names
+// resolved, the form code that normalizes paths reports. On macOS the temp
+// dir is under the /var symlink; a Windows runner's TEMP may be
+// C:\Users\RUNNER~1.
+func TempDir(t testing.TB) string {
+	t.Helper()
+	dir, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return dir
+}
 
 // Symlink creates newname pointing at oldname, skipping the test where the
 // OS refuses: Windows needs Developer Mode or an elevated process.

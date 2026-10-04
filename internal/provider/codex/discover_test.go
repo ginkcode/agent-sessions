@@ -12,7 +12,7 @@ import (
 )
 
 func TestDiscover_BasicTwoDayAndArchived(t *testing.T) {
-	root := t.TempDir()
+	root := platform.TempDir(t)
 
 	// Create directories for two days and archived
 	day1 := filepath.Join(root, "sessions", "2026", "09", "27")
@@ -79,7 +79,7 @@ func TestDiscover_BasicTwoDayAndArchived(t *testing.T) {
 }
 
 func TestDiscover_DuplicateUUIDInActiveAndArchived(t *testing.T) {
-	root := t.TempDir()
+	root := platform.TempDir(t)
 	day := filepath.Join(root, "sessions", "2026", "09", "27")
 	archived := filepath.Join(root, "archived_sessions")
 
@@ -115,8 +115,8 @@ func TestDiscover_DuplicateUUIDInActiveAndArchived(t *testing.T) {
 }
 
 func TestDiscover_SymlinkEscapeRejected(t *testing.T) {
-	root := t.TempDir()
-	outside := t.TempDir()
+	root := platform.TempDir(t)
+	outside := platform.TempDir(t)
 
 	// External rollout target
 	outsideRollout := filepath.Join(outside, "secret-rollout.jsonl")
@@ -162,7 +162,7 @@ func TestDiscover_SymlinkEscapeRejected(t *testing.T) {
 }
 
 func TestDiscover_UnreadableFileSkippedWithWarning(t *testing.T) {
-	root := t.TempDir()
+	root := platform.TempDir(t)
 	day := filepath.Join(root, "sessions", "2026", "09", "28")
 	if err := os.MkdirAll(day, 0o755); err != nil {
 		t.Fatal(err)
@@ -195,7 +195,7 @@ func TestDiscover_UnreadableFileSkippedWithWarning(t *testing.T) {
 }
 
 func TestIndexDBPath_NumericOrdering(t *testing.T) {
-	root := t.TempDir()
+	root := platform.TempDir(t)
 
 	// Create state_2.sqlite and state_10.sqlite
 	// Lexical: "state_2" > "state_10"
@@ -226,7 +226,7 @@ func TestIndexDBPath_NumericOrdering(t *testing.T) {
 
 func TestIndexDBPath_EmptyOrMissing(t *testing.T) {
 	t.Run("missing root", func(t *testing.T) {
-		p := New(filepath.Join(t.TempDir(), "nonexistent"), nil)
+		p := New(filepath.Join(platform.TempDir(t), "nonexistent"), nil)
 		best, err := p.indexDBPath()
 		if err != nil {
 			t.Fatalf("expected nil err, got %v", err)
@@ -237,7 +237,7 @@ func TestIndexDBPath_EmptyOrMissing(t *testing.T) {
 	})
 
 	t.Run("no state files in root", func(t *testing.T) {
-		p := New(t.TempDir(), nil)
+		p := New(platform.TempDir(t), nil)
 		best, err := p.indexDBPath()
 		if err != nil {
 			t.Fatalf("expected nil err, got %v", err)

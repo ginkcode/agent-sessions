@@ -18,8 +18,11 @@ import (
 
 // Provider implements provider.Provider for Codex CLI sessions.
 type Provider struct {
-	root string // ~/.codex or custom root
-	git  *pathutil.GitResolver
+	root string // ~/.codex or custom root, symlinks resolved
+	// configured is root as given, before symlinks (and Windows 8.3 short
+	// names) are resolved. Codex writes index paths under this form.
+	configured string
+	git        *pathutil.GitResolver
 }
 
 // New constructs a Codex session provider.
@@ -33,8 +36,9 @@ func New(root string, git *pathutil.GitResolver) *Provider {
 		root = abs
 	}
 	return &Provider{
-		root: pathutil.NormalizeDir(root),
-		git:  git,
+		root:       pathutil.NormalizeDir(root),
+		configured: pathutil.Clean(root),
+		git:        git,
 	}
 }
 

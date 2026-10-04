@@ -10,6 +10,7 @@ import (
 
 	"github.com/ginkcode/agent-sessions/internal/model"
 	"github.com/ginkcode/agent-sessions/internal/provider"
+	"github.com/ginkcode/agent-sessions/internal/testutil/platform"
 )
 
 // windowsCWDCases are synthetic Windows working directories as Codex on
@@ -70,7 +71,7 @@ func TestWindowsCWDScanAndLoad(t *testing.T) {
 				if from == "turn_context" {
 					metaCWD, turnCWD = "", tc.raw
 				}
-				root := t.TempDir()
+				root := platform.TempDir(t)
 				path := writeRollout(t, root, id, windowsRollout(t, id, metaCWD, turnCWD), false)
 				p := New(root, nil)
 
@@ -136,7 +137,7 @@ func TestWindowsCWDOldCheckpointRescanned(t *testing.T) {
 	t.Parallel()
 	const raw, want = `c:/agent-sessions-synthetic/Proj/`, `C:\agent-sessions-synthetic\Proj`
 	const kept, gone = "44444444-4444-4444-8444-444444444444", "55555555-5555-4555-8555-555555555555"
-	root := t.TempDir()
+	root := platform.TempDir(t)
 	keptPath := writeRollout(t, root, kept, windowsRollout(t, kept, raw, raw), false)
 	gonePath := writeRollout(t, root, gone, windowsRollout(t, gone, raw, raw), false)
 	p := New(root, nil)
