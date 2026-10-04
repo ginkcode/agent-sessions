@@ -5,9 +5,8 @@ package launch
 import (
 	"errors"
 	"os"
-	"os/exec"
 	"path/filepath"
-	"syscall"
+	"unsafe"
 
 	"golang.org/x/sys/windows"
 )
@@ -20,18 +19,43 @@ const terminalSupported = true
 // keeps the window, and any error, after the agent exits. -Command is not
 // subject to the execution policy, so no policy override is needed.
 func startTerminal(script, dir string) error {
-	ps, err := windowsPowerShell()
+	h, err := startConsole(script, dir, windows.CREATE_NEW_CONSOLE)
 	if err != nil {
 		return err
 	}
-	cmd := exec.Command(ps, "-NoLogo", "-NoExit", "-Command", script)
-	cmd.Dir = dir
-	cmd.SysProcAttr = &syscall.SysProcAttr{CreationFlags: windows.CREATE_NEW_CONSOLE}
-	if err := cmd.Start(); err != nil {
-		return err
+	return windows.CloseHandle(h)
+}
+
+// startConsole starts PowerShell with script in dir and returns its process
+// handle. os/exec cannot be used: it always passes standard handles (NUL
+// when unset), so PowerShell and the agent would read NUL instead of the
+// new console, and PowerShell exits at once despite -NoExit. Without
+// STARTF_USESTDHANDLES the child uses its own console.
+func startConsole(script, dir string, flags uint32) (windows.Handle, error) {
+	ps, err := windowsPowerShell()
+	if err != nil {
+		return 0, err
 	}
-	go func() { _ = cmd.Wait() }()
-	return nil
+	app, err := windows.UTF16PtrFromString(ps)
+	if err != nil {
+		return 0, err
+	}
+	cmdline, err := windows.UTF16PtrFromString(windows.ComposeCommandLine([]string{ps, "-NoLogo", "-NoExit", "-Command", script}))
+	if err != nil {
+		return 0, err
+	}
+	cwd, err := windows.UTF16PtrFromString(dir)
+	if err != nil {
+		return 0, err
+	}
+	si := &windows.StartupInfo{}
+	si.Cb = uint32(unsafe.Sizeof(*si))
+	var pi windows.ProcessInformation
+	if err := windows.CreateProcess(app, cmdline, nil, nil, false, flags|windows.CREATE_UNICODE_ENVIRONMENT, nil, cwd, si, &pi); err != nil {
+		return 0, err
+	}
+	windows.CloseHandle(pi.Thread)
+	return pi.Process, nil
 }
 
 // windowsPowerShell returns the system powershell.exe, never whichever one a

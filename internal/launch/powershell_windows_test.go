@@ -10,14 +10,20 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
+
+	"golang.org/x/sys/windows"
 )
 
 // With LAUNCH_FAKE_AGENT set, the test binary acts as an agent CLI: it
-// records its arguments and working directory and exits.
+// records its arguments, working directory and whether its stdin is a
+// console, and exits.
 func TestMain(m *testing.M) {
 	if out := os.Getenv("LAUNCH_FAKE_AGENT"); out != "" {
 		wd, _ := os.Getwd()
-		data, _ := json.Marshal(map[string]any{"args": os.Args[1:], "wd": wd})
+		var mode uint32
+		console := windows.GetConsoleMode(windows.Handle(os.Stdin.Fd()), &mode) == nil
+		data, _ := json.Marshal(map[string]any{"args": os.Args[1:], "wd": wd, "console": console})
 		_ = os.WriteFile(out, data, 0o600)
 		os.Exit(0)
 	}
@@ -25,8 +31,9 @@ func TestMain(m *testing.M) {
 }
 
 type fakeRun struct {
-	Args []string `json:"args"`
-	WD   string   `json:"wd"`
+	Args    []string `json:"args"`
+	WD      string   `json:"wd"`
+	Console bool     `json:"console"`
 }
 
 // runScript runs a generated line the way the console does, but without a
@@ -131,6 +138,42 @@ func TestPowerShellScriptStopsOnMissingDir(t *testing.T) {
 	missing := filepath.Join(t.TempDir(), "gone")
 	if _, ran := runScript(t, PowerShellCommand([]string{exe, "x"}, missing)); ran {
 		t.Fatal("agent ran although Set-Location failed")
+	}
+}
+
+// TestConsoleGivesAgentTheConsole starts the agent the way Open in terminal
+// does, minus the visible window, and checks that the agent reads the
+// console. With NUL as stdin, PowerShell exits at once despite -NoExit.
+func TestConsoleGivesAgentTheConsole(t *testing.T) {
+	exe := fakeAgent(t)
+	dir := trickyDir(t)
+	out := filepath.Join(t.TempDir(), "run.json")
+	t.Setenv("LAUNCH_FAKE_AGENT", out)
+	script := PowerShellCommand([]string{exe, "--resume", "s1"}, dir) + "; exit"
+	h, err := startConsole(script, dir, windows.CREATE_NO_WINDOW)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer windows.CloseHandle(h)
+	if ev, _ := windows.WaitForSingleObject(h, 30000); ev != windows.WAIT_OBJECT_0 {
+		_ = windows.TerminateProcess(h, 1)
+		t.Fatal("PowerShell did not finish")
+	}
+	var r fakeRun
+	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(50 * time.Millisecond) {
+		data, err := os.ReadFile(out)
+		if err == nil && json.Unmarshal(data, &r) == nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("agent did not run")
+		}
+	}
+	if !r.Console {
+		t.Error("agent stdin is not the console")
+	}
+	if !reflect.DeepEqual(r.Args, []string{"--resume", "s1"}) || !strings.EqualFold(filepath.Clean(r.WD), filepath.Clean(dir)) {
+		t.Errorf("run = %+v", r)
 	}
 }
 
