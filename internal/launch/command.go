@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 
 	"github.com/ginkcode/agent-sessions/internal/provider"
@@ -16,7 +17,7 @@ import (
 // Format renders cmd as one line for the local shell: PowerShell 5 syntax on
 // Windows (where `&&` and POSIX quoting do not work), POSIX sh elsewhere. On
 // Windows an agent CLI found only outside PATH, such as one bundled with a
-// desktop app, is called by its full path.
+// desktop app, is called by its full path, with its interactive defaults.
 func Format(cmd provider.Command) string {
 	return formatFor(runtime.GOOS, cmd, Find)
 }
@@ -27,11 +28,28 @@ func formatFor(goos string, cmd provider.Command, find func(string) (Executable,
 	}
 	argv := cmd.Argv
 	if len(argv) > 0 {
-		if exe, err := find(argv[0]); err == nil && !exe.OnPath {
-			argv = append([]string{exe.Path}, argv[1:]...)
+		if exe, err := find(argv[0]); err == nil {
+			head := argv[0]
+			if !exe.OnPath {
+				head = exe.Path
+			}
+			argv = exe.commandLine(head, argv[1:])
 		}
 	}
 	return PowerShellCommand(argv, cmd.Dir)
+}
+
+// commandLine inserts interactive defaults without modifying the caller's
+// arguments. An already-prepared argument prefix isn't duplicated.
+func (e Executable) commandLine(head string, args []string) []string {
+	defaults := e.Args
+	if len(args) >= len(defaults) && slices.Equal(args[:len(defaults)], defaults) {
+		defaults = nil
+	}
+	argv := make([]string, 0, 1+len(defaults)+len(args))
+	argv = append(argv, head)
+	argv = append(argv, defaults...)
+	return append(argv, args...)
 }
 
 // PosixCommand renders argv for a POSIX shell, changing into dir first:

@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 )
 
@@ -20,6 +21,9 @@ type Executable struct {
 	// OnPath is true when PATH resolves the bare name to Path, so a copied
 	// command can use the name instead.
 	OnPath bool
+	// Args are defaults to insert before the user's arguments on interactive
+	// launches. Noninteractive callers use Path only.
+	Args []string
 }
 
 // Find locates the CLI for an agent command name ("claude", "codex" or
@@ -47,7 +51,7 @@ func (f finder) find(name string) (Executable, error) {
 		if abs, err := filepath.Abs(path); err == nil {
 			path = abs
 		}
-		return Executable{Path: path, OnPath: true}, nil
+		return Executable{Path: path, OnPath: true, Args: f.bundleArgs(name, path)}, nil
 	}
 	if f.goos == "windows" {
 		for _, loc := range windowsLocations(name, f.goarch) {
@@ -56,11 +60,42 @@ func (f finder) find(name string) (Executable, error) {
 				continue
 			}
 			if path := newestFile(expand(base, loc.parts)); path != "" {
-				return Executable{Path: path}, nil
+				return Executable{Path: path, Args: slices.Clone(loc.args)}, nil
 			}
 		}
 	}
 	return Executable{}, fmt.Errorf("%w: %s", ErrAgentNotFound, installHint(name))
+}
+
+// bundleArgs also recognizes a bundled CLI put on PATH. Reuse the lookup
+// locations, resolving short names before comparing the paths on Windows.
+func (f finder) bundleArgs(name, path string) []string {
+	if f.goos != "windows" || name != "codex" {
+		return nil
+	}
+	path = resolvedPath(path)
+	for _, loc := range windowsLocations(name, f.goarch) {
+		if len(loc.args) == 0 {
+			continue
+		}
+		base := f.getenv(loc.env)
+		if base == "" {
+			continue
+		}
+		for _, candidate := range expand(base, loc.parts) {
+			if strings.EqualFold(path, resolvedPath(candidate)) {
+				return slices.Clone(loc.args)
+			}
+		}
+	}
+	return nil
+}
+
+func resolvedPath(path string) string {
+	if resolved, err := filepath.EvalSymlinks(path); err == nil {
+		path = resolved
+	}
+	return filepath.Clean(path)
 }
 
 // desktopAlias reports the app execution alias Claude Desktop installs as
@@ -79,15 +114,25 @@ func (f finder) desktopAlias(name, path string) bool {
 type location struct {
 	env   string
 	parts []string
+	args  []string
 }
 
 func loc(env string, parts ...string) location { return location{env: env, parts: parts} }
 
+// Codex's desktop/editor copies can run the TUI but may lack the package
+// needed to auto-start its daemon. A per-launch config override also works
+// with older copies that don't recognize --no-daemon.
+var codexBundleArgs = []string{"-c", "features.daemon_auto_start=false"}
+
+func codexBundle(env string, parts ...string) location {
+	return location{env: env, parts: parts, args: codexBundleArgs}
+}
+
 // windowsLocations lists where agent CLIs live besides PATH, in order of
 // preference: standalone installs, then desktop apps, then editor
-// extensions. The desktop and extension copies are full CLIs (checked with
-// --version): Codex desktop's codex.exe, OpenCode Desktop's opencode-cli.exe,
-// and the claude.exe Claude Desktop downloads into its user-data directory
+// extensions. Codex's bundled copies need daemon auto-start disabled for
+// interactive launches; --version alone doesn't verify package completeness.
+// Claude Desktop downloads claude.exe into its user-data directory
 // (documented for the standard, MSIX-redirected and 3P installs).
 func windowsLocations(name, goarch string) []location {
 	var locs []location
@@ -106,14 +151,14 @@ func windowsLocations(name, goarch string) []location {
 	case "codex":
 		locs = append(locs,
 			loc("APPDATA", "npm", "codex.cmd"),
-			loc("LOCALAPPDATA", "OpenAI", "Codex", "bin", "*", "codex.exe"),
+			codexBundle("LOCALAPPDATA", "OpenAI", "Codex", "bin", "*", "codex.exe"),
 		)
 		arch := "x86_64"
 		if goarch == "arm64" {
 			arch = "aarch64"
 		}
 		for _, editor := range editorDirs {
-			locs = append(locs, loc("USERPROFILE", editor, "extensions", "openai.chatgpt-*-win32-*", "bin", "windows-"+arch, "codex.exe"))
+			locs = append(locs, codexBundle("USERPROFILE", editor, "extensions", "openai.chatgpt-*-win32-*", "bin", "windows-"+arch, "codex.exe"))
 		}
 	case "opencode":
 		locs = append(locs,

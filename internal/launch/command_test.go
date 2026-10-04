@@ -2,6 +2,7 @@ package launch
 
 import (
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 
@@ -57,8 +58,11 @@ func TestPowerShellCommand(t *testing.T) {
 		want string
 	}{
 		{[]string{"claude", "--resume", "abc"}, `C:\work dir`, `Set-Location -LiteralPath 'C:\work dir' -ErrorAction Stop; claude --resume abc`},
-		{[]string{`C:\Users\me\AppData\Local\Programs\@opencodedesktop\resources\opencode-cli.exe`, "--session", "ses_1"}, `C:\p`,
-			`Set-Location -LiteralPath C:\p -ErrorAction Stop; & 'C:\Users\me\AppData\Local\Programs\@opencodedesktop\resources\opencode-cli.exe' --session ses_1`},
+		{
+			[]string{`C:\Users\me\AppData\Local\Programs\@opencodedesktop\resources\opencode-cli.exe`, "--session", "ses_1"},
+			`C:\p`,
+			`Set-Location -LiteralPath C:\p -ErrorAction Stop; & 'C:\Users\me\AppData\Local\Programs\@opencodedesktop\resources\opencode-cli.exe' --session ses_1`,
+		},
 		{[]string{`C:\bin\codex.exe`, "Read it"}, "", `& C:\bin\codex.exe 'Read it'`},
 		{[]string{"codex", "x"}, "", "codex x"},
 	}
@@ -86,6 +90,66 @@ func TestFormatFor(t *testing.T) {
 	}
 	if got, want := formatFor("windows", cmd, missing), `Set-Location -LiteralPath C:\proj -ErrorAction Stop; claude --resume abc`; got != want {
 		t.Errorf("missing = %q, want %q", got, want)
+	}
+}
+
+func TestBundledCodexCommands(t *testing.T) {
+	for _, onPath := range []bool{false, true} {
+		for _, args := range [][]string{
+			{"resume", "s1"},
+			{`Read C:\Users\me\handoffs\s-handoff.md completely, then wait.`},
+			{"-c", "features.daemon_auto_start=false", "resume", "s1"},
+		} {
+			argv := append([]string{"codex"}, args...)
+			original := slices.Clone(argv)
+			exe := Executable{Path: `C:\Codex\codex.exe`, OnPath: onPath, Args: slices.Clone(codexBundleArgs)}
+			find := func(string) (Executable, error) { return exe, nil }
+			tail := args
+			if args[0] == "-c" {
+				tail = args[2:]
+			}
+			defaults := ` -c 'features.daemon_auto_start=false' `
+			suffix := strings.TrimPrefix(PowerShellCommand(append([]string{"codex"}, tail...), ""), "codex ")
+			head := "& C:\\Codex\\codex.exe"
+			if onPath {
+				head = "codex"
+			}
+			cmd := provider.Command{Argv: argv}
+			if got, want := formatFor("windows", cmd, find), head+defaults+suffix; got != want {
+				t.Errorf("copy = %q, want %q", got, want)
+			}
+			cmd.Dir = t.TempDir()
+			script, err := terminalScript(cmd, find)
+			want := "Set-Location -LiteralPath " + PowerShellQuote(cmd.Dir) + " -ErrorAction Stop; & C:\\Codex\\codex.exe" + defaults + suffix
+			if err != nil || script != want {
+				t.Errorf("open = %q, %v; want %q", script, err, want)
+			}
+			for _, goos := range []string{"linux", "darwin"} {
+				if got, want := formatFor(goos, cmd, find), PosixCommand(original, cmd.Dir); got != want {
+					t.Errorf("%s changed: %q, want %q", goos, got, want)
+				}
+			}
+			if !slices.Equal(argv, original) || !slices.Equal(exe.Args, codexBundleArgs) {
+				t.Errorf("arguments modified: argv=%q, defaults=%q", argv, exe.Args)
+			}
+		}
+	}
+}
+
+func TestExecutableCommandLine(t *testing.T) {
+	defaults := make([]string, 2, 8)
+	copy(defaults, codexBundleArgs)
+	args := make([]string, 2, 8)
+	copy(args, []string{"resume", "s1"})
+	exe := Executable{Args: defaults}
+	argv := exe.commandLine("codex", args)
+	if want := []string{"codex", "-c", "features.daemon_auto_start=false", "resume", "s1"}; !slices.Equal(argv, want) {
+		t.Fatalf("argv = %q, want %q", argv, want)
+	}
+	argv[1] = "changed default"
+	argv[3] = "changed argument"
+	if !slices.Equal(defaults, codexBundleArgs) || !slices.Equal(args, []string{"resume", "s1"}) {
+		t.Errorf("shared argument storage: defaults=%q, args=%q", defaults, args)
 	}
 }
 
@@ -148,5 +212,11 @@ func TestTerminalScript(t *testing.T) {
 	}
 	if _, err := terminalScript(provider.Command{Argv: []string{"codex", `say "hi"`}, Dir: dir}, find); !errors.Is(err, ErrUnsafeArgument) {
 		t.Errorf("unsafe arg: %v", err)
+	}
+	bundled := func(string) (Executable, error) {
+		return Executable{Path: `C:\Codex\codex.exe`, Args: codexBundleArgs}, nil
+	}
+	if _, err := terminalScript(provider.Command{Argv: []string{"codex", `say "hi"`}, Dir: dir}, bundled); !errors.Is(err, ErrUnsafeArgument) {
+		t.Errorf("unsafe bundled argument: %v", err)
 	}
 }

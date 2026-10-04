@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -73,6 +74,13 @@ func TestFindWindowsBundledCLIs(t *testing.T) {
 		if err != nil || got.Path != want || got.OnPath {
 			t.Errorf("find(%s) = %+v, %v; want %s", name, got, err, want)
 		}
+		var args []string
+		if name == "codex" {
+			args = []string{"-c", "features.daemon_auto_start=false"}
+		}
+		if !slices.Equal(got.Args, args) {
+			t.Errorf("find(%s) args = %q, want %q", name, got.Args, args)
+		}
 	}
 }
 
@@ -119,11 +127,74 @@ func TestFindCodexExtensionArch(t *testing.T) {
 	extDir := filepath.Join(h.profile, ".cursor", "extensions", "openai.chatgpt-26.930.41038-win32-arm64", "bin")
 	h.file(filepath.Join(extDir, "windows-x86_64", "codex.exe"), 0)
 	arm := h.file(filepath.Join(extDir, "windows-aarch64", "codex.exe"), 0)
-	if got, _ := h.finder("arm64").find("codex"); got.Path != arm {
+	if got, _ := h.finder("arm64").find("codex"); got.Path != arm || !slices.Equal(got.Args, codexBundleArgs) {
 		t.Fatalf("arm64: got %q", got.Path)
 	}
-	if got, _ := h.finder("amd64").find("codex"); got.Path != filepath.Join(extDir, "windows-x86_64", "codex.exe") {
+	if got, _ := h.finder("amd64").find("codex"); got.Path != filepath.Join(extDir, "windows-x86_64", "codex.exe") || !slices.Equal(got.Args, codexBundleArgs) {
 		t.Fatalf("amd64: got %q", got.Path)
+	}
+}
+
+func TestFindCodexBundleArgs(t *testing.T) {
+	for _, editor := range editorDirs {
+		t.Run(editor, func(t *testing.T) {
+			h := newFakeHome(t)
+			ext := h.file(filepath.Join(h.profile, editor, "extensions", "openai.chatgpt-26.930.41038-win32-x64", "bin", "windows-x86_64", "codex.exe"), 0)
+			f := h.finder("amd64")
+			got, err := f.find("codex")
+			if err != nil || got.Path != ext || got.OnPath || !slices.Equal(got.Args, codexBundleArgs) {
+				t.Fatalf("extension: %+v, %v", got, err)
+			}
+			// These defaults also apply if the same bundled CLI is on PATH.
+			h.pathHits["codex"] = ext
+			got, err = f.find("codex")
+			if err != nil || got.Path != ext || !got.OnPath || !slices.Equal(got.Args, codexBundleArgs) {
+				t.Fatalf("extension on PATH: %+v, %v", got, err)
+			}
+			// A caller cannot change the defaults subsequent lookups return.
+			got.Args[0] = "changed"
+			if again, _ := f.find("codex"); !slices.Equal(again.Args, codexBundleArgs) {
+				t.Errorf("shared defaults: %q", again.Args)
+			}
+			// TEMP on a Windows runner may use 8.3 names while PATH uses
+			// the long form. Both must identify the same bundled CLI.
+			resolved, err := filepath.EvalSymlinks(ext)
+			if err != nil {
+				t.Fatal(err)
+			}
+			h.pathHits["codex"] = resolved
+			if again, _ := f.find("codex"); !slices.Equal(again.Args, codexBundleArgs) {
+				t.Errorf("resolved bundle path not recognized: %+v", again)
+			}
+			h.pathHits["codex"] = strings.ToUpper(resolved)
+			if again, _ := f.find("codex"); !slices.Equal(again.Args, codexBundleArgs) {
+				t.Errorf("case-insensitive bundle path not recognized: %+v", again)
+			}
+		})
+	}
+
+	h := newFakeHome(t)
+	f := h.finder("amd64")
+	desktop := h.file(filepath.Join(h.local, "OpenAI", "Codex", "bin", "hash", "codex.exe"), 0)
+	h.pathHits["codex"] = desktop
+	if got, err := f.find("codex"); err != nil || !got.OnPath || !slices.Equal(got.Args, codexBundleArgs) {
+		t.Errorf("desktop on PATH: %+v, %v", got, err)
+	}
+	f.goos = "linux"
+	if got, err := f.find("codex"); err != nil || len(got.Args) != 0 {
+		t.Errorf("Linux PATH: %+v, %v", got, err)
+	}
+	f.goos = "windows"
+	delete(h.pathHits, "codex")
+	npm := h.file(filepath.Join(h.roaming, "npm", "codex.cmd"), 0)
+	if got, err := f.find("codex"); err != nil || got.Path != npm || len(got.Args) != 0 {
+		t.Errorf("npm: %+v, %v", got, err)
+	}
+	for _, path := range []string{npm, filepath.Join(h.profile, "bin", "codex.exe")} {
+		h.pathHits["codex"] = path
+		if got, err := f.find("codex"); err != nil || got.Path != path || !got.OnPath || len(got.Args) != 0 {
+			t.Errorf("other PATH CLI: %+v, %v", got, err)
+		}
 	}
 }
 

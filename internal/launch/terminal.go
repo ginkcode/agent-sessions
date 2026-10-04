@@ -47,8 +47,9 @@ func terminalScript(cmd provider.Command, find func(string) (Executable, error))
 	if err != nil {
 		return "", err
 	}
-	if err := ValidateArgs(exe.Path, cmd.Argv[1:]); err != nil {
+	argv := exe.commandLine(exe.Path, cmd.Argv[1:])
+	if err := ValidateArgs(exe.Path, argv[1:]); err != nil {
 		return "", err
 	}
-	return PowerShellCommand(append([]string{exe.Path}, cmd.Argv[1:]...), cmd.Dir), nil
+	return PowerShellCommand(argv, cmd.Dir), nil
 }

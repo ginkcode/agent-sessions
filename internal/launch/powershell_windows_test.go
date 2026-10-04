@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"golang.org/x/sys/windows"
+
+	"github.com/ginkcode/agent-sessions/internal/provider"
 )
 
 // With LAUNCH_FAKE_AGENT set, the test binary acts as an agent CLI: it
@@ -124,6 +126,37 @@ func TestPowerShellScriptPassesArgsExactly(t *testing.T) {
 	}
 	if !sameDir(t, r.WD, dir) {
 		t.Errorf("wd = %q, want %q", r.WD, dir)
+	}
+}
+
+func TestBundledCodexDefaultsReachAgent(t *testing.T) {
+	exe := fakeAgent(t)
+	dir := trickyDir(t)
+	find := func(string) (Executable, error) {
+		return Executable{Path: exe, Args: codexBundleArgs}, nil
+	}
+	for name, args := range map[string][]string{
+		"resume":  {"resume", "s1"},
+		"handoff": {trickyArgs[2]},
+	} {
+		t.Run(name, func(t *testing.T) {
+			cmd := provider.Command{Argv: append([]string{"codex"}, args...), Dir: dir}
+			script, err := terminalScript(cmd, find)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if copied := formatFor("windows", cmd, find); copied != script {
+				t.Fatalf("copy = %q, open = %q", copied, script)
+			}
+			r, ok := runScript(t, script)
+			if !ok {
+				t.Fatalf("agent did not run; script: %s", script)
+			}
+			want := append([]string{"-c", "features.daemon_auto_start=false"}, args...)
+			if !reflect.DeepEqual(r.Args, want) || !sameDir(t, r.WD, dir) {
+				t.Errorf("run = %+v, want args=%q wd=%q", r, want, dir)
+			}
+		})
 	}
 }
 
