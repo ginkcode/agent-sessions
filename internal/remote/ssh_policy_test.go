@@ -80,8 +80,9 @@ func TestSSHProbeFailures(t *testing.T) {
 func TestSSHProbeTimeoutAndCancellation(t *testing.T) {
 	bin := fakeSSHPath(t, "hang", nil)
 	start := time.Now()
-	_, err := probeHost(context.Background(), "box", SSHOptions{Binary: bin, ControlMaster: "no"}, "dev", 100*time.Millisecond)
-	if !errors.Is(err, context.DeadlineExceeded) || !strings.Contains(err.Error(), "waiting for SSH peer") || time.Since(start) > 3*time.Second {
+	// Long enough for the fake to start and print, which is slow on Windows.
+	_, err := probeHost(context.Background(), "box", SSHOptions{Binary: bin, ControlMaster: "no"}, "dev", time.Second)
+	if !errors.Is(err, context.DeadlineExceeded) || !strings.Contains(err.Error(), "waiting for SSH peer") || time.Since(start) > 5*time.Second {
 		t.Fatalf("timeout = %v after %v", err, time.Since(start))
 	}
 	ctx, cancel := context.WithCancel(context.Background())

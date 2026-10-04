@@ -18,6 +18,7 @@ import type {
   HandoffRequest,
   HandoffPreview,
   HandoffCacheInfo,
+  LaunchInfo,
   ExportRequest,
   ExportPreview,
   BundleSummary,
@@ -39,6 +40,10 @@ export interface BackendAPI {
   indexProgress(): Promise<FTSProgress>;
   getBlob(ref: SessionRef, key: string): Promise<BlobResponse>;
   copyResumeCommand(ref: SessionRef): Promise<string>;
+  launchInfo(): Promise<LaunchInfo>;
+  openResumeInTerminal(ref: SessionRef): Promise<void>;
+  openHandoffInTerminal(req: HandoffRequest): Promise<void>;
+  openBundleHandoffInTerminal(req: BundleHandoffRequest): Promise<void>;
   revealSource(ref: SessionRef): Promise<void>;
   getDiagnostics(): Promise<Diagnostics>;
   openURL(url: string): Promise<void>;
@@ -81,6 +86,10 @@ interface WailsAppBinding {
   IndexProgress(): Promise<FTSProgress>;
   GetBlob(ref: SessionRef, key: string): Promise<BlobResponse>;
   CopyResumeCommand(ref: SessionRef): Promise<string>;
+  LaunchInfo(): Promise<LaunchInfo>;
+  OpenResumeInTerminal(ref: SessionRef): Promise<void>;
+  OpenHandoffInTerminal(req: HandoffRequest): Promise<void>;
+  OpenBundleHandoffInTerminal(req: BundleHandoffRequest): Promise<void>;
   RevealSource(ref: SessionRef): Promise<void>;
   Diagnostics(): Promise<Diagnostics>;
   OpenURL(url: string): Promise<void>;
@@ -207,6 +216,38 @@ class WailsBackendAPI implements BackendAPI {
   async copyResumeCommand(ref: SessionRef): Promise<string> {
     try {
       return await this.binding.CopyResumeCommand(ref);
+    } catch (e) {
+      throw normalizeError(e);
+    }
+  }
+
+  async launchInfo(): Promise<LaunchInfo> {
+    try {
+      return await this.binding.LaunchInfo();
+    } catch (e) {
+      throw normalizeError(e);
+    }
+  }
+
+  async openResumeInTerminal(ref: SessionRef): Promise<void> {
+    try {
+      return await this.binding.OpenResumeInTerminal(ref);
+    } catch (e) {
+      throw normalizeError(e);
+    }
+  }
+
+  async openHandoffInTerminal(req: HandoffRequest): Promise<void> {
+    try {
+      return await this.binding.OpenHandoffInTerminal(req);
+    } catch (e) {
+      throw normalizeError(e);
+    }
+  }
+
+  async openBundleHandoffInTerminal(req: BundleHandoffRequest): Promise<void> {
+    try {
+      return await this.binding.OpenBundleHandoffInTerminal(req);
     } catch (e) {
       throw normalizeError(e);
     }
@@ -481,6 +522,7 @@ const UNGUARDED = new Set<string>([
   'onEvent',
   'openURL',
   'appVersion',
+  'launchInfo',
   'listHosts',
   'connect',
   'disconnect',

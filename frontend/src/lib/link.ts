@@ -134,9 +134,11 @@ export function filterHosts(hosts: HostEntry[], query: string): HostEntry[] {
 
 /**
  * Tooltip for the Resume button. A remote session's command is built for
- * that host and has to be pasted into an interactive shell there.
+ * that host and has to be pasted into an interactive shell there. A local
+ * session opens in a terminal where the platform supports it.
  */
-export function resumeButtonTitle(host: string | undefined): string {
+export function resumeButtonTitle(host: string | undefined, terminal = false): string {
+  if (!host && terminal) return 'Resume this session in a new terminal window. Use ▾ to copy the command instead';
   const base = 'Copy shell command to resume this session';
   if (!host) return base;
   return `${base}. Run it on ${host}: open a shell with "ssh ${host}", then paste it.`;

@@ -8,8 +8,10 @@ import (
 	"path/filepath"
 
 	"github.com/ginkcode/agent-sessions/internal/handoff"
+	"github.com/ginkcode/agent-sessions/internal/launch"
 	"github.com/ginkcode/agent-sessions/internal/model"
 	"github.com/ginkcode/agent-sessions/internal/pathutil"
+	"github.com/ginkcode/agent-sessions/internal/provider"
 )
 
 // HandoffRequest configures the creation of a cross-agent handoff document.
@@ -163,19 +165,29 @@ func (s *Service) BuildHandoff(ctx context.Context, req HandoffRequest) (Handoff
 // HandoffCommand writes the prompt and full context files (0600, pruned) and
 // returns the launch command line, which points at the prompt file.
 func (s *Service) HandoffCommand(ctx context.Context, req HandoffRequest) (string, error) {
-	_, contextFile, err := s.handoffFiles(req.Ref.ID)
+	cmd, err := s.HandoffLaunch(ctx, req)
 	if err != nil {
 		return "", err
+	}
+	return launch.Format(cmd), nil
+}
+
+// HandoffLaunch writes the prompt and full context files like HandoffCommand
+// and returns the target agent's argv and working directory.
+func (s *Service) HandoffLaunch(ctx context.Context, req HandoffRequest) (provider.Command, error) {
+	_, contextFile, err := s.handoffFiles(req.Ref.ID)
+	if err != nil {
+		return provider.Command{}, err
 	}
 
 	doc, meta, err := s.buildHandoffDoc(ctx, req, contextFile)
 	if err != nil {
-		return "", err
+		return provider.Command{}, err
 	}
 
 	promptFile, err := s.saveHandoffFiles(req.Ref.ID, doc)
 	if err != nil {
-		return "", err
+		return provider.Command{}, err
 	}
 
 	cwd := req.CWD
@@ -183,7 +195,7 @@ func (s *Service) HandoffCommand(ctx context.Context, req HandoffRequest) (strin
 		cwd = meta.CWD
 	}
 
-	return handoff.BuildLaunchCommand(req.Target, doc.PromptMarkdown, promptFile, cwd), nil
+	return handoff.LaunchCommand(req.Target, doc.PromptMarkdown, promptFile, cwd), nil
 }
 
 // RenderHandoff builds the self-contained full handoff document without saving it to disk.

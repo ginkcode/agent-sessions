@@ -9,16 +9,21 @@
   import { ALL_AGENTS } from '../../portable';
   import AgentIcon from '../common/AgentIcon.svelte';
   import { link } from '../../stores/link.svelte';
+  import { launcher } from '../../stores/launcher.svelte';
   import { resumeButtonTitle } from '../../link';
 
   interface Props {
     meta: SessionMeta;
     showMeta: boolean;
     onToggleMeta: () => void;
+    /** Copies the resume command. */
     onResume: () => void;
+    /** Resumes in a new terminal; offered when launcher.canOpen. */
+    onOpenResume?: () => void;
     onReveal: () => void;
     onDelete: () => void;
     resumeCopied?: boolean;
+    resumeOpening?: boolean;
   }
 
   let {
@@ -26,14 +31,18 @@
     showMeta,
     onToggleMeta,
     onResume,
+    onOpenResume = () => {},
     onReveal,
     onDelete,
     resumeCopied = false,
+    resumeOpening = false,
   }: Props = $props();
 
   let messageTotal = $derived(meta.counts.user + meta.counts.assistant);
+  let resumeMenuOpen = $state(false);
   let continueMenuOpen = $state(false);
   let exportMenuOpen = $state(false);
+  let resumeMenuRoot: HTMLDivElement | undefined = $state();
   let continueMenuRoot: HTMLDivElement | undefined = $state();
   let exportMenuRoot: HTMLDivElement | undefined = $state();
 
@@ -45,6 +54,9 @@
 
   function handleWindowPointerDown(e: PointerEvent) {
     const target = e.target as Node;
+    if (resumeMenuOpen && resumeMenuRoot && !resumeMenuRoot.contains(target)) {
+      resumeMenuOpen = false;
+    }
     if (continueMenuOpen && continueMenuRoot && !continueMenuRoot.contains(target)) {
       continueMenuOpen = false;
     }
@@ -88,14 +100,61 @@
     </div>
 
     <div class="header-actions">
-      <button
-        type="button"
-        class="action-btn resume-btn"
-        title={resumeButtonTitle(link.dataHost)}
-        onclick={onResume}
-      >
-        {resumeCopied ? '✓ Copied' : 'Resume'}
-      </button>
+      {#if launcher.canOpen}
+        <div class="menu-container resume-split" bind:this={resumeMenuRoot}>
+          <button
+            type="button"
+            class="action-btn resume-btn resume-main"
+            title={resumeButtonTitle(link.dataHost, true)}
+            disabled={resumeOpening}
+            onclick={onOpenResume}
+          >
+            {resumeCopied ? '✓ Copied' : resumeOpening ? 'Opening…' : 'Resume'}
+          </button>
+          <button
+            type="button"
+            class="action-btn resume-btn resume-toggle"
+            title="More ways to resume"
+            aria-label="More ways to resume"
+            aria-haspopup="menu"
+            aria-expanded={resumeMenuOpen}
+            onclick={() => {
+              resumeMenuOpen = !resumeMenuOpen;
+              if (resumeMenuOpen) {
+                continueMenuOpen = false;
+                exportMenuOpen = false;
+              }
+            }}
+          >
+            ▾
+          </button>
+          {#if resumeMenuOpen}
+            <div class="action-dropdown-menu" role="menu">
+              <button
+                type="button"
+                class="action-menu-item"
+                role="menuitem"
+                title="Copy the resume command to run it yourself"
+                onclick={() => {
+                  resumeMenuOpen = false;
+                  onResume();
+                }}
+              >
+                <span>Copy command</span>
+              </button>
+            </div>
+          {/if}
+        </div>
+      {:else}
+        <button
+          type="button"
+          class="action-btn resume-btn"
+          title={resumeButtonTitle(link.dataHost)}
+          onclick={onResume}
+        >
+          {resumeCopied ? '✓ Copied' : 'Resume'}
+        </button>
+      {/if}
 
       <div class="menu-container" bind:this={continueMenuRoot}>
         <button
@@ -107,7 +166,10 @@
           aria-expanded={continueMenuOpen}
           onclick={() => {
             continueMenuOpen = !continueMenuOpen;
-            if (continueMenuOpen) exportMenuOpen = false;
+            if (continueMenuOpen) {
+              exportMenuOpen = false;
+              resumeMenuOpen = false;
+            }
           }}
         >
           Continue in ▾
@@ -142,7 +204,10 @@
           aria-expanded={exportMenuOpen}
           onclick={() => {
             exportMenuOpen = !exportMenuOpen;
-            if (exportMenuOpen) continueMenuOpen = false;
+            if (exportMenuOpen) {
+              continueMenuOpen = false;
+              resumeMenuOpen = false;
+            }
           }}
         >
           Export ▾
@@ -401,6 +466,23 @@
   .action-btn.resume-btn:hover {
     background-color: var(--accent-hover);
     color: white;
+  }
+
+  .action-btn.resume-btn:disabled {
+    opacity: 0.7;
+    cursor: progress;
+  }
+
+  .resume-split .resume-main {
+    border-top-right-radius: 0;
+    border-bottom-right-radius: 0;
+  }
+
+  .resume-split .resume-toggle {
+    padding: 3px 6px;
+    border-top-left-radius: 0;
+    border-bottom-left-radius: 0;
+    border-left: 1px solid rgba(255, 255, 255, 0.35);
   }
 
   .action-btn.meta-btn.active {

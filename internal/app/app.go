@@ -41,6 +41,8 @@ type App struct {
 	// roots are the provider roots of svc; the engine names its index by them.
 	roots              paths.Roots
 	saveDialogOverride func(ctx context.Context, defaultName string) (string, error)
+	// terminalOverride replaces launch.OpenTerminal in tests.
+	terminalOverride func(provider.Command) error
 
 	events            *catalogBus
 	wailsEvents       engine.Emitter

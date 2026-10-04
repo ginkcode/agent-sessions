@@ -2,9 +2,10 @@ import { api } from '../api';
 import type { AgentID, BundleHandoffRequest, BundleSummary, HandoffPreview } from '../types';
 import { copyToClipboard } from '../portable';
 import { isStaleReply } from '../link';
-import { copiedGuidance } from '../guidance';
+import { copiedGuidance, openedGuidance } from '../guidance';
 import { toast } from './toast.svelte';
 import { link } from './link.svelte';
+import { launcher } from './launcher.svelte';
 
 export class ImporterStore {
   dialogOpen = $state(false);
@@ -27,6 +28,7 @@ export class ImporterStore {
   clipboardError = $state<string | null>(null);
   copiedPrompt = $state(false);
   copiedCommand = $state(false);
+  launching = $state(false);
   saving = $state(false);
   savedPath = $state<string | null>(null);
 
@@ -237,7 +239,7 @@ export class ImporterStore {
         return;
       }
       this.copiedCommand = true;
-      toast.show(copiedGuidance('launch', { host: link.dataHost, agent: this.target }));
+      toast.show(copiedGuidance('launch', { host: link.dataHost, agent: this.target, shell: launcher.copyShell }));
       if (this.copyCommandTimer) clearTimeout(this.copyCommandTimer);
       this.copyCommandTimer = setTimeout(() => {
         this.copiedCommand = false;
@@ -245,6 +247,36 @@ export class ImporterStore {
     } catch (err) {
       if (isStaleReply(err)) return;
       this.clipboardError = err instanceof Error ? err.message : String(err);
+    }
+  }
+
+  /**
+   * Writes the handoff files and opens a terminal that starts the target
+   * agent with them. The dialog closes once the terminal is up.
+   */
+  async openInTerminal(): Promise<void> {
+    this.clipboardError = null;
+    if (!this.bundle || this.launching) return;
+
+    const req: BundleHandoffRequest = {
+      bundleId: this.bundle.bundleId,
+      target: this.target,
+      budget: this.budget,
+      includeReasoning: this.includeReasoning,
+      redactSecrets: this.redactSecrets || this.redactionForced,
+      cwd: this.cwd || undefined,
+    };
+
+    this.launching = true;
+    try {
+      await api.openBundleHandoffInTerminal(req);
+      toast.show(openedGuidance('launch', this.target));
+      this.close();
+    } catch (err) {
+      if (isStaleReply(err)) return;
+      this.clipboardError = err instanceof Error ? err.message : String(err);
+    } finally {
+      this.launching = false;
     }
   }
 

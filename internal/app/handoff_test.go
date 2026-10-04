@@ -84,7 +84,7 @@ func TestBuildHandoff(t *testing.T) {
 	if !strings.Contains(preview.Command, "codex") {
 		t.Errorf("expected codex in command: %s", preview.Command)
 	}
-	if !strings.Contains(preview.Command, "cd /tmp/work") {
+	if !strings.HasPrefix(preview.Command, cdPrefix("/tmp/work")) {
 		t.Errorf("expected cwd in command: %s", preview.Command)
 	}
 	if !strings.Contains(preview.Command, "Read "+preview.PromptFile+" completely") {
@@ -145,10 +145,11 @@ func TestHandoffCommand(t *testing.T) {
 		t.Fatalf("HandoffCommand failed: %v", err)
 	}
 
-	if !strings.Contains(cmd, "cd /custom/dir") {
+	if !strings.HasPrefix(cmd, cdPrefix("/custom/dir")) {
 		t.Errorf("expected custom cwd in command: %s", cmd)
 	}
-	if !strings.Contains(cmd, "opencode --prompt") {
+	// On Windows the agent may be a full path to a bundled CLI.
+	if !strings.Contains(cmd, "opencode") || !strings.Contains(cmd, " --prompt ") {
 		t.Errorf("expected opencode --prompt in command: %s", cmd)
 	}
 

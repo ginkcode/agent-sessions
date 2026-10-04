@@ -2,9 +2,10 @@ import { api } from '../api';
 import type { AgentID, HandoffPreview, HandoffRequest, SessionMeta } from '../types';
 import { copyToClipboard } from '../portable';
 import { isStaleReply } from '../link';
-import { copiedGuidance } from '../guidance';
+import { copiedGuidance, openedGuidance } from '../guidance';
 import { toast } from './toast.svelte';
 import { link } from './link.svelte';
+import { launcher } from './launcher.svelte';
 
 export class HandoffStore {
   dialogOpen = $state(false);
@@ -22,6 +23,7 @@ export class HandoffStore {
   clipboardError = $state<string | null>(null);
   copiedPrompt = $state(false);
   copiedCommand = $state(false);
+  launching = $state(false);
   saving = $state(false);
   savedPath = $state<string | null>(null);
 
@@ -173,7 +175,7 @@ export class HandoffStore {
         return;
       }
       this.copiedCommand = true;
-      toast.show(copiedGuidance('launch', { host: link.dataHost, agent: this.target }));
+      toast.show(copiedGuidance('launch', { host: link.dataHost, agent: this.target, shell: launcher.copyShell }));
       if (this.copyCommandTimer) clearTimeout(this.copyCommandTimer);
       this.copyCommandTimer = setTimeout(() => {
         this.copiedCommand = false;
@@ -181,6 +183,36 @@ export class HandoffStore {
     } catch (err) {
       if (isStaleReply(err)) return;
       this.clipboardError = err instanceof Error ? err.message : String(err);
+    }
+  }
+
+  /**
+   * Writes the handoff files and opens a terminal that starts the target
+   * agent with them. The dialog closes once the terminal is up.
+   */
+  async openInTerminal(): Promise<void> {
+    this.clipboardError = null;
+    if (!this.session || this.launching) return;
+
+    const req: HandoffRequest = {
+      ref: this.session.ref,
+      target: this.target,
+      budget: this.budget,
+      includeReasoning: this.includeReasoning,
+      redactSecrets: this.redactSecrets,
+      cwd: this.cwd || undefined,
+    };
+
+    this.launching = true;
+    try {
+      await api.openHandoffInTerminal(req);
+      toast.show(openedGuidance('launch', this.target));
+      this.close();
+    } catch (err) {
+      if (isStaleReply(err)) return;
+      this.clipboardError = err instanceof Error ? err.message : String(err);
+    } finally {
+      this.launching = false;
     }
   }
 

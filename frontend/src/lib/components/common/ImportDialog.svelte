@@ -6,6 +6,7 @@
   import RemoteCommandNote from './RemoteCommandNote.svelte';
   import MarkdownDoc from './MarkdownDoc.svelte';
   import { link } from '../../stores/link.svelte';
+  import { launcher } from '../../stores/launcher.svelte';
 
   let previewTab = $state<'prompt' | 'full'>('prompt');
 
@@ -440,12 +441,24 @@
           </button>
           <button
             type="button"
-            class="btn primary-btn"
+            class="btn"
+            class:primary-btn={!launcher.canOpen}
             disabled={!importer.preview}
             onclick={() => importer.copyCommand()}
           >
             {importer.copiedCommand ? '✓ Copied Command' : 'Copy Launch Command'}
           </button>
+          {#if launcher.canOpen}
+            <button
+              type="button"
+              class="btn primary-btn"
+              title="Start the agent with this handoff in a new terminal window"
+              disabled={importer.launching || !importer.preview}
+              onclick={() => importer.openInTerminal()}
+            >
+              {importer.launching ? 'Opening…' : 'Open in Terminal'}
+            </button>
+          {/if}
         {:else if importer.bundle && importer.activeTab === 'summary'}
           <button
             type="button"

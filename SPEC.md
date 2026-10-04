@@ -240,7 +240,8 @@ Three-pane layout:
 
 | Action | Milestone | Notes |
 |---|---|---|
-| Copy resume command | M1 | Per-provider command plus `cd <cwd>`. |
+| Copy resume command | M1 | Per-provider command plus `cd <cwd>`. On Windows a local command uses PowerShell 5.1 syntax (`Set-Location -LiteralPath …; & …`); remote commands stay POSIX (M8-06). |
+| Open in terminal | M8, Windows | Local Resume and Continue in open a PowerShell console in the session directory running the agent CLI, found on PATH or where standalone installs, desktop apps and editor extensions keep it (see [docs/plan/M8.md](docs/plan/M8.md) M8-11). Remote sessions keep Copy. |
 | Open terminal in cwd | M3 | Configurable terminal command (`x-terminal-emulator`, `gnome-terminal`, `kitty`, …; `open -a Terminal` on macOS). |
 | Reveal source file | M1 | `xdg-open` / `open -R`. |
 | Export session | M3 | Markdown, JSON (unified model), HTML. |

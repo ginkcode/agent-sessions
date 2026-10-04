@@ -1,60 +1,28 @@
 package engine
 
 import (
-	"fmt"
-	"strings"
-
+	"github.com/ginkcode/agent-sessions/internal/launch"
 	"github.com/ginkcode/agent-sessions/internal/provider"
 )
 
-// FormatResumeCommand renders a provider resume command as a shell command
-// line, optionally changing into the session's working directory first:
+// FormatResumeCommand renders a provider resume command as a POSIX shell
+// command line, optionally changing into the session's working directory
+// first:
 //
 //	cd "<cwd>" && claude --resume "<id>"
 func FormatResumeCommand(cmd provider.Command, cwd string) string {
-	argv := cmd.Argv
-	if cmd.Dir != "" && cwd == "" {
+	if cwd == "" {
 		cwd = cmd.Dir
 	}
-	cmdStr := JoinCommand(argv)
-	if cwd == "" {
-		return cmdStr
-	}
-	return fmt.Sprintf("cd %s && %s", ShellEscape(cwd), cmdStr)
+	return launch.PosixCommand(cmd.Argv, cwd)
 }
 
-// ShellEscape quotes a single argument for POSIX shells. Arguments that are
-// safe unquoted are passed through; everything else is single-quoted with
-// embedded quotes escaped the POSIX way ('"'"').
-func ShellEscape(arg string) string {
-	if arg == "" {
-		return "''"
-	}
-	if SafeUnquoted(arg) {
-		return arg
-	}
-	return "'" + strings.ReplaceAll(arg, "'", `'"'"'`) + "'"
-}
+// ShellEscape quotes a single argument for POSIX shells (see launch.ShellEscape).
+func ShellEscape(arg string) string { return launch.ShellEscape(arg) }
 
 // SafeUnquoted reports whether arg can appear unquoted in a POSIX shell
 // without changing meaning.
-func SafeUnquoted(arg string) bool {
-	for _, r := range arg {
-		switch {
-		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9':
-		case r == '_' || r == '-' || r == '.' || r == '/' || r == ':' || r == '=' || r == '@' || r == '+' || r == ',':
-		default:
-			return false
-		}
-	}
-	return true
-}
+func SafeUnquoted(arg string) bool { return launch.SafeUnquoted(arg) }
 
 // JoinCommand builds "argv0 argv1 …" with each argument escaped.
-func JoinCommand(argv []string) string {
-	parts := make([]string, 0, len(argv))
-	for _, arg := range argv {
-		parts = append(parts, ShellEscape(arg))
-	}
-	return strings.Join(parts, " ")
-}
+func JoinCommand(argv []string) string { return launch.JoinCommand(argv) }

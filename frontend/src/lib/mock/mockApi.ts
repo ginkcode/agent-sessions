@@ -19,6 +19,7 @@ import type {
   HandoffRequest,
   HandoffPreview,
   HandoffCacheInfo,
+  LaunchInfo,
   HandoffReport,
   ExportRequest,
   ExportPreview,
@@ -112,6 +113,10 @@ export class MockBackendAPI {
     },
   };
   private askpassReplies: Record<string, string> = {};
+  /** Terminal support the mock reports; tests can enable it. */
+  launch: LaunchInfo = { terminal: false, shell: 'posix' };
+  /** Commands "opened" in a terminal, newest last. */
+  openedTerminals: string[] = [];
 
   async listGroups(mode: GroupMode, filter?: FilterOpts): Promise<GroupNode[]> {
     const filtered = this.filterSessions(this.sessions, filter);
@@ -369,6 +374,33 @@ export class MockBackendAPI {
       return `cd '${meta.cwd}' && opencode --session '${ref.id}'`;
     }
     return `cd '${meta.cwd}' && claude --resume '${ref.id}'`;
+  }
+
+  async launchInfo(): Promise<LaunchInfo> {
+    return { ...this.launch };
+  }
+
+  // Mirrors the backend: terminals open for local sessions only.
+  private async openTerminal(build: () => Promise<string>): Promise<void> {
+    if (!this.launch.terminal) {
+      throw new Error('opening a terminal is not supported on this platform yet; copy the command instead');
+    }
+    if (this.connState.phase !== 'local') {
+      throw new Error('open in terminal works for local sessions only; use Copy command and paste it into a shell on the host');
+    }
+    this.openedTerminals.push(await build());
+  }
+
+  async openResumeInTerminal(ref: SessionRef): Promise<void> {
+    await this.openTerminal(() => this.copyResumeCommand(ref));
+  }
+
+  async openHandoffInTerminal(req: HandoffRequest): Promise<void> {
+    await this.openTerminal(() => this.handoffCommand(req));
+  }
+
+  async openBundleHandoffInTerminal(req: BundleHandoffRequest): Promise<void> {
+    await this.openTerminal(() => this.bundleHandoffCommand(req));
   }
 
   async revealSource(ref: SessionRef): Promise<void> {

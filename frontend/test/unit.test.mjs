@@ -2,7 +2,15 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { formatTokens, formatCost, formatBytes, formatVersion } from '../src/lib/format.ts';
 import { isThemeMode, nextThemeMode, resolveTheme, themeButtonTitle } from '../src/lib/theme.ts';
-import { copiedGuidance, copyFailed, connectionBanner, connectionErrorDetail, CONNECTION_LOST } from '../src/lib/guidance.ts';
+import {
+  copiedGuidance,
+  copyFailed,
+  openedGuidance,
+  openFailed,
+  connectionBanner,
+  connectionErrorDetail,
+  CONNECTION_LOST,
+} from '../src/lib/guidance.ts';
 import { formatRelativeTime, formatAbsoluteTime, isKnownTime, formatAgo } from '../src/lib/date.ts';
 import { highlightCode, detectLanguage } from '../src/lib/highlight.ts';
 import { renderMarkdown } from '../src/lib/markdown.ts';
@@ -1663,6 +1671,152 @@ test('copiedGuidance distinguishes a full document from a launch prompt', () => 
   assert.equal(doc.title, 'Document copied');
   assert.equal(doc.body, 'The full handoff document is on your clipboard.');
   assert.equal(doc.code, undefined);
+});
+
+test('resumeButtonTitle offers the terminal for local sessions only', () => {
+  assert.equal(
+    resumeButtonTitle(undefined, true),
+    'Resume this session in a new terminal window. Use ▾ to copy the command instead',
+  );
+  assert.match(resumeButtonTitle('plgl', true), /^Copy shell command .* Run it on plgl/);
+});
+
+test('copiedGuidance tells local Windows users to paste into PowerShell', () => {
+  const resume = copiedGuidance('resume', { shell: 'powershell' });
+  assert.match(resume.body, /^Paste it into PowerShell\. It opens the session/);
+  const launch = copiedGuidance('launch', { shell: 'powershell', agent: 'codex' });
+  assert.match(launch.body, /^Paste it into PowerShell\. Codex starts/);
+  // A remote command is built for the host's shell, not the local one.
+  const remote = copiedGuidance('resume', { host: 'plgl', shell: 'powershell' });
+  assert.match(remote.body, /^Open a shell on plgl, then paste it there\./);
+  assert.match(copiedGuidance('resume', { shell: 'posix' }).body, /^Paste it into a terminal\./);
+});
+
+test('openedGuidance and openFailed describe Open in terminal', () => {
+  assert.equal(openedGuidance('resume').title, 'Opened in a terminal');
+  assert.match(openedGuidance('resume').body, /resumes in its directory in a new terminal window/);
+  assert.match(openedGuidance('launch', 'opencode').body, /^OpenCode starts in the project directory in a new terminal window/);
+  const failed = openFailed(new Error('Codex was not found.'));
+  assert.equal(failed.title, "Couldn't open a terminal");
+  assert.equal(failed.body, 'Codex was not found.');
+  assert.equal(failed.tone, 'error');
+});
+
+test('MockBackendAPI opens terminals only when supported and local', async () => {
+  const mock = new MockBackendAPI();
+  const [meta] = await mock.listSessions('', {}, { field: 'updatedAt', dir: 'desc' });
+  assert.deepEqual(await mock.launchInfo(), { terminal: false, shell: 'posix' });
+  await assert.rejects(mock.openResumeInTerminal(meta.ref), /not supported on this platform/);
+
+  mock.launch = { terminal: true, shell: 'powershell' };
+  await mock.openResumeInTerminal(meta.ref);
+  await mock.openHandoffInTerminal({ ref: meta.ref, target: 'codex', budget: 80000, includeReasoning: false, redactSecrets: false });
+  assert.equal(mock.openedTerminals.length, 2);
+  assert.match(mock.openedTerminals[1], /codex/);
+
+  await mock.connect('dev-box');
+  await assert.rejects(mock.openResumeInTerminal(meta.ref), /local sessions only/);
+  assert.equal(mock.openedTerminals.length, 2);
+});
+
+const SESSION_HEADER_URL = new URL('../src/lib/components/transcript/SessionHeader.svelte', import.meta.url);
+let sessionHeaderModule;
+
+async function renderSessionHeader(fixture, props = {}) {
+  const lib = (rel) => JSON.stringify(new URL(rel, SESSION_HEADER_URL).href);
+  sessionHeaderModule ??= await loadServerComponent(SESSION_HEADER_URL, [
+    ["'../../format'", lib('../../format.ts')],
+    ["'../../date'", lib('../../date.ts')],
+    ["'../../portable'", lib('../../portable.ts')],
+    ["'../../link'", lib('../../link.ts')],
+    ["import AgentIcon from '../common/AgentIcon.svelte';", 'const AgentIcon = () => {};'],
+    ["import { appState } from '../../stores/appState.svelte';", fixtureStore('appState')],
+    ["import { manage } from '../../stores/manage.svelte';", fixtureStore('manage')],
+    ["import { handoff } from '../../stores/handoff.svelte';", fixtureStore('handoff')],
+    ["import { exporter } from '../../stores/export.svelte';", fixtureStore('exporter')],
+    ["import { link } from '../../stores/link.svelte';", fixtureStore('link')],
+    ["import { launcher } from '../../stores/launcher.svelte';", fixtureStore('launcher')],
+  ]);
+  const meta = {
+    ref: { agent: 'codex', id: 's1' },
+    title: 'Fix the build',
+    cwd: 'C:\\work\\proj',
+    counts: { user: 1, assistant: 1 },
+    tokens: { input: 10, output: 5 },
+    createdAt: '2026-10-01T10:00:00Z',
+    updatedAt: '2026-10-01T11:00:00Z',
+  };
+  return renderWithFixture(
+    sessionHeaderModule,
+    { appState: {}, manage: { settings: { enabled: false } }, handoff: {}, exporter: {}, ...fixture },
+    { meta, showMeta: false, onToggleMeta() {}, onResume() {}, onReveal() {}, onDelete() {}, ...props },
+  );
+}
+
+test('SessionHeader splits Resume into open and copy when a terminal is available', async () => {
+  const split = await renderSessionHeader({ link: { dataHost: undefined }, launcher: { canOpen: true } });
+  assert.match(split, /class="action-btn resume-btn resume-main[^"]*"[^>]*title="Resume this session in a new terminal window/);
+  assert.match(split, /aria-label="More ways to resume"/);
+
+  const opening = await renderSessionHeader({ link: { dataHost: undefined }, launcher: { canOpen: true } }, { resumeOpening: true });
+  assert.match(opening, /resume-main[^"]*"[^>]*disabled[^>]*>\s*Opening…/);
+
+  // Without a terminal, or for a remote host's session, Resume only copies.
+  for (const fixture of [
+    { link: { dataHost: undefined }, launcher: { canOpen: false } },
+    { link: { dataHost: 'plgl' }, launcher: { canOpen: false } },
+  ]) {
+    const html = await renderSessionHeader(fixture);
+    assert.doesNotMatch(html, /More ways to resume/);
+    assert.match(html, /title="Copy shell command to resume this session/);
+  }
+});
+
+const HANDOFF_DIALOG_URL = new URL('../src/lib/components/common/HandoffDialog.svelte', import.meta.url);
+let handoffDialogModule;
+
+async function renderHandoffDialog(fixture) {
+  const lib = (rel) => JSON.stringify(new URL(rel, HANDOFF_DIALOG_URL).href);
+  handoffDialogModule ??= await loadServerComponent(HANDOFF_DIALOG_URL, [
+    ["'../../portable'", lib('../../portable.ts')],
+    ["'../../format'", lib('../../format.ts')],
+    ["import AgentIcon from './AgentIcon.svelte';", 'const AgentIcon = () => {};'],
+    ["import RemoteCommandNote from './RemoteCommandNote.svelte';", 'const RemoteCommandNote = () => {};'],
+    ["import MarkdownDoc from './MarkdownDoc.svelte';", 'const MarkdownDoc = () => {};'],
+    ["import { handoff } from '../../stores/handoff.svelte';", fixtureStore('handoff')],
+    ["import { link } from '../../stores/link.svelte';", fixtureStore('link')],
+    ["import { launcher } from '../../stores/launcher.svelte';", fixtureStore('launcher')],
+  ]);
+  const handoff = {
+    dialogOpen: true,
+    session: { ref: { agent: 'claude-code', id: 's1' }, cwd: 'C:\\work' },
+    target: 'codex',
+    budget: 80000,
+    cwd: 'C:\\work',
+    launching: false,
+    preview: {
+      command: "Set-Location -LiteralPath C:\\work -ErrorAction Stop; codex 'Read it'",
+      promptMarkdown: 'Read it',
+      fullMarkdown: '# Handoff',
+      promptBytes: 7,
+      report: { estimatedTokens: 100, trimmed: false, droppedItems: [] },
+    },
+    ...fixture.handoff,
+  };
+  return renderWithFixture(handoffDialogModule, { link: { dataHost: undefined }, ...fixture, handoff });
+}
+
+test('HandoffDialog offers Open in Terminal when the session can open locally', async () => {
+  const open = await renderHandoffDialog({ launcher: { canOpen: true } });
+  assert.match(open, /class="btn primary-btn[^"]*"[^>]*>\s*Open in Terminal/);
+  assert.match(open, /class="btn secondary-btn[^"]*"[^>]*>\s*Copy Launch Command/);
+
+  const busy = await renderHandoffDialog({ launcher: { canOpen: true }, handoff: { launching: true } });
+  assert.match(busy, /primary-btn[^"]*"[^>]*disabled[^>]*>\s*Opening…/);
+
+  const copyOnly = await renderHandoffDialog({ launcher: { canOpen: false } });
+  assert.doesNotMatch(copyOnly, /Open in Terminal/);
+  assert.match(copyOnly, /class="btn primary-btn[^"]*"[^>]*>\s*Copy Launch Command/);
 });
 
 test('copyFailed reports the error as an error toast', () => {

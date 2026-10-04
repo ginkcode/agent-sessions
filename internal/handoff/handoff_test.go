@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/ginkcode/agent-sessions/internal/handoff"
+	"github.com/ginkcode/agent-sessions/internal/launch"
 	"github.com/ginkcode/agent-sessions/internal/model"
 	"github.com/ginkcode/agent-sessions/internal/testutil/golden"
 	"github.com/ginkcode/agent-sessions/internal/testutil/platform"
@@ -218,17 +219,22 @@ func TestHandoffBudgetTrimming(t *testing.T) {
 }
 
 func TestHandoffDelivery(t *testing.T) {
-	cmd := handoff.BuildLaunchCommand(model.AgentCodex, "Short prompt", "", "/tmp/dir")
+	// posix renders the launch command the way Linux and macOS copy it.
+	posix := func(target model.AgentID, prompt, promptFile, cwd string) string {
+		c := handoff.LaunchCommand(target, prompt, promptFile, cwd)
+		return launch.PosixCommand(c.Argv, c.Dir)
+	}
+	cmd := posix(model.AgentCodex, "Short prompt", "", "/tmp/dir")
 	if cmd != "cd /tmp/dir && codex 'Short prompt'" {
 		t.Errorf("unexpected launch command: %s", cmd)
 	}
 
-	cmdClaude := handoff.BuildLaunchCommand(model.AgentClaude, "Fix it", "", "")
+	cmdClaude := posix(model.AgentClaude, "Fix it", "", "")
 	if cmdClaude != "claude 'Fix it'" {
 		t.Errorf("unexpected claude launch command: %s", cmdClaude)
 	}
 
-	cmdOpenCode := handoff.BuildLaunchCommand(model.AgentOpenCode, "Do task", "", "/my/path")
+	cmdOpenCode := posix(model.AgentOpenCode, "Do task", "", "/my/path")
 	if cmdOpenCode != "cd /my/path && opencode --prompt 'Do task'" {
 		t.Errorf("unexpected opencode launch command: %s", cmdOpenCode)
 	}
@@ -236,11 +242,17 @@ func TestHandoffDelivery(t *testing.T) {
 	// With a prompt file the command points at it whatever the prompt size.
 	promptFile := "/data/handoffs/sess-123-handoff.md"
 	for _, prompt := range []string{"Short prompt", strings.Repeat("A", 130*1024)} {
-		cmdFile := handoff.BuildLaunchCommand(model.AgentCodex, prompt, promptFile, "/tmp/dir")
+		cmdFile := posix(model.AgentCodex, prompt, promptFile, "/tmp/dir")
 		expected := "cd /tmp/dir && codex 'Read /data/handoffs/sess-123-handoff.md completely to restore the context of an earlier session, then follow its instructions and wait for my next request.'"
 		if cmdFile != expected {
 			t.Errorf("expected pointer command, got: %.200s", cmdFile)
 		}
+	}
+
+	// BuildLaunchCommand formats the same command for this platform's shell.
+	if got, want := handoff.BuildLaunchCommand(model.AgentCodex, "Short prompt", promptFile, "/tmp/dir"),
+		launch.Format(handoff.LaunchCommand(model.AgentCodex, "Short prompt", promptFile, "/tmp/dir")); got != want {
+		t.Errorf("BuildLaunchCommand = %q, want %q", got, want)
 	}
 
 	// Save context file test

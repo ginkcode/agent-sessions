@@ -6,14 +6,24 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/ginkcode/agent-sessions/internal/launch"
 	"github.com/ginkcode/agent-sessions/internal/model"
 	"github.com/ginkcode/agent-sessions/internal/provider"
 	"github.com/ginkcode/agent-sessions/internal/provider/providertest"
 )
+
+// cdPrefix is how a printed command for this platform starts in dir.
+func cdPrefix(dir string) string {
+	if runtime.GOOS == "windows" {
+		return "Set-Location -LiteralPath " + launch.PowerShellQuote(dir) + " -ErrorAction Stop; "
+	}
+	return "cd " + launch.ShellEscape(dir) + " && "
+}
 
 func runFake(args []string, providers provider.Set) (int, string, string) {
 	var out, errOut bytes.Buffer
@@ -280,7 +290,8 @@ func TestHandoffCLI(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("handoff --command failed: exit=%d, diag=%s", code, diag)
 	}
-	if !strings.HasPrefix(strings.TrimSpace(out), "cd /repo/root && codex") {
+	// On Windows the agent may be a full path to a bundled CLI.
+	if !strings.HasPrefix(strings.TrimSpace(out), cdPrefix("/repo/root")) || !strings.Contains(out, "codex") {
 		t.Errorf("unexpected command output: %s", out)
 	}
 
@@ -289,7 +300,7 @@ func TestHandoffCLI(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("handoff with --cwd failed: exit=%d, diag=%s", code, diag)
 	}
-	if !strings.HasPrefix(strings.TrimSpace(out), "cd /custom/workdir && opencode --prompt") {
+	if !strings.HasPrefix(strings.TrimSpace(out), cdPrefix("/custom/workdir")) || !strings.Contains(out, "opencode") || !strings.Contains(out, " --prompt ") {
 		t.Errorf("unexpected cwd command output: %s", out)
 	}
 

@@ -7,9 +7,10 @@
   import { manage } from '../../stores/manage.svelte';
   import { api } from '../../api';
   import { copyToClipboard } from '../../portable';
-  import { copiedGuidance, copyFailed } from '../../guidance';
+  import { copiedGuidance, copyFailed, openedGuidance, openFailed } from '../../guidance';
   import { toast } from '../../stores/toast.svelte';
   import { link } from '../../stores/link.svelte';
+  import { launcher } from '../../stores/launcher.svelte';
   import { isStaleReply } from '../../link';
   import SessionHeader from './SessionHeader.svelte';
   import MessageBubble from './MessageBubble.svelte';
@@ -30,6 +31,7 @@
   let loadError = $state<string | null>(null);
   let showMeta = $state(false);
   let resumeCopied = $state(false);
+  let resumeOpening = $state(false);
   let containerEl: HTMLElement | null = $state(null);
   let showScrollBottomBtn = $state(false);
   let jumpingToBottom = $state(false);
@@ -320,10 +322,24 @@
       setTimeout(() => {
         resumeCopied = false;
       }, 2000);
-      toast.show(copiedGuidance('resume', { host: link.dataHost }));
+      toast.show(copiedGuidance('resume', { host: link.dataHost, shell: launcher.copyShell }));
     } catch (err) {
       if (isStaleReply(err)) return;
       toast.show(copyFailed('resume command', err));
+    }
+  }
+
+  async function handleOpenResume() {
+    if (!appState.selectedSessionRef || resumeOpening) return;
+    resumeOpening = true;
+    try {
+      await api.openResumeInTerminal(appState.selectedSessionRef);
+      toast.show(openedGuidance('resume'));
+    } catch (err) {
+      if (isStaleReply(err)) return;
+      toast.show(openFailed(err));
+    } finally {
+      resumeOpening = false;
     }
   }
 
@@ -372,6 +388,8 @@
         {showMeta}
         onToggleMeta={() => (showMeta = !showMeta)}
         onResume={handleCopyResume}
+        onOpenResume={handleOpenResume}
+        {resumeOpening}
         onReveal={handleRevealSource}
         onDelete={handleDelete}
         {resumeCopied}

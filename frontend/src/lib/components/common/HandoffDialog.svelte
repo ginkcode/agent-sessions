@@ -6,6 +6,7 @@
   import RemoteCommandNote from './RemoteCommandNote.svelte';
   import MarkdownDoc from './MarkdownDoc.svelte';
   import { link } from '../../stores/link.svelte';
+  import { launcher } from '../../stores/launcher.svelte';
 
   let previewTab = $state<'prompt' | 'full'>('prompt');
 
@@ -271,13 +272,32 @@
         >
           {handoff.saving ? 'Saving…' : 'Save As…'}
         </button>
-        <button
-          type="button"
-          class="btn primary-btn"
-          onclick={() => handoff.copyCommand()}
-        >
-          {handoff.copiedCommand ? '✓ Copied' : 'Copy Launch Command'}
-        </button>
+        {#if launcher.canOpen}
+          <button
+            type="button"
+            class="btn secondary-btn"
+            onclick={() => handoff.copyCommand()}
+          >
+            {handoff.copiedCommand ? '✓ Copied' : 'Copy Launch Command'}
+          </button>
+          <button
+            type="button"
+            class="btn primary-btn"
+            title="Start the agent with this handoff in a new terminal window"
+            disabled={handoff.launching || !handoff.preview}
+            onclick={() => handoff.openInTerminal()}
+          >
+            {handoff.launching ? 'Opening…' : 'Open in Terminal'}
+          </button>
+        {:else}
+          <button
+            type="button"
+            class="btn primary-btn"
+            onclick={() => handoff.copyCommand()}
+          >
+            {handoff.copiedCommand ? '✓ Copied' : 'Copy Launch Command'}
+          </button>
+        {/if}
         <button
           type="button"
           class="btn secondary-btn"

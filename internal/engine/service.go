@@ -16,6 +16,7 @@ import (
 
 	"github.com/ginkcode/agent-sessions/internal/bundle"
 	"github.com/ginkcode/agent-sessions/internal/group"
+	"github.com/ginkcode/agent-sessions/internal/launch"
 	"github.com/ginkcode/agent-sessions/internal/model"
 	"github.com/ginkcode/agent-sessions/internal/paths"
 	"github.com/ginkcode/agent-sessions/internal/provider"
@@ -220,17 +221,32 @@ func looksBinary(data []byte) bool {
 	return bytes.IndexByte(data[:n], 0) != -1
 }
 
-// CopyResumeCommand builds the provider resume command for a session.
+// CopyResumeCommand builds the provider resume command for a session as one
+// line for the local shell (see launch.Format).
 func (s *Service) CopyResumeCommand(ref model.SessionRef) (string, error) {
+	cmd, err := s.ResumeLaunch(ref)
+	if err != nil {
+		return "", err
+	}
+	return launch.Format(cmd), nil
+}
+
+// ResumeLaunch returns the provider resume command for a session, to run in
+// the session's working directory.
+func (s *Service) ResumeLaunch(ref model.SessionRef) (provider.Command, error) {
 	prov, ok := s.providers.Get(ref.Agent)
 	if !ok {
-		return "", fmt.Errorf("%w: %s", ErrUnknownProvider, ref.Agent)
+		return provider.Command{}, fmt.Errorf("%w: %s", ErrUnknownProvider, ref.Agent)
 	}
 	m, ok := s.catalog.Get(ref)
 	if !ok {
-		return "", fmt.Errorf("%w: %s", ErrUnknownSession, ref.Key())
+		return provider.Command{}, fmt.Errorf("%w: %s", ErrUnknownSession, ref.Key())
 	}
-	return FormatResumeCommand(prov.ResumeCommand(m), m.CWD), nil
+	cmd := prov.ResumeCommand(m)
+	if m.CWD != "" {
+		cmd.Dir = m.CWD
+	}
+	return cmd, nil
 }
 
 // RevealSource exposes the session's source path directory.

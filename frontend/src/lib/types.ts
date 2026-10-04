@@ -286,6 +286,14 @@ export interface HandoffPreview {
   promptBytes: number;
 }
 
+/** How sessions can be continued on this machine. */
+export interface LaunchInfo {
+  /** Open in terminal works for local sessions. */
+  terminal: boolean;
+  /** Syntax of locally copied commands; remote commands are always POSIX. */
+  shell: 'powershell' | 'posix';
+}
+
 /** Handoff files kept in the app data directory. */
 export interface HandoffCacheInfo {
   dir: string;

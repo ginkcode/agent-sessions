@@ -220,7 +220,7 @@ flows/UI (M7-15…17), packaging (M7-18), and QA (M7-19…20).
 
 ---
 
-## M8 — Windows support (≈ 46 h)
+## M8 — Windows support (≈ 51 h)
 
 Design: [docs/plan/M8.md](docs/plan/M8.md). Local-first (M8-01…07), then
 key/agent-only SSH (M8-09, requested 2026-10-04). Password/passphrase dialogs
@@ -233,11 +233,12 @@ remain gated on the M8-08 named-pipe credential channel.
 | M8-03 | ✅ | Windows path audit: grouping keys/labels, `pathutil` normalize + git resolver, Claude project-folder encoding, `tree.ts` path filter, export file-name fixtures (drive letters, backslashes, case-insensitivity) | 6 | M8-01 | Sessions recorded on Windows group, filter and label correctly; table tests with Windows-path fixtures pass on Linux. |
 | M8-04 | 🟡 | Live-session detection fallback: sessions never show live (no `/proc`); Windows process-API variant deferred | 1 | M8-01 | No crashes; LIVE badge absent on Windows; fallback documented. **Done (2026-10-04):** Claude status-file PIDs are checked with `OpenProcess` (a running or reused PID counts as live). |
 | M8-05 | 🟡 | Recycle Bin via native `IFileOperation` with recycle-only guards; Windows process-safety prerequisite; delete-dialog wording states Recycle Bin; `allowPermanentDelete` path unchanged | 5 | M8-01 | Deleting a Claude session moves it to the Recycle Bin; Codex/OpenCode permanent delete stays opt-in. **Done:** clearer blocked reasons, conservative native management process guard, `IFileOperation` transport; synthetic native smoke recycles a file and a directory and vetoes a permanent preflight (2026-10-04). **Gate opened (2026-10-04, user decision)** with read-only pre-checks: a drive whose Bin is turned off, a session larger than the Bin, or unverifiable settings are refused before the Shell runs. **Open:** real GUI restoration check. |
-| M8-06 | ⬜ | PowerShell command quoting for resume/handoff commands (decide PS5 vs PS7 target; single-line handoff pointer kept) | 4 | M8-01 | Pasted commands work in the target shell on a real Windows machine. |
+| M8-06 | 🟡 | PowerShell command quoting for resume/handoff commands (decide PS5 vs PS7 target; single-line handoff pointer kept) | 4 | M8-01 | Pasted commands work in the target shell on a real Windows machine. **Done (2026-10-04):** local copies use PowerShell 5.1 syntax (`Set-Location -LiteralPath '<dir>' -ErrorAction Stop; & '<exe>' …`), with all PowerShell single-quote forms doubled; a CLI outside PATH is called by its full path; remote copies stay POSIX. Native tests run the generated line through `powershell.exe` and check argv and cwd. **Open:** real paste check (M8-10). |
 | M8-07 | 🟡 | CI `windows-latest` job (tests + `GOOS=windows` build assert), NSIS installer in release.yml, remote-server bundling, SmartScreen note | 6 | M8-01 | CI green on Windows; installer artifact published; unsigned warning documented. **Done:** the suite passes on Windows; the CI job tests and builds the CLI and desktop app (not yet run on GitHub). **Open:** NSIS installer, release bundling, SmartScreen note. |
 | M8-08 | ⬜ | Askpass over a per-user named pipe with DACL (replaces the skipped Unix peer-UID/private-dir checks); re-enable no-listening-socket assertions | 8 | M8-07 | Password channel is scoped to the current user; security review passes. |
 | M8-09 | 🟡 | Native Windows SSH without ControlMaster: persistent stdio RPC session; separate setup/transfers; keys/agent gated by noninteractive probe; client discovery, prerequisite guidance and hidden console windows | 5 | M8-01 | Windows client connects to Linux over persistent RPC; Refresh/browse/delete/export work without per-action reconnects; setup/transfers use noninteractive auth; reconnect/disconnect work without master commands. **Done (2026-10-04):** native client discovery, explicit no-mux/batch options, hidden spawns, no Windows askpass listener, bounded probe/stderr and visible error details; read-only native `lit` check succeeds. **Open:** GUI connect/deploy/reconnect/transfer QA. M8-08 is required only for future credential dialogs. |
 | M8-10 | ⬜ | QA: real-machine pass over scan, search, export/import, handoff, Recycle Bin delete, PowerShell paste, install + first launch | 6 | M8-01…07 | Checklist in `docs/plan/M8.md` signed off. |
+| M8-11 | 🟡 | Open in terminal on Windows for local Resume and Continue in (handoff and bundle import): find the agent CLI on PATH or where standalone installs, desktop apps (Claude, Codex, OpenCode) and VS Code/Cursor extensions keep it; open a PowerShell console in the session directory | 5 | M8-06 | One click starts the agent in the right directory for a desktop-only install; remote sessions keep Copy. **Done (2026-10-04):** `internal/launch` (search, quoting, argument checks, `CREATE_NEW_CONSOLE` without `-EncodedCommand` or execution-policy flags), app bindings refusing remote data, `Resume ▾` split button and dialog buttons. **Open:** GUI check on a real machine (M8-10). |
 
 ---
 
@@ -253,8 +254,8 @@ remain gated on the M8-08 named-pipe credential channel.
 | M5 macOS & distribution | 6 | 20 | 0 | 1 | 5 |
 | M6 Portable sessions | 17 | 60 | 15 | 0 | 2 |
 | M7 Remote over SSH | 20 | 65 | 1 | 0 | 19 |
-| M8 Windows support | 10 | 46 | 2 | 5 | 3 |
-| **Total** | **132** | **≈ 414 h** | **66** | **23** | **43** |
+| M8 Windows support | 11 | 51 | 2 | 7 | 2 |
+| **Total** | **133** | **≈ 419 h** | **66** | **25** | **42** |
 
 **Critical path to the MVP:**
 

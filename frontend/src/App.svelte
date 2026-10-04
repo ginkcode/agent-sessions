@@ -24,6 +24,7 @@
   import { importer } from './lib/stores/importer.svelte';
   import { connectionStore } from './lib/stores/connection.svelte';
   import { link } from './lib/stores/link.svelte';
+  import { launcher } from './lib/stores/launcher.svelte';
   import { hasOpenModal, isEditableTarget } from './lib/search';
   import { api } from './lib/api';
   import { formatVersion } from './lib/format';
@@ -43,6 +44,7 @@
     appState.init();
     manage.init();
     search.init();
+    void launcher.init();
     isWails = typeof window !== 'undefined' && Boolean((window as any).go?.app?.App);
     api
       .appVersion()

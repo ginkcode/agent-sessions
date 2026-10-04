@@ -13,8 +13,10 @@ import (
 
 	"github.com/ginkcode/agent-sessions/internal/bundle"
 	"github.com/ginkcode/agent-sessions/internal/handoff"
+	"github.com/ginkcode/agent-sessions/internal/launch"
 	"github.com/ginkcode/agent-sessions/internal/model"
 	"github.com/ginkcode/agent-sessions/internal/pathutil"
+	"github.com/ginkcode/agent-sessions/internal/provider"
 )
 
 // BundleSummary details an inspected session bundle for review and import.
@@ -239,6 +241,17 @@ func (s *Service) BuildBundleHandoff(ctx context.Context, req BundleHandoffReque
 // BundleHandoffCommand writes the prompt and full context files (0600, pruned)
 // and returns the launch command line for an opened bundle.
 func (s *Service) BundleHandoffCommand(ctx context.Context, req BundleHandoffRequest) (string, error) {
+	cmd, err := s.BundleHandoffLaunch(ctx, req)
+	if err != nil {
+		return "", err
+	}
+	return launch.Format(cmd), nil
+}
+
+// BundleHandoffLaunch writes the prompt and full context files like
+// BundleHandoffCommand and returns the target agent's argv and working
+// directory.
+func (s *Service) BundleHandoffLaunch(ctx context.Context, req BundleHandoffRequest) (provider.Command, error) {
 	sessionID := "bundle-" + req.BundleID
 	b, _ := s.GetBundle(req.BundleID)
 	if b != nil && b.Manifest.Source.ID != "" {
@@ -247,20 +260,20 @@ func (s *Service) BundleHandoffCommand(ctx context.Context, req BundleHandoffReq
 
 	_, contextFile, err := s.handoffFiles(sessionID)
 	if err != nil {
-		return "", err
+		return provider.Command{}, err
 	}
 
 	doc, cwd, err := s.buildBundleHandoffDoc(ctx, req, contextFile)
 	if err != nil {
-		return "", err
+		return provider.Command{}, err
 	}
 
 	promptFile, err := s.saveHandoffFiles(sessionID, doc)
 	if err != nil {
-		return "", err
+		return provider.Command{}, err
 	}
 
-	return handoff.BuildLaunchCommand(req.Target, doc.PromptMarkdown, promptFile, cwd), nil
+	return handoff.LaunchCommand(req.Target, doc.PromptMarkdown, promptFile, cwd), nil
 }
 
 // RenderBundleHandoff builds the self-contained full handoff document without saving it to disk.

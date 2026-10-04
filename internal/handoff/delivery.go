@@ -7,7 +7,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ginkcode/agent-sessions/internal/launch"
 	"github.com/ginkcode/agent-sessions/internal/model"
+	"github.com/ginkcode/agent-sessions/internal/provider"
 )
 
 // File suffixes name the handoff files this package owns; pruning and
@@ -195,16 +197,16 @@ func LaunchPrompt(prompt, promptFilePath string) string {
 	return prompt
 }
 
-// BuildLaunchCommand generates the shell command line to start the target agent
-// with the prompt, changing directory to cwd first if specified.
+// BuildLaunchCommand generates the command line, for the local shell (see
+// launch.Format), that starts the target agent with the prompt in cwd.
 func BuildLaunchCommand(target model.AgentID, prompt string, promptFilePath string, cwd string) string {
-	actualPrompt := LaunchPrompt(prompt, promptFilePath)
-	argv := LaunchArgv(target, actualPrompt)
-	cmdStr := joinCommand(argv)
-	if cwd == "" {
-		return cmdStr
-	}
-	return fmt.Sprintf("cd %s && %s", shellEscape(cwd), cmdStr)
+	return launch.Format(LaunchCommand(target, prompt, promptFilePath, cwd))
+}
+
+// LaunchCommand returns the argv and directory that start the target agent
+// with the prompt (or the pointer to the prompt file).
+func LaunchCommand(target model.AgentID, prompt string, promptFilePath string, cwd string) provider.Command {
+	return provider.Command{Argv: LaunchArgv(target, LaunchPrompt(prompt, promptFilePath)), Dir: cwd}
 }
 
 // LaunchArgv returns the CLI argv for invoking the target agent with the prompt.
@@ -219,35 +221,4 @@ func LaunchArgv(target model.AgentID, prompt string) []string {
 	default:
 		return []string{string(target), prompt}
 	}
-}
-
-// shellEscape quotes a single argument for POSIX shells.
-func shellEscape(arg string) string {
-	if arg == "" {
-		return "''"
-	}
-	if safeUnquoted(arg) {
-		return arg
-	}
-	return "'" + strings.ReplaceAll(arg, "'", `'"'"'`) + "'"
-}
-
-func safeUnquoted(arg string) bool {
-	for _, r := range arg {
-		switch {
-		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9':
-		case r == '_' || r == '-' || r == '.' || r == '/' || r == ':' || r == '=' || r == '@' || r == '+' || r == ',':
-		default:
-			return false
-		}
-	}
-	return true
-}
-
-func joinCommand(argv []string) string {
-	parts := make([]string, 0, len(argv))
-	for _, arg := range argv {
-		parts = append(parts, shellEscape(arg))
-	}
-	return strings.Join(parts, " ")
 }

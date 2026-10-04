@@ -1,4 +1,4 @@
-import type { AgentID, ConnectionPhase } from './types';
+import type { AgentID, ConnectionPhase, LaunchInfo } from './types';
 import { ALL_AGENTS } from './portable';
 
 export interface ToastMessage {
@@ -19,14 +19,16 @@ function agentLabel(agent: AgentID | undefined): string {
  * What to do next after copying a command or prompt. Commands for a remote
  * session are built for that host, so the user pastes them into an
  * interactive shell there, where the PATH that finds the agent is loaded.
+ * Local commands use the local shell's syntax: PowerShell on Windows.
  */
 export function copiedGuidance(
   kind: CopiedKind,
-  opts: { host?: string; agent?: AgentID } = {},
+  opts: { host?: string; agent?: AgentID; shell?: LaunchInfo['shell'] } = {},
 ): ToastMessage {
   const { host } = opts;
   const agent = agentLabel(opts.agent);
-  const where = host ? `Open a shell on ${host}, then paste it there.` : 'Paste it into a terminal.';
+  const local = opts.shell === 'powershell' ? 'Paste it into PowerShell.' : 'Paste it into a terminal.';
+  const where = host ? `Open a shell on ${host}, then paste it there.` : local;
   const code = host ? `ssh ${host}` : undefined;
 
   switch (kind) {
@@ -53,6 +55,28 @@ export function copiedGuidance(
         body: 'The full handoff document is on your clipboard.',
       };
   }
+}
+
+/** What happens after Open in terminal started a resume or a handoff. */
+export function openedGuidance(kind: 'resume' | 'launch', agent?: AgentID): ToastMessage {
+  if (kind === 'resume') {
+    return {
+      title: 'Opened in a terminal',
+      body: 'The session resumes in its directory in a new terminal window.',
+    };
+  }
+  return {
+    title: 'Opened in a terminal',
+    body: `${agentLabel(agent)} starts in the project directory in a new terminal window, restores the context and waits for your next request.`,
+  };
+}
+
+export function openFailed(err: unknown): ToastMessage {
+  return {
+    title: "Couldn't open a terminal",
+    body: err instanceof Error ? err.message : String(err),
+    tone: 'error',
+  };
 }
 
 export function copyFailed(what: string, err: unknown): ToastMessage {
