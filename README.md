@@ -52,6 +52,6 @@ for the current user in `%LOCALAPPDATA%\Programs\Agent Sessions` without an
 admin prompt, and needs the WebView2 Runtime, which Windows 11 includes.
 
 Local equivalents write to `dist/`: `make package-linux` (needs
-`libgtk-3-dev` and `libwebkit2gtk-4.1-dev`), `make package-macos`
+`gcc`, `libgtk-3-dev` and `libwebkit2gtk-4.1-dev`), `make package-macos`
 (macOS with the Wails CLI) and `make package-windows` (Linux with the Wails
 CLI, `jq` and `wixl`).

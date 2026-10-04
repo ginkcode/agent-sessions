@@ -72,10 +72,17 @@ golden:
 
 build: cli
 
-# Linux desktop build requires libgtk-3-dev and libwebkit2gtk-4.1-dev.
-# On Ubuntu: sudo apt install libgtk-3-dev libwebkit2gtk-4.1-dev
-# This target checks headers before invoking Wails, with an actionable hint.
+# Linux desktop build requires a C compiler, libgtk-3-dev and
+# libwebkit2gtk-4.1-dev.
+# On Ubuntu: sudo apt install gcc libgtk-3-dev libwebkit2gtk-4.1-dev
+# This target checks them before invoking Wails, with an actionable hint.
+# Without a C compiler Go silently turns cgo off, and the Wails Linux
+# frontend then fails with "undefined: Frontend".
 check-gui-deps:
+	@[ "$$($(GO) env CGO_ENABLED)" = 1 ] || { \
+		printf '%s\n' 'cgo is off: the Linux desktop build needs a C compiler. Install gcc (or set CC).' >&2; \
+		exit 1; \
+	}
 	@pkg-config --exists webkit2gtk-4.1 gtk+-3.0 || { \
 		printf '%s\n' 'Missing WebKitGTK 4.1/GTK 3 development headers. Install libgtk-3-dev libwebkit2gtk-4.1-dev.' >&2; \
 		exit 1; \
