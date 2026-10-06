@@ -100,6 +100,10 @@
     border: 1px solid var(--border-color);
     padding: 4px 8px;
     text-align: left;
+    /* The inherited break-word lets columns shrink to one letter; keep whole
+       words so each column fits its longest one and the table scrolls. */
+    word-break: normal;
+    overflow-wrap: normal;
   }
 
   :global(.markdown-doc th) {
