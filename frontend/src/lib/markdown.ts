@@ -74,6 +74,46 @@ function renderInline(text: string): string {
   return out.replace(/\u0000(\d+)\u0000/g, (_match, idx) => stashed[Number(idx)]);
 }
 
+const TABLE_SEPARATOR = /^\s*\|?\s*[-:]+[-| :]*\|?\s*$/;
+
+// A table starts at any line with a pipe that sits on a separator line.
+function isTableStart(lines: string[], i: number): boolean {
+  return lines[i].includes('|') && i + 1 < lines.length && TABLE_SEPARATOR.test(lines[i + 1]);
+}
+
+// Splits a table row into trimmed cells. Pipes inside a code span or written
+// as \| belong to the cell; \| renders as a plain |.
+function splitTableRow(line: string): string[] {
+  let row = line.trim();
+  if (row.startsWith('|')) row = row.slice(1);
+  if (row.endsWith('|') && !row.endsWith('\\|')) row = row.slice(0, -1);
+
+  const cells: string[] = [];
+  let cell = '';
+  let i = 0;
+  while (i < row.length) {
+    const ch = row[i];
+    if (ch === '\\' && row[i + 1] === '|') {
+      cell += '|';
+      i += 2;
+    } else if (ch === '`' && row.indexOf('`', i + 1) !== -1) {
+      // Code span, matching renderInline: up to the next backtick.
+      const end = row.indexOf('`', i + 1);
+      cell += row.slice(i, end + 1).replace(/\\\|/g, '|');
+      i = end + 1;
+    } else if (ch === '|') {
+      cells.push(cell.trim());
+      cell = '';
+      i++;
+    } else {
+      cell += ch;
+      i++;
+    }
+  }
+  cells.push(cell.trim());
+  return cells;
+}
+
 export function renderMarkdown(source: string): string {
   if (!source) return '';
 
@@ -166,20 +206,13 @@ export function renderMarkdown(source: string): string {
     }
 
     // Tables: lines with |
-    if (line.includes('|') && i + 1 < len && /^\s*\|?\s*[-:]+[-| :]*\|?\s*$/.test(lines[i + 1])) {
-      const headerCells = line
-        .split('|')
-        .map((c) => c.trim())
-        .filter((c, idx, arr) => (idx > 0 && idx < arr.length - 1) || c.length > 0);
+    if (isTableStart(lines, i)) {
+      const headerCells = splitTableRow(line);
       i += 2; // Skip header and separator
 
       const rows: string[][] = [];
       while (i < len && lines[i].includes('|') && lines[i].trim().length > 0) {
-        const cells = lines[i]
-          .split('|')
-          .map((c) => c.trim())
-          .filter((c, idx, arr) => (idx > 0 && idx < arr.length - 1) || c.length > 0);
-        rows.push(cells);
+        rows.push(splitTableRow(lines[i]));
         i++;
       }
 
@@ -217,7 +250,8 @@ export function renderMarkdown(source: string): string {
       !lines[i].startsWith('>') &&
       !/^\s*[*+-]\s+/.test(lines[i]) &&
       !/^\s*\d+\.\s+/.test(lines[i]) &&
-      !/^(\*{3,}|-{3,}|_{3,})\s*$/.test(lines[i].trim())
+      !/^(\*{3,}|-{3,}|_{3,})\s*$/.test(lines[i].trim()) &&
+      !isTableStart(lines, i)
     ) {
       pLines.push(lines[i]);
       i++;

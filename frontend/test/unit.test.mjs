@@ -221,6 +221,44 @@ test('renderMarkdown leaves intraword underscores, code and URLs literal', () =>
   assert.ok(link.includes('<strong>docs</strong></a>'), link);
 });
 
+test('renderMarkdown renders tables, including one right after a line of text', () => {
+  const md = renderMarkdown('**Verification**\n| Check | Result |\n|---|---|\n| tests | `ok` |\n| build | pass |');
+  assert.equal(
+    md,
+    '<p><strong>Verification</strong></p>\n' +
+      '<div class="table-container"><table><thead><tr><th>Check</th><th>Result</th></tr></thead><tbody>' +
+      '<tr><td>tests</td><td><code class="inline-code">ok</code></td></tr>' +
+      '<tr><td>build</td><td>pass</td></tr></tbody></table></div>'
+  );
+
+  const first = renderMarkdown('| A | B |\n| :-- | --: |\n| 1 | 2 |');
+  assert.ok(first.startsWith('<div class="table-container"><table>'), first);
+  assert.ok(first.includes('<th>A</th><th>B</th>'), first);
+  assert.ok(first.includes('<td>1</td><td>2</td>'), first);
+
+  const code = renderMarkdown('| a | b |\n|---|---|\n| a | `x|y` |');
+  assert.ok(code.includes('<tr><td>a</td><td><code class="inline-code">x|y</code></td></tr>'), code);
+
+  const escaped = renderMarkdown('| a \\| b | c |\n|---|---|\n| 1 | 2 |');
+  assert.ok(escaped.includes('<th>a | b</th><th>c</th></tr>'), escaped);
+  assert.ok(escaped.includes('<tr><td>1</td><td>2</td></tr>'), escaped);
+});
+
+test('renderMarkdown keeps table cells safe and leaves non-tables alone', () => {
+  const xss = renderMarkdown('| a | b |\n|---|---|\n| <script>alert(1)</script> | [x](javascript:alert(1)) |');
+  assert.ok(!xss.includes('<script>'), xss);
+  assert.ok(xss.includes('&lt;script&gt;'), xss);
+  assert.ok(!xss.includes('javascript:'), xss);
+  assert.ok(xss.includes('href="#"'), xss);
+
+  assert.equal(renderMarkdown('a | b'), '<p>a | b</p>');
+  assert.equal(renderMarkdown('text\na | b\nmore'), '<p>text<br />a | b<br />more</p>');
+
+  const fence = renderMarkdown('```\n| a | b |\n|---|---|\n```');
+  assert.ok(fence.includes('class="code-block-container"'), fence);
+  assert.ok(!fence.includes('<table>'), fence);
+});
+
 test('handleCopyCodeClick copies code from delegated click and ignores other targets', async () => {
   const { handleCopyCodeClick } = await import('../src/lib/copycode.ts');
 
