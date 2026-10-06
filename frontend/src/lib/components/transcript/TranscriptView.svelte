@@ -12,6 +12,7 @@
   import { link } from '../../stores/link.svelte';
   import { launcher } from '../../stores/launcher.svelte';
   import { isStaleReply } from '../../link';
+  import type { TranscriptMode } from '../../transcript';
   import SessionHeader from './SessionHeader.svelte';
   import MessageBubble from './MessageBubble.svelte';
   import LoadingSpinner from '../common/LoadingSpinner.svelte';
@@ -29,7 +30,7 @@
   let isLoadingMore = $state(false);
   let hasMore = $state(false);
   let loadError = $state<string | null>(null);
-  let showMeta = $state(false);
+  let mode = $state<TranscriptMode>('activity');
   let resumeCopied = $state(false);
   let resumeOpening = $state(false);
   let containerEl: HTMLElement | null = $state(null);
@@ -61,6 +62,8 @@
     const ref = appState.selectedSessionRef;
     const jump = search.jump;
     const refChanged = ref !== lastRef;
+    // The display mode is per session; jumps within it keep the chosen mode.
+    if (ref && !refsMatch(lastRef, ref)) mode = 'activity';
     lastRef = ref;
     if (ref) {
       if (jump && jump.id > handledJumpID && refsMatch(ref, jump.ref)) {
@@ -277,14 +280,21 @@
     }
   }
 
-  // Content can grow without a scroll event (lazy pages, meta toggle), so
-  // re-evaluate the button once the DOM reflects the change.
+  // Content can grow or shrink without a scroll event (lazy pages, display
+  // mode), so re-evaluate the button and keep loading while it fits on screen.
+  // Only new messages re-trigger it, so a failing page load is not retried in
+  // a loop; scrolling retries it as before.
   $effect(() => {
     void messages.length;
-    void showMeta;
+    void mode;
+    void hasMore;
+    void containerEl;
     void tick().then(() => {
-      if (containerEl) {
-        showScrollBottomBtn = distanceFromBottom(containerEl) > SHOW_BOTTOM_BTN_PX;
+      if (!containerEl) return;
+      const remaining = distanceFromBottom(containerEl);
+      showScrollBottomBtn = remaining > SHOW_BOTTOM_BTN_PX;
+      if (remaining < 250 && hasMore && !isLoadingMore && !isLoading) {
+        void loadMoreMessages();
       }
     });
   });
@@ -385,8 +395,8 @@
     {#if appState.selectedSessionMeta}
       <SessionHeader
         meta={appState.selectedSessionMeta}
-        {showMeta}
-        onToggleMeta={() => (showMeta = !showMeta)}
+        {mode}
+        onModeChange={(next) => (mode = next)}
         onResume={handleCopyResume}
         onOpenResume={handleOpenResume}
         {resumeOpening}
@@ -432,7 +442,7 @@
               <MessageBubble
                 message={msg}
                 sessionRef={appState.selectedSessionRef}
-                {showMeta}
+                {mode}
                 forceVisible={activeJump?.messageIndex === globalIndex}
                 searchKind={activeJump?.messageIndex === globalIndex ? activeJump.kind : null}
               />
@@ -443,6 +453,11 @@
         {#if isLoadingMore}
           <div class="loading-more-bar">
             <LoadingSpinner size={16} label="Loading more messages…" />
+          </div>
+        {:else if hasMore && messages.length > 0}
+          <!-- Fallback when a failed page leaves too little content to scroll. -->
+          <div class="load-earlier-bar load-more-bar">
+            <button type="button" onclick={() => loadMoreMessages()}>Load more messages</button>
           </div>
         {/if}
 

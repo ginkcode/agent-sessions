@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { Message, SessionRef, SearchHitKind } from '../../types';
   import { formatAbsoluteTime } from '../../date';
+  import { visibleTranscriptParts, type TranscriptMode } from '../../transcript';
   import TextPart from './parts/TextPart.svelte';
   import ReasoningPart from './parts/ReasoningPart.svelte';
   import ToolPart from './parts/ToolPart.svelte';
@@ -11,7 +12,7 @@
   interface Props {
     message: Message;
     sessionRef: SessionRef;
-    showMeta?: boolean;
+    mode?: TranscriptMode;
     forceVisible?: boolean;
     searchKind?: SearchHitKind | null;
   }
@@ -19,7 +20,7 @@
   let {
     message,
     sessionRef,
-    showMeta = false,
+    mode = 'activity',
     forceVisible = false,
     searchKind = null,
   }: Props = $props();
@@ -28,9 +29,10 @@
   let isSystem = $derived(message.role === 'system');
   let isUser = $derived(message.role === 'user');
   let isAssistant = $derived(message.role === 'assistant');
+  let visibleParts = $derived(visibleTranscriptParts(message, mode, forceVisible));
 </script>
 
-{#if !message.isMeta || showMeta || forceVisible}
+{#if visibleParts.length > 0}
   <div
     class="message-bubble-wrapper"
     class:role-user={isUser}
@@ -67,7 +69,7 @@
       </div>
 
       <div class="message-parts-body">
-        {#each message.parts as part, idx (idx)}
+        {#each visibleParts as part, idx (idx)}
           {#if part.kind === 'text' && part.text}
             <TextPart text={part.text} />
           {:else if part.kind === 'reasoning' && part.text}

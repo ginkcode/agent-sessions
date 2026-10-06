@@ -15,6 +15,7 @@ import { formatRelativeTime, formatAbsoluteTime, isKnownTime, formatAgo } from '
 import { highlightCode, detectLanguage } from '../src/lib/highlight.ts';
 import { renderMarkdown } from '../src/lib/markdown.ts';
 import { reachesLineCount } from '../src/lib/layout.ts';
+import { visibleTranscriptParts } from '../src/lib/transcript.ts';
 import {
   refKey,
   refsEqual,
@@ -1851,6 +1852,7 @@ async function renderSessionHeader(fixture, props = {}) {
     ["'../../date'", lib('../../date.ts')],
     ["'../../portable'", lib('../../portable.ts')],
     ["'../../link'", lib('../../link.ts')],
+    ["'../../transcript'", lib('../../transcript.ts')],
     ["import AgentIcon from '../common/AgentIcon.svelte';", 'const AgentIcon = () => {};'],
     ["import { appState } from '../../stores/appState.svelte';", fixtureStore('appState')],
     ["import { manage } from '../../stores/manage.svelte';", fixtureStore('manage')],
@@ -1871,9 +1873,18 @@ async function renderSessionHeader(fixture, props = {}) {
   return renderWithFixture(
     sessionHeaderModule,
     { appState: {}, manage: { settings: { enabled: false } }, handoff: {}, exporter: {}, ...fixture },
-    { meta, showMeta: false, onToggleMeta() {}, onResume() {}, onReveal() {}, onDelete() {}, ...props },
+    { meta, mode: 'activity', onModeChange() {}, onResume() {}, onReveal() {}, onDelete() {}, ...props },
   );
 }
+
+test('SessionHeader shows the selected transcript display mode', async () => {
+  const html = await renderSessionHeader({ link: { dataHost: undefined }, launcher: { canOpen: false } }, { mode: 'chat' });
+  assert.match(html, /aria-label="Transcript display"/);
+  assert.match(html, /class="action-btn mode-btn[^"]* active"[^>]*aria-pressed="true"[^>]*>\s*Chat/);
+  assert.match(html, /aria-pressed="false"[^>]*>\s*Activity/);
+  assert.match(html, /aria-pressed="false"[^>]*>\s*All/);
+  assert.doesNotMatch(html, /Show Meta|Hide Meta/);
+});
 
 test('SessionHeader splits Resume into open and copy when a terminal is available', async () => {
   const split = await renderSessionHeader({ link: { dataHost: undefined }, launcher: { canOpen: true } });
@@ -2387,4 +2398,36 @@ test('Wails listWSLDistros reports no distributions on an older backend', async 
     if (hadWindow) globalThis.window = previous;
     else delete globalThis.window;
   }
+});
+
+test('visibleTranscriptParts filters chat, activity and all display levels', () => {
+  const text = { kind: 'text', text: 'Answer' };
+  const blank = { kind: 'text', text: ' \n' };
+  const thinking = { kind: 'reasoning', text: 'Thinking' };
+  const tool = { kind: 'tool', tool: { id: 'call', name: 'Read', status: 'completed' } };
+  const file = { kind: 'file', file: { name: 'image.png' } };
+  const error = { kind: 'notice', text: 'Assistant error' };
+  const agentNotice = { kind: 'notice', text: 'Agent: build' };
+  const assistant = { id: 'a', role: 'assistant', time: '', parts: [thinking, text, blank, tool, error, agentNotice] };
+  const user = { id: 'u', role: 'user', time: '', parts: [text, file] };
+  const toolOnly = { id: 't', role: 'assistant', time: '', parts: [thinking, tool] };
+  const meta = { id: 'm', role: 'user', time: '', isMeta: true, parts: [text] };
+  const system = { id: 's', role: 'system', time: '', parts: [{ kind: 'compaction', text: 'Summary' }] };
+
+  assert.deepEqual(visibleTranscriptParts(assistant, 'chat'), [text, error]);
+  assert.deepEqual(visibleTranscriptParts(user, 'chat'), [text, file]);
+  assert.deepEqual(visibleTranscriptParts(toolOnly, 'chat'), []);
+  assert.deepEqual(visibleTranscriptParts(system, 'chat'), []);
+  assert.deepEqual(visibleTranscriptParts(meta, 'chat'), []);
+
+  assert.deepEqual(visibleTranscriptParts(toolOnly, 'activity'), toolOnly.parts);
+  assert.deepEqual(visibleTranscriptParts(system, 'activity'), system.parts);
+  assert.deepEqual(visibleTranscriptParts(meta, 'activity'), []);
+  assert.deepEqual(visibleTranscriptParts(meta, 'all'), meta.parts);
+
+  // A search target shows in full, whatever the selected level.
+  assert.deepEqual(visibleTranscriptParts(toolOnly, 'chat', true), toolOnly.parts);
+  const empty = { id: 'n', role: 'assistant', time: '', parts: null };
+  for (const mode of ['chat', 'activity', 'all']) assert.deepEqual(visibleTranscriptParts(empty, mode), []);
+  assert.deepEqual(visibleTranscriptParts(meta, 'activity', true), meta.parts);
 });

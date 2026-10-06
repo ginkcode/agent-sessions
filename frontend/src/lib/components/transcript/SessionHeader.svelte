@@ -11,11 +11,12 @@
   import { link } from '../../stores/link.svelte';
   import { launcher } from '../../stores/launcher.svelte';
   import { resumeButtonTitle } from '../../link';
+  import { transcriptModes, type TranscriptMode } from '../../transcript';
 
   interface Props {
     meta: SessionMeta;
-    showMeta: boolean;
-    onToggleMeta: () => void;
+    mode: TranscriptMode;
+    onModeChange: (mode: TranscriptMode) => void;
     /** Copies the resume command. */
     onResume: () => void;
     /** Resumes in a new terminal; offered when launcher.canOpen. */
@@ -28,8 +29,8 @@
 
   let {
     meta,
-    showMeta,
-    onToggleMeta,
+    mode,
+    onModeChange,
     onResume,
     onOpenResume = () => {},
     onReveal,
@@ -263,15 +264,20 @@
         </button>
       {/if}
 
-      <button
-        type="button"
-        class="action-btn meta-btn"
-        class:active={showMeta}
-        title="Toggle visibility of meta and system messages"
-        onclick={onToggleMeta}
-      >
-        {showMeta ? 'Hide Meta' : 'Show Meta'}
-      </button>
+      <div class="mode-switch" role="group" aria-label="Transcript display">
+        {#each transcriptModes as option (option.value)}
+          <button
+            type="button"
+            class="action-btn mode-btn"
+            class:active={mode === option.value}
+            aria-pressed={mode === option.value}
+            title={option.title}
+            onclick={() => onModeChange(option.value)}
+          >
+            {option.label}
+          </button>
+        {/each}
+      </div>
     </div>
   </div>
 
@@ -485,7 +491,18 @@
     border-left: 1px solid rgba(255, 255, 255, 0.35);
   }
 
-  .action-btn.meta-btn.active {
+  .mode-switch {
+    display: inline-flex;
+    padding: 1px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm, 6px);
+  }
+
+  .mode-switch .mode-btn {
+    padding: 2px 7px;
+  }
+
+  .action-btn.mode-btn.active {
     background-color: var(--active-bg);
     color: var(--accent-color);
   }
