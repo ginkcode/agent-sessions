@@ -15,7 +15,7 @@ import { formatRelativeTime, formatAbsoluteTime, isKnownTime, formatAgo } from '
 import { highlightCode, detectLanguage } from '../src/lib/highlight.ts';
 import { renderMarkdown } from '../src/lib/markdown.ts';
 import { reachesLineCount } from '../src/lib/layout.ts';
-import { visibleTranscriptParts } from '../src/lib/transcript.ts';
+import { isTranscriptMode, visibleTranscriptParts } from '../src/lib/transcript.ts';
 import {
   refKey,
   refsEqual,
@@ -1792,24 +1792,35 @@ const SETTINGS_DIALOG_URL = new URL('../src/lib/components/common/ManageSettings
 const DROPDOWN_URL = new URL('../src/lib/components/common/Dropdown.svelte', import.meta.url);
 let settingsDialogModule;
 
-async function renderSettingsDialog(launcher) {
+async function renderSettingsDialog(launcher, preferences = { transcriptMode: 'activity' }) {
   if (!settingsDialogModule) {
     globalThis.__dropdown = (await loadServerComponent(DROPDOWN_URL, [])).default;
     const lib = (rel) => JSON.stringify(new URL(rel, SETTINGS_DIALOG_URL).href);
     settingsDialogModule = await loadServerComponent(SETTINGS_DIALOG_URL, [
       ["'../../format'", lib('../../format.ts')],
       ["'../../terminal'", lib('../../terminal.ts')],
+      ["'../../transcript'", lib('../../transcript.ts')],
       ["import Dropdown from './Dropdown.svelte';", 'const Dropdown = globalThis.__dropdown;'],
       ["import { manage } from '../../stores/manage.svelte';", fixtureStore('manage')],
       ["import { launcher } from '../../stores/launcher.svelte';", fixtureStore('launcher')],
+      ["import { preferences } from '../../stores/preferences.svelte';", fixtureStore('preferences')],
     ]);
   }
   const manage = {
     settingsDialogOpen: true, settings: { enabled: false, allowPermanentDelete: false }, loadingSettings: false,
     settingsError: null, firstEnableWarningVisible: false, handoffCache: null, handoffCacheError: null, handoffCacheBusy: false,
   };
-  return renderWithFixture(settingsDialogModule, { manage, launcher: { terminalError: null, terminal: null, ...launcher } });
+  return renderWithFixture(settingsDialogModule, { manage, launcher: { terminalError: null, terminal: null, ...launcher }, preferences });
 }
+
+test('Settings shows the default transcript display level', async () => {
+  const info = { terminal: true, chooseTerminal: false, shell: 'powershell' };
+  const html = await renderSettingsDialog({ info }, { transcriptMode: 'chat' });
+  assert.match(html, /<h3[^>]*>Transcript<\/h3>/);
+  assert.match(html, /aria-label="Default transcript display"/);
+  assert.match(html, />Chat</);
+  assert.match(html, /User messages and assistant answers.*The header buttons change it for the open session only\./);
+});
 
 test('Settings shows the terminal choice only where it can be chosen', async () => {
   const windows = await renderSettingsDialog({ info: { terminal: true, chooseTerminal: false, shell: 'powershell' } });
@@ -2398,6 +2409,11 @@ test('Wails listWSLDistros reports no distributions on an older backend', async 
     if (hadWindow) globalThis.window = previous;
     else delete globalThis.window;
   }
+});
+
+test('isTranscriptMode accepts only the display levels', () => {
+  for (const mode of ['chat', 'activity', 'all']) assert.equal(isTranscriptMode(mode), true, mode);
+  for (const value of [null, '', 'meta']) assert.equal(isTranscriptMode(value), false, String(value));
 });
 
 test('visibleTranscriptParts filters chat, activity and all display levels', () => {

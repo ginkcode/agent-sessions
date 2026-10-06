@@ -11,6 +11,7 @@
   import { toast } from '../../stores/toast.svelte';
   import { link } from '../../stores/link.svelte';
   import { launcher } from '../../stores/launcher.svelte';
+  import { preferences } from '../../stores/preferences.svelte';
   import { isStaleReply } from '../../link';
   import type { TranscriptMode } from '../../transcript';
   import SessionHeader from './SessionHeader.svelte';
@@ -30,7 +31,7 @@
   let isLoadingMore = $state(false);
   let hasMore = $state(false);
   let loadError = $state<string | null>(null);
-  let mode = $state<TranscriptMode>('activity');
+  let mode = $state<TranscriptMode>(preferences.transcriptMode);
   let resumeCopied = $state(false);
   let resumeOpening = $state(false);
   let containerEl: HTMLElement | null = $state(null);
@@ -63,7 +64,7 @@
     const jump = search.jump;
     const refChanged = ref !== lastRef;
     // The display mode is per session; jumps within it keep the chosen mode.
-    if (ref && !refsMatch(lastRef, ref)) mode = 'activity';
+    if (ref && !refsMatch(lastRef, ref)) mode = untrack(() => preferences.transcriptMode);
     lastRef = ref;
     if (ref) {
       if (jump && jump.id > handledJumpID && refsMatch(ref, jump.ref)) {
@@ -78,6 +79,11 @@
       hasMore = false;
       loadError = null;
     }
+  });
+
+  // Changing the default in Settings also applies to the open session.
+  $effect(() => {
+    mode = preferences.transcriptMode;
   });
 
   // A refresh or a change event for the open session reloads what is

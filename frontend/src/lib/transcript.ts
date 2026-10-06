@@ -8,6 +8,10 @@ export const transcriptModes: { value: TranscriptMode; label: string; title: str
   { value: 'all', label: 'All', title: 'All activity, including meta and system messages' },
 ];
 
+export function isTranscriptMode(value: unknown): value is TranscriptMode {
+  return transcriptModes.some((m) => m.value === value);
+}
+
 /** Search targets bypass filtering so hidden tool/thinking hits remain reachable. */
 export function visibleTranscriptParts(
   message: Message,

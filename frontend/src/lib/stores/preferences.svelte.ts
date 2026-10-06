@@ -1,4 +1,8 @@
+import { isTranscriptMode, type TranscriptMode } from '../transcript';
+
 const STORAGE_KEY = 'agent-sessions:pane-widths';
+// Separate key so the pane-widths JSON format stays unchanged.
+const TRANSCRIPT_MODE_KEY = 'agent-sessions:transcript-mode';
 
 export interface PaneWidths {
   sidebar: number;
@@ -16,6 +20,8 @@ export class PreferencesStore {
     sidebar: LIMITS.sidebar.default,
     sessionList: LIMITS.sessionList.default,
   });
+  // The level each session opens at; the header selector overrides it per session.
+  transcriptMode = $state<TranscriptMode>('activity');
 
   init(): void {
     if (typeof localStorage === 'undefined') return;
@@ -35,6 +41,13 @@ export class PreferencesStore {
       // Ignore JSON parse errors and keep defaults
     }
 
+    try {
+      const mode = localStorage.getItem(TRANSCRIPT_MODE_KEY);
+      if (isTranscriptMode(mode)) this.transcriptMode = mode;
+    } catch {
+      // Storage disabled; keep Activity
+    }
+
     if (typeof window !== 'undefined') {
       window.addEventListener('resize', () => this.handleWindowResize());
       this.handleWindowResize();
@@ -51,6 +64,16 @@ export class PreferencesStore {
     this.widths.sessionList = this.clamp(width, LIMITS.sessionList.min, LIMITS.sessionList.max);
     this.ensureTranscriptVisible();
     this.save();
+  }
+
+  setTranscriptMode(mode: TranscriptMode): void {
+    this.transcriptMode = mode;
+    if (typeof localStorage === 'undefined') return;
+    try {
+      localStorage.setItem(TRANSCRIPT_MODE_KEY, mode);
+    } catch {
+      // Storage quota or disabled
+    }
   }
 
   private handleWindowResize(): void {

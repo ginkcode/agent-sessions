@@ -3,7 +3,11 @@
   import { launcher } from '../../stores/launcher.svelte';
   import { formatBytes } from '../../format';
   import { terminalOptions } from '../../terminal';
+  import { preferences } from '../../stores/preferences.svelte';
+  import { isTranscriptMode, transcriptModes } from '../../transcript';
   import Dropdown from './Dropdown.svelte';
+
+  let transcriptMode = $derived(transcriptModes.find((m) => m.value === preferences.transcriptMode));
 
   function close() {
     manage.closeSettings();
@@ -52,6 +56,21 @@
           Allow permanent deletion (cannot be undone)
         </label>
         <p class="hint">Claude sessions move to the system Trash or Recycle Bin when supported. Codex and OpenCode sessions have no Trash or Recycle Bin copy; deleting them is permanent.</p>
+
+        <section class="section transcript">
+          <h3>Transcript</h3>
+          <div class="transcript-row">
+            <Dropdown
+              options={transcriptModes}
+              value={preferences.transcriptMode}
+              onChange={(mode) => { if (isTranscriptMode(mode)) preferences.setTranscriptMode(mode); }}
+              ariaLabel="Default transcript display"
+            />
+          </div>
+          {#if transcriptMode}
+            <p class="hint">{transcriptMode.title}. The header buttons change it for the open session only.</p>
+          {/if}
+        </section>
 
         {#if launcher.info.chooseTerminal}
           <section class="section terminal">
@@ -136,7 +155,7 @@
   .section { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--border-color); }
   h3 { margin: 0 0 6px; font-size: .85rem; }
   .section .hint, .section .error { margin: 0 0 10px; line-height: 1.5; }
-  .terminal-row { margin-bottom: 10px; }
+  .terminal-row, .transcript-row { margin-bottom: 10px; }
   .cache-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
   .cache-usage { color: var(--text-secondary); }
 </style>
