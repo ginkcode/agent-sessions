@@ -155,14 +155,13 @@
         Archived
       </button>
 
-      {#if manage.settings.enabled}
-        <Dropdown
-          options={AGE_OPTIONS}
-          value={manage.ageFilter}
-          onChange={handleAgeChange}
-          ariaLabel="Filter sessions by age"
-        />
-      {/if}
+      <!-- A view filter, so it stays visible on hosts without session management. -->
+      <Dropdown
+        options={AGE_OPTIONS}
+        value={manage.ageFilter}
+        onChange={handleAgeChange}
+        ariaLabel="Filter sessions by age"
+      />
 
       <div class="sort-wrapper">
         <Dropdown
