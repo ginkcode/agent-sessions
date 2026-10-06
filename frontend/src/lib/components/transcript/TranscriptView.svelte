@@ -523,7 +523,8 @@
   }
 
   .messages-inner-list {
-    max-width: 900px;
+    /* 900px on normal screens; on wide ones the column grows with the pane. */
+    max-width: max(900px, 80%);
     margin: 0 auto;
     display: flex;
     flex-direction: column;
