@@ -126,11 +126,11 @@ test('formatAbsoluteTime shows UTC or this computer\'s local time with its offse
   const saved = process.env.TZ;
   try {
     process.env.TZ = 'Asia/Ho_Chi_Minh';
-    assert.equal(formatAbsoluteTime('2026-09-28T20:30:05Z'), '2026-09-28 20:30:05 UTC');
-    assert.equal(formatAbsoluteTime('2026-09-28T20:30:05Z', 'utc'), '2026-09-28 20:30:05 UTC');
-    assert.equal(formatAbsoluteTime('2026-09-28T20:30:05Z', 'local'), '2026-09-29 03:30:05 +07:00');
+    assert.equal(formatAbsoluteTime('2026-09-28T20:30:05Z'), 'Mon 2026-09-28 20:30:05 UTC');
+    assert.equal(formatAbsoluteTime('2026-09-28T20:30:05Z', 'utc'), 'Mon 2026-09-28 20:30:05 UTC');
+    assert.equal(formatAbsoluteTime('2026-09-28T20:30:05Z', 'local'), 'Tue 2026-09-29 03:30:05 +07:00');
     process.env.TZ = 'Pacific/Marquesas';
-    assert.equal(formatAbsoluteTime('2026-09-28T20:30:05Z', 'local'), '2026-09-28 11:00:05 -09:30');
+    assert.equal(formatAbsoluteTime('2026-09-28T20:30:05Z', 'local'), 'Mon 2026-09-28 11:00:05 -09:30');
     assert.equal(formatAbsoluteTime('', 'local'), '');
   } finally {
     if (saved === undefined) delete process.env.TZ;

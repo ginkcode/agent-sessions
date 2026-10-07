@@ -40,6 +40,9 @@ export function isTimeZoneMode(value: unknown): value is TimeZoneMode {
   return value === 'utc' || value === 'local';
 }
 
+// Fixed English names, like the rest of the fixed numeric format.
+const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
 // Local times carry their offset, e.g. "+07:00", so a timestamp always says
 // which zone it is in.
 export function formatAbsoluteTime(dateStr: string, zone: TimeZoneMode = 'utc'): string {
@@ -55,8 +58,10 @@ export function formatAbsoluteTime(dateStr: string, zone: TimeZoneMode = 'utc'):
   const hours = pad(utc ? date.getUTCHours() : date.getHours());
   const minutes = pad(utc ? date.getUTCMinutes() : date.getMinutes());
   const seconds = pad(utc ? date.getUTCSeconds() : date.getSeconds());
+  // The weekday follows the chosen zone, whose date can differ from UTC's.
+  const weekday = WEEKDAYS[utc ? date.getUTCDay() : date.getDay()];
 
-  return `${year}-${month}-${day} ${hours}:${minutes}:${seconds} ${utc ? 'UTC' : utcOffset(date)}`;
+  return `${weekday} ${year}-${month}-${day} ${hours}:${minutes}:${seconds} ${utc ? 'UTC' : utcOffset(date)}`;
 }
 
 // getTimezoneOffset is minutes behind UTC, so +07:00 reports -420.
