@@ -320,6 +320,28 @@ export interface TerminalSettings {
   hint?: string;
 }
 
+/**
+ * Where messages are translated: an OpenAI-compatible endpoint called from
+ * this computer, whichever host is selected. The API key is never returned.
+ */
+export interface TranslateSettings {
+  baseURL: string;
+  model: string;
+  language: string;
+  apiKeySet: boolean;
+  /** Base URL, API key and model are all set. */
+  configured: boolean;
+}
+
+/** Saves translation settings. An empty apiKey keeps the saved key. */
+export interface TranslateSettingsRequest {
+  baseURL: string;
+  model: string;
+  language: string;
+  apiKey: string;
+  clearApiKey: boolean;
+}
+
 /** Handoff files kept in the app data directory. */
 export interface HandoffCacheInfo {
   dir: string;

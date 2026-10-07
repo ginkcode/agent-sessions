@@ -17,7 +17,11 @@ import {
 import { appState } from './appState.svelte';
 import { link } from './link.svelte';
 import { launcher } from './launcher.svelte';
+import { translateSettings } from './translate.svelte';
 import { isDisconnectedError, isStaleReply } from '../link';
+
+/** The sections of the Settings dialog. */
+export type SettingsSection = 'general' | 'translation' | 'terminal' | 'management' | 'handoff';
 
 export class ManageStore {
   settings = $state<ManageSettings>({
@@ -46,6 +50,7 @@ export class ManageStore {
 
   confirmDialogOpen = $state(false);
   settingsDialogOpen = $state(false);
+  settingsSection = $state<SettingsSection>('general');
   firstEnableWarningVisible = $state(false);
 
   // Handoff files written by "Continue in"
@@ -66,11 +71,14 @@ export class ManageStore {
     }
   }
 
-  openSettings(): void {
+  /** Opens Settings, at section when given or where it was last left. */
+  openSettings(section?: SettingsSection): void {
+    if (section) this.settingsSection = section;
     this.settingsDialogOpen = true;
     this.firstEnableWarningVisible = false;
     void this.loadHandoffCache();
     void launcher.refresh();
+    void translateSettings.init();
   }
 
   async loadHandoffCache(): Promise<void> {

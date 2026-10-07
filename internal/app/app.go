@@ -22,6 +22,7 @@ import (
 	"github.com/ginkcode/agent-sessions/internal/provider/all"
 	"github.com/ginkcode/agent-sessions/internal/remote"
 	"github.com/ginkcode/agent-sessions/internal/scan"
+	"github.com/ginkcode/agent-sessions/internal/translate"
 	"github.com/ginkcode/agent-sessions/internal/version"
 )
 
@@ -50,6 +51,8 @@ type App struct {
 	openInOverride func(launch.TerminalApp, provider.Command) error
 	// wslTerminalOverride replaces launch.OpenWSLTerminal in tests.
 	wslTerminalOverride func(distro, script string) error
+	// translator replaces the default translation client in tests.
+	translator *translate.Client
 
 	events            *catalogBus
 	wailsEvents       engine.Emitter

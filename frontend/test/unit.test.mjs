@@ -15,7 +15,7 @@ import { formatRelativeTime, formatAbsoluteTime, isKnownTime, formatAgo, isTimeZ
 import { highlightCode, detectLanguage } from '../src/lib/highlight.ts';
 import { renderMarkdown } from '../src/lib/markdown.ts';
 import { reachesLineCount } from '../src/lib/layout.ts';
-import { isTranscriptMode, visibleTranscriptParts } from '../src/lib/transcript.ts';
+import { isTranscriptMode, messageMarkdown, messageText, visibleTranscriptParts } from '../src/lib/transcript.ts';
 import {
   refKey,
   refsEqual,
@@ -1848,7 +1848,16 @@ const SETTINGS_DIALOG_URL = new URL('../src/lib/components/common/ManageSettings
 const DROPDOWN_URL = new URL('../src/lib/components/common/Dropdown.svelte', import.meta.url);
 let settingsDialogModule;
 
-async function renderSettingsDialog(launcher, preferences = { transcriptMode: 'activity', timeZone: 'utc' }) {
+const TRANSLATE_DEFAULTS = {
+  settings: { baseURL: '', model: '', language: 'Vietnamese', apiKeySet: false, configured: false },
+  configured: false, error: null, saving: false, testing: false, testResult: null, testError: null,
+};
+
+async function renderSettingsDialog(
+  launcher,
+  preferences = { transcriptMode: 'activity', timeZone: 'utc' },
+  { section = 'general', translateSettings = {} } = {},
+) {
   if (!settingsDialogModule) {
     globalThis.__dropdown = (await loadServerComponent(DROPDOWN_URL, [])).default;
     const lib = (rel) => JSON.stringify(new URL(rel, SETTINGS_DIALOG_URL).href);
@@ -1860,14 +1869,20 @@ async function renderSettingsDialog(launcher, preferences = { transcriptMode: 'a
       ["import Dropdown from './Dropdown.svelte';", 'const Dropdown = globalThis.__dropdown;'],
       ["import { manage } from '../../stores/manage.svelte';", fixtureStore('manage')],
       ["import { launcher } from '../../stores/launcher.svelte';", fixtureStore('launcher')],
+      ["import { translateSettings } from '../../stores/translate.svelte';", fixtureStore('translateSettings')],
       ["import { preferences } from '../../stores/preferences.svelte';", fixtureStore('preferences')],
     ]);
   }
   const manage = {
-    settingsDialogOpen: true, settings: { enabled: false, allowPermanentDelete: false }, loadingSettings: false,
+    settingsDialogOpen: true, settingsSection: section, settings: { enabled: false, allowPermanentDelete: false }, loadingSettings: false,
     settingsError: null, firstEnableWarningVisible: false, handoffCache: null, handoffCacheError: null, handoffCacheBusy: false,
   };
-  return renderWithFixture(settingsDialogModule, { manage, launcher: { terminalError: null, terminal: null, ...launcher }, preferences });
+  return renderWithFixture(settingsDialogModule, {
+    manage,
+    launcher: { terminalError: null, terminal: null, ...launcher },
+    translateSettings: { ...TRANSLATE_DEFAULTS, ...translateSettings },
+    preferences,
+  });
 }
 
 test('Settings shows the default transcript display level', async () => {
@@ -1889,34 +1904,74 @@ test('Settings shows the time zone used for timestamps', async () => {
 });
 
 test('Settings shows the terminal choice only where it can be chosen', async () => {
-  const windows = await renderSettingsDialog({ info: { terminal: true, chooseTerminal: false, shell: 'powershell' } });
+  const windows = await renderSettingsDialog({ info: { terminal: true, chooseTerminal: false, shell: 'powershell' } }, undefined, { section: 'terminal' });
   assert.match(windows, /<h2 id="settings-title"[^>]*>Settings<\/h2>/);
-  assert.doesNotMatch(windows, /Terminal \(this computer\)/);
+  assert.doesNotMatch(windows, /Terminal \(this computer\)|>Terminal</);
+  // Without a terminal section, Settings falls back to General.
+  assert.match(windows, /<h3[^>]*>Transcript<\/h3>/);
 
   const info = { terminal: true, chooseTerminal: true, shell: 'posix' };
   const terminal = {
     choose: true, selected: '', selectedName: '', missing: false,
     auto: { id: 'konsole', name: 'Konsole' }, options: [{ id: 'konsole', name: 'Konsole' }],
   };
-  const auto = await renderSettingsDialog({ info, terminal });
+  const auto = await renderSettingsDialog({ info, terminal }, undefined, { section: 'terminal' });
   assert.match(auto, /Terminal \(this computer\)/);
   assert.match(auto, /Automatic \(Konsole\)/);
   assert.doesNotMatch(auto, /no longer installed|macOS/);
 
-  const missing = await renderSettingsDialog({ info, terminal: { ...terminal, selected: 'kitty', selectedName: 'kitty', missing: true } });
+  const missing = await renderSettingsDialog({ info, terminal: { ...terminal, selected: 'kitty', selectedName: 'kitty', missing: true } }, undefined, { section: 'terminal' });
   assert.match(missing, /kitty \(not found\)/);
   assert.match(missing, /kitty is no longer installed/);
 
-  const none = await renderSettingsDialog({ info, terminal: { ...terminal, auto: null, options: [] } });
+  const none = await renderSettingsDialog({ info, terminal: { ...terminal, auto: null, options: [] } }, undefined, { section: 'terminal' });
   assert.match(none, /Automatic \(none found\)/);
   assert.match(none, /No supported terminal app was found/);
 
-  const mac = await renderSettingsDialog({ info, terminal: { ...terminal, hint: 'The first time, macOS asks whether Agent Sessions may control the terminal app.' } });
+  const mac = await renderSettingsDialog({ info, terminal: { ...terminal, hint: 'The first time, macOS asks whether Agent Sessions may control the terminal app.' } }, undefined, { section: 'terminal' });
   assert.match(mac, /macOS asks whether Agent Sessions may control/);
 
-  const failed = await renderSettingsDialog({ info, terminalError: 'read settings: permission denied' });
+  const failed = await renderSettingsDialog({ info, terminalError: 'read settings: permission denied' }, undefined, { section: 'terminal' });
   assert.match(failed, /read settings: permission denied/);
   assert.doesNotMatch(failed, /Looking for terminal apps/);
+});
+
+test('Settings lists its sections in a side navigation', async () => {
+  const info = { terminal: true, chooseTerminal: true, shell: 'posix' };
+  const html = await renderSettingsDialog({ info });
+  const tabs = [...html.matchAll(/role="tab"[^>]*>([^<]+)<\/button>/g)].map((m) => m[1]);
+  assert.deepEqual(tabs, ['General', 'Translation', 'Terminal', 'Session management', 'Handoff files']);
+  assert.match(html, /aria-selected="true"[^>]*>General</);
+  assert.doesNotMatch(html, /Enable session management|Handoff files<\/h3>/);
+
+  const management = await renderSettingsDialog({ info }, undefined, { section: 'management' });
+  assert.match(management, /Enable session management/);
+  assert.match(management, /Allow permanent deletion/);
+  assert.doesNotMatch(management, /<h3[^>]*>Transcript<\/h3>/);
+
+  const handoff = await renderSettingsDialog({ info }, undefined, { section: 'handoff' });
+  assert.match(handoff, /<h3[^>]*>Handoff files<\/h3>/);
+  assert.match(handoff, /Checking…/);
+});
+
+test('Settings Translation shows a saved key as Saved, never the key', async () => {
+  const info = { terminal: true, chooseTerminal: false, shell: 'powershell' };
+  const empty = await renderSettingsDialog({ info }, undefined, { section: 'translation' });
+  assert.match(empty, /<h3[^>]*>Translation<\/h3>/);
+  assert.match(empty, /type="password"/);
+  assert.match(empty, /Message text is sent to this provider from this computer/);
+  assert.match(empty, /<button[^>]*disabled[^>]*>Test<\/button>/);
+
+  const settings = { baseURL: 'https://api.example.com/v1', model: 'gpt-test', language: 'French', apiKeySet: true, configured: true };
+  const saved = await renderSettingsDialog({ info }, undefined, { section: 'translation', translateSettings: { settings, configured: true } });
+  assert.match(saved, /Saved/);
+  assert.match(saved, />Replace</);
+  assert.match(saved, />Clear</);
+  assert.doesNotMatch(saved, /type="password"/);
+  assert.doesNotMatch(saved, /<button[^>]*disabled[^>]*>Test<\/button>/);
+
+  const failed = await renderSettingsDialog({ info }, undefined, { section: 'translation', translateSettings: { testError: 'translate: 401 Unauthorized: bad key' } });
+  assert.match(failed, /401 Unauthorized: bad key/);
 });
 
 const SESSION_HEADER_URL = new URL('../src/lib/components/transcript/SessionHeader.svelte', import.meta.url);
@@ -2513,4 +2568,136 @@ test('visibleTranscriptParts filters chat, activity and all display levels', () 
   const empty = { id: 'n', role: 'assistant', time: '', parts: null };
   for (const mode of ['chat', 'activity', 'all']) assert.deepEqual(visibleTranscriptParts(empty, mode), []);
   assert.deepEqual(visibleTranscriptParts(meta, 'activity', true), meta.parts);
+});
+
+test('messageMarkdown copies what Chat level shows', () => {
+  const assistant = {
+    id: 'a', role: 'assistant', time: '',
+    parts: [
+      { kind: 'reasoning', text: 'Thinking' },
+      { kind: 'text', text: '\nFirst **bold**\n' },
+      { kind: 'tool', tool: { id: 'c', name: 'Read', status: 'completed' } },
+      { kind: 'text', text: '```go\nfmt.Println()\n```' },
+      { kind: 'notice', text: 'Assistant error' },
+    ],
+  };
+  assert.equal(messageMarkdown(assistant), 'First **bold**\n\n```go\nfmt.Println()\n```\n\n> Assistant error');
+  assert.equal(messageText(assistant), 'First **bold**\n\n```go\nfmt.Println()\n```');
+
+  const user = {
+    id: 'u', role: 'user', time: '',
+    parts: [
+      { kind: 'text', text: 'See these' },
+      { kind: 'file', file: { name: 'shot.png', path: '/tmp/shot.png' } },
+      { kind: 'file', file: { path: '/tmp/my file (1).txt' } },
+      { kind: 'file', file: { name: 'pasted [1]' } },
+    ],
+  };
+  assert.equal(messageMarkdown(user), 'See these\n\n[shot.png](/tmp/shot.png)\n\n[my file (1).txt](</tmp/my file (1).txt>)\n\npasted [1]');
+  assert.equal(messageText(user), 'See these');
+
+  const fileOnly = { id: 'f', role: 'user', time: '', parts: [{ kind: 'file', file: { name: 'a.png' } }] };
+  assert.equal(messageMarkdown(fileOnly), 'a.png');
+  assert.equal(messageText(fileOnly), '');
+  for (const empty of [
+    { id: 't', role: 'assistant', time: '', parts: [{ kind: 'tool', tool: { id: 'c', name: 'Read', status: 'completed' } }] },
+    { id: 's', role: 'system', time: '', parts: [{ kind: 'text', text: 'System' }] },
+    { id: 'm', role: 'user', time: '', isMeta: true, parts: [{ kind: 'text', text: 'Meta' }] },
+    { id: 'n', role: 'assistant', time: '', parts: null },
+  ]) {
+    assert.equal(messageMarkdown(empty), '', empty.id);
+    assert.equal(messageText(empty), '', empty.id);
+  }
+});
+
+const TRANSLATIONS_STORE_URL = new URL('../src/lib/stores/translations.svelte.ts', import.meta.url);
+let translationsStoreModule;
+
+async function loadTranslationsStore() {
+  translationsStoreModule ??= await loadServerModule(TRANSLATIONS_STORE_URL, [
+    ["import { api } from '../api';", fixtureStore('api', '__storeFixture')],
+    ["'../manage'", JSON.stringify(new URL('../manage.ts', TRANSLATIONS_STORE_URL).href)],
+  ]);
+  return translationsStoreModule;
+}
+
+test('translationKey separates sessions, messages and languages', async () => {
+  const { translationKey } = await loadTranslationsStore();
+  const ref = { agent: 'claude', id: 's1' };
+  assert.equal(translationKey(ref, { id: 'm1' }, 3, 'Vietnamese'), 'claude:s1|id:m1|Vietnamese');
+  assert.equal(translationKey(ref, { id: '' }, 3, 'Vietnamese'), 'claude:s1|#3|Vietnamese');
+  const keys = new Set([
+    translationKey(ref, { id: 'm1' }, 0, 'Vietnamese'),
+    translationKey(ref, { id: 'm1' }, 0, 'French'),
+    translationKey({ agent: 'codex', id: 's1' }, { id: 'm1' }, 0, 'Vietnamese'),
+    translationKey(ref, { id: 'm2' }, 0, 'Vietnamese'),
+    translationKey(ref, { id: '' }, 0, 'Vietnamese'),
+  ]);
+  assert.equal(keys.size, 5);
+});
+
+test('TranslationsStore tracks loading, done and error and keeps the newest', async () => {
+  const { TranslationsStore, MAX_TRANSLATIONS } = await loadTranslationsStore();
+  const pending = [];
+  globalThis.__storeFixture = {
+    api: { translate: (text) => new Promise((resolve, reject) => pending.push({ text, resolve, reject })) },
+  };
+  try {
+    const store = new TranslationsStore();
+    const done = store.translate('k', 'Hello');
+    assert.equal(store.get('k').status, 'loading');
+    // A second request while one runs is ignored.
+    void store.translate('k', 'Hello');
+    assert.equal(pending.length, 1);
+    pending[0].resolve('Xin chào');
+    await done;
+    assert.deepEqual({ ...store.get('k') }, { status: 'done', text: 'Xin chào', error: '', showOriginal: false });
+
+    store.toggleOriginal('k');
+    assert.equal(store.get('k').showOriginal, true);
+    store.toggleOriginal('k');
+    assert.equal(store.get('k').showOriginal, false);
+
+    const failed = store.translate('bad', 'Hi');
+    pending[1].reject('translate: 401 Unauthorized');
+    await failed;
+    assert.equal(store.get('bad').status, 'error');
+    assert.equal(store.get('bad').error, 'translate: 401 Unauthorized');
+    store.toggleOriginal('bad');
+    assert.equal(store.get('bad').showOriginal, false);
+
+    // A result that lands after clear() is dropped.
+    const late = store.translate('late', 'Hi');
+    store.clear();
+    pending[2].resolve('late');
+    await late;
+    assert.equal(store.get('late'), undefined);
+
+    // The oldest entries go once the cap is reached.
+    for (let i = 0; i <= MAX_TRANSLATIONS; i++) void store.translate(`n${i}`, 'x');
+    assert.equal(store.get('n0'), undefined);
+    assert.equal(store.get('n1').status, 'loading');
+    assert.equal(Object.keys(store.entries).length, MAX_TRANSLATIONS);
+  } finally {
+    delete globalThis.__storeFixture;
+  }
+});
+
+test('MockBackendAPI keeps the translation key and translates once set up', async () => {
+  const mock = new MockBackendAPI();
+  mock.translateDelayMs = 0;
+  let s = await mock.translateSettings();
+  assert.deepEqual(s, { baseURL: '', model: '', language: 'Vietnamese', apiKeySet: false, configured: false });
+  await assert.rejects(mock.translate('Hello'), /not set up/);
+  await assert.rejects(mock.setTranslateSettings({ baseURL: 'api.example.com', model: 'm', language: '', apiKey: 'k', clearApiKey: false }), /http or https/);
+
+  s = await mock.setTranslateSettings({ baseURL: 'https://api.example.com/v1', model: 'm', language: '', apiKey: 'sk-1', clearApiKey: false });
+  assert.deepEqual(s, { baseURL: 'https://api.example.com/v1', model: 'm', language: 'Vietnamese', apiKeySet: true, configured: true });
+  assert.equal(JSON.stringify(s).includes('sk-1'), false);
+  assert.equal(await mock.translate('Hello'), '[Vietnamese] Hello');
+
+  s = await mock.setTranslateSettings({ baseURL: 'https://api.example.com/v1', model: 'm', language: 'French', apiKey: '', clearApiKey: false });
+  assert.equal(s.apiKeySet, true);
+  s = await mock.setTranslateSettings({ baseURL: 'https://api.example.com/v1', model: 'm', language: 'French', apiKey: '', clearApiKey: true });
+  assert.deepEqual([s.apiKeySet, s.configured], [false, false]);
 });

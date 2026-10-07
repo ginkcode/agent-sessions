@@ -1,4 +1,4 @@
-import type { Message, Part } from './types';
+import type { FileRef, Message, Part } from './types';
 
 export type TranscriptMode = 'chat' | 'activity' | 'all';
 
@@ -29,4 +29,33 @@ export function visibleTranscriptParts(
     (part.kind === 'file' && !!part.file) ||
     (message.role === 'assistant' && part.kind === 'notice' && part.text === 'Assistant error')
   );
+}
+
+function fileMarkdown(file: FileRef): string {
+  const name = file.name || file.path?.split(/[\\/]/).pop() || file.ref || 'Attachment';
+  if (!file.path) return name;
+  const target = /[\s()<>]/.test(file.path) ? `<${file.path}>` : file.path;
+  return `[${name.replace(/[[\]]/g, '\\$&')}](${target})`;
+}
+
+/**
+ * The message as Markdown, as Chat level shows it: text, attached files as
+ * links and the assistant error notice. Empty when Chat level shows nothing.
+ */
+export function messageMarkdown(message: Message): string {
+  const blocks: string[] = [];
+  for (const part of visibleTranscriptParts(message, 'chat')) {
+    if (part.kind === 'text' && part.text?.trim()) blocks.push(part.text.trim());
+    else if (part.kind === 'file' && part.file) blocks.push(fileMarkdown(part.file));
+    else if (part.kind === 'notice') blocks.push(`> ${part.text}`);
+  }
+  return blocks.join('\n\n');
+}
+
+/** The message's chat text alone: what Translate sends. */
+export function messageText(message: Message): string {
+  return visibleTranscriptParts(message, 'chat')
+    .filter((part) => part.kind === 'text' && part.text?.trim())
+    .map((part) => part.text!.trim())
+    .join('\n\n');
 }

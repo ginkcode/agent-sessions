@@ -22,6 +22,8 @@ import type {
   LaunchInfo,
   TerminalSettings,
   TerminalOption,
+  TranslateSettings,
+  TranslateSettingsRequest,
   HandoffReport,
   ExportRequest,
   ExportPreview,
@@ -129,6 +131,11 @@ export class MockBackendAPI {
   chosenTerminal = '';
   /** Commands "opened" in a terminal, newest last. */
   openedTerminals: string[] = [];
+  /** Translation settings; the key stays here, as it stays in the backend. */
+  translateConfig = { baseURL: '', model: '', language: 'Vietnamese', apiKey: '' };
+  /** Texts sent to translate, newest last. */
+  translated: string[] = [];
+  translateDelayMs = 400;
 
   async listGroups(mode: GroupMode, filter?: FilterOpts): Promise<GroupNode[]> {
     const filtered = this.filterSessions(this.sessions, filter);
@@ -418,6 +425,44 @@ export class MockBackendAPI {
     }
     this.chosenTerminal = id;
     return this.terminalSettings();
+  }
+
+  async translateSettings(): Promise<TranslateSettings> {
+    const c = this.translateConfig;
+    return {
+      baseURL: c.baseURL,
+      model: c.model,
+      language: c.language,
+      apiKeySet: c.apiKey !== '',
+      configured: c.baseURL !== '' && c.apiKey !== '' && c.model !== '',
+    };
+  }
+
+  // Mirrors the backend: an empty key keeps the saved one.
+  async setTranslateSettings(req: TranslateSettingsRequest): Promise<TranslateSettings> {
+    const baseURL = req.baseURL.trim();
+    if (baseURL && !/^https?:\/\/[^/]/.test(baseURL)) {
+      throw new Error('base URL must be an http or https URL, such as https://api.openai.com/v1');
+    }
+    const c = this.translateConfig;
+    this.translateConfig = {
+      baseURL,
+      model: req.model.trim(),
+      language: req.language.trim() || 'Vietnamese',
+      apiKey: req.clearApiKey ? '' : req.apiKey.trim() || c.apiKey,
+    };
+    return this.translateSettings();
+  }
+
+  async translate(text: string): Promise<string> {
+    if (!(await this.translateSettings()).configured) {
+      throw new Error('translation is not set up: add a base URL, API key and model in Settings');
+    }
+    this.translated.push(text);
+    if (this.translateDelayMs > 0) {
+      await new Promise((resolve) => setTimeout(resolve, this.translateDelayMs));
+    }
+    return `[${this.translateConfig.language}] ${text}`;
   }
 
   // Mirrors the backend: local sessions use the chosen terminal; WSL uses

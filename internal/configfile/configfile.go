@@ -1,7 +1,8 @@
 // Package configfile updates the user's config.toml, which several tables
-// share: [manage] for the engine, [terminal] for the desktop app. Changes are
-// made under one lock and edit only their own keys, so concurrent updates of
-// different keys all survive and unknown keys, tables and comments are kept.
+// share: [manage] for the engine, [terminal] and [translate] for the desktop
+// app. Changes are made under one lock and edit only their own keys, so
+// concurrent updates of different keys all survive and unknown keys, tables
+// and comments are kept.
 package configfile
 
 import (

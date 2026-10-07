@@ -448,6 +448,7 @@
               <MessageBubble
                 message={msg}
                 sessionRef={appState.selectedSessionRef}
+                index={globalIndex}
                 {mode}
                 forceVisible={activeJump?.messageIndex === globalIndex}
                 searchKind={activeJump?.messageIndex === globalIndex ? activeJump.kind : null}

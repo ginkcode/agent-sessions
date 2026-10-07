@@ -20,6 +20,8 @@ import type {
   HandoffCacheInfo,
   LaunchInfo,
   TerminalSettings,
+  TranslateSettings,
+  TranslateSettingsRequest,
   ExportRequest,
   ExportPreview,
   BundleSummary,
@@ -45,6 +47,9 @@ export interface BackendAPI {
   launchInfo(): Promise<LaunchInfo>;
   terminalSettings(): Promise<TerminalSettings>;
   setTerminal(id: string): Promise<TerminalSettings>;
+  translateSettings(): Promise<TranslateSettings>;
+  setTranslateSettings(req: TranslateSettingsRequest): Promise<TranslateSettings>;
+  translate(text: string): Promise<string>;
   openResumeInTerminal(ref: SessionRef): Promise<void>;
   openHandoffInTerminal(req: HandoffRequest): Promise<void>;
   openBundleHandoffInTerminal(req: BundleHandoffRequest): Promise<void>;
@@ -94,6 +99,9 @@ interface WailsAppBinding {
   LaunchInfo(): Promise<LaunchInfo>;
   TerminalSettings(): Promise<TerminalSettings>;
   SetTerminal(id: string): Promise<TerminalSettings>;
+  TranslateSettings(): Promise<TranslateSettings>;
+  SetTranslateSettings(req: TranslateSettingsRequest): Promise<TranslateSettings>;
+  Translate(text: string): Promise<string>;
   OpenResumeInTerminal(ref: SessionRef): Promise<void>;
   OpenHandoffInTerminal(req: HandoffRequest): Promise<void>;
   OpenBundleHandoffInTerminal(req: BundleHandoffRequest): Promise<void>;
@@ -248,6 +256,30 @@ class WailsBackendAPI implements BackendAPI {
   async setTerminal(id: string): Promise<TerminalSettings> {
     try {
       return await this.binding.SetTerminal(id);
+    } catch (e) {
+      throw normalizeError(e);
+    }
+  }
+
+  async translateSettings(): Promise<TranslateSettings> {
+    try {
+      return await this.binding.TranslateSettings();
+    } catch (e) {
+      throw normalizeError(e);
+    }
+  }
+
+  async setTranslateSettings(req: TranslateSettingsRequest): Promise<TranslateSettings> {
+    try {
+      return await this.binding.SetTranslateSettings(req);
+    } catch (e) {
+      throw normalizeError(e);
+    }
+  }
+
+  async translate(text: string): Promise<string> {
+    try {
+      return await this.binding.Translate(text);
     } catch (e) {
       throw normalizeError(e);
     }
@@ -559,6 +591,10 @@ const UNGUARDED = new Set<string>([
   'launchInfo',
   'terminalSettings',
   'setTerminal',
+  // Translation runs on this computer whichever host is selected.
+  'translateSettings',
+  'setTranslateSettings',
+  'translate',
   'listHosts',
   'listWSLDistros',
   'connect',
