@@ -40,8 +40,8 @@ export function isTimeZoneMode(value: unknown): value is TimeZoneMode {
   return value === 'utc' || value === 'local';
 }
 
-// Local times carry their offset, e.g. "UTC+07:00", so a timestamp always
-// says which zone it is in.
+// Local times carry their offset, e.g. "+07:00", so a timestamp always says
+// which zone it is in.
 export function formatAbsoluteTime(dateStr: string, zone: TimeZoneMode = 'utc'): string {
   if (!dateStr) return '';
   const date = new Date(dateStr);
@@ -59,12 +59,12 @@ export function formatAbsoluteTime(dateStr: string, zone: TimeZoneMode = 'utc'):
   return `${year}-${month}-${day} ${hours}:${minutes}:${seconds} ${utc ? 'UTC' : utcOffset(date)}`;
 }
 
-// getTimezoneOffset is minutes behind UTC, so UTC+07:00 reports -420.
+// getTimezoneOffset is minutes behind UTC, so +07:00 reports -420.
 function utcOffset(date: Date): string {
   const offset = -date.getTimezoneOffset();
   const abs = Math.abs(offset);
   const pad = (n: number) => n.toString().padStart(2, '0');
-  return `UTC${offset < 0 ? '-' : '+'}${pad(Math.floor(abs / 60))}:${pad(abs % 60)}`;
+  return `${offset < 0 ? '-' : '+'}${pad(Math.floor(abs / 60))}:${pad(abs % 60)}`;
 }
 
 // Go serializes an unknown time.Time as year 1; treat that (and invalid or
