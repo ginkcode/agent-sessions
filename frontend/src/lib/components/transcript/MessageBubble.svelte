@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { Message, SessionRef, SearchHitKind } from '../../types';
   import { formatAbsoluteTime } from '../../date';
+  import { preferences } from '../../stores/preferences.svelte';
   import { visibleTranscriptParts, type TranscriptMode } from '../../transcript';
   import TextPart from './parts/TextPart.svelte';
   import ReasoningPart from './parts/ReasoningPart.svelte';
@@ -25,7 +26,7 @@
     searchKind = null,
   }: Props = $props();
 
-  let formattedTime = $derived(message.time ? formatAbsoluteTime(message.time) : '');
+  let formattedTime = $derived(message.time ? formatAbsoluteTime(message.time, preferences.timeZone) : '');
   let isSystem = $derived(message.role === 'system');
   let isUser = $derived(message.role === 'user');
   let isAssistant = $derived(message.role === 'assistant');

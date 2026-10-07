@@ -29,20 +29,42 @@ export function formatRelativeTime(dateStr: string): string {
   return `${diffYear}y`;
 }
 
-export function formatAbsoluteTime(dateStr: string): string {
+export type TimeZoneMode = 'utc' | 'local';
+
+export const TIME_ZONE_OPTIONS: { value: TimeZoneMode; label: string }[] = [
+  { value: 'utc', label: 'UTC' },
+  { value: 'local', label: 'Local time (this computer)' },
+];
+
+export function isTimeZoneMode(value: unknown): value is TimeZoneMode {
+  return value === 'utc' || value === 'local';
+}
+
+// Local times carry their offset, e.g. "UTC+07:00", so a timestamp always
+// says which zone it is in.
+export function formatAbsoluteTime(dateStr: string, zone: TimeZoneMode = 'utc'): string {
   if (!dateStr) return '';
   const date = new Date(dateStr);
   if (isNaN(date.getTime())) return '';
 
   const pad = (n: number) => n.toString().padStart(2, '0');
-  const year = date.getUTCFullYear();
-  const month = pad(date.getUTCMonth() + 1);
-  const day = pad(date.getUTCDate());
-  const hours = pad(date.getUTCHours());
-  const minutes = pad(date.getUTCMinutes());
-  const seconds = pad(date.getUTCSeconds());
+  const utc = zone === 'utc';
+  const year = utc ? date.getUTCFullYear() : date.getFullYear();
+  const month = pad((utc ? date.getUTCMonth() : date.getMonth()) + 1);
+  const day = pad(utc ? date.getUTCDate() : date.getDate());
+  const hours = pad(utc ? date.getUTCHours() : date.getHours());
+  const minutes = pad(utc ? date.getUTCMinutes() : date.getMinutes());
+  const seconds = pad(utc ? date.getUTCSeconds() : date.getSeconds());
 
-  return `${year}-${month}-${day} ${hours}:${minutes}:${seconds} UTC`;
+  return `${year}-${month}-${day} ${hours}:${minutes}:${seconds} ${utc ? 'UTC' : utcOffset(date)}`;
+}
+
+// getTimezoneOffset is minutes behind UTC, so UTC+07:00 reports -420.
+function utcOffset(date: Date): string {
+  const offset = -date.getTimezoneOffset();
+  const abs = Math.abs(offset);
+  const pad = (n: number) => n.toString().padStart(2, '0');
+  return `UTC${offset < 0 ? '-' : '+'}${pad(Math.floor(abs / 60))}:${pad(abs % 60)}`;
 }
 
 // Go serializes an unknown time.Time as year 1; treat that (and invalid or

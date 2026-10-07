@@ -11,7 +11,7 @@ import {
   connectionErrorDetail,
   CONNECTION_LOST,
 } from '../src/lib/guidance.ts';
-import { formatRelativeTime, formatAbsoluteTime, isKnownTime, formatAgo } from '../src/lib/date.ts';
+import { formatRelativeTime, formatAbsoluteTime, isKnownTime, formatAgo, isTimeZoneMode } from '../src/lib/date.ts';
 import { highlightCode, detectLanguage } from '../src/lib/highlight.ts';
 import { renderMarkdown } from '../src/lib/markdown.ts';
 import { reachesLineCount } from '../src/lib/layout.ts';
@@ -120,6 +120,24 @@ test('date formatting provides accurate relative and absolute strings', () => {
   const abs = formatAbsoluteTime('2026-09-28T14:30:00Z');
   assert.ok(abs.includes('2026'));
   assert.ok(abs.includes('UTC'));
+});
+
+test('formatAbsoluteTime shows UTC or this computer\'s local time with its offset', () => {
+  const saved = process.env.TZ;
+  try {
+    process.env.TZ = 'Asia/Ho_Chi_Minh';
+    assert.equal(formatAbsoluteTime('2026-09-28T20:30:05Z'), '2026-09-28 20:30:05 UTC');
+    assert.equal(formatAbsoluteTime('2026-09-28T20:30:05Z', 'utc'), '2026-09-28 20:30:05 UTC');
+    assert.equal(formatAbsoluteTime('2026-09-28T20:30:05Z', 'local'), '2026-09-29 03:30:05 UTC+07:00');
+    process.env.TZ = 'Pacific/Marquesas';
+    assert.equal(formatAbsoluteTime('2026-09-28T20:30:05Z', 'local'), '2026-09-28 11:00:05 UTC-09:30');
+    assert.equal(formatAbsoluteTime('', 'local'), '');
+  } finally {
+    if (saved === undefined) delete process.env.TZ;
+    else process.env.TZ = saved;
+  }
+  assert.ok(isTimeZoneMode('utc') && isTimeZoneMode('local'));
+  assert.ok(!isTimeZoneMode('UTC') && !isTimeZoneMode(null));
 });
 
 test('detectLanguage detects formats from content', () => {
@@ -1830,7 +1848,7 @@ const SETTINGS_DIALOG_URL = new URL('../src/lib/components/common/ManageSettings
 const DROPDOWN_URL = new URL('../src/lib/components/common/Dropdown.svelte', import.meta.url);
 let settingsDialogModule;
 
-async function renderSettingsDialog(launcher, preferences = { transcriptMode: 'activity' }) {
+async function renderSettingsDialog(launcher, preferences = { transcriptMode: 'activity', timeZone: 'utc' }) {
   if (!settingsDialogModule) {
     globalThis.__dropdown = (await loadServerComponent(DROPDOWN_URL, [])).default;
     const lib = (rel) => JSON.stringify(new URL(rel, SETTINGS_DIALOG_URL).href);
@@ -1838,6 +1856,7 @@ async function renderSettingsDialog(launcher, preferences = { transcriptMode: 'a
       ["'../../format'", lib('../../format.ts')],
       ["'../../terminal'", lib('../../terminal.ts')],
       ["'../../transcript'", lib('../../transcript.ts')],
+      ["'../../date'", lib('../../date.ts')],
       ["import Dropdown from './Dropdown.svelte';", 'const Dropdown = globalThis.__dropdown;'],
       ["import { manage } from '../../stores/manage.svelte';", fixtureStore('manage')],
       ["import { launcher } from '../../stores/launcher.svelte';", fixtureStore('launcher')],
@@ -1853,11 +1872,20 @@ async function renderSettingsDialog(launcher, preferences = { transcriptMode: 'a
 
 test('Settings shows the default transcript display level', async () => {
   const info = { terminal: true, chooseTerminal: false, shell: 'powershell' };
-  const html = await renderSettingsDialog({ info }, { transcriptMode: 'chat' });
+  const html = await renderSettingsDialog({ info }, { transcriptMode: 'chat', timeZone: 'utc' });
   assert.match(html, /<h3[^>]*>Transcript<\/h3>/);
   assert.match(html, /aria-label="Default transcript display"/);
   assert.match(html, />Chat</);
   assert.match(html, /User messages and assistant answers.*The header buttons change it for the open session only\./);
+});
+
+test('Settings shows the time zone used for timestamps', async () => {
+  const info = { terminal: true, chooseTerminal: false, shell: 'powershell' };
+  const utc = await renderSettingsDialog({ info });
+  assert.match(utc, /<h3[^>]*>Time zone<\/h3>/);
+  assert.match(utc, /aria-label="Time zone for timestamps"/);
+  const local = await renderSettingsDialog({ info }, { transcriptMode: 'activity', timeZone: 'local' });
+  assert.match(local, /Local time \(this computer\)/);
 });
 
 test('Settings shows the terminal choice only where it can be chosen', async () => {
@@ -1909,6 +1937,7 @@ async function renderSessionHeader(fixture, props = {}) {
     ["import { exporter } from '../../stores/export.svelte';", fixtureStore('exporter')],
     ["import { link } from '../../stores/link.svelte';", fixtureStore('link')],
     ["import { launcher } from '../../stores/launcher.svelte';", fixtureStore('launcher')],
+    ["import { preferences } from '../../stores/preferences.svelte';", fixtureStore('preferences')],
   ]);
   const meta = {
     ref: { agent: 'codex', id: 's1' },
@@ -1921,7 +1950,7 @@ async function renderSessionHeader(fixture, props = {}) {
   };
   return renderWithFixture(
     sessionHeaderModule,
-    { appState: {}, manage: { settings: { enabled: false } }, handoff: {}, exporter: {}, ...fixture },
+    { appState: {}, manage: { settings: { enabled: false } }, handoff: {}, exporter: {}, preferences: { timeZone: 'utc' }, ...fixture },
     { meta, mode: 'activity', onModeChange() {}, onResume() {}, onReveal() {}, onDelete() {}, ...props },
   );
 }

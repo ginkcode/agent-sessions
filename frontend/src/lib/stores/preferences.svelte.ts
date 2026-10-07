@@ -1,6 +1,8 @@
 import { isTranscriptMode, type TranscriptMode } from '../transcript';
+import { isTimeZoneMode, type TimeZoneMode } from '../date';
 
 const STORAGE_KEY = 'agent-sessions:pane-widths';
+const TIME_ZONE_KEY = 'agent-sessions:time-zone';
 // Separate key so the pane-widths JSON format stays unchanged.
 const TRANSCRIPT_MODE_KEY = 'agent-sessions:transcript-mode';
 
@@ -22,6 +24,8 @@ export class PreferencesStore {
   });
   // The level each session opens at; the header selector overrides it per session.
   transcriptMode = $state<TranscriptMode>('activity');
+  // Zone for message and session timestamps.
+  timeZone = $state<TimeZoneMode>('utc');
 
   init(): void {
     if (typeof localStorage === 'undefined') return;
@@ -48,6 +52,13 @@ export class PreferencesStore {
       // Storage disabled; keep Activity
     }
 
+    try {
+      const zone = localStorage.getItem(TIME_ZONE_KEY);
+      if (isTimeZoneMode(zone)) this.timeZone = zone;
+    } catch {
+      // Storage disabled; keep UTC
+    }
+
     if (typeof window !== 'undefined') {
       window.addEventListener('resize', () => this.handleWindowResize());
       this.handleWindowResize();
@@ -71,6 +82,16 @@ export class PreferencesStore {
     if (typeof localStorage === 'undefined') return;
     try {
       localStorage.setItem(TRANSCRIPT_MODE_KEY, mode);
+    } catch {
+      // Storage quota or disabled
+    }
+  }
+
+  setTimeZone(zone: TimeZoneMode): void {
+    this.timeZone = zone;
+    if (typeof localStorage === 'undefined') return;
+    try {
+      localStorage.setItem(TIME_ZONE_KEY, zone);
     } catch {
       // Storage quota or disabled
     }

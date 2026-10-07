@@ -3,6 +3,7 @@
   import { formatRelativeTime, formatAbsoluteTime } from '../../date';
   import CountTooltip from './CountTooltip.svelte';
   import { manage } from '../../stores/manage.svelte';
+  import { preferences } from '../../stores/preferences.svelte';
 
   interface Props {
     session: SessionMeta;
@@ -17,7 +18,7 @@
   let messageTotal = $derived(session.counts.user + session.counts.assistant);
   let displayTitle = $derived(session.title || session.firstPrompt || '(untitled)');
   let relativeTime = $derived(formatRelativeTime(session.updatedAt));
-  let absoluteTime = $derived(formatAbsoluteTime(session.updatedAt));
+  let absoluteTime = $derived(formatAbsoluteTime(session.updatedAt, preferences.timeZone));
   let bulkSelected = $derived(manage.isRefSelected(session.ref));
 
   function handleClick() {

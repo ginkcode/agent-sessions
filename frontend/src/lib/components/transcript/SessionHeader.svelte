@@ -10,6 +10,7 @@
   import AgentIcon from '../common/AgentIcon.svelte';
   import { link } from '../../stores/link.svelte';
   import { launcher } from '../../stores/launcher.svelte';
+  import { preferences } from '../../stores/preferences.svelte';
   import { resumeButtonTitle } from '../../link';
   import { transcriptModes, type TranscriptMode } from '../../transcript';
 
@@ -312,7 +313,7 @@
       {#if isKnownTime(stamp.value)}
         <div class="meta-item time-item" title="{stamp.label} {formatAgo(stamp.value)}">
           <span class="stat-label">{stamp.label}:</span>
-          <span class="time-val">{formatAbsoluteTime(stamp.value)}</span>
+          <span class="time-val">{formatAbsoluteTime(stamp.value, preferences.timeZone)}</span>
         </div>
       {/if}
     {/each}

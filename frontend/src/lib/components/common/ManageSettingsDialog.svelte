@@ -5,6 +5,7 @@
   import { terminalOptions } from '../../terminal';
   import { preferences } from '../../stores/preferences.svelte';
   import { isTranscriptMode, transcriptModes } from '../../transcript';
+  import { isTimeZoneMode, TIME_ZONE_OPTIONS } from '../../date';
   import Dropdown from './Dropdown.svelte';
 
   let transcriptMode = $derived(transcriptModes.find((m) => m.value === preferences.transcriptMode));
@@ -70,6 +71,19 @@
           {#if transcriptMode}
             <p class="hint">{transcriptMode.title}. The header buttons change it for the open session only.</p>
           {/if}
+        </section>
+
+        <section class="section time-zone">
+          <h3>Time zone</h3>
+          <div class="time-zone-row">
+            <Dropdown
+              options={TIME_ZONE_OPTIONS}
+              value={preferences.timeZone}
+              onChange={(zone) => { if (isTimeZoneMode(zone)) preferences.setTimeZone(zone); }}
+              ariaLabel="Time zone for timestamps"
+            />
+          </div>
+          <p class="hint">Used for message, session and list timestamps on every host. Local time follows this computer's time zone.</p>
         </section>
 
         {#if launcher.info.chooseTerminal}
@@ -155,7 +169,7 @@
   .section { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--border-color); }
   h3 { margin: 0 0 6px; font-size: .85rem; }
   .section .hint, .section .error { margin: 0 0 10px; line-height: 1.5; }
-  .terminal-row, .transcript-row { margin-bottom: 10px; }
+  .terminal-row, .transcript-row, .time-zone-row { margin-bottom: 10px; }
   .cache-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
   .cache-usage { color: var(--text-secondary); }
 </style>
