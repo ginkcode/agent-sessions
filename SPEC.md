@@ -3,7 +3,7 @@
 A local desktop GUI to discover, browse, and manage sessions created by agentic
 coding tools (Claude Code, Codex CLI, OpenCode, …).
 
-- **Platforms:** Linux first, macOS second. Windows: out of scope.
+- **Platforms:** Linux, macOS and Windows (M8).
 - **Language:** Go (backend) + web frontend via Wails.
 - **Principle:** local-only, read-only by default. The app never writes to a
   tool's own session store unless the user explicitly triggers one of two
@@ -33,6 +33,8 @@ coding tools (Claude Code, Codex CLI, OpenCode, …).
   distribution the user picks is browsed the same way through the system
   `wsl.exe`, with no ssh involved (M8-13). The app never opens listening
   ports, connects to telemetry services, or makes unprompted network calls.
+  The one other network use is message translation (§9), which the user sets
+  up and triggers.
 - Editing transcripts.
 
 ---
@@ -284,6 +286,12 @@ Three-pane layout:
   machine, not the network: no ssh, keys or `~/.ssh/config`. The host picker
   reads the registered distributions from the current user's registry and
   starts nothing until the user connects.
+- Translation is the only other network use. It sends the text of the one
+  message the user chooses to translate to the OpenAI-compatible endpoint they
+  configured, and nothing before that is set up. The request carries the API
+  key as a Bearer token and goes through Go, not the WebView; errors never
+  include the key. The key is stored in `config.toml` (`0600`) and the UI
+  never shows it again once saved.
 - Never read credential files (`.credentials.json`, `auth.json`, OpenCode
   `credential`/`account` tables).
 - Treat transcript content as untrusted when rendering: sanitize markdown/HTML
@@ -307,6 +315,8 @@ Three-pane layout:
 - The terminal app (`[terminal] app`): an id of an installed terminal, never
   a command; empty means Automatic. It belongs to this computer, whichever
   host is selected.
+- Translation (`[translate]`): `base_url`, `api_key`, `model` and `language`
+  (Vietnamese by default). Values are plain printable strings.
 
 ## 11. macOS port (M5)
 
