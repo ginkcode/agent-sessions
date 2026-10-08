@@ -10,6 +10,7 @@
   let envDialogOpen = $state(false);
   let envDialogHost = $state('');
   let menuEl = $state<HTMLElement | null>(null);
+  let manualInput = $state<HTMLInputElement | null>(null);
 
   let statusClass = $derived.by(() => {
     switch (connectionStore.phase) {
@@ -46,6 +47,8 @@
     if (menuOpen) {
       manualHost = '';
       void connectionStore.refreshHosts();
+      // Typing a name is the last resort, so the field is ready first.
+      queueMicrotask(() => manualInput?.focus());
     }
   }
 
@@ -242,7 +245,9 @@
           type="text"
           class="manual-input"
           placeholder="Connect to SSH alias…"
+          aria-label="Connect to SSH alias"
           bind:value={manualHost}
+          bind:this={manualInput}
         />
         <button
           type="submit"
