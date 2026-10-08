@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"os/exec"
 	"strings"
 	"testing"
 	"time"
@@ -79,10 +80,15 @@ func TestSSHProbeFailures(t *testing.T) {
 
 func TestSSHProbeTimeoutAndCancellation(t *testing.T) {
 	bin := fakeSSHPath(t, "hang", nil)
+	// The first run of a new executable is slow on Windows, where it is
+	// scanned, so pay for it before the timed probe.
+	warm := exec.Command(bin)
+	warm.Env = append(os.Environ(), "AGENT_SESSIONS_SSH_FAKE_MODE=warm-up")
+	_ = warm.Run()
 	start := time.Now()
-	// Long enough for the fake to start and print, which is slow on Windows.
-	_, err := probeHost(context.Background(), "box", SSHOptions{Binary: bin, ControlMaster: "no"}, "dev", time.Second)
-	if !errors.Is(err, context.DeadlineExceeded) || !strings.Contains(err.Error(), "waiting for SSH peer") || time.Since(start) > 5*time.Second {
+	// Long enough for the fake to start and print its stderr.
+	_, err := probeHost(context.Background(), "box", SSHOptions{Binary: bin, ControlMaster: "no"}, "dev", 3*time.Second)
+	if !errors.Is(err, context.DeadlineExceeded) || !strings.Contains(err.Error(), "waiting for SSH peer") || time.Since(start) > 10*time.Second {
 		t.Fatalf("timeout = %v after %v", err, time.Since(start))
 	}
 	ctx, cancel := context.WithCancel(context.Background())
