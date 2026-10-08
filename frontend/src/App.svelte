@@ -31,6 +31,7 @@
   import { formatVersion } from './lib/format';
   import { themeButtonTitle } from './lib/theme';
   import { hostLabel } from './lib/hosts';
+  import { isMac } from './main';
 
   let isWails = $state(false);
   let appVersion = $state('');
@@ -55,6 +56,13 @@
       .catch(() => {});
 
     const onKeydown = (event: KeyboardEvent) => {
+      // Cmd+, on macOS, Ctrl+, elsewhere: the convention for Settings.
+      if (event.key === ',' && (isMac ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey) && !event.altKey) {
+        event.preventDefault();
+        if (hasOpenModal()) return;
+        manage.openSettings();
+        return;
+      }
       if (event.key !== '/' || event.metaKey || event.ctrlKey || event.altKey) return;
       if (isEditableTarget(event.target) || hasOpenModal() || link.stale) return;
       event.preventDefault();
@@ -109,7 +117,7 @@
         <button
           type="button"
           class="icon-button settings-toggle"
-          title="Settings"
+          title={isMac ? 'Settings (⌘,)' : 'Settings (Ctrl+,)'}
           aria-label="Settings"
           onclick={() => manage.openSettings()}
         >
