@@ -2701,3 +2701,31 @@ test('MockBackendAPI keeps the translation key and translates once set up', asyn
   s = await mock.setTranslateSettings({ baseURL: 'https://api.example.com/v1', model: 'm', language: 'French', apiKey: '', clearApiKey: true });
   assert.deepEqual([s.apiKeySet, s.configured], [false, false]);
 });
+
+const GROUP_TREE_URL = new URL('../src/lib/components/sidebar/GroupTree.svelte', import.meta.url);
+let groupTreeModule;
+
+async function renderGroupTree(filter) {
+  groupTreeModule ??= await loadServerComponent(GROUP_TREE_URL, [
+    ["import { appState } from '../../stores/appState.svelte';", fixtureStore('appState')],
+    ["import { manage } from '../../stores/manage.svelte';", 'const manage = {};'],
+    ["import { filterSessionsByAge } from '../../manage';", 'const filterSessionsByAge = () => [];'],
+    ["import { sessionToSelect } from '../../tree';", 'const sessionToSelect = () => null;'],
+    ["import GroupNodeItem from './GroupNodeItem.svelte';", 'const GroupNodeItem = () => {};'],
+  ]);
+  return renderWithFixture(groupTreeModule, {
+    appState: { loadingGroups: false, groups: [], filter: { query: '', path: '', liveOnly: false, archived: false, ...filter } },
+  });
+}
+
+test('the empty tree offers to clear only the directory filter', async () => {
+  const byPath = await renderGroupTree({ path: 'api', query: 'deploy' });
+  assert.match(byPath, /No sessions match current filter/);
+  assert.match(byPath, /Clear directory filter/);
+  assert.doesNotMatch(byPath, /Clear filters/);
+
+  // Without a directory filter the session list's own button clears the rest.
+  const byQuery = await renderGroupTree({ query: 'deploy' });
+  assert.match(byQuery, /No sessions match current filter/);
+  assert.doesNotMatch(byQuery, /Clear directory filter|Clear filters/);
+});

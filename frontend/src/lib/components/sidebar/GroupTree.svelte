@@ -30,8 +30,9 @@
     )
   );
 
-  function handleClearFilters() {
-    appState.setFilter({ query: '', path: '', liveOnly: false, archived: false });
+  // The session list clears its own filters; this one is the directory's.
+  function handleClearPath() {
+    appState.setFilter({ path: '' });
   }
 </script>
 
@@ -42,9 +43,11 @@
     {#if hasFilter}
       <div class="tree-message">
         <p>No sessions match current filter.</p>
-        <button type="button" class="clear-filters-btn" onclick={handleClearFilters}>
-          Clear filters
-        </button>
+        {#if appState.filter.path}
+          <button type="button" class="clear-filters-btn" onclick={handleClearPath}>
+            Clear directory filter
+          </button>
+        {/if}
       </div>
     {:else}
       <div class="tree-empty-card">
