@@ -300,11 +300,32 @@ func TestServe_IdleTimeoutReleasesLock(t *testing.T) {
 		t.Fatal(err)
 	}
 	client := rpc.NewClient(r, sInW)
+	// Heartbeat like the app does, so a slow initialize (Windows CI) does
+	// not run into the idle timeout before the lock is checked.
+	stopBeats := make(chan struct{})
+	beatsDone := make(chan struct{})
+	go func() {
+		defer close(beatsDone)
+		tick := time.NewTicker(50 * time.Millisecond)
+		defer tick.Stop()
+		for {
+			select {
+			case <-stopBeats:
+				return
+			case <-tick.C:
+				_ = client.Heartbeat()
+			}
+		}
+	}()
 	if _, err := client.Initialize(ctx, rpc.InitializeRequest{ProtocolVersion: rpc.ProtocolVersion}); err != nil {
+		close(stopBeats)
 		t.Fatalf("initialize: %v", err)
 	}
-	if _, err := index.TryLock(roots.Cache, rootsKey(roots)); !errors.Is(err, index.ErrLocked) {
-		t.Fatalf("lock while serving: err = %v, want ErrLocked", err)
+	_, lockErr := index.TryLock(roots.Cache, rootsKey(roots))
+	close(stopBeats)
+	<-beatsDone
+	if !errors.Is(lockErr, index.ErrLocked) {
+		t.Fatalf("lock while serving: err = %v, want ErrLocked", lockErr)
 	}
 
 	// Stdin stays open; the client just stops sending.
