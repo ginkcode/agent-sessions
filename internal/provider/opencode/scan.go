@@ -175,15 +175,16 @@ func (p *Provider) Scan(ctx context.Context, prev provider.ScanState) (provider.
 	}
 	for id := range previous.Metas {
 		if _, ok := all[id]; !ok {
-			// A generation whose tables vanished entirely cannot prove its
-			// sessions were deleted. IDs the other generation still holds
-			// simply switch over; anything else is retained, not removed.
+			// v2 tables vanishing entirely cannot prove its sessions were
+			// deleted, so they are retained. IDs the other generation still
+			// holds simply switch over.
 			if !v2Ready && inGeneration(previous.In[id], GenV2) {
 				return provider.ScanResult{}, fmt.Errorf("opencode database %q lost its v2 schema; retaining previous sessions", path)
 			}
-			if !v1Ready && inGeneration(previous.In[id], GenV1) {
-				return provider.ScanResult{}, fmt.Errorf("opencode database %q lost its v1 schema; retaining previous sessions", path)
-			}
+			// v1 tables vanishing while v2 reads is the upgrade path, as
+			// when OpenCode 2 starts a new database: retaining would hide
+			// the new sessions behind this error forever. (Some v1 tables
+			// left over is a partial schema, refused above.)
 			result.Removed = append(result.Removed, model.SessionRef{Agent: model.AgentOpenCode, ID: id})
 		}
 	}

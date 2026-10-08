@@ -764,6 +764,33 @@ func TestScanAbsentAndSchemaEdgeCases(t *testing.T) {
 			t.Errorf("v1 store scan = %+v", result)
 		}
 	})
+	t.Run("v1 store replaced by a v2 store", func(t *testing.T) {
+		// OpenCode 2 starts a new database: the 1.x sessions are gone and
+		// must not hide the new ones behind a retention error.
+		f := newScanFixture(t)
+		f.v1Session("old", nil)
+		f.v1Message("m1", "old", "user", 1_700_000_000_001)
+		f.v1Part("p1", "m1", "old", 1_700_000_000_002, `{"type":"text","text":"hello"}`)
+		p := New(f.root, nil)
+		first, err := p.Scan(t.Context(), provider.ScanState{})
+		if err != nil || len(first.Changed) != 1 {
+			t.Fatalf("v1 scan = %+v, %v", first, err)
+		}
+		if _, err := f.db.Exec(`DROP TABLE part; DROP TABLE message; DROP TABLE session`); err != nil {
+			t.Fatal(err)
+		}
+		f.session("new", nil)
+		result, err := p.Scan(t.Context(), first.State)
+		if err != nil {
+			t.Fatalf("v2 scan: %v", err)
+		}
+		if len(result.Changed) != 1 || result.Changed[0].Ref.ID != "new" {
+			t.Errorf("changed = %+v", result.Changed)
+		}
+		if len(result.Removed) != 1 || result.Removed[0].ID != "old" {
+			t.Errorf("removed = %+v", result.Removed)
+		}
+	})
 	t.Run("incomplete v2 schema warns", func(t *testing.T) {
 		root := t.TempDir()
 		fixtureDB(t, root, "session_v2")
