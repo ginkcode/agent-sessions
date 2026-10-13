@@ -43,7 +43,7 @@ static WebKitWebView *find_web_view(GtkWidget *widget) {
 static int hook_tries;
 
 // Polls until the window's web view exists, then connects to it once.
-static gboolean hook_side_buttons(gpointer data) {
+static gboolean try_hook_side_buttons(gpointer data) {
 	gboolean hooked = FALSE;
 	GList *windows = gtk_window_list_toplevels();
 	for (GList *l = windows; l != NULL; l = l->next) {
@@ -65,6 +65,6 @@ static gboolean hook_side_buttons(gpointer data) {
 	return G_SOURCE_CONTINUE;
 }
 
-void schedule_hook_side_buttons(void) {
-	g_timeout_add(HOOK_INTERVAL_MS, hook_side_buttons, NULL);
+void hook_side_buttons(void) {
+	g_timeout_add(HOOK_INTERVAL_MS, try_hook_side_buttons, NULL);
 }

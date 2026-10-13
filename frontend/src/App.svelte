@@ -83,7 +83,7 @@
     };
     // The mouse's side buttons, as WebView2 and browsers report them. The
     // webview's own back/forward on them is cancelled: the app is one page
-    // and must never navigate away. On Linux they come as an event instead.
+    // and must never navigate away. On Linux and macOS they come as an event.
     const onMouseButton = (event: MouseEvent) => {
       const direction = navigationButton(event.button);
       if (!direction) return;

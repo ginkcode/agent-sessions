@@ -623,8 +623,9 @@ export const CATALOG_CHANGED_EVENT = 'catalog:changed';
 export const INDEX_PROGRESS_EVENT = 'index:progress';
 export const CONNECTION_STATE_EVENT = 'connection:state';
 export const ASKPASS_PROMPT_EVENT = 'askpass:prompt';
-// The desktop app on Linux sends the mouse's side buttons as this event,
-// "back" or "forward": its web view reports them to the page as a left click.
+// The desktop app on Linux and macOS sends the mouse's side buttons as this
+// event, "back" or "forward": its web view does not report them to the page
+// as buttons 3 and 4.
 export const MOUSE_NAVIGATE_EVENT = 'nav:mouse';
 
 export function subscribeConnectionState(
