@@ -3,6 +3,7 @@
 package main
 
 import (
+	"context"
 	"io/fs"
 	"log"
 	"runtime"
@@ -47,9 +48,13 @@ func run() {
 		MaxWidth:    maxSize,
 		MaxHeight:   maxSize,
 		AssetServer: &assetserver.Options{Assets: assets},
-		OnStartup:   application.OnStartup,
-		OnShutdown:  application.OnShutdown,
-		Bind:        []interface{}{application},
+		OnStartup: func(ctx context.Context) {
+			// GTK is initialized by now; the window is not painted yet.
+			disableFontHinting()
+			application.OnStartup(ctx)
+		},
+		OnShutdown: application.OnShutdown,
+		Bind:       []interface{}{application},
 		Linux: &linux.Options{
 			Icon:             frontend.AppIcon,
 			WebviewGpuPolicy: linux.WebviewGpuPolicyOnDemand,
