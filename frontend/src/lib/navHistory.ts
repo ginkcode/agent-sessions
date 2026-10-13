@@ -185,7 +185,8 @@ export function navigationShortcut(event: ShortcutEvent, mac: boolean): NavDirec
   return null;
 }
 
-// The mouse's side buttons, as every webview reports them.
+// The mouse's side buttons as DOM buttons 3 and 4. WebKitGTK reports them
+// as button 0 instead; the Linux app sends them as MOUSE_NAVIGATE_EVENT.
 export function navigationButton(button: number): NavDirection | null {
   if (button === 3) return 'back';
   if (button === 4) return 'forward';

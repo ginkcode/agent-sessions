@@ -28,7 +28,7 @@
   import { translateSettings } from './lib/stores/translate.svelte';
   import { hasOpenModal, isEditableTarget } from './lib/search';
   import { navigationButton, navigationShortcut, type NavDirection } from './lib/navHistory';
-  import { api } from './lib/api';
+  import { api, subscribeMouseNavigate } from './lib/api';
   import { formatVersion } from './lib/format';
   import { themeButtonTitle } from './lib/theme';
   import { hostLabel } from './lib/hosts';
@@ -81,18 +81,23 @@
       event.preventDefault();
       search.show();
     };
-    // The mouse's side buttons. The webview's own back/forward on them is
-    // cancelled: the app is one page and must never navigate away.
+    // The mouse's side buttons, as WebView2 and browsers report them. The
+    // webview's own back/forward on them is cancelled: the app is one page
+    // and must never navigate away. On Linux they come as an event instead.
     const onMouseButton = (event: MouseEvent) => {
       const direction = navigationButton(event.button);
       if (!direction) return;
       event.preventDefault();
       if (event.type === 'mouseup' && !hasOpenModal()) go(direction);
     };
+    const unsubscribeMouseNavigate = subscribeMouseNavigate((direction) => {
+      if (!hasOpenModal()) go(direction);
+    });
     window.addEventListener('keydown', onKeydown);
     window.addEventListener('mousedown', onMouseButton);
     window.addEventListener('mouseup', onMouseButton);
     return () => {
+      unsubscribeMouseNavigate();
       window.removeEventListener('keydown', onKeydown);
       window.removeEventListener('mousedown', onMouseButton);
       window.removeEventListener('mouseup', onMouseButton);

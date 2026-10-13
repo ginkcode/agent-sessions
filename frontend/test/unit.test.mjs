@@ -83,6 +83,7 @@ import {
   subscribeIndexProgress,
   subscribeConnectionState,
   subscribeAskpassPrompt,
+  subscribeMouseNavigate,
 } from '../src/lib/api.ts';
 import { BUDGET_PRESETS, ALL_AGENTS, targetAgentsFor } from '../src/lib/portable.ts';
 
@@ -1400,6 +1401,14 @@ test('typed subscriptions forward objects and ignore malformed payloads', () => 
 
   assert.deepEqual(catalog, [event]);
   assert.equal(progress.length, 1);
+});
+
+test('mouse navigation events forward only back and forward', () => {
+  const mock = new MockBackendAPI();
+  const seen = [];
+  subscribeMouseNavigate((d) => seen.push(d), mock);
+  for (const payload of ['back', 'forward', 'up', null, { direction: 'back' }]) mock.emit('nav:mouse', payload);
+  assert.deepEqual(seen, ['back', 'forward']);
 });
 
 test('MockBackendAPI copyResumeCommand formats provider-specific resume commands', async () => {

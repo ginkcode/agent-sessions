@@ -51,6 +51,7 @@ func run() {
 		OnStartup: func(ctx context.Context) {
 			// GTK is initialized by now; the window is not painted yet.
 			disableFontHinting()
+			hookMouseNavigation(ctx)
 			application.OnStartup(ctx)
 		},
 		OnShutdown: application.OnShutdown,

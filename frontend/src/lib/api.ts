@@ -623,6 +623,9 @@ export const CATALOG_CHANGED_EVENT = 'catalog:changed';
 export const INDEX_PROGRESS_EVENT = 'index:progress';
 export const CONNECTION_STATE_EVENT = 'connection:state';
 export const ASKPASS_PROMPT_EVENT = 'askpass:prompt';
+// The desktop app on Linux sends the mouse's side buttons as this event,
+// "back" or "forward": its web view reports them to the page as a left click.
+export const MOUSE_NAVIGATE_EVENT = 'nav:mouse';
 
 export function subscribeConnectionState(
   fn: (state: ConnectionState) => void,
@@ -651,6 +654,15 @@ export function subscribeCatalogChanged(
   return backend.onEvent(CATALOG_CHANGED_EVENT, (event: CatalogChanged) => {
     if (!event || typeof event !== 'object') return;
     fn(event);
+  });
+}
+
+export function subscribeMouseNavigate(
+  fn: (direction: 'back' | 'forward') => void,
+  backend: BackendAPI = api
+): () => void {
+  return backend.onEvent(MOUSE_NAVIGATE_EVENT, (direction: unknown) => {
+    if (direction === 'back' || direction === 'forward') fn(direction);
   });
 }
 
