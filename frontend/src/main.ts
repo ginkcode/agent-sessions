@@ -1,5 +1,5 @@
-// Bundled fonts for Linux (see style.css). Inter's optical-size axis keeps
-// small UI text open and legible.
+// Bundled fonts so the UI looks the same on every platform (see style.css).
+// Inter's optical-size axis keeps small UI text open and legible.
 import '@fontsource-variable/inter/opsz.css'
 import '@fontsource-variable/inter/opsz-italic.css'
 import '@fontsource-variable/jetbrains-mono/wght.css'

@@ -1071,7 +1071,7 @@
     border: 1px solid var(--border-color);
     border-radius: 4px;
     color: #e5e7eb;
-    font-family: monospace;
+    font-family: var(--font-mono);
     font-size: 0.78rem;
     overflow-x: auto;
     white-space: pre-wrap;
@@ -1132,7 +1132,7 @@
 
   .preview-content code {
     color: #d1d5db;
-    font-family: monospace;
+    font-family: var(--font-mono);
     font-size: 0.75rem;
     white-space: pre-wrap;
     word-break: break-word;
