@@ -294,7 +294,8 @@ export class ManageStore {
         currentSelected
       );
 
-      // Select next session or clear
+      // Select next session or clear; the deleted ones leave the history.
+      appState.forgetHistory(successfulRefs);
       await appState.selectSession(nextRef);
 
       // Refresh the tree; loadGroups clears a stale group key and reloads

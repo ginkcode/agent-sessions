@@ -8,6 +8,7 @@
   import { exporter } from '../../stores/export.svelte';
   import { ALL_AGENTS } from '../../portable';
   import AgentIcon from '../common/AgentIcon.svelte';
+  import NavButtons from './NavButtons.svelte';
   import { link } from '../../stores/link.svelte';
   import { launcher } from '../../stores/launcher.svelte';
   import { preferences } from '../../stores/preferences.svelte';
@@ -50,7 +51,7 @@
 
   function handleNavigateToParent() {
     if (meta.parentId) {
-      appState.selectSession({ agent: meta.ref.agent, id: meta.parentId });
+      appState.selectSession({ agent: meta.ref.agent, id: meta.parentId }, 'push');
     }
   }
 
@@ -86,6 +87,7 @@
 
   <div class="header-top-row">
     <div class="header-badges">
+      <NavButtons />
       <span class="agent-badge agent-{meta.ref.agent}">{meta.ref.agent}</span>
       {#if meta.live}
         <span class="live-badge">● LIVE</span>

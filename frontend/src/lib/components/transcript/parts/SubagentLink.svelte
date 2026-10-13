@@ -9,7 +9,7 @@
   let { child }: Props = $props();
 
   function handleClick() {
-    appState.selectSession(child);
+    appState.selectSession(child, 'push');
   }
 </script>
 

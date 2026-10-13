@@ -62,7 +62,7 @@
     // selectSession changes the ref synchronously (before its first await), so
     // the transcript sees the ref and the jump token in the same effect flush
     // and loads only the page around the hit's global index.
-    const ready = appState.selectSession(hit.ref);
+    const ready = appState.selectSession(hit.ref, 'push');
     search.requestJump(hit, ready);
     search.close();
   }

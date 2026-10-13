@@ -64,7 +64,7 @@
   }
 
   function handleSelectSession(session: SessionMeta) {
-    appState.selectSession(session.ref);
+    appState.selectSession(session.ref, 'push');
   }
 
   function handleClearFilters() {
@@ -104,11 +104,11 @@
     if (e.key === 'ArrowDown') {
       e.preventDefault();
       const nextIndex = Math.min(appState.sessions.length - 1, currentIndex + 1);
-      appState.selectSession(appState.sessions[nextIndex].ref);
+      appState.selectSession(appState.sessions[nextIndex].ref, 'step');
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
       const prevIndex = Math.max(0, currentIndex - 1);
-      appState.selectSession(appState.sessions[prevIndex].ref);
+      appState.selectSession(appState.sessions[prevIndex].ref, 'step');
     }
   }
 </script>

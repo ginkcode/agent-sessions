@@ -9,7 +9,7 @@
   // Selecting a group also selects the first session shown in the list
   // (after the age filter), so the transcript follows the tree.
   async function handleSelect(node: GroupNode) {
-    await appState.selectGroup(node.key);
+    await appState.selectGroup(node.key, 'push');
     // A later click superseded this one while sessions were loading.
     if (appState.selectedGroupKey !== node.key) return;
     const visible = filterSessionsByAge(appState.sessions, manage.ageFilter);

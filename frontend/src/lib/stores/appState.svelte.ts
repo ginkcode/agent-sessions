@@ -22,7 +22,13 @@ import {
   RequestSequence,
 } from '../catalog';
 import { nextSelectionAfterDelete, refsEqual } from '../manage';
-import { isStaleReply } from '../link';
+import { isDisconnectedError, isStaleReply } from '../link';
+import { NavHistory, type NavEntry } from '../navHistory';
+
+// How a selection change is recorded in the back/forward history: as a new
+// place, as an arrow-key step, as an update of the current place, or not at
+// all (while going back or forward).
+export type NavRecord = 'push' | 'step' | 'replace' | 'none';
 
 export class AppState {
   targetHost = $state<string | undefined>(undefined);
@@ -50,6 +56,12 @@ export class AppState {
   // Bumped when the selected session's content may have changed; the
   // transcript reloads its loaded pages in place.
   transcriptVersion = $state(0);
+
+  // Back/forward through the places visited on this host.
+  canGoBack = $state(false);
+  canGoForward = $state(false);
+  private history = new NavHistory();
+  private navRequests = new RequestSequence();
 
   // Late responses from superseded requests are dropped, never applied.
   private groupsRequests = new RequestSequence();
@@ -113,15 +125,17 @@ export class AppState {
     await this.loadSessions();
   }
 
-  async selectGroup(key: string | null): Promise<void> {
+  async selectGroup(key: string | null, record: NavRecord = 'replace'): Promise<void> {
     this.selectedGroupKey = key;
+    this.record(record);
     await this.loadSessions();
   }
 
-  async selectSession(ref: SessionRef | null): Promise<void> {
+  async selectSession(ref: SessionRef | null, record: NavRecord = 'replace'): Promise<void> {
     const id = this.sessionMetaRequests.next();
     this.selectedSessionRef = ref;
     this.selectedSessionMeta = null;
+    this.record(record);
     if (!ref) return;
 
     let meta: SessionMeta | null;
@@ -136,6 +150,82 @@ export class AppState {
     if (this.sessionMetaRequests.isCurrent(id)) {
       this.selectedSessionMeta = meta;
     }
+  }
+
+  goBack(): Promise<void> {
+    return this.travel(() => this.history.back());
+  }
+
+  goForward(): Promise<void> {
+    return this.travel(() => this.history.forward());
+  }
+
+  // Drops deleted sessions, and their subagents, from the history.
+  forgetHistory(refs: SessionRef[]): void {
+    this.history.remove(refs);
+    this.syncHistory();
+  }
+
+  private record(how: NavRecord): void {
+    if (how === 'none') return;
+    if (how !== 'replace') this.navRequests.next(); // A move supersedes going back.
+    const entry: NavEntry = {
+      ref: this.selectedSessionRef,
+      groupKey: this.selectedGroupKey,
+      groupMode: this.groupMode,
+    };
+    if (how === 'push') this.history.push(entry);
+    else if (how === 'step') this.history.step(entry);
+    else this.history.replace(entry);
+    this.syncHistory();
+  }
+
+  private syncHistory(): void {
+    this.canGoBack = this.history.canGoBack;
+    this.canGoForward = this.history.canGoForward;
+  }
+
+  // Moves through the history, skipping places whose session is gone.
+  private async travel(move: () => NavEntry | null): Promise<void> {
+    for (;;) {
+      const entry = move();
+      this.syncHistory();
+      if (!entry) return;
+      const id = this.navRequests.next();
+      const exists = await this.sessionExists(entry.ref);
+      if (!this.navRequests.isCurrent(id)) return;
+      if (exists) {
+        await this.restore(entry);
+        return;
+      }
+      if (entry.ref) this.forgetHistory([entry.ref]);
+    }
+  }
+
+  // False only when the backend says the session is gone; a lost connection
+  // keeps the place.
+  private async sessionExists(ref: SessionRef | null): Promise<boolean> {
+    if (!ref) return true;
+    try {
+      await api.getSessionMeta(ref);
+      return true;
+    } catch (err) {
+      return isStaleReply(err) || isDisconnectedError(err);
+    }
+  }
+
+  private async restore(entry: NavEntry): Promise<void> {
+    // A group of another grouping mode, or one that vanished, shows all.
+    const groupKey =
+      entry.groupKey && entry.groupMode === this.groupMode && findGroup(this.groups, entry.groupKey)
+        ? entry.groupKey
+        : null;
+    const select = this.selectSession(entry.ref, 'none');
+    if (groupKey !== this.selectedGroupKey) {
+      this.selectedGroupKey = groupKey;
+      await this.loadSessions();
+    }
+    await select;
   }
 
   // Re-reads the selected session's header metadata in place, keeping the
@@ -160,6 +250,7 @@ export class AppState {
     const changed = event.changed ?? [];
     const removed = event.removed ?? [];
 
+    this.forgetHistory(removed);
     if (hasRef(removed, this.selectedSessionRef)) {
       void this.selectSession(
         nextSelectionAfterDelete(this.sessions, removed, this.selectedSessionRef)
@@ -320,6 +411,9 @@ export class AppState {
     this.selectedGroupKey = null;
     this.selectedSessionRef = null;
     this.selectedSessionMeta = null;
+    this.navRequests.next();
+    this.history.clear();
+    this.syncHistory();
     this.sessions = [];
     this.groups = [];
     this.agentCounts = {};
