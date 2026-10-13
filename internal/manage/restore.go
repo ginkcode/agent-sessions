@@ -15,8 +15,6 @@ import (
 )
 
 var (
-	// ErrRestoreNotAllowed is returned when restore is disabled in settings.
-	ErrRestoreNotAllowed = errors.New("manage: restore is not allowed; enable it in settings first")
 	// ErrRestoreCollision is returned when a session already exists and collision policy blocks it.
 	ErrRestoreCollision = errors.New("manage: session already exists (choose copy mode to restore with a new ID)")
 	// ErrRestoreLive is returned when the target session is currently active.
@@ -119,9 +117,6 @@ func (m *Manager) PreviewRestore(
 	if err != nil {
 		return nil, err
 	}
-	if !cfg.AllowRestore {
-		return nil, ErrRestoreNotAllowed
-	}
 
 	ops, items, err := m.planRestore(ctx, req, catalog, cfg)
 	if err != nil {
@@ -164,9 +159,6 @@ func (m *Manager) Restore(
 	cfg, err := m.config.Load()
 	if err != nil {
 		return nil, err
-	}
-	if !cfg.AllowRestore {
-		return nil, ErrRestoreNotAllowed
 	}
 
 	expiry, mac, err := decodeToken(token)

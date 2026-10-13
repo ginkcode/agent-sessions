@@ -143,6 +143,14 @@ func (b offlineBackend) SaveBundleHandoff(context.Context, engine.BundleHandoffR
 	return "", b.err()
 }
 
+func (b offlineBackend) PreviewBundleRestore(context.Context, engine.BundleRestoreRequest) (engine.RestorePreview, error) {
+	return engine.RestorePreview{}, b.err()
+}
+
+func (b offlineBackend) RestoreBundle(context.Context, engine.BundleRestoreRequest, string) (engine.RestoreReport, error) {
+	return engine.RestoreReport{}, b.err()
+}
+
 func (b offlineBackend) RenderBundleHandoff(context.Context, engine.BundleHandoffRequest) (string, error) {
 	return "", b.err()
 }

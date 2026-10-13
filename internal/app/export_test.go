@@ -32,7 +32,8 @@ func exportFixture(t *testing.T) (*App, *manage.Manager, model.SessionRef) {
 	if err := os.MkdirAll(filepath.Dir(source), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	native := []byte("{\"type\":\"user\",\"message\":{\"content\":\"full native record\"}}\n")
+	native := []byte("{\"type\":\"user\",\"cwd\":\"/work/project\",\"sessionId\":\"" + exportSessionID +
+		"\",\"message\":{\"content\":\"full native record\"}}\n")
 	if err := os.WriteFile(source, native, 0o600); err != nil {
 		t.Fatal(err)
 	}

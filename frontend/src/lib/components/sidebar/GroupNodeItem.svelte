@@ -2,7 +2,9 @@
   import type { GroupNode } from '../../types';
   import GroupNodeItem from './GroupNodeItem.svelte';
   import AgentIcon from '../common/AgentIcon.svelte';
+  import ContextMenu, { type ContextMenuItem } from '../common/ContextMenu.svelte';
   import { isCollapsed as isKeyCollapsed, nodeKind } from '../../tree';
+  import { importer } from '../../stores/importer.svelte';
 
   interface Props {
     node: GroupNode;
@@ -33,6 +35,32 @@
     onSelect(node);
   }
 
+  // Directory rows have an actions menu, opened by right-click or the ⋯
+  // button.
+  let menu = $state<{ x: number; y: number } | null>(null);
+  let hasMenu = $derived(kind === 'directory' && Boolean(node.cwd));
+
+  let menuItems = $derived.by((): ContextMenuItem[] => [
+    {
+      label: 'Import Session Bundle Here…',
+      disabled: node.cwdMissing,
+      title: node.cwdMissing ? 'This directory no longer exists on disk' : undefined,
+      onSelect: () => void importer.start(node.cwd),
+    },
+  ]);
+
+  function openMenu(e: MouseEvent) {
+    if (!hasMenu) return;
+    e.preventDefault();
+    menu = { x: e.clientX, y: e.clientY };
+  }
+
+  function handleMenuButton(e: MouseEvent) {
+    e.stopPropagation();
+    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    menu = { x: r.left, y: r.bottom };
+  }
+
   function handleDisclosureClick(e: MouseEvent) {
     e.stopPropagation();
     onToggleCollapse(node.key);
@@ -61,6 +89,7 @@
     class:missing={node.cwdMissing}
     style="padding-left: {level * 12 + 6}px"
     onclick={handleRowClick}
+    oncontextmenu={openMenu}
     role="button"
     tabindex="0"
     onkeydown={(e) => {
@@ -102,10 +131,29 @@
       {/if}
     </span>
 
+    {#if hasMenu}
+      <button
+        type="button"
+        class="menu-btn"
+        class:open={menu !== null}
+        title="Directory actions"
+        aria-label="Directory actions"
+        aria-haspopup="menu"
+        onclick={handleMenuButton}
+        onkeydown={(e) => e.stopPropagation()}
+      >
+        ⋯
+      </button>
+    {/if}
+
     <span class="count-badge" title="{node.sessionCount} sessions">
       {node.sessionCount}
     </span>
   </div>
+
+  {#if menu}
+    <ContextMenu x={menu.x} y={menu.y} items={menuItems} ariaLabel="Directory actions" onClose={() => (menu = null)} />
+  {/if}
 
   {#if hasChildren && !isCollapsed && node.children}
     <ul class="children-list" role="group">
@@ -228,6 +276,33 @@
     font-size: 0.7rem;
     color: var(--danger);
     font-weight: 500;
+  }
+
+  .menu-btn {
+    display: none;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    padding: 0;
+    flex-shrink: 0;
+    border-radius: 3px;
+    color: var(--text-muted);
+    font-size: 0.85rem;
+    line-height: 1;
+    cursor: pointer;
+  }
+
+  .node-row:hover .menu-btn,
+  .node-row:focus-within .menu-btn,
+  .menu-btn.open {
+    display: flex;
+  }
+
+  .menu-btn:hover,
+  .menu-btn.open {
+    color: var(--text-primary);
+    background-color: var(--bg-tertiary);
   }
 
   .count-badge {

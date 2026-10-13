@@ -537,6 +537,20 @@ func (s *Server) dispatch(ctx context.Context, req Request) (any, error) {
 		}
 		return backend.BundleHandoffCommand(ctx, p.Req)
 
+	case "previewBundleRestore":
+		var p PreviewBundleRestoreParams
+		if err := json.Unmarshal(req.Params, &p); err != nil {
+			return nil, &ResponseError{Code: CodeInvalidParams, Message: err.Error()}
+		}
+		return backend.PreviewBundleRestore(ctx, p.Req)
+
+	case "restoreBundle":
+		var p RestoreBundleParams
+		if err := json.Unmarshal(req.Params, &p); err != nil {
+			return nil, &ResponseError{Code: CodeInvalidParams, Message: err.Error()}
+		}
+		return backend.RestoreBundle(ctx, p.Req, p.Token)
+
 	case "saveBundleHandoff":
 		var p SaveBundleHandoffParams
 		if err := json.Unmarshal(req.Params, &p); err != nil {

@@ -196,6 +196,15 @@ type SaveBundleHandoffParams struct {
 	DestPath string                      `json:"destPath"`
 }
 
+type PreviewBundleRestoreParams struct {
+	Req engine.BundleRestoreRequest `json:"req"`
+}
+
+type RestoreBundleParams struct {
+	Req   engine.BundleRestoreRequest `json:"req"`
+	Token string                      `json:"token"`
+}
+
 type RenderBundleHandoffParams struct {
 	Req engine.BundleHandoffRequest `json:"req"`
 }

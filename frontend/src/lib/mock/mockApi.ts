@@ -29,6 +29,9 @@ import type {
   ExportPreview,
   BundleSummary,
   BundleHandoffRequest,
+  BundleRestoreRequest,
+  RestorePreview,
+  RestoreReport,
   ConnectionState,
   HostCapabilities,
   HostEntry,
@@ -765,6 +768,72 @@ export class MockBackendAPI {
     };
     this.mockBundles.set(summary.bundleId, summary);
     return summary;
+  }
+
+  /** Directory the mock folder dialog "picks"; '' acts as cancel. */
+  pickedDirectory = '/home/haith/Workspaces/imported';
+
+  async pickImportDirectory(): Promise<string> {
+    return this.pickedDirectory;
+  }
+
+  private restoreToken = '';
+
+  async previewBundleRestore(req: BundleRestoreRequest): Promise<RestorePreview> {
+    const bundle = this.mockBundles.get(req.bundleId);
+    if (!bundle) throw new Error(`bundle "${req.bundleId}" not found or expired; please reopen the bundle`);
+    if (!req.cwd?.startsWith('/')) throw new Error('the import directory must be an absolute path');
+    const sourceRef = { agent: bundle.source.agent, id: bundle.source.id };
+    const taken = this.sessions.some((s) => s.ref.agent === sourceRef.agent && s.ref.id === sourceRef.id);
+    const copyId = req.copy ? req.copyId || `${bundle.source.id}-copy-${Date.now().toString(36)}` : undefined;
+    const targetRef = { agent: sourceRef.agent, id: copyId || sourceRef.id };
+    this.restoreToken = `restore-${Date.now()}`;
+    return {
+      items: [
+        {
+          sourceRef,
+          targetRef,
+          targetCwd: req.cwd,
+          paths: [`/home/haith/.claude/projects/${req.cwd.replace(/[^A-Za-z0-9]/g, '-')}/${targetRef.id}.jsonl`],
+          bytes: bundle.nativeBytes,
+          blocked: taken && !req.copy ? `session ${sourceRef.id} already exists; import it as a copy to keep both` : undefined,
+          isCopy: Boolean(copyId),
+        },
+      ],
+      totalBytes: bundle.nativeBytes,
+      token: this.restoreToken,
+      copyId,
+    };
+  }
+
+  async restoreBundle(req: BundleRestoreRequest, token: string): Promise<RestoreReport> {
+    if (!token || token !== this.restoreToken) throw new Error('manage: preview is stale; preview again');
+    const preview = await this.previewBundleRestore(req);
+    const item = preview.items[0];
+    if (item.blocked) throw new Error(`manage: item is blocked: ${item.blocked}`);
+    const bundle = this.mockBundles.get(req.bundleId)!;
+    const now = new Date().toISOString();
+    this.sessions.unshift({
+      ref: item.targetRef,
+      title: bundle.source.title || 'Imported session',
+      firstPrompt: bundle.source.title || '',
+      cwd: req.cwd,
+      gitBranch: bundle.source.gitBranch,
+      createdAt: bundle.createdAt,
+      updatedAt: now,
+      counts: { user: 1, assistant: 1, toolCalls: 0 },
+      tokens: { input: 0, output: 0 },
+      live: false,
+      sourcePath: item.paths[0],
+    });
+    this.restoreToken = '';
+    return {
+      items: [{ ref: item.targetRef, title: bundle.source.title || '', ok: true, created: item.paths }],
+      restored: 1,
+      failed: 0,
+      totalBytes: item.bytes,
+      createdRefs: [item.targetRef],
+    };
   }
 
   async buildBundleHandoff(req: BundleHandoffRequest): Promise<HandoffPreview> {

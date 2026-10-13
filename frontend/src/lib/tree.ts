@@ -79,6 +79,46 @@ export function sessionToSelect(
 }
 
 /**
+ * Lists the distinct directories in the tree that still exist on disk,
+ * sorted, as candidates to import a bundle into.
+ */
+export function knownDirectories(groups: GroupNode[]): string[] {
+  const dirs = new Set<string>();
+  const walk = (nodes: GroupNode[]) => {
+    for (const node of nodes) {
+      if (nodeKind(node) === 'directory' && node.cwd && !node.cwdMissing) dirs.add(node.cwd);
+      if (node.children) walk(node.children);
+    }
+  };
+  walk(groups);
+  return [...dirs].sort((a, b) => a.localeCompare(b));
+}
+
+/**
+ * Finds the directory node for cwd, the group to show after a session was
+ * imported there. When directories sit under agent groups, the one under
+ * agent wins. Returns null when the tree has no such directory.
+ */
+export function directoryNodeKey(groups: GroupNode[], cwd: string, agent?: string): string | null {
+  let fallback: string | null = null;
+  const walk = (nodes: GroupNode[], parentAgent?: string): string | null => {
+    for (const node of nodes) {
+      const kind = nodeKind(node);
+      if (kind === 'directory' && node.cwd === cwd) {
+        if (!parentAgent || parentAgent === agent) return node.key;
+        fallback ??= node.key;
+      }
+      if (node.children) {
+        const found = walk(node.children, kind === 'agent' ? node.agent : parentAgent);
+        if (found) return found;
+      }
+    }
+    return null;
+  };
+  return walk(groups) ?? fallback;
+}
+
+/**
  * Hashes a remote host alias deterministically to an 8-character hex string using FNV-1a.
  */
 export function hashHost(host: string): string {

@@ -212,7 +212,7 @@ func TestSetTerminalKeepsManageSettings(t *testing.T) {
 		wg.Add(2)
 		go func() {
 			defer wg.Done()
-			_, err := store.Update(func(c *manage.Config) { c.Enabled = true; c.AllowRestore = i%2 == 0 })
+			_, err := store.Update(func(c *manage.Config) { c.Enabled = true; c.PrunePromptHistory = i%2 == 0 })
 			errs <- err
 		}()
 		go func() {

@@ -98,7 +98,7 @@ func (cm *codexManager) planRestore(
 				newID = newRandomUUID()
 			}
 		} else {
-			blockedReason = fmt.Sprintf("session %s already exists; select 'Restore as copy' to create a new session", origID)
+			blockedReason = fmt.Sprintf("session %s already exists; import it as a copy to keep both", origID)
 		}
 	}
 

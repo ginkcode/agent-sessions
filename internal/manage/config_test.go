@@ -34,7 +34,7 @@ func TestConfigUpdateConcurrentStores(t *testing.T) {
 			set func(*Config)
 		}{
 			{a, func(c *Config) { c.Enabled = true }},
-			{b, func(c *Config) { c.AllowRestore = true }},
+			{b, func(c *Config) { c.PrunePromptHistory = true }},
 		} {
 			wg.Go(func() {
 				if _, err := u.cs.Update(func(c *Config) {
@@ -50,7 +50,7 @@ func TestConfigUpdateConcurrentStores(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if want := (Config{Enabled: true, AllowRestore: true}); cfg != want {
+		if want := (Config{Enabled: true, PrunePromptHistory: true}); cfg != want {
 			t.Fatalf("round %d: config = %+v, want %+v", round, cfg, want)
 		}
 	}

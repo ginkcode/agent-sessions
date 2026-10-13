@@ -501,6 +501,18 @@ func (c *Client) SaveBundleHandoff(ctx context.Context, req engine.BundleHandoff
 	return out, err
 }
 
+func (c *Client) PreviewBundleRestore(ctx context.Context, req engine.BundleRestoreRequest) (engine.RestorePreview, error) {
+	var out engine.RestorePreview
+	err := c.call(ctx, "previewBundleRestore", PreviewBundleRestoreParams{Req: req}, &out)
+	return out, err
+}
+
+func (c *Client) RestoreBundle(ctx context.Context, req engine.BundleRestoreRequest, token string) (engine.RestoreReport, error) {
+	var out engine.RestoreReport
+	err := c.call(ctx, "restoreBundle", RestoreBundleParams{Req: req, Token: token}, &out)
+	return out, err
+}
+
 func (c *Client) RenderBundleHandoff(ctx context.Context, req engine.BundleHandoffRequest) (string, error) {
 	var out string
 	err := c.call(ctx, "renderBundleHandoff", RenderBundleHandoffParams{Req: req}, &out)

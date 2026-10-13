@@ -14,18 +14,6 @@ import (
 	"github.com/ginkcode/agent-sessions/internal/testutil/platform"
 )
 
-func enableRestore(t *testing.T, m *Manager) {
-	t.Helper()
-	cfg, err := m.Config()
-	if err != nil {
-		t.Fatalf("Config: %v", err)
-	}
-	cfg.AllowRestore = true
-	if err := m.SetConfig(cfg); err != nil {
-		t.Fatalf("SetConfig: %v", err)
-	}
-}
-
 func makeOpenCodeBundle(rootID, childID, cwd string) *bundle.Bundle {
 	cwdJSON, _ := json.Marshal(cwd)
 	rootBody := []byte(`{"info":{"id":"` + rootID + `","directory":` + string(cwdJSON) + `},"messages":[{"id":"m1","role":"user","content":"Task"}]}`)
@@ -75,7 +63,6 @@ func TestRestore_OpenCode_ImportArgvAndEnv(t *testing.T) {
 	}
 	rec := &recordingExec{}
 	m, _ := newTestManager(t, roots, WithExec(rec.exec))
-	enableRestore(t, m)
 
 	old := localCWD("/home/dev/original")
 	target := localCWD("/home/dev/restored")
@@ -133,7 +120,6 @@ func TestRestore_OpenCode_CollisionBlocks(t *testing.T) {
 	}
 	rec := &recordingExec{}
 	m, _ := newTestManager(t, roots, WithExec(rec.exec))
-	enableRestore(t, m)
 
 	b := makeOpenCodeBundle("ses_root", "", localCWD("/home/dev/work"))
 	catalog := []model.SessionMeta{opencodeMeta(roots.OpenCodeData, "ses_root")}
@@ -190,7 +176,6 @@ func TestRestore_Codex_RewritesCWD(t *testing.T) {
 	}
 	fixed := time.Date(2026, 9, 29, 8, 0, 0, 0, time.UTC)
 	m, _ := newTestManager(t, roots, WithNow(func() time.Time { return fixed }))
-	enableRestore(t, m)
 
 	old := localCWD("/home/dev/original")
 	target := localCWD("/home/dev/restored")
@@ -245,7 +230,6 @@ func TestRestore_Codex_CollisionCopyRemapsID(t *testing.T) {
 		t.Fatal(err)
 	}
 	m, _ := newTestManager(t, roots)
-	enableRestore(t, m)
 
 	b := makeCodexBundle(uuidA, localCWD("/home/dev/work"))
 	catalog := []model.SessionMeta{codexMeta(roots.Codex, uuidA)}
@@ -290,7 +274,6 @@ func TestRestore_Codex_NoNative(t *testing.T) {
 		t.Fatal(err)
 	}
 	m, _ := newTestManager(t, roots)
-	enableRestore(t, m)
 
 	b := makeCodexBundle(uuidA, localCWD("/home/dev/work"))
 	b.Manifest.Profile = bundle.ProfileShareSafe

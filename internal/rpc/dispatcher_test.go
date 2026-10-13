@@ -212,6 +212,14 @@ func (m *mockBackend) RenderBundleHandoff(ctx context.Context, req engine.Bundle
 	return "rendered bundle handoff", nil
 }
 
+func (m *mockBackend) PreviewBundleRestore(ctx context.Context, req engine.BundleRestoreRequest) (engine.RestorePreview, error) {
+	return engine.RestorePreview{Token: "restore-token"}, nil
+}
+
+func (m *mockBackend) RestoreBundle(ctx context.Context, req engine.BundleRestoreRequest, token string) (engine.RestoreReport, error) {
+	return engine.RestoreReport{Restored: 1}, nil
+}
+
 func setupPipePair(mock engine.Backend) (*Server, *Client, func()) {
 	// clientWriter -> serverReader
 	c2sReader, c2sWriter := io.Pipe()

@@ -26,6 +26,9 @@ import type {
   ExportPreview,
   BundleSummary,
   BundleHandoffRequest,
+  BundleRestoreRequest,
+  RestorePreview,
+  RestoreReport,
   ConnectionState,
   HostEntry,
   WSLEntry,
@@ -71,6 +74,10 @@ export interface BackendAPI {
   exportBundle(req: ExportRequest): Promise<string>;
   openBundle(): Promise<BundleSummary | null>;
   openBundlePath(path: string): Promise<BundleSummary>;
+  /** Native folder dialog for the import directory; "" when cancelled. Local host only. */
+  pickImportDirectory(): Promise<string>;
+  previewBundleRestore(req: BundleRestoreRequest): Promise<RestorePreview>;
+  restoreBundle(req: BundleRestoreRequest, token: string): Promise<RestoreReport>;
   buildBundleHandoff(req: BundleHandoffRequest): Promise<HandoffPreview>;
   bundleHandoffCommand(req: BundleHandoffRequest): Promise<string>;
   saveBundleHandoff(req: BundleHandoffRequest): Promise<string>;
@@ -123,6 +130,9 @@ interface WailsAppBinding {
   ExportBundle(req: ExportRequest): Promise<string>;
   OpenBundle(): Promise<BundleSummary>;
   OpenBundlePath(path: string): Promise<BundleSummary>;
+  PickImportDirectory(): Promise<string>;
+  PreviewBundleRestore(req: BundleRestoreRequest): Promise<RestorePreview>;
+  RestoreBundle(req: BundleRestoreRequest, token: string): Promise<RestoreReport>;
   BuildBundleHandoff(req: BundleHandoffRequest): Promise<HandoffPreview>;
   BundleHandoffCommand(req: BundleHandoffRequest): Promise<string>;
   SaveBundleHandoff(req: BundleHandoffRequest): Promise<string>;
@@ -428,6 +438,30 @@ class WailsBackendAPI implements BackendAPI {
   async openBundlePath(path: string): Promise<BundleSummary> {
     try {
       return await this.binding.OpenBundlePath(path);
+    } catch (e) {
+      throw normalizeError(e);
+    }
+  }
+
+  async pickImportDirectory(): Promise<string> {
+    try {
+      return (await this.binding.PickImportDirectory()) || '';
+    } catch (e) {
+      throw normalizeError(e);
+    }
+  }
+
+  async previewBundleRestore(req: BundleRestoreRequest): Promise<RestorePreview> {
+    try {
+      return await this.binding.PreviewBundleRestore(req);
+    } catch (e) {
+      throw normalizeError(e);
+    }
+  }
+
+  async restoreBundle(req: BundleRestoreRequest, token: string): Promise<RestoreReport> {
+    try {
+      return await this.binding.RestoreBundle(req, token);
     } catch (e) {
       throw normalizeError(e);
     }

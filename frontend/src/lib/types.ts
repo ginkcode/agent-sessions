@@ -426,6 +426,42 @@ export interface BundleSummary {
   sessions: BundleSessionSummary[];
 }
 
+export interface BundleRestoreRequest {
+  bundleId: string;
+  /** Directory on the selected host the session is imported into. */
+  cwd: string;
+  /** Import under a new session id when the original id already exists. */
+  copy?: boolean;
+  /** The id the preview minted for a copy; pass it back when confirming. */
+  copyId?: string;
+}
+
+export interface RestorePreviewItem {
+  sourceRef: SessionRef;
+  targetRef: SessionRef;
+  targetCwd: string;
+  paths: string[];
+  bytes: number;
+  blocked?: string;
+  warning?: string;
+  isCopy: boolean;
+}
+
+export interface RestorePreview {
+  items: RestorePreviewItem[];
+  totalBytes: number;
+  token: string;
+  copyId?: string;
+}
+
+export interface RestoreReport {
+  items: { ref: SessionRef; title: string; ok: boolean; error?: string; created?: string[] }[];
+  restored: number;
+  failed: number;
+  totalBytes: number;
+  createdRefs: SessionRef[];
+}
+
 export interface BundleHandoffRequest {
   bundleId: string;
   target: AgentID;

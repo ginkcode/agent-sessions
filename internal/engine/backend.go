@@ -56,4 +56,6 @@ type Backend interface {
 	BundleHandoffCommand(ctx context.Context, req BundleHandoffRequest) (string, error)
 	SaveBundleHandoff(ctx context.Context, req BundleHandoffRequest, destPath string) (string, error)
 	RenderBundleHandoff(ctx context.Context, req BundleHandoffRequest) (string, error)
+	PreviewBundleRestore(ctx context.Context, req BundleRestoreRequest) (RestorePreview, error)
+	RestoreBundle(ctx context.Context, req BundleRestoreRequest, token string) (RestoreReport, error)
 }

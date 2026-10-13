@@ -15,10 +15,14 @@
   }
 
   function handleKeydown(e: KeyboardEvent) {
-    if (e.key === 'Escape' && importer.dialogOpen) {
+    if (e.key === 'Escape' && importer.dialogOpen && !importer.chooser) {
       handleClose();
     }
   }
+
+  let restoreItem = $derived(importer.restorePreview?.items[0] ?? null);
+  // OpenCode's own import keeps the session id, so it cannot import a copy.
+  let copyAvailable = $derived(importer.bundle?.source.agent !== 'opencode');
 
   let totalRedactions = $derived.by(() => {
     if (!importer.preview?.report?.redactionCounts) return 0;
@@ -53,7 +57,7 @@
     >
       <header class="dialog-header">
         <div class="header-title-group">
-          <h2 id="import-dialog-title">Session Bundle</h2>
+          <h2 id="import-dialog-title">Import Session Bundle</h2>
           {#if importer.bundle}
             <span class="profile-badge" class:share-safe={importer.bundle.profile === 'share-safe'}>
               {importer.bundle.profile === 'share-safe' ? 'Share-safe' : 'Complete'}
@@ -101,6 +105,19 @@
         {/if}
 
         {#if importer.bundle}
+          <div class="target-dir-row">
+            <span class="target-dir-label">Import into</span>
+            <code class="target-dir" title={importer.cwd}>{importer.cwd}</code>
+            <button
+              type="button"
+              class="mini-btn"
+              disabled={importer.restoring}
+              onclick={() => importer.changeDirectory()}
+            >
+              Change…
+            </button>
+          </div>
+
           {#if importer.activeTab === 'summary'}
             <!-- Bundle Overview Tab -->
             <section class="section-group">
@@ -124,6 +141,69 @@
                   </span>
                 </div>
               </div>
+            </section>
+
+            <!-- Restore and Continuation Actions Banner -->
+            <section class="section-group action-cards">
+              {#if importer.canRestore}
+                <div class="action-card restore-card">
+                  <div class="card-info">
+                    <h4>Import into {importer.bundle.source.agent}</h4>
+                    <p>
+                      Writes the agent's own session files into its store, under the directory above,
+                      so the session shows up in the list and resumes there.
+                    </p>
+                    <p class="restore-note">
+                      Only import bundles you trust: the agent reads this history as its own when you resume.
+                    </p>
+                    {#if importer.loadingRestore}
+                      <p class="restore-note">Checking…</p>
+                    {:else if importer.restoreError}
+                      <p class="restore-note restore-error" role="alert">{importer.restoreError}</p>
+                    {:else if restoreItem?.blocked}
+                      <p class="restore-note restore-error">{restoreItem.blocked}</p>
+                    {:else if restoreItem}
+                      <p class="restore-note">
+                        {restoreItem.isCopy ? `Imported as a copy with the new id ${restoreItem.targetRef.id}. ` : ''}Writes
+                        {restoreItem.paths.length}
+                        {restoreItem.paths.length === 1 ? 'file' : 'files'} ({formatBytes(restoreItem.bytes)}).
+                      </p>
+                      {#if restoreItem.warning}
+                        <p class="restore-note">⚠️ {restoreItem.warning}</p>
+                      {/if}
+                    {/if}
+                    {#if copyAvailable && (importer.restoreCopy || restoreItem?.blocked)}
+                      <label class="checkbox-label copy-toggle">
+                        <input
+                          type="checkbox"
+                          checked={importer.restoreCopy}
+                          disabled={importer.restoring}
+                          onchange={(e) => importer.setRestoreCopy(e.currentTarget.checked)}
+                        />
+                        <span>Import as a copy with a new session id</span>
+                      </label>
+                    {/if}
+                  </div>
+                </div>
+              {:else}
+                <div class="action-card info-card">
+                  <div class="card-info">
+                    <h4>Share-Safe Bundle (No Native Files)</h4>
+                    <p>
+                      This bundle was exported in share-safe mode. All proprietary files were stripped
+                      and secrets redacted. You can resume this session seamlessly in any supported
+                      coding agent using the cross-agent handoff.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    class="btn primary-btn"
+                    onclick={() => importer.setTab('handoff')}
+                  >
+                    Continue in Agent…
+                  </button>
+                </div>
+              {/if}
             </section>
 
             <!-- Metadata Grid -->
@@ -203,42 +283,6 @@
                 </div>
               </section>
             {/if}
-
-            <!-- Restore and Continuation Actions Banner -->
-            <section class="section-group action-cards">
-              {#if importer.bundle.restoreAvailable}
-                <div class="action-card restore-card">
-                  <div class="card-info">
-                    <h4>Restore to {importer.bundle.source.agent}</h4>
-                    <p>
-                      This bundle contains the native session files and can be restored directly into
-                      your local {importer.bundle.source.agent} environment.
-                    </p>
-                  </div>
-                  <div class="card-status">
-                    <span class="status-ready">Ready for restore</span>
-                  </div>
-                </div>
-              {:else}
-                <div class="action-card info-card">
-                  <div class="card-info">
-                    <h4>Share-Safe Bundle (No Native Files)</h4>
-                    <p>
-                      This bundle was exported in share-safe mode. All proprietary files were stripped
-                      and secrets redacted. You can resume this session seamlessly in any supported
-                      coding agent using the cross-agent handoff.
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    class="btn primary-btn"
-                    onclick={() => importer.setTab('handoff')}
-                  >
-                    Continue in Agent…
-                  </button>
-                </div>
-              {/if}
-            </section>
           {:else}
             <!-- Handoff / Continue In Tab -->
             <!-- Target Selector -->
@@ -300,19 +344,6 @@
                   </label>
                 </div>
               </div>
-            </div>
-
-            <!-- Working Directory Override -->
-            <div class="cwd-row">
-              <label class="group-label" for="target-cwd-input">Target Working Directory</label>
-              <input
-                id="target-cwd-input"
-                type="text"
-                class="text-input"
-                placeholder={importer.bundle.source.cwd || '/path/to/project'}
-                value={importer.cwd}
-                oninput={(e) => importer.setCWD(e.currentTarget.value)}
-              />
             </div>
 
             {#if importer.clipboardError}
@@ -462,18 +493,29 @@
         {:else if importer.bundle && importer.activeTab === 'summary'}
           <button
             type="button"
-            class="btn"
-            onclick={() => importer.open()}
+            class="btn save-btn"
+            onclick={() => importer.open(importer.cwd)}
           >
             Open Another Bundle…
           </button>
           <button
             type="button"
-            class="btn primary-btn"
+            class="btn"
+            class:primary-btn={!importer.canRestore}
             onclick={() => importer.setTab('handoff')}
           >
             Continue in Agent…
           </button>
+          {#if importer.canRestore}
+            <button
+              type="button"
+              class="btn primary-btn"
+              disabled={!importer.restoreReady || importer.restoring || importer.loadingRestore}
+              onclick={() => importer.importSession()}
+            >
+              {importer.restoring ? 'Importing…' : 'Import'}
+            </button>
+          {/if}
         {/if}
         <button type="button" class="btn" onclick={handleClose}>
           Close
@@ -839,16 +881,6 @@
     line-height: 1.35;
   }
 
-  .status-ready {
-    font-size: 0.75rem;
-    font-weight: 600;
-    color: #22c55e;
-    background: rgba(34, 197, 94, 0.15);
-    padding: 3px 8px;
-    border-radius: 4px;
-    white-space: nowrap;
-  }
-
   /* Handoff Tab styling */
   .agent-buttons {
     display: flex;
@@ -945,27 +977,45 @@
     cursor: default;
   }
 
-  .cwd-row {
+  .target-dir-row {
     display: flex;
-    flex-direction: column;
-    gap: 4px;
-  }
-
-  .text-input {
-    width: 100%;
-    box-sizing: border-box;
-    padding: 7px 10px;
-    font-size: 0.82rem;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
     background-color: var(--bg-secondary);
     border: 1px solid var(--border-color);
-    border-radius: 4px;
-    color: var(--text-primary);
-    font-family: inherit;
+    border-radius: 6px;
   }
 
-  .text-input:focus {
-    outline: none;
-    border-color: var(--accent-color, #3b82f6);
+  .target-dir-label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    white-space: nowrap;
+  }
+
+  .target-dir {
+    flex: 1;
+    min-width: 0;
+    font-size: 0.8rem;
+    color: var(--text-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .restore-note {
+    margin-top: 6px !important;
+  }
+
+  .restore-error {
+    color: #ef4444 !important;
+  }
+
+  .copy-toggle {
+    margin-top: 6px;
   }
 
   .report-summary {

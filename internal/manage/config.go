@@ -11,13 +11,11 @@ import (
 	"github.com/ginkcode/agent-sessions/internal/configfile"
 )
 
-// Config holds the user's opt-in settings for destructive session management
-// and session restoration.
+// Config holds the user's opt-in settings for destructive session management.
 // Persisted in ~/.config/agent-sessions/config.toml under the [manage] table.
 type Config struct {
 	Enabled              bool `json:"enabled"`
 	AllowPermanentDelete bool `json:"allowPermanentDelete"`
-	AllowRestore         bool `json:"allowRestore"`
 	// PrunePromptHistory also removes a deleted session's prompts from the
 	// agent's prompt history (Claude and Codex history.jsonl).
 	PrunePromptHistory bool `json:"prunePromptHistory"`
@@ -34,7 +32,6 @@ func configKeys(cfg *Config) []struct {
 	}{
 		{"enabled", &cfg.Enabled},
 		{"allow_permanent_delete", &cfg.AllowPermanentDelete},
-		{"allow_restore", &cfg.AllowRestore},
 		{"prune_prompt_history", &cfg.PrunePromptHistory},
 	}
 }

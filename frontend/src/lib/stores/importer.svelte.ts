@@ -1,11 +1,21 @@
 import { api } from '../api';
-import type { AgentID, BundleHandoffRequest, BundleSummary, HandoffPreview } from '../types';
+import type {
+  AgentID,
+  BundleHandoffRequest,
+  BundleRestoreRequest,
+  BundleSummary,
+  HandoffPreview,
+  RestorePreview,
+  SessionRef,
+} from '../types';
 import { copyToClipboard } from '../portable';
 import { isStaleReply } from '../link';
 import { copiedGuidance, openedGuidance } from '../guidance';
+import { directoryNodeKey } from '../tree';
 import { toast } from './toast.svelte';
 import { link } from './link.svelte';
 import { launcher } from './launcher.svelte';
+import { appState } from './appState.svelte';
 
 export class ImporterStore {
   dialogOpen = $state(false);
@@ -16,12 +26,32 @@ export class ImporterStore {
   bundle = $state<BundleSummary | null>(null);
   activeTab = $state<'summary' | 'handoff'>('summary');
 
+  /**
+   * The directory on the selected host the bundle is imported into. A bundle
+   * comes from another device, where the original path rarely exists, so the
+   * user chooses it before the bundle is opened.
+   */
+  cwd = $state<string>('');
+
+  /**
+   * Set while the directory chooser is shown. The native folder dialog only
+   * browses this computer, so a remote host gets this chooser instead.
+   * 'start' opens a bundle next; 'change' replaces the directory.
+   */
+  chooser = $state<'start' | 'change' | null>(null);
+
+  // Native import into cwd
+  restorePreview = $state<RestorePreview | null>(null);
+  restoreCopy = $state(false);
+  loadingRestore = $state(false);
+  restoreError = $state<string | null>(null);
+  restoring = $state(false);
+
   // Handoff state from bundle
   target = $state<AgentID>('codex');
   budget = $state<number>(80000);
   includeReasoning = $state<boolean>(false);
   redactSecrets = $state<boolean>(false);
-  cwd = $state<string>('');
 
   loadingPreview = $state(false);
   preview = $state<HandoffPreview | null>(null);
@@ -35,8 +65,56 @@ export class ImporterStore {
   private copyPromptTimer: ReturnType<typeof setTimeout> | null = null;
   private copyCommandTimer: ReturnType<typeof setTimeout> | null = null;
   private requestSeq = 0;
+  private restoreSeq = 0;
 
-  async open(): Promise<void> {
+  /**
+   * Starts an import: with dir (a directory in the sidebar) it goes straight
+   * to the bundle picker, otherwise it asks for the directory first.
+   */
+  async start(dir?: string): Promise<void> {
+    if (this.refuseWhileStale()) return;
+    if (dir) {
+      await this.open(dir);
+      return;
+    }
+    const picked = await this.pickDirectory('start');
+    if (picked) await this.open(picked);
+  }
+
+  /** Lets the user choose another directory for the open bundle. */
+  async changeDirectory(): Promise<void> {
+    const picked = await this.pickDirectory('change');
+    if (picked) await this.setCWD(picked);
+  }
+
+  /** The chooser's answer: a directory, or null when cancelled. */
+  async chooseDirectory(dir: string | null): Promise<void> {
+    const purpose = this.chooser;
+    this.chooser = null;
+    if (!dir) return;
+    if (purpose === 'start') await this.open(dir);
+    else await this.setCWD(dir);
+  }
+
+  // Returns the directory from the native dialog, or '' when it was
+  // cancelled or the chooser took over.
+  private async pickDirectory(purpose: 'start' | 'change'): Promise<string> {
+    if (link.dataHost) {
+      this.chooser = purpose;
+      return '';
+    }
+    try {
+      return await api.pickImportDirectory();
+    } catch (err) {
+      if (isStaleReply(err)) return '';
+      this.error = err instanceof Error ? err.message : String(err);
+      this.dialogOpen = true;
+      return '';
+    }
+  }
+
+  /** Picks a bundle file and opens it for import into dir. */
+  async open(dir: string): Promise<void> {
     if (this.refuseWhileStale()) return;
     this.opening = true;
     this.error = null;
@@ -46,23 +124,7 @@ export class ImporterStore {
         // User cancelled the file picker dialog
         return;
       }
-      this.initBundle(summary);
-    } catch (err) {
-      if (isStaleReply(err)) return;
-      this.error = err instanceof Error ? err.message : String(err);
-      this.dialogOpen = true;
-    } finally {
-      this.opening = false;
-    }
-  }
-
-  async openPath(path: string): Promise<void> {
-    if (this.refuseWhileStale()) return;
-    this.opening = true;
-    this.error = null;
-    try {
-      const summary = await api.openBundlePath(path);
-      this.initBundle(summary);
+      this.initBundle(summary, dir);
     } catch (err) {
       if (isStaleReply(err)) return;
       this.error = err instanceof Error ? err.message : String(err);
@@ -82,10 +144,10 @@ export class ImporterStore {
     return true;
   }
 
-  initBundle(summary: BundleSummary): void {
+  initBundle(summary: BundleSummary, dir: string): void {
     this.bundle = summary;
     this.activeTab = 'summary';
-    this.cwd = summary.source?.cwd || '';
+    this.cwd = dir;
     this.budget = 80000;
     this.includeReasoning = false;
     this.redactSecrets = summary.profile === 'share-safe';
@@ -95,6 +157,9 @@ export class ImporterStore {
     this.copiedCommand = false;
     this.savedPath = null;
     this.preview = null;
+    this.restorePreview = null;
+    this.restoreCopy = false;
+    this.restoreError = null;
 
     // Pick target different from bundle source agent
     const srcAgent = summary.source?.agent;
@@ -105,12 +170,16 @@ export class ImporterStore {
     }
 
     this.dialogOpen = true;
+    void this.refreshRestore();
   }
 
   close(): void {
     this.dialogOpen = false;
+    this.chooser = null;
     this.bundle = null;
     this.preview = null;
+    this.restorePreview = null;
+    this.restoreError = null;
     this.error = null;
     this.clipboardError = null;
     this.savedPath = null;
@@ -120,6 +189,94 @@ export class ImporterStore {
     if (this.copyPromptTimer) clearTimeout(this.copyPromptTimer);
     if (this.copyCommandTimer) clearTimeout(this.copyCommandTimer);
     this.close();
+  }
+
+  /** A complete bundle carries the agent's own files, so it can be imported natively. */
+  get canRestore(): boolean {
+    return Boolean(this.bundle?.restoreAvailable);
+  }
+
+  async setRestoreCopy(val: boolean): Promise<void> {
+    if (this.restoreCopy === val) return;
+    this.restoreCopy = val;
+    await this.refreshRestore();
+  }
+
+  private restoreRequest(): BundleRestoreRequest | null {
+    if (!this.bundle) return null;
+    return { bundleId: this.bundle.bundleId, cwd: this.cwd, copy: this.restoreCopy };
+  }
+
+  /** Plans the native import into cwd, so the dialog can show what it writes. */
+  async refreshRestore(): Promise<void> {
+    const req = this.restoreRequest();
+    const seq = ++this.restoreSeq;
+    this.restorePreview = null;
+    this.restoreError = null;
+    if (!req || !this.canRestore) return;
+    this.loadingRestore = true;
+    try {
+      const preview = await api.previewBundleRestore(req);
+      if (this.restoreSeq === seq) this.restorePreview = preview;
+    } catch (err) {
+      if (isStaleReply(err)) return;
+      if (this.restoreSeq === seq) this.restoreError = err instanceof Error ? err.message : String(err);
+    } finally {
+      if (this.restoreSeq === seq) this.loadingRestore = false;
+    }
+  }
+
+  /** True when the previewed import can go ahead. */
+  get restoreReady(): boolean {
+    const items = this.restorePreview?.items ?? [];
+    return items.length > 0 && items.every((it) => !it.blocked);
+  }
+
+  /**
+   * Writes the session into the agent's store under cwd, then shows it in
+   * the session list.
+   */
+  async importSession(): Promise<void> {
+    const req = this.restoreRequest();
+    const preview = this.restorePreview;
+    if (!req || !preview || !this.restoreReady || this.restoring) return;
+    req.copyId = preview.copyId;
+    const cwd = this.cwd;
+    this.restoring = true;
+    this.restoreError = null;
+    try {
+      const report = await api.restoreBundle(req, preview.token);
+      this.close();
+      toast.show({
+        title: 'Session imported',
+        body: `It is in ${cwd} now; resume or continue it like any other session.`,
+      });
+      await this.reveal(report.createdRefs[0], cwd);
+    } catch (err) {
+      if (isStaleReply(err)) return;
+      // Plan again: the token may have expired or the store changed since.
+      const message = err instanceof Error ? err.message : String(err);
+      await this.refreshRestore();
+      this.restoreError = message;
+    } finally {
+      this.restoring = false;
+    }
+  }
+
+  // Reloads the catalog and selects the imported session in its directory.
+  private async reveal(ref: SessionRef | undefined, cwd: string): Promise<void> {
+    await appState.refresh();
+    if (!ref) return;
+    // The scanner resolves symlinks, so its cwd may differ from the one typed.
+    const scanned = await api.getSessionMeta(ref).then((m) => m.cwd).catch(() => '');
+    const key = directoryNodeKey(appState.groups, scanned || cwd, ref.agent);
+    if (key) {
+      await appState.selectGroup(key, 'push');
+      if (appState.selectedGroupKey !== key) return;
+      await appState.selectSession(ref);
+    } else {
+      await appState.selectSession(ref, 'push');
+    }
   }
 
   setTab(tab: 'summary' | 'handoff'): void {
@@ -159,7 +316,9 @@ export class ImporterStore {
 
   async setCWD(val: string): Promise<void> {
     this.cwd = val;
-    await this.refreshPreview();
+    const jobs = [this.refreshRestore()];
+    if (this.preview || this.activeTab === 'handoff') jobs.push(this.refreshPreview());
+    await Promise.all(jobs);
   }
 
   async refreshPreview(): Promise<void> {

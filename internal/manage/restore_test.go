@@ -109,60 +109,10 @@ func TestEncodeClaudeProjectDir(t *testing.T) {
 	}
 }
 
-func TestRestore_AllowRestoreGating(t *testing.T) {
-	roots := testRoots(t)
-	prepareClaudeRoot(t, roots)
-	mgr, _ := newTestManager(t, roots)
-
-	b := makeClaudeBundle(t, bundle.ProfileComplete, uuidA, localCWD("/home/dev/work"))
-	req := RestoreRequest{
-		Bundle:      b,
-		TargetAgent: model.AgentClaude,
-		TargetCWD:   localCWD("/home/dev/restored"),
-	}
-
-	// 1. Gated off by default
-	_, err := mgr.PreviewRestore(context.Background(), req, nil)
-	if err != ErrRestoreNotAllowed {
-		t.Fatalf("expected ErrRestoreNotAllowed, got %v", err)
-	}
-
-	_, err = mgr.Restore(context.Background(), req, nil, "any-token")
-	if err != ErrRestoreNotAllowed {
-		t.Fatalf("expected ErrRestoreNotAllowed, got %v", err)
-	}
-
-	// 2. Enable allow_restore
-	cfg, err := mgr.Config()
-	if err != nil {
-		t.Fatalf("Config: %v", err)
-	}
-	cfg.AllowRestore = true
-	if err := mgr.SetConfig(cfg); err != nil {
-		t.Fatalf("SetConfig: %v", err)
-	}
-
-	// 3. Now preview succeeds
-	prev, err := mgr.PreviewRestore(context.Background(), req, nil)
-	if err != nil {
-		t.Fatalf("PreviewRestore failed: %v", err)
-	}
-	if len(prev.Items) != 1 {
-		t.Fatalf("expected 1 preview item, got %d", len(prev.Items))
-	}
-	if prev.Token == "" {
-		t.Errorf("expected non-empty token")
-	}
-}
-
 func TestRestore_ShareSafeBundleRejected(t *testing.T) {
 	roots := testRoots(t)
 	prepareClaudeRoot(t, roots)
 	mgr, _ := newTestManager(t, roots)
-	cfg, _ := mgr.Config()
-	cfg.AllowRestore = true
-	_ = mgr.SetConfig(cfg)
-
 	b := makeClaudeBundle(t, bundle.ProfileShareSafe, uuidA, localCWD("/home/dev/work"))
 	req := RestoreRequest{
 		Bundle:      b,
@@ -181,10 +131,6 @@ func TestRestore_TokenValidation(t *testing.T) {
 	prepareClaudeRoot(t, roots)
 	mockTime := time.Date(2026, 9, 29, 12, 0, 0, 0, time.UTC)
 	mgr, _ := newTestManager(t, roots, WithNow(func() time.Time { return mockTime }))
-
-	cfg, _ := mgr.Config()
-	cfg.AllowRestore = true
-	_ = mgr.SetConfig(cfg)
 
 	b := makeClaudeBundle(t, bundle.ProfileComplete, uuidA, localCWD("/home/dev/work"))
 	req := RestoreRequest{
@@ -226,10 +172,6 @@ func TestRestore_SuccessfulClaudeRestore(t *testing.T) {
 	roots := testRoots(t)
 	prepareClaudeRoot(t, roots)
 	mgr, _ := newTestManager(t, roots)
-
-	cfg, _ := mgr.Config()
-	cfg.AllowRestore = true
-	_ = mgr.SetConfig(cfg)
 
 	origCWD := localCWD("/home/dev/original")
 	targetCWD := localCWD("/home/dev/new-workspace")
@@ -308,10 +250,6 @@ func TestRestore_Collision_Block(t *testing.T) {
 	prepareClaudeRoot(t, roots)
 	mgr, _ := newTestManager(t, roots)
 
-	cfg, _ := mgr.Config()
-	cfg.AllowRestore = true
-	_ = mgr.SetConfig(cfg)
-
 	b := makeClaudeBundle(t, bundle.ProfileComplete, uuidA, localCWD("/home/dev/work"))
 	catalog := []model.SessionMeta{
 		claudeMainMeta(roots.Claude, uuidA),
@@ -342,10 +280,6 @@ func TestRestore_Collision_Copy(t *testing.T) {
 	roots := testRoots(t)
 	prepareClaudeRoot(t, roots)
 	mgr, _ := newTestManager(t, roots)
-
-	cfg, _ := mgr.Config()
-	cfg.AllowRestore = true
-	_ = mgr.SetConfig(cfg)
 
 	b := makeClaudeBundle(t, bundle.ProfileComplete, uuidA, localCWD("/home/dev/work"))
 	catalog := []model.SessionMeta{
@@ -408,10 +342,6 @@ func TestRestore_LiveRefusal(t *testing.T) {
 	}
 
 	mgr, _ := newTestManager(t, roots, WithLiveFunc(liveFunc))
-	cfg, _ := mgr.Config()
-	cfg.AllowRestore = true
-	_ = mgr.SetConfig(cfg)
-
 	b := makeClaudeBundle(t, bundle.ProfileComplete, uuidA, localCWD("/home/dev/work"))
 	req := RestoreRequest{
 		Bundle:      b,
@@ -432,10 +362,6 @@ func TestRestore_NoOverwrite(t *testing.T) {
 	roots := testRoots(t)
 	prepareClaudeRoot(t, roots)
 	mgr, _ := newTestManager(t, roots)
-
-	cfg, _ := mgr.Config()
-	cfg.AllowRestore = true
-	_ = mgr.SetConfig(cfg)
 
 	targetCWD := localCWD("/home/dev/restored")
 	encTarget := EncodeClaudeProjectDir(targetCWD)
@@ -472,10 +398,6 @@ func TestRestore_ProtectedPath(t *testing.T) {
 		t.Fatalf("mkdir protected dir: %v", err)
 	}
 	mgr, _ := newTestManager(t, roots)
-	cfg, _ := mgr.Config()
-	cfg.AllowRestore = true
-	_ = mgr.SetConfig(cfg)
-
 	cm := mgr.claude
 	dest := filepath.Join(protected, uuidA+".jsonl")
 	if err := cm.ps.ensureWithinRoot(dest); err == nil || !strings.Contains(err.Error(), "protected") {

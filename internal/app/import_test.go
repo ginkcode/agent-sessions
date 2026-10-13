@@ -10,8 +10,11 @@ import (
 	"time"
 
 	"github.com/ginkcode/agent-sessions/internal/bundle"
+	"github.com/ginkcode/agent-sessions/internal/manage"
 	"github.com/ginkcode/agent-sessions/internal/model"
+	"github.com/ginkcode/agent-sessions/internal/pathutil"
 	"github.com/ginkcode/agent-sessions/internal/provider"
+	"github.com/ginkcode/agent-sessions/internal/provider/claude"
 	scancat "github.com/ginkcode/agent-sessions/internal/scan"
 )
 
@@ -202,5 +205,77 @@ func TestOpenBundle_CorruptFileRejected(t *testing.T) {
 	_, err := svc.OpenBundleBytes(context.Background(), "bad.zip", []byte("not a zip file"))
 	if err == nil {
 		t.Fatalf("expected error on corrupt file, got nil")
+	}
+}
+
+// An exported session imports into another directory: the original id is
+// taken, so the preview blocks it until a copy is asked for, and the copy
+// lands in the new directory's Claude project folder.
+func TestRestoreBundleIntoChosenDirectory(t *testing.T) {
+	app, _, ref := exportFixture(t)
+	dest := filepath.Join(t.TempDir(), "out.agent-session.zip")
+	app.saveDialogOverride = func(context.Context, string) (string, error) { return dest, nil }
+	if _, err := app.ExportBundle(ExportRequest{Ref: ref, Profile: "complete"}); err != nil {
+		t.Fatalf("ExportBundle: %v", err)
+	}
+	summary, err := app.OpenBundlePath(dest)
+	if err != nil {
+		t.Fatalf("OpenBundlePath: %v", err)
+	}
+	target := t.TempDir()
+
+	if _, err := app.PreviewBundleRestore(BundleRestoreRequest{BundleID: summary.BundleID, CWD: filepath.Join(target, "missing")}); err == nil {
+		t.Fatal("preview into a missing directory should fail")
+	}
+
+	req := BundleRestoreRequest{BundleID: summary.BundleID, CWD: target}
+	preview, err := app.PreviewBundleRestore(req)
+	if err != nil {
+		t.Fatalf("PreviewBundleRestore: %v", err)
+	}
+	if len(preview.Items) != 1 || preview.Items[0].Blocked == "" {
+		t.Fatalf("existing id should block the import: %+v", preview.Items)
+	}
+
+	req.Copy = true
+	preview, err = app.PreviewBundleRestore(req)
+	if err != nil {
+		t.Fatalf("PreviewBundleRestore copy: %v", err)
+	}
+	if preview.CopyID == "" || preview.Items[0].Blocked != "" {
+		t.Fatalf("copy preview = %+v", preview)
+	}
+	req.CopyID = preview.CopyID
+	report, err := app.RestoreBundle(req, preview.Token)
+	if err != nil {
+		t.Fatalf("RestoreBundle: %v", err)
+	}
+	if report.Restored != 1 || len(report.CreatedRefs) == 0 || report.CreatedRefs[0].ID != preview.CopyID {
+		t.Fatalf("report = %+v", report)
+	}
+	claudeRoot := filepath.Dir(filepath.Dir(filepath.Dir(app.svc.Catalog().All()[0].SourcePath)))
+	// The import records the resolved path, e.g. /private/var for /var on macOS.
+	resolved := pathutil.NormalizeDir(target)
+	restored := filepath.Join(claudeRoot, "projects", manage.EncodeClaudeProjectDir(resolved), preview.CopyID+".jsonl")
+	if _, err := os.Stat(restored); err != nil {
+		t.Fatalf("restored session file: %v", err)
+	}
+
+	// A scan of the agent's store lists the copy under the chosen directory.
+	res, err := claude.New(claudeRoot, nil).Scan(context.Background(), provider.ScanState{})
+	if err != nil {
+		t.Fatalf("scan: %v", err)
+	}
+	var found *model.SessionMeta
+	for i := range res.Changed {
+		if res.Changed[i].Ref.ID == preview.CopyID {
+			found = &res.Changed[i]
+		}
+	}
+	if found == nil {
+		t.Fatalf("scan did not find the imported session %s", preview.CopyID)
+	}
+	if found.CWD != resolved {
+		t.Fatalf("imported cwd = %q, want %q", found.CWD, resolved)
 	}
 }

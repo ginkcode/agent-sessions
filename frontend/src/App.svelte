@@ -12,6 +12,7 @@
   import HandoffDialog from './lib/components/common/HandoffDialog.svelte';
   import ExportDialog from './lib/components/common/ExportDialog.svelte';
   import ImportDialog from './lib/components/common/ImportDialog.svelte';
+  import ImportDirectoryDialog from './lib/components/common/ImportDirectoryDialog.svelte';
   import AskpassDialog from './lib/components/common/AskpassDialog.svelte';
   import ReconnectBanner from './lib/components/common/ReconnectBanner.svelte';
   import HostSelector from './lib/components/sidebar/HostSelector.svelte';
@@ -230,10 +231,10 @@
         <button
           type="button"
           class="icon-button import-button"
-          title="Import session bundle"
-          aria-label="Import session bundle"
+          title="Import session bundle into a directory"
+          aria-label="Import session bundle into a directory"
           disabled={importer.opening || stale}
-          onclick={() => void importer.open()}
+          onclick={() => void importer.start()}
         >
           <svg
             width="16"
@@ -324,6 +325,7 @@
   <HandoffDialog />
   <ExportDialog />
   <ImportDialog />
+  <ImportDirectoryDialog />
   <AskpassDialog />
   <Toaster />
   </div>

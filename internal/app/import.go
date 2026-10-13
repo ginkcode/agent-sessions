@@ -81,6 +81,43 @@ func (a *App) openRemoteBundle(ctx context.Context, r route, localPath string) (
 	return summary, nil
 }
 
+// BundleRestoreRequest aliases engine.BundleRestoreRequest.
+type BundleRestoreRequest = engine.BundleRestoreRequest
+
+// RestorePreview aliases engine.RestorePreview.
+type RestorePreview = engine.RestorePreview
+
+// RestoreReport aliases engine.RestoreReport.
+type RestoreReport = engine.RestoreReport
+
+// PickImportDirectory opens a native folder dialog to choose the directory a
+// bundle is imported into. It returns "" when the user cancels. The dialog
+// browses this computer, so it is refused while a remote host is selected.
+func (a *App) PickImportDirectory() (string, error) {
+	if r := a.route(); r.host != "" {
+		return "", fmt.Errorf("the folder dialog cannot browse %s; type the directory instead", r.host)
+	}
+	dir, err := wruntime.OpenDirectoryDialog(a.appCtx(), wruntime.OpenDialogOptions{
+		Title:                "Choose Directory to Import Into",
+		DefaultDirectory:     dialogDefaultDir(),
+		CanCreateDirectories: true,
+	})
+	if err != nil {
+		return "", fmt.Errorf("open directory dialog: %w", err)
+	}
+	return dir, nil
+}
+
+// PreviewBundleRestore plans importing an opened bundle into a directory.
+func (a *App) PreviewBundleRestore(req BundleRestoreRequest) (RestorePreview, error) {
+	return a.route().backend.PreviewBundleRestore(a.appCtx(), req)
+}
+
+// RestoreBundle imports an opened bundle as previewed.
+func (a *App) RestoreBundle(req BundleRestoreRequest, token string) (RestoreReport, error) {
+	return a.route().backend.RestoreBundle(a.appCtx(), req, token)
+}
+
 // BuildBundleHandoff generates a handoff preview from an opened bundle.
 func (a *App) BuildBundleHandoff(req BundleHandoffRequest) (HandoffPreview, error) {
 	return a.route().backend.BuildBundleHandoff(a.appCtx(), req)

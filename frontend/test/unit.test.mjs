@@ -62,6 +62,8 @@ import {
   nodeKind,
   pruneKeys,
   sessionToSelect,
+  knownDirectories,
+  directoryNodeKey,
   hashHost,
   targetKey,
   storageKeyForCollapsed,
@@ -1281,6 +1283,42 @@ test('sessionToSelect picks the node itself for sessions, else the first visible
   // Session hidden by the age filter falls back to the first visible row.
   assert.deepEqual(sessionToSelect(sessionNode, [{ ref: other }]), other);
   assert.equal(sessionToSelect(group, []), null);
+});
+
+test('knownDirectories lists existing directories once, sorted', () => {
+  const groups = [
+    { key: 'a:claude', label: 'claude', kind: 'agent', agent: 'claude-code', sessionCount: 3, children: [
+      { key: 'a:claude:/b', label: '/b', kind: 'directory', cwd: '/b', sessionCount: 1 },
+      { key: 'a:claude:/a', label: '/a', kind: 'directory', cwd: '/a', sessionCount: 1 },
+      { key: 'a:claude:/gone', label: '/gone', kind: 'directory', cwd: '/gone', cwdMissing: true, sessionCount: 1 },
+    ] },
+    { key: 'a:codex', label: 'codex', kind: 'agent', agent: 'codex', sessionCount: 1, children: [
+      { key: 'a:codex:/b', label: '/b', kind: 'directory', cwd: '/b', sessionCount: 1 },
+    ] },
+  ];
+  assert.deepEqual(knownDirectories(groups), ['/a', '/b']);
+  assert.deepEqual(knownDirectories([]), []);
+});
+
+test('directoryNodeKey prefers the directory under the matching agent', () => {
+  const byAgent = [
+    { key: 'a:claude', label: 'claude', kind: 'agent', agent: 'claude-code', sessionCount: 1, children: [
+      { key: 'a:claude:/p', label: '/p', kind: 'directory', cwd: '/p', sessionCount: 1 },
+    ] },
+    { key: 'a:codex', label: 'codex', kind: 'agent', agent: 'codex', sessionCount: 1, children: [
+      { key: 'a:codex:/p', label: '/p', kind: 'directory', cwd: '/p', sessionCount: 1 },
+    ] },
+  ];
+  assert.equal(directoryNodeKey(byAgent, '/p', 'codex'), 'a:codex:/p');
+  assert.equal(directoryNodeKey(byAgent, '/p', 'opencode'), 'a:claude:/p');
+  assert.equal(directoryNodeKey(byAgent, '/missing', 'codex'), null);
+
+  const byDir = [
+    { key: 'd:/p', label: '/p', kind: 'directory', cwd: '/p', sessionCount: 2, children: [
+      { key: 'd:/p:codex', label: 'codex', kind: 'agent', agent: 'codex', sessionCount: 1 },
+    ] },
+  ];
+  assert.equal(directoryNodeKey(byDir, '/p', 'codex'), 'd:/p');
 });
 
 test('isKnownTime rejects Go zero time and invalid strings', () => {
