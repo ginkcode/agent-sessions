@@ -1,3 +1,9 @@
+// Bundled fonts for Linux (see style.css). Inter's optical-size axis keeps
+// small UI text open and legible.
+import '@fontsource-variable/inter/opsz.css'
+import '@fontsource-variable/inter/opsz-italic.css'
+import '@fontsource-variable/jetbrains-mono/wght.css'
+import '@fontsource-variable/jetbrains-mono/wght-italic.css'
 import './style.css'
 import { mount } from 'svelte'
 import App from './App.svelte'

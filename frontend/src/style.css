@@ -67,6 +67,10 @@
 /* CSS scrollbars on Linux (see main.ts): unlike native GTK ones they are
    painted with their element and respect stacking order. */
 [data-platform="linux"] {
+  /* WebKitGTK text in the distro UI fonts looks soft next to other apps, so
+     Linux uses the bundled Inter and JetBrains Mono (imported in main.ts). */
+  --font-sans: "Inter Variable", "Noto Sans", "DejaVu Sans", sans-serif;
+  --font-mono: "JetBrains Mono Variable", "DejaVu Sans Mono", monospace;
   --scrollbar-thumb: rgba(0, 0, 0, 0.25);
   --scrollbar-thumb-hover: rgba(0, 0, 0, 0.4);
 }
