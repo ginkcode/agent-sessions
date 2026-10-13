@@ -77,14 +77,12 @@ export class ImporterStore {
       await this.open(dir);
       return;
     }
-    const picked = await this.pickDirectory('start');
-    if (picked) await this.open(picked);
+    this.chooser = 'start';
   }
 
   /** Lets the user choose another directory for the open bundle. */
-  async changeDirectory(): Promise<void> {
-    const picked = await this.pickDirectory('change');
-    if (picked) await this.setCWD(picked);
+  changeDirectory(): void {
+    this.chooser = 'change';
   }
 
   /** The chooser's answer: a directory, or null when cancelled. */
@@ -96,20 +94,17 @@ export class ImporterStore {
     else await this.setCWD(dir);
   }
 
-  // Returns the directory from the native dialog, or '' when it was
-  // cancelled or the chooser took over.
-  private async pickDirectory(purpose: 'start' | 'change'): Promise<string> {
-    if (link.dataHost) {
-      this.chooser = purpose;
-      return '';
-    }
+  /**
+   * Shows the native folder dialog for the chooser's Browse button. It
+   * browses this computer, so it is offered only when no remote host is
+   * selected. Returns '' when cancelled.
+   */
+  async browseDirectory(): Promise<string> {
     try {
       return await api.pickImportDirectory();
     } catch (err) {
       if (isStaleReply(err)) return '';
-      this.error = err instanceof Error ? err.message : String(err);
-      this.dialogOpen = true;
-      return '';
+      throw err;
     }
   }
 

@@ -5,11 +5,13 @@
   import { hostLabel } from '../../hosts';
   import { knownDirectories } from '../../tree';
 
-  // The native folder dialog browses this computer only, so on a remote host
-  // the directory is typed or picked from the directories the host already
-  // has sessions in.
+  // The directory is typed, picked from the directories that already have
+  // sessions, or, on this computer, browsed with the native folder dialog.
+  // The native dialog can't browse a remote host, so Browse is local only.
   let path = $state('');
   let input: HTMLInputElement | undefined = $state();
+  let browsing = $state(false);
+  let browseError = $state<string | null>(null);
 
   let dirs = $derived(knownDirectories(appState.groups));
   let shown = $derived.by(() => {
@@ -20,8 +22,23 @@
   $effect(() => {
     if (!importer.chooser) return;
     path = importer.chooser === 'change' ? importer.cwd : '';
+    browseError = null;
     input?.focus();
   });
+
+  async function browse() {
+    browsing = true;
+    browseError = null;
+    try {
+      const dir = await importer.browseDirectory();
+      if (dir) path = dir;
+    } catch (err) {
+      browseError = err instanceof Error ? err.message : String(err);
+    } finally {
+      browsing = false;
+      input?.focus();
+    }
+  }
 
   function choose(dir = path) {
     const value = dir.trim();
@@ -58,24 +75,37 @@
 
       <div class="dialog-body">
         <p class="hint">
-          The session is imported into this directory on {link.dataHost ? hostLabel(link.dataHost) : 'this computer'}.
-          It must already exist.
+          {#if importer.chooser === 'start'}
+            First choose where the session should live on {link.dataHost ? hostLabel(link.dataHost) : 'this computer'},
+            then pick the bundle file. The directory must already exist.
+          {:else}
+            The session is imported into this directory on {link.dataHost ? hostLabel(link.dataHost) : 'this computer'}.
+            It must already exist.
+          {/if}
         </p>
-        <input
-          bind:this={input}
-          bind:value={path}
-          type="text"
-          class="text-input"
-          placeholder="/path/to/project"
-          spellcheck="false"
-          autocomplete="off"
-          onkeydown={(e) => {
-            if (e.key === 'Enter') {
-              e.preventDefault();
-              choose();
-            }
-          }}
-        />
+        <div class="path-row">
+          <input
+            bind:this={input}
+            bind:value={path}
+            type="text"
+            class="text-input"
+            placeholder="/path/to/project"
+            spellcheck="false"
+            autocomplete="off"
+            onkeydown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                choose();
+              }
+            }}
+          />
+          {#if !link.dataHost}
+            <button type="button" class="btn" disabled={browsing} onclick={browse}>Browse…</button>
+          {/if}
+        </div>
+        {#if browseError}
+          <p class="hint browse-error" role="alert">{browseError}</p>
+        {/if}
         {#if shown.length > 0}
           <span class="group-label">Directories with sessions</span>
           <ul class="dir-list">
@@ -179,7 +209,18 @@
     letter-spacing: 0.04em;
   }
 
+  .path-row {
+    display: flex;
+    gap: 8px;
+  }
+
+  .browse-error {
+    color: #ef4444;
+  }
+
   .text-input {
+    flex: 1;
+    min-width: 0;
     width: 100%;
     box-sizing: border-box;
     padding: 7px 10px;
