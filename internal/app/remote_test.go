@@ -173,6 +173,11 @@ func (l *localRecorder) DeleteSessions(context.Context, []model.SessionRef, stri
 	return engine.DeleteReport{}, nil
 }
 
+func (l *localRecorder) SetPrunePromptHistory(context.Context, bool) (engine.Settings, error) {
+	l.record("SetPrunePromptHistory")
+	return engine.Settings{}, nil
+}
+
 func (l *localRecorder) SetAllowPermanentDelete(context.Context, bool) (engine.Settings, error) {
 	l.record("SetAllowPermanentDelete")
 	return engine.Settings{}, nil

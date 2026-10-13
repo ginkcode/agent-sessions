@@ -134,6 +134,9 @@ func Open(ctx context.Context, cacheDir, key string) (*DB, error) {
 	params.Add("_pragma", "journal_mode(WAL)")
 	params.Add("_pragma", "busy_timeout(5000)")
 	params.Add("_pragma", "foreign_keys(ON)")
+	// Zero deleted rows on disk, so a deleted session's text does not
+	// linger in free pages of the file.
+	params.Add("_pragma", "secure_delete(ON)")
 	dsn := pathutil.SQLiteURI(dbPath, params)
 
 	restoreUmask := setPrivateUmask()
@@ -572,6 +575,29 @@ func (d *DB) DeleteSessions(ctx context.Context, refs []model.SessionRef) error 
 
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("index: commit delete tx: %w", err)
+	}
+	return nil
+}
+
+// Purge drops what deleted sessions still leave in the file. Full-text
+// deletes only add tombstones, so the index is merged to drop the deleted
+// messages' terms, and the write-ahead log, which can hold copies of
+// deleted pages, is checkpointed and truncated. secure_delete has zeroed
+// the freed pages by then.
+func (d *DB) Purge(ctx context.Context) error {
+	if d.readOnly {
+		return errReadOnly
+	}
+	d.writeMu.Lock()
+	defer d.writeMu.Unlock()
+	if d.db == nil {
+		return errors.New("index: database closed")
+	}
+	if _, err := d.db.ExecContext(ctx, "INSERT INTO fts_messages(fts_messages) VALUES('optimize')"); err != nil {
+		return fmt.Errorf("index: optimize full-text index: %w", err)
+	}
+	if _, err := d.db.ExecContext(ctx, "PRAGMA wal_checkpoint(TRUNCATE)"); err != nil {
+		return fmt.Errorf("index: checkpoint: %w", err)
 	}
 	return nil
 }

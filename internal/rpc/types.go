@@ -135,6 +135,10 @@ type SetAllowPermanentDeleteParams struct {
 	Allow bool `json:"allow"`
 }
 
+type SetPrunePromptHistoryParams struct {
+	Prune bool `json:"prune"`
+}
+
 type PreviewDeleteParams struct {
 	Refs []model.SessionRef `json:"refs"`
 }

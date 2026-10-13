@@ -32,10 +32,16 @@ type DeleteReport struct {
 	Failed     int                `json:"failed"`
 	FreedBytes int64              `json:"freedBytes"`
 	Forgotten  []model.SessionRef `json:"forgotten"`
+	Notes      []string           `json:"notes,omitempty"`
 }
 
 // Settings is the user's persisted destructive-action configuration.
 type Settings struct {
 	Enabled              bool `json:"enabled"`
 	AllowPermanentDelete bool `json:"allowPermanentDelete"`
+	PrunePromptHistory   bool `json:"prunePromptHistory"`
+}
+
+func settingsFrom(cfg manage.Config) Settings {
+	return Settings{Enabled: cfg.Enabled, AllowPermanentDelete: cfg.AllowPermanentDelete, PrunePromptHistory: cfg.PrunePromptHistory}
 }

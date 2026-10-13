@@ -119,6 +119,9 @@
             {formatDeleteResultSummary(manage.lastResult)} ·
             {formatBytes(manage.lastResult.freedBytes)} freed
           </p>
+          {#each manage.lastResult.notes ?? [] as note}
+            <p class="preview-warning">{note}</p>
+          {/each}
           <ul class="preview-list">
             {#each manage.lastResult.items ?? [] as item (item.ref.agent + ':' + item.ref.id)}
               <li class="preview-item" class:blocked={!item.ok}>

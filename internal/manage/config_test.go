@@ -68,3 +68,22 @@ func TestConfigUpdateConcurrentStores(t *testing.T) {
 		t.Errorf("config mode: %v %v", fi, err)
 	}
 }
+
+func TestConfig_PrunePromptHistoryRoundTrip(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.toml")
+	if err := os.WriteFile(path, []byte("[manage]\nenabled = true\n\n[terminal]\napp = \"x\"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	store := NewConfigStore(path)
+	if _, err := store.Update(func(c *Config) { c.PrunePromptHistory = true }); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := store.Load()
+	if err != nil || !cfg.Enabled || !cfg.PrunePromptHistory {
+		t.Fatalf("Load = %+v, %v", cfg, err)
+	}
+	data, _ := os.ReadFile(path)
+	if !strings.Contains(string(data), "prune_prompt_history = true\n\n[terminal]") || !strings.Contains(string(data), `app = "x"`) {
+		t.Fatalf("config file:\n%s", data)
+	}
+}

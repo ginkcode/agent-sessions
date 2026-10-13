@@ -36,8 +36,11 @@ func newClaudeManager(root string, trash Trash, now NowFunc) (*claudeManager, er
 	return &claudeManager{root: ps.root, ps: ps, trash: trash, now: now}, nil
 }
 
-// plan derives, validates, and checks liveness for one Claude session.
-func (cm *claudeManager) plan(ctx context.Context, m model.SessionMeta, live LiveFunc) ([]itemFile, error) {
+// plan derives, validates, and checks liveness for one Claude session. A
+// non-nil slugs adds the main session's leftovers outside its transcript.
+// They come after the transcript files, so a failure partway never leaves a
+// session in place without its file backups.
+func (cm *claudeManager) plan(ctx context.Context, m model.SessionMeta, live LiveFunc, slugs *claudeSlugIndex) ([]itemFile, error) {
 	if cm.trash == nil {
 		return nil, errors.New("trash transport is unavailable on this platform")
 	}
@@ -49,6 +52,13 @@ func (cm *claudeManager) plan(ctx context.Context, m model.SessionMeta, live Liv
 	files, err := filesForPaths(cm.ps, paths)
 	if err != nil {
 		return nil, safePathError(err)
+	}
+	if slugs != nil {
+		leftovers, err := cm.leftoverFiles(ctx, m, slugs)
+		if err != nil {
+			return nil, err
+		}
+		files = append(files, leftovers...)
 	}
 
 	if checker, ok := cm.trash.(TrashPathChecker); ok {
@@ -74,7 +84,7 @@ func (cm *claudeManager) plan(ctx context.Context, m model.SessionMeta, live Liv
 // child's own files are returned so they are trashed before the parent's
 // session directory, and its recency/live state gates the parent.
 func (cm *claudeManager) planChild(ctx context.Context, child model.SessionMeta, live LiveFunc) ([]itemFile, error) {
-	files, err := cm.plan(ctx, child, live)
+	files, err := cm.plan(ctx, child, live, nil)
 	if err != nil {
 		return nil, err
 	}

@@ -18,6 +18,25 @@ type Config struct {
 	Enabled              bool `json:"enabled"`
 	AllowPermanentDelete bool `json:"allowPermanentDelete"`
 	AllowRestore         bool `json:"allowRestore"`
+	// PrunePromptHistory also removes a deleted session's prompts from the
+	// agent's prompt history (Claude and Codex history.jsonl).
+	PrunePromptHistory bool `json:"prunePromptHistory"`
+}
+
+// configKeys lists the [manage] keys in file order, bound to cfg's fields.
+func configKeys(cfg *Config) []struct {
+	key string
+	val *bool
+} {
+	return []struct {
+		key string
+		val *bool
+	}{
+		{"enabled", &cfg.Enabled},
+		{"allow_permanent_delete", &cfg.AllowPermanentDelete},
+		{"allow_restore", &cfg.AllowRestore},
+		{"prune_prompt_history", &cfg.PrunePromptHistory},
+	}
 }
 
 // ConfigStore loads and updates the manage settings from a TOML file.
@@ -123,13 +142,10 @@ func loadConfig(path string) (Config, error) {
 		}
 		val = strings.Trim(val, `"'`)
 
-		switch key {
-		case "enabled":
-			cfg.Enabled = parseBool(val)
-		case "allow_permanent_delete":
-			cfg.AllowPermanentDelete = parseBool(val)
-		case "allow_restore":
-			cfg.AllowRestore = parseBool(val)
+		for _, k := range configKeys(&cfg) {
+			if k.key == key {
+				*k.val = parseBool(val)
+			}
 		}
 	}
 	if err := scanner.Err(); err != nil {
@@ -159,40 +175,46 @@ func saveConfig(path string, cfg Config) error {
 }
 
 func updateManageSection(data []byte, cfg Config) []byte {
+	keys := configKeys(&cfg)
+	written := make(map[string]bool, len(keys))
+	var out bytes.Buffer
+	writeMissing := func() {
+		for _, k := range keys {
+			if !written[k.key] {
+				fmt.Fprintf(&out, "%s = %t\n", k.key, *k.val)
+			}
+		}
+	}
 	if len(data) == 0 {
-		var buf bytes.Buffer
-		buf.WriteString("[manage]\n")
-		fmt.Fprintf(&buf, "enabled = %t\n", cfg.Enabled)
-		fmt.Fprintf(&buf, "allow_permanent_delete = %t\n", cfg.AllowPermanentDelete)
-		fmt.Fprintf(&buf, "allow_restore = %t\n", cfg.AllowRestore)
-		return buf.Bytes()
+		out.WriteString("[manage]\n")
+		writeMissing()
+		return out.Bytes()
 	}
 
 	scanner := bufio.NewScanner(bytes.NewReader(data))
-	var out bytes.Buffer
-
 	inManage := false
 	manageSeen := false
-	enabledWritten := false
-	permWritten := false
-	restoreWritten := false
+	// Blank lines in [manage] are held back so missing keys go above the
+	// gap before the next table.
+	blanks := 0
+	flushBlanks := func() {
+		out.WriteString(strings.Repeat("\n", blanks))
+		blanks = 0
+	}
 
 	for scanner.Scan() {
 		line := scanner.Text()
 		trimmed := strings.TrimSpace(line)
 
+		if inManage && trimmed == "" {
+			blanks++
+			continue
+		}
 		if strings.HasPrefix(trimmed, "[") && strings.HasSuffix(trimmed, "]") {
 			if inManage {
 				// Leaving [manage] section; write any missing keys
-				if !enabledWritten {
-					fmt.Fprintf(&out, "enabled = %t\n", cfg.Enabled)
-				}
-				if !permWritten {
-					fmt.Fprintf(&out, "allow_permanent_delete = %t\n", cfg.AllowPermanentDelete)
-				}
-				if !restoreWritten {
-					fmt.Fprintf(&out, "allow_restore = %t\n", cfg.AllowRestore)
-				}
+				writeMissing()
+				flushBlanks()
 				inManage = false
 			}
 			section := strings.TrimSpace(trimmed[1 : len(trimmed)-1])
@@ -206,21 +228,19 @@ func updateManageSection(data []byte, cfg Config) []byte {
 		}
 
 		if inManage {
+			flushBlanks()
 			parts := strings.SplitN(trimmed, "=", 2)
 			if len(parts) == 2 {
 				key := strings.TrimSpace(parts[0])
-				switch key {
-				case "enabled":
-					fmt.Fprintf(&out, "enabled = %t\n", cfg.Enabled)
-					enabledWritten = true
-					continue
-				case "allow_permanent_delete":
-					fmt.Fprintf(&out, "allow_permanent_delete = %t\n", cfg.AllowPermanentDelete)
-					permWritten = true
-					continue
-				case "allow_restore":
-					fmt.Fprintf(&out, "allow_restore = %t\n", cfg.AllowRestore)
-					restoreWritten = true
+				known := false
+				for _, k := range keys {
+					if k.key == key {
+						fmt.Fprintf(&out, "%s = %t\n", k.key, *k.val)
+						written[k.key] = true
+						known = true
+					}
+				}
+				if known {
 					continue
 				}
 			}
@@ -231,23 +251,14 @@ func updateManageSection(data []byte, cfg Config) []byte {
 	}
 
 	if inManage {
-		if !enabledWritten {
-			fmt.Fprintf(&out, "enabled = %t\n", cfg.Enabled)
-		}
-		if !permWritten {
-			fmt.Fprintf(&out, "allow_permanent_delete = %t\n", cfg.AllowPermanentDelete)
-		}
-		if !restoreWritten {
-			fmt.Fprintf(&out, "allow_restore = %t\n", cfg.AllowRestore)
-		}
+		writeMissing()
+		flushBlanks()
 	} else if !manageSeen {
 		if out.Len() > 0 && !bytes.HasSuffix(out.Bytes(), []byte("\n\n")) {
 			out.WriteByte('\n')
 		}
 		out.WriteString("[manage]\n")
-		fmt.Fprintf(&out, "enabled = %t\n", cfg.Enabled)
-		fmt.Fprintf(&out, "allow_permanent_delete = %t\n", cfg.AllowPermanentDelete)
-		fmt.Fprintf(&out, "allow_restore = %t\n", cfg.AllowRestore)
+		writeMissing()
 	}
 
 	return out.Bytes()

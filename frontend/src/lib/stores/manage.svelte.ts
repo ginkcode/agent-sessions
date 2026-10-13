@@ -27,6 +27,7 @@ export class ManageStore {
   settings = $state<ManageSettings>({
     enabled: false,
     allowPermanentDelete: false,
+    prunePromptHistory: false,
   });
 
   loadingSettings = $state(false);
@@ -159,6 +160,23 @@ export class ManageStore {
       if (isStaleReply(err)) return;
       this.settingsError =
         errorText(err, 'Failed to update permanent delete setting');
+    } finally {
+      this.loadingSettings = false;
+    }
+  }
+
+  async setPrunePromptHistory(prune: boolean): Promise<void> {
+    if (link.blockedReason) {
+      this.settingsError = link.blockedReason;
+      return;
+    }
+    this.loadingSettings = true;
+    this.settingsError = null;
+    try {
+      this.settings = await api.setPrunePromptHistory(prune);
+    } catch (err) {
+      if (isStaleReply(err)) return;
+      this.settingsError = errorText(err, 'Failed to update prompt history setting');
     } finally {
       this.loadingSettings = false;
     }

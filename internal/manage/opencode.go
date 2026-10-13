@@ -436,6 +436,21 @@ func placeholders(n int) string {
 	return strings.TrimSuffix(strings.Repeat("?,", n), ",")
 }
 
+// removeSessionDiffs deletes the change summaries OpenCode keeps per session
+// in storage/session_diff, which its delete command leaves behind. Best
+// effort: the sessions themselves are already gone.
+func (om *opencodeManager) removeSessionDiffs(ids []string) {
+	for _, id := range ids {
+		if !isSafeID(id) {
+			continue
+		}
+		path := filepath.Join(om.root, "storage", "session_diff", id+".json")
+		if mode, err := om.ps.classifyIn(path, "storage"); err == nil && mode.IsRegular() {
+			_ = os.Remove(path)
+		}
+	}
+}
+
 // isSafeID rejects anything outside a conservative ID charset so no option
 // or injection shape reaches the CLI argv.
 func isSafeID(id string) bool {

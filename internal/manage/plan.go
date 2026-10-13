@@ -21,10 +21,13 @@ var ErrPermanentNotAllowed = errors.New("permanent deletion is not allowed; enab
 type catalogIndex struct {
 	byKey    map[string]model.SessionMeta
 	children map[string][]model.SessionMeta
+	// claudeSlugs is shared by a delete's plan and every execute so their
+	// plan-file choices agree.
+	claudeSlugs *claudeSlugIndex
 }
 
 func newCatalogIndex(all []model.SessionMeta) *catalogIndex {
-	idx := &catalogIndex{byKey: make(map[string]model.SessionMeta, len(all)), children: make(map[string][]model.SessionMeta)}
+	idx := &catalogIndex{byKey: make(map[string]model.SessionMeta, len(all)), children: make(map[string][]model.SessionMeta), claudeSlugs: &claudeSlugIndex{}}
 	for _, m := range all {
 		idx.byKey[m.Ref.Key()] = m
 	}
@@ -71,14 +74,13 @@ func (m *Manager) procLiveMap(ctx context.Context) (map[string]string, error) {
 // plan returns only unblocked operations, plus one display item per selected
 // root. Every descendant is bound into the HMAC and included in Forgotten on
 // a successful root action. Duplicate/overlapping selections are refused.
-func (m *Manager) plan(ctx context.Context, selected []model.SessionRef, all []model.SessionMeta, cfg Config) ([]operation, []Item, error) {
+func (m *Manager) plan(ctx context.Context, selected []model.SessionRef, idx *catalogIndex, cfg Config) ([]operation, []Item, error) {
 	if len(selected) == 0 {
 		return nil, nil, errors.New("manage: no sessions specified")
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, nil, err
 	}
-	idx := newCatalogIndex(all)
 	procLive, procErr := m.procLiveMap(ctx)
 	selectedSeen := make(map[string]bool, len(selected))
 	covered := make(map[string]bool, len(selected))
@@ -145,7 +147,7 @@ func (m *Manager) planClaude(ctx context.Context, meta model.SessionMeta, idx *c
 	if m.claude == nil {
 		return operation{}, ErrUnsupportedAction
 	}
-	files, err := m.claude.plan(ctx, meta, m.live)
+	files, err := m.claude.plan(ctx, meta, m.live, idx.claudeSlugs)
 	if err != nil {
 		return operation{}, err
 	}
@@ -269,9 +271,8 @@ func (m *Manager) planOpenCode(ctx context.Context, meta model.SessionMeta) (ope
 
 // execute performs an independent fresh re-plan before each item and then
 // checks process liveness once more immediately before invoking each CLI.
-func (m *Manager) execute(ctx context.Context, op operation, all []model.SessionMeta, cfg Config) (Result, []model.SessionRef) {
+func (m *Manager) execute(ctx context.Context, op operation, idx *catalogIndex, cfg Config) (Result, []model.SessionRef) {
 	res := Result{Ref: op.Item.Ref, Title: op.Item.Title}
-	idx := newCatalogIndex(all)
 	meta, ok := idx.byKey[op.Item.Ref.Key()]
 	if !ok {
 		res.Error = ErrPreviewStale.Error()
@@ -358,6 +359,11 @@ func (m *Manager) execute(ctx context.Context, op operation, all []model.Session
 				return res, nil
 			}
 		}
+		ids := make([]string, 0, len(op.OpenCodeMember))
+		for _, member := range op.OpenCodeMember {
+			ids = append(ids, member.ID)
+		}
+		m.opencode.removeSessionDiffs(ids)
 		res.OK = true
 		return res, append([]model.SessionRef{op.Item.Ref}, op.Descendants...)
 	default:

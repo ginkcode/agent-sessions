@@ -54,10 +54,13 @@ type Engine struct {
 	// IndexProgress hold it shared, closing a database takes it.
 	dbUse sync.RWMutex
 
+	runCtx    context.Context
 	runCancel context.CancelFunc
 	bg        sync.WaitGroup
 	started   bool
 	closed    bool
+	// purgePending is set while a cache purge is scheduled (see purge.go).
+	purgePending bool
 }
 
 // Option configures an Engine instance.
@@ -214,6 +217,7 @@ func (e *Engine) Start(ctx context.Context) error {
 	}
 
 	runCtx, cancel := context.WithCancel(ctx)
+	e.runCtx = runCtx
 	e.runCancel = cancel
 	if e.startCache(runCtx) {
 		return nil
@@ -312,6 +316,7 @@ func (e *Engine) Close() error {
 
 	e.events = nil
 	e.closeWatch = nil
+	e.runCtx = nil
 	e.runCancel = nil
 	e.indexer = nil
 	e.refresher = nil
@@ -475,7 +480,10 @@ func (e *Engine) ensureManage() (*manage.Manager, error) {
 	if e.svc != nil {
 		if p, ok := e.svc.Providers().Get(model.AgentClaude); ok {
 			if ld, ok := p.(provider.LiveDetector); ok {
-				opts = append(opts, manage.WithLiveFunc(claudeLiveFunc(ld)))
+				opts = append(opts, manage.WithLiveFunc(claudeLiveFunc(ld)), manage.WithClaudeRunning(func(ctx context.Context) (bool, error) {
+					live, err := ld.Live(ctx)
+					return len(live) != 0, err
+				}))
 			}
 		}
 	}
@@ -561,6 +569,7 @@ func (e *Engine) DeleteSessions(ctx context.Context, refs []model.SessionRef, to
 		Failed:     rep.Failed,
 		FreedBytes: rep.FreedBytes,
 		Forgotten:  rep.Forgotten,
+		Notes:      rep.Notes,
 	}
 	if len(rep.Forgotten) > 0 {
 		e.forget(ctx, rep.Forgotten)
@@ -596,6 +605,8 @@ func (e *Engine) forget(ctx context.Context, refs []model.SessionRef) {
 		if e.svc != nil && e.svc.Catalog() != nil {
 			e.svc.Catalog().Remove(refs)
 		}
+	} else {
+		e.schedulePurge()
 	}
 	if e.svc != nil {
 		for _, ref := range refs {
@@ -617,7 +628,7 @@ func (e *Engine) GetSettings(ctx context.Context) (Settings, error) {
 	if err != nil {
 		return Settings{}, err
 	}
-	return Settings{Enabled: cfg.Enabled, AllowPermanentDelete: cfg.AllowPermanentDelete}, nil
+	return settingsFrom(cfg), nil
 }
 
 // SetManageEnabled toggles destructive actions.
@@ -630,7 +641,7 @@ func (e *Engine) SetManageEnabled(ctx context.Context, enabled bool) (Settings, 
 	if err != nil {
 		return Settings{}, err
 	}
-	return Settings{Enabled: cfg.Enabled, AllowPermanentDelete: cfg.AllowPermanentDelete}, nil
+	return settingsFrom(cfg), nil
 }
 
 // SetAllowPermanentDelete toggles the permanent-delete allowance.
@@ -643,7 +654,21 @@ func (e *Engine) SetAllowPermanentDelete(ctx context.Context, allow bool) (Setti
 	if err != nil {
 		return Settings{}, err
 	}
-	return Settings{Enabled: cfg.Enabled, AllowPermanentDelete: cfg.AllowPermanentDelete}, nil
+	return settingsFrom(cfg), nil
+}
+
+// SetPrunePromptHistory toggles removing deleted sessions from the agents'
+// prompt history.
+func (e *Engine) SetPrunePromptHistory(ctx context.Context, prune bool) (Settings, error) {
+	mgr, err := e.ensureManage()
+	if err != nil {
+		return Settings{}, err
+	}
+	cfg, err := mgr.UpdateConfig(func(c *manage.Config) { c.PrunePromptHistory = prune })
+	if err != nil {
+		return Settings{}, err
+	}
+	return settingsFrom(cfg), nil
 }
 
 // BuildHandoff renders the handoff document preview.

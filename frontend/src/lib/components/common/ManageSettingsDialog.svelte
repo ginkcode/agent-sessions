@@ -256,7 +256,17 @@
                 />
                 Allow permanent deletion (cannot be undone)
               </label>
-              <p class="hint">Claude sessions move to the system Trash or Recycle Bin when supported. Codex and OpenCode sessions have no Trash or Recycle Bin copy; deleting them is permanent.</p>
+              <p class="hint">Claude sessions move to the system Trash or Recycle Bin when supported, with their file backups, todos, debug log and plans. Codex and OpenCode sessions have no Trash or Recycle Bin copy; deleting them is permanent.</p>
+              <label class="setting" class:disabled={!manage.settings.enabled}>
+                <input
+                  type="checkbox"
+                  checked={manage.settings.prunePromptHistory ?? false}
+                  disabled={!manage.settings.enabled || manage.loadingSettings}
+                  onchange={(e) => manage.setPrunePromptHistory((e.currentTarget as HTMLInputElement).checked)}
+                />
+                Also remove deleted sessions from prompt history
+              </label>
+              <p class="hint">Claude Code and Codex keep every prompt you type in a history file for up-arrow recall, and their own delete leaves it there. The deleted sessions' prompts are removed from it, permanently, when that agent isn't running.</p>
             </section>
           {:else if section === 'handoff'}
             <section class="section cache">

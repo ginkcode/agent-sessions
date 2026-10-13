@@ -3,6 +3,8 @@ package engine
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -232,6 +234,32 @@ func TestSharedCache_ReaderSearchSkipsRemoved(t *testing.T) {
 	if len(hits) != 0 {
 		t.Errorf("reader search returned a removed session: %+v", hits)
 	}
+}
+
+// After a session is forgotten the writer purges the cache, which drops an
+// older app version's copy of the same index.
+func TestForgetPurgesCacheCopies(t *testing.T) {
+	// Restored after the engine below is closed.
+	saved := purgeDelay
+	t.Cleanup(func() { purgeDelay = saved })
+	purgeDelay = 10 * time.Millisecond
+	dir := t.TempDir()
+	stale := filepath.Join(dir, index.FileName(index.SchemaVersion()+1, testKey))
+	if err := os.WriteFile(stale, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	fa := providertest.NewFake(model.AgentClaude, "Claude")
+	fa.Sessions = []model.SessionMeta{claudeSession("s1")}
+	a := sharedEngine(t, dir, fa)
+	waitFor(t, "writer commit", func() bool { return dbHas(a.Refresher().DB(), "s1") })
+	if _, err := os.Stat(stale); err != nil {
+		t.Fatalf("copy removed before any deletion: %v", err)
+	}
+	a.Forget(t.Context(), []model.SessionRef{claudeSession("s1").Ref})
+	waitFor(t, "stale copy removed", func() bool {
+		_, err := os.Stat(stale)
+		return os.IsNotExist(err)
+	})
 }
 
 func transcriptOf(id string, texts ...string) *model.Transcript {

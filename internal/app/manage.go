@@ -49,6 +49,12 @@ func (a *App) SetAllowPermanentDelete(allow bool) (Settings, error) {
 	return a.activeBackend().SetAllowPermanentDelete(a.appCtx(), allow)
 }
 
+// SetPrunePromptHistory toggles removing deleted sessions from the agents'
+// prompt history.
+func (a *App) SetPrunePromptHistory(prune bool) (Settings, error) {
+	return a.activeBackend().SetPrunePromptHistory(a.appCtx(), prune)
+}
+
 func (a *App) manageCtx() context.Context {
 	return a.appCtx()
 }

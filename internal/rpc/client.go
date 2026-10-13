@@ -405,6 +405,12 @@ func (c *Client) SetAllowPermanentDelete(ctx context.Context, allow bool) (engin
 	return out, err
 }
 
+func (c *Client) SetPrunePromptHistory(ctx context.Context, prune bool) (engine.Settings, error) {
+	var out engine.Settings
+	err := c.call(ctx, "setPrunePromptHistory", SetPrunePromptHistoryParams{Prune: prune}, &out)
+	return out, err
+}
+
 func (c *Client) PreviewDelete(ctx context.Context, refs []model.SessionRef) (engine.DeletePreview, error) {
 	var out engine.DeletePreview
 	err := c.call(ctx, "previewDelete", PreviewDeleteParams{Refs: refs}, &out)

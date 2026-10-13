@@ -440,6 +440,13 @@ func (s *Server) dispatch(ctx context.Context, req Request) (any, error) {
 		}
 		return backend.SetAllowPermanentDelete(ctx, p.Allow)
 
+	case "setPrunePromptHistory":
+		var p SetPrunePromptHistoryParams
+		if err := json.Unmarshal(req.Params, &p); err != nil {
+			return nil, &ResponseError{Code: CodeInvalidParams, Message: err.Error()}
+		}
+		return backend.SetPrunePromptHistory(ctx, p.Prune)
+
 	case "previewDelete":
 		var p PreviewDeleteParams
 		if err := json.Unmarshal(req.Params, &p); err != nil {

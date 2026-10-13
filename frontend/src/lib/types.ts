@@ -53,6 +53,8 @@ export interface MessageJump {
 export interface ManageSettings {
   enabled: boolean;
   allowPermanentDelete: boolean;
+  /** Also remove deleted sessions from Claude's and Codex's prompt history. */
+  prunePromptHistory?: boolean;
 }
 
 export interface DeletePreviewItem {
@@ -97,6 +99,8 @@ export interface DeleteResult {
   failed: number;
   freedBytes: number;
   forgotten: SessionRef[] | null;
+  /** Cleanup that was skipped, such as prompt history. */
+  notes?: string[] | null;
 }
 
 export type GroupMode = 'dir-agent' | 'agent-dir' | 'flat';

@@ -101,7 +101,7 @@ function mockMessageSearchText(message: Message): { text: string; kind: SearchHi
 export class MockBackendAPI {
   private sessions: SessionMeta[] = [...mockSessions];
   private messages: Record<string, typeof mockMessages[string]> = { ...mockMessages };
-  private settings: ManageSettings = { enabled: false, allowPermanentDelete: false };
+  private settings: ManageSettings = { enabled: false, allowPermanentDelete: false, prunePromptHistory: false };
   private preview: { token: string; refs: string[] } | null = null;
   private hosts: HostEntry[] = [
     { name: 'dev-box', hostName: '192.168.1.50', user: 'dev', port: 22 },
@@ -525,6 +525,11 @@ export class MockBackendAPI {
       throw new Error('Session management must be enabled first');
     }
     this.settings = { ...this.settings, allowPermanentDelete: allow };
+    return { ...this.settings };
+  }
+
+  async setPrunePromptHistory(prune: boolean): Promise<ManageSettings> {
+    this.settings = { ...this.settings, prunePromptHistory: prune };
     return { ...this.settings };
   }
 

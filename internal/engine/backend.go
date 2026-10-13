@@ -35,6 +35,7 @@ type Backend interface {
 	GetSettings(ctx context.Context) (Settings, error)
 	SetManageEnabled(ctx context.Context, enabled bool) (Settings, error)
 	SetAllowPermanentDelete(ctx context.Context, allow bool) (Settings, error)
+	SetPrunePromptHistory(ctx context.Context, prune bool) (Settings, error)
 	PreviewDelete(ctx context.Context, refs []model.SessionRef) (DeletePreview, error)
 	DeleteSessions(ctx context.Context, refs []model.SessionRef, token string) (DeleteReport, error)
 

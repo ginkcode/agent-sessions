@@ -360,6 +360,38 @@ func Cleanup(cacheDir, key string, unusedFor time.Duration) {
 	}
 }
 
+// DropCopies deletes the other databases that may hold copies of this
+// key's sessions: other schemas of the same key, keyless ones and the
+// legacy index.db. It runs after sessions are deleted, so their text does
+// not live on in a database kept for switching app versions; such a version
+// rebuilds its index when next started. As in Cleanup, a file whose writer
+// is running is kept, and the caller must be the writer of its own schema
+// and key.
+func DropCopies(cacheDir, key string) {
+	dir, err := prepareCacheDir(cacheDir)
+	if err != nil {
+		return
+	}
+	own := SchemaVersion()
+	for _, name := range listDir(dir) {
+		path := filepath.Join(dir, name)
+		if name == legacyFileName {
+			_ = wipeDBFiles(path)
+			continue
+		}
+		schema, k, ok := parseIndexFile(name)
+		if !ok || (schema == own && k == key) || (k != key && k != "") {
+			continue
+		}
+		l, err := tryLockFile(dir, schema, k)
+		if err != nil {
+			continue
+		}
+		_ = wipeDBFiles(path)
+		_ = l.Unlock()
+	}
+}
+
 // lastUsed is the newest mtime of a database and its WAL. A writer touches
 // its database on open, so this also covers a process that only read.
 func lastUsed(dbPath string) time.Time {

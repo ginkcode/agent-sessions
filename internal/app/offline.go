@@ -79,6 +79,10 @@ func (b offlineBackend) SetAllowPermanentDelete(context.Context, bool) (engine.S
 	return engine.Settings{}, b.err()
 }
 
+func (b offlineBackend) SetPrunePromptHistory(context.Context, bool) (engine.Settings, error) {
+	return engine.Settings{}, b.err()
+}
+
 func (b offlineBackend) PreviewDelete(context.Context, []model.SessionRef) (engine.DeletePreview, error) {
 	return engine.DeletePreview{}, b.err()
 }

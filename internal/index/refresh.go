@@ -434,6 +434,14 @@ func (r *Refresher) Forget(ctx context.Context, refs []model.SessionRef) error {
 	return nil
 }
 
+// Purge drops deleted sessions' leftovers from the cache file; see DB.Purge.
+func (r *Refresher) Purge(ctx context.Context) error {
+	if r.db == nil {
+		return nil
+	}
+	return r.db.Purge(ctx)
+}
+
 // Report returns an aggregated snapshot of provider diagnostics, errors, and scan states.
 func (r *Refresher) Report() scan.Report {
 	r.stateMu.RLock()

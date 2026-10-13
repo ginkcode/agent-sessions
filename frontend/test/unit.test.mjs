@@ -685,6 +685,17 @@ test('delete dialog renders uncertain Recycle Bin results separately and only of
   assert.deepEqual(fixture.calls, []);
 });
 
+test('delete dialog shows the notes of a finished delete', async () => {
+  const note = 'Claude Code prompt history still lists the deleted sessions: Claude Code is running or could not be checked.';
+  const html = await renderDeleteDialog(deleteDialogFixture({
+    lastResult: {
+      items: [{ ref: { agent: 'claude-code', id: 'synthetic' }, title: 'Synthetic session', ok: true }],
+      deleted: 1, failed: 0, freedBytes: 10, forgotten: null, notes: [note],
+    },
+  }));
+  assert.ok(html.includes(note));
+});
+
 test('delete dialog uses the backend Recycle Bin label for previews', async () => {
   const preview = deletePreview([{ ...previewItem('synthetic', 'claude-code'), paths: ['C:\\Users\\tester\\.claude\\projects\\demo\\synthetic.jsonl'] }], 'Recycle Bin');
   const html = await renderDeleteDialog(deleteDialogFixture({ preview }));
@@ -830,7 +841,7 @@ test('reconnect banner keeps a lost session apart from a retrying failed connect
 test('mock settings gate deletion and preview tokens bind to selection', async () => {
   const backend = new MockBackendAPI();
   const ref = { agent: 'claude-code', id: 'session-claude-2' };
-  assert.deepEqual(await backend.getSettings(), { enabled: false, allowPermanentDelete: false });
+  assert.deepEqual(await backend.getSettings(), { enabled: false, allowPermanentDelete: false, prunePromptHistory: false });
   await assert.rejects(() => backend.previewDelete([ref]), /disabled/);
   await assert.rejects(() => backend.setAllowPermanentDelete(true), /enabled first/);
   await backend.setManageEnabled(true);
@@ -849,7 +860,8 @@ test('mock settings gate deletion and preview tokens bind to selection', async (
   assert.equal((await backend.listSessions('', {})).some(s => refsEqual(s.ref, ref)), false);
   await assert.rejects(() => backend.getSessionMeta(ref), /unknown session/);
   await assert.rejects(() => backend.deleteSessions([ref], preview.token), /token/);
-  assert.deepEqual(await backend.setManageEnabled(false), { enabled: false, allowPermanentDelete: false });
+  assert.deepEqual(await backend.setManageEnabled(false), { enabled: false, allowPermanentDelete: false, prunePromptHistory: false });
+  assert.equal((await backend.setPrunePromptHistory(true)).prunePromptHistory, true);
 });
 
 test('mock preview blocks live sessions and excludes them from the token', async () => {
@@ -1947,6 +1959,7 @@ test('Settings lists its sections in a side navigation', async () => {
   const management = await renderSettingsDialog({ info }, undefined, { section: 'management' });
   assert.match(management, /Enable session management/);
   assert.match(management, /Allow permanent deletion/);
+  assert.match(management, /Also remove deleted sessions from prompt history/);
   assert.doesNotMatch(management, /<h3[^>]*>Transcript<\/h3>/);
 
   const handoff = await renderSettingsDialog({ info }, undefined, { section: 'handoff' });

@@ -210,6 +210,78 @@ func TestCleanup(t *testing.T) {
 	}
 }
 
+func TestDropCopies(t *testing.T) {
+	dir := t.TempDir()
+	const key, otherKey = "abc123", "def456"
+	write := func(name string) string {
+		p := filepath.Join(dir, name)
+		if err := os.WriteFile(p, []byte("x"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+	own := write(FileName(SchemaVersion(), key))
+	ownWAL := write(FileName(SchemaVersion(), key) + "-wal")
+	oldSchema := write(FileName(SchemaVersion()+1, key))
+	oldSchemaWAL := write(FileName(SchemaVersion()+1, key) + "-wal")
+	keyless := write(FileName(SchemaVersion(), ""))
+	legacy := write(legacyFileName)
+	other := write(FileName(SchemaVersion(), otherKey))
+	locked := write(FileName(SchemaVersion()+2, key))
+	unrelated := write("notes.txt")
+
+	held, err := tryLockFile(dir, SchemaVersion()+2, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = held.Unlock() }()
+
+	DropCopies(dir, key)
+
+	for _, p := range []string{oldSchema, oldSchemaWAL, keyless, legacy} {
+		if _, err := os.Stat(p); !os.IsNotExist(err) {
+			t.Errorf("%s kept: %v", filepath.Base(p), err)
+		}
+	}
+	for _, p := range []string{own, ownWAL, other, locked, unrelated} {
+		if _, err := os.Stat(p); err != nil {
+			t.Errorf("%s removed: %v", filepath.Base(p), err)
+		}
+	}
+}
+
+func TestPurge(t *testing.T) {
+	dir := t.TempDir()
+	db, err := Open(t.Context(), dir, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	commitOne(t, db, "s1")
+	if err := db.DeleteSessions(t.Context(), []model.SessionRef{{Agent: model.AgentClaude, ID: "s1"}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Purge(t.Context()); err != nil {
+		t.Fatalf("Purge: %v", err)
+	}
+	if fi, err := os.Stat(db.Path() + "-wal"); err == nil && fi.Size() != 0 {
+		t.Errorf("WAL holds %d bytes after Purge", fi.Size())
+	}
+	var secure int
+	if err := db.SQLDB().QueryRow("PRAGMA secure_delete").Scan(&secure); err != nil || secure != 1 {
+		t.Errorf("secure_delete = %d, %v", secure, err)
+	}
+
+	r, err := OpenReadOnly(t.Context(), dir, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = r.Close() }()
+	if err := r.Purge(t.Context()); !errors.Is(err, errReadOnly) {
+		t.Errorf("Purge on reader: %v", err)
+	}
+}
+
 func TestParseIndexFile(t *testing.T) {
 	type want struct {
 		schema int

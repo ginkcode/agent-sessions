@@ -110,6 +110,13 @@ func (ps *pathSafety) ensureWithinRoot(path string) error {
 }
 
 func (ps *pathSafety) classify(path string) (os.FileMode, error) {
+	return ps.classifyIn(path, "")
+}
+
+// classifyIn is classify for a path under the root's top-level directory
+// allowTop, which may be a protected name such as Claude's file-history.
+// Protected names deeper in the path are still refused.
+func (ps *pathSafety) classifyIn(path, allowTop string) (os.FileMode, error) {
 	if path == "" || !filepath.IsAbs(path) {
 		return 0, ErrPathOutsideRoot
 	}
@@ -141,8 +148,8 @@ func (ps *pathSafety) classify(path string) (os.FileMode, error) {
 	// outside the physical layout a provider expects.
 	rel, _ := filepath.Rel(ps.root, path)
 	current := ps.root
-	for _, part := range strings.Split(rel, string(filepath.Separator)) {
-		if isProtectedName(part) {
+	for i, part := range strings.Split(rel, string(filepath.Separator)) {
+		if isProtectedName(part) && (i != 0 || part != allowTop) {
 			return 0, errors.New("manage: protected path refused")
 		}
 		current = filepath.Join(current, part)
@@ -164,6 +171,11 @@ func (ps *pathSafety) classify(path string) (os.FileMode, error) {
 // symlinked, unreadable, or special. This is mandatory before trashing a
 // Claude session directory (the trash tool moves its contents recursively).
 func (ps *pathSafety) checkTree(ctxDone func() error, dir string) error {
+	return ps.checkTreeIn(ctxDone, dir, "")
+}
+
+// checkTreeIn is checkTree for a directory under allowTop; see classifyIn.
+func (ps *pathSafety) checkTreeIn(ctxDone func() error, dir, allowTop string) error {
 	return filepath.WalkDir(dir, func(path string, d fs.DirEntry, walkErr error) error {
 		if err := ctxDone(); err != nil {
 			return err
@@ -180,7 +192,7 @@ func (ps *pathSafety) checkTree(ctxDone func() error, dir string) error {
 		if !d.IsDir() && !d.Type().IsRegular() {
 			return errors.New("manage: special entry inside session directory")
 		}
-		if _, err := ps.classify(path); err != nil {
+		if _, err := ps.classifyIn(path, allowTop); err != nil {
 			return err
 		}
 		return nil

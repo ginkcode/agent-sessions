@@ -243,6 +243,9 @@ func (e *Engine) onChanged(_ model.AgentID, changed, removed []model.SessionRef)
 	if e.svc != nil {
 		e.svc.EvictTranscripts(changed, removed)
 	}
+	if len(removed) != 0 {
+		e.schedulePurge()
+	}
 	if indexer != nil {
 		indexer.Notify()
 	}

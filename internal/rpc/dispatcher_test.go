@@ -134,6 +134,10 @@ func (m *mockBackend) SetManageEnabled(ctx context.Context, enabled bool) (engin
 	return engine.Settings{Enabled: enabled}, nil
 }
 
+func (m *mockBackend) SetPrunePromptHistory(ctx context.Context, prune bool) (engine.Settings, error) {
+	return engine.Settings{PrunePromptHistory: prune}, nil
+}
+
 func (m *mockBackend) SetAllowPermanentDelete(ctx context.Context, allow bool) (engine.Settings, error) {
 	return engine.Settings{AllowPermanentDelete: allow}, nil
 }

@@ -51,6 +51,8 @@ type Report struct {
 	Failed     int                `json:"failed"`
 	FreedBytes int64              `json:"freedBytes"`
 	Forgotten  []model.SessionRef `json:"forgotten"`
+	// Notes reports cleanup that was skipped, such as prompt history.
+	Notes []string `json:"notes,omitempty"`
 }
 
 type Manager struct {
@@ -62,6 +64,7 @@ type Manager struct {
 	trash          Trash
 	proc           ProcFS
 	live           LiveFunc
+	claudeRunning  RunningFunc
 	now            NowFunc
 	exec           ExecFunc
 	opencodeExport OpenCodeExportFunc
@@ -74,9 +77,17 @@ type Option func(*Manager)
 
 func WithProcFS(p ProcFS) Option      { return func(m *Manager) { m.proc = p } }
 func WithLiveFunc(fn LiveFunc) Option { return func(m *Manager) { m.live = fn } }
-func WithNow(fn NowFunc) Option       { return func(m *Manager) { m.now = fn } }
-func WithTrash(t Trash) Option        { return func(m *Manager) { m.trash = t } }
-func WithExec(fn ExecFunc) Option     { return func(m *Manager) { m.exec = fn } }
+
+// RunningFunc reports whether any session of an agent is running.
+type RunningFunc func(ctx context.Context) (bool, error)
+
+// WithClaudeRunning sets how to tell whether Claude Code is running, which
+// guards rewriting its prompt history.
+func WithClaudeRunning(fn RunningFunc) Option { return func(m *Manager) { m.claudeRunning = fn } }
+
+func WithNow(fn NowFunc) Option   { return func(m *Manager) { m.now = fn } }
+func WithTrash(t Trash) Option    { return func(m *Manager) { m.trash = t } }
+func WithExec(fn ExecFunc) Option { return func(m *Manager) { m.exec = fn } }
 
 // WithOpenCodeExport replaces the OpenCode session-export command. Capture
 // uses it; deletion keeps using ExecFunc.
@@ -169,7 +180,7 @@ func (m *Manager) Preview(ctx context.Context, selected []model.SessionRef, cata
 	if !cfg.Enabled {
 		return nil, ErrDisabled
 	}
-	ops, items, err := m.plan(ctx, selected, catalog, cfg)
+	ops, items, err := m.plan(ctx, selected, newCatalogIndex(catalog), cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -202,7 +213,8 @@ func (m *Manager) Delete(ctx context.Context, selected []model.SessionRef, catal
 	if err != nil || !m.now().Before(expiry) {
 		return nil, ErrPreviewStale
 	}
-	ops, _, err := m.plan(ctx, selected, catalog, cfg)
+	idx := newCatalogIndex(catalog)
+	ops, _, err := m.plan(ctx, selected, idx, cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -211,7 +223,7 @@ func (m *Manager) Delete(ctx context.Context, selected []model.SessionRef, catal
 	}
 	report := &Report{Items: make([]Result, 0, len(ops))}
 	for _, op := range ops {
-		res, forgotten := m.execute(ctx, op, catalog, cfg)
+		res, forgotten := m.execute(ctx, op, idx, cfg)
 		report.Items = append(report.Items, res)
 		if res.OK {
 			report.Deleted++
@@ -220,6 +232,9 @@ func (m *Manager) Delete(ctx context.Context, selected []model.SessionRef, catal
 			report.Failed++
 		}
 		report.Forgotten = append(report.Forgotten, forgotten...)
+	}
+	if cfg.PrunePromptHistory {
+		report.Notes = m.pruneHistories(ctx, report.Forgotten)
 	}
 	return report, nil
 }
