@@ -114,6 +114,26 @@ function splitTableRow(line: string): string[] {
   return cells;
 }
 
+// A Mermaid diagram shows as its source until mermaid.ts draws it into the
+// empty .mermaid-diagram; the toggle then switches between the two, and
+// Expand (or a click on the diagram) shows it in the whole window.
+function mermaidBlock(rawCode: string): string {
+  return (
+    `<div class="code-block-container mermaid-block" data-lang="mermaid">` +
+      `<div class="code-block-header">` +
+        `<span class="code-lang-tag">mermaid</span>` +
+        `<span class="code-block-actions">` +
+          `<button type="button" class="mermaid-expand-btn" title="Show the diagram in the whole window" hidden>Expand</button>` +
+          `<button type="button" class="mermaid-toggle-btn" hidden>Source</button>` +
+          `<button type="button" class="copy-code-btn" data-code="${escapeHtml(rawCode)}">Copy</button>` +
+        `</span>` +
+      `</div>` +
+      `<div class="mermaid-diagram" hidden></div>` +
+      `<pre class="mermaid-source"><code class="hljs language-mermaid">${escapeHtml(rawCode)}</code></pre>` +
+    `</div>`
+  );
+}
+
 export function renderMarkdown(source: string): string {
   if (!source) return '';
 
@@ -137,6 +157,10 @@ export function renderMarkdown(source: string): string {
       }
       i++; // Skip closing ```
       const rawCode = codeLines.join('\n');
+      if (lang.toLowerCase() === 'mermaid' && rawCode.trim()) {
+        out.push(mermaidBlock(rawCode));
+        continue;
+      }
       const highlighted = highlightCode(rawCode, lang);
       const displayLang = lang || 'text';
 

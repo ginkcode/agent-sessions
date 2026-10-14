@@ -1,6 +1,8 @@
 <script lang="ts">
   import { renderMarkdown } from '../../../markdown';
   import { handleCopyCodeClick } from '../../../copycode';
+  import { renderMermaid } from '../../../mermaid';
+  import { theme } from '../../../stores/theme.svelte';
 
   interface Props {
     text: string;
@@ -10,6 +12,12 @@
   let { text, defaultExpanded = false }: Props = $props();
 
   let renderedHtml = $derived(renderMarkdown(text));
+  let container = $state<HTMLDivElement>();
+
+  $effect(() => {
+    void renderedHtml;
+    renderMermaid(container, theme.resolved);
+  });
 </script>
 
 <details class="reasoning-block" open={defaultExpanded}>
@@ -20,7 +28,7 @@
   <div class="reasoning-body">
     <!-- svelte-ignore a11y_click_events_have_key_events -->
     <!-- svelte-ignore a11y_no_static_element_interactions -->
-    <div class="markdown-content text-part-container" onclick={handleCopyCodeClick}>
+    <div class="markdown-content text-part-container" bind:this={container} onclick={handleCopyCodeClick}>
       {@html renderedHtml}
     </div>
   </div>

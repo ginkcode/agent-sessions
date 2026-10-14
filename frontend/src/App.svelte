@@ -13,6 +13,7 @@
   import ExportDialog from './lib/components/common/ExportDialog.svelte';
   import ImportDialog from './lib/components/common/ImportDialog.svelte';
   import ImportDirectoryDialog from './lib/components/common/ImportDirectoryDialog.svelte';
+  import DiagramViewer from './lib/components/common/DiagramViewer.svelte';
   import AskpassDialog from './lib/components/common/AskpassDialog.svelte';
   import ReconnectBanner from './lib/components/common/ReconnectBanner.svelte';
   import HostSelector from './lib/components/sidebar/HostSelector.svelte';
@@ -326,6 +327,7 @@
   <ExportDialog />
   <ImportDialog />
   <ImportDirectoryDialog />
+  <DiagramViewer />
   <AskpassDialog />
   <Toaster />
   </div>

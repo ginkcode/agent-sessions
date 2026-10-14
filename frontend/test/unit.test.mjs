@@ -88,6 +88,7 @@ import {
   subscribeMouseNavigate,
 } from '../src/lib/api.ts';
 import { BUDGET_PRESETS, ALL_AGENTS, targetAgentsFor } from '../src/lib/portable.ts';
+import { renameSvgId } from '../src/lib/mermaid.ts';
 
 test('formatTokens formats numbers into compact string representations', () => {
   assert.equal(formatTokens(0), '0');
@@ -224,6 +225,23 @@ test('renderMarkdown converts markdown and strictly neutralizes XSS vectors', ()
   assert.ok(validLink.includes('target="_blank"'));
 });
 
+test('renderMarkdown leaves mermaid blocks for the diagram renderer', () => {
+  const md = renderMarkdown('```Mermaid\ngraph TD\n  A["<img src=x onerror=alert(1)>"] --> B\n```');
+  assert.ok(md.includes('class="code-block-container mermaid-block"'));
+  assert.ok(md.includes('<div class="mermaid-diagram" hidden></div>'));
+  assert.ok(md.includes('<pre class="mermaid-source">'));
+  assert.ok(md.includes('class="mermaid-toggle-btn" hidden'));
+  assert.ok(md.includes('class="mermaid-expand-btn"'));
+  // The source is shown and copied as text; nothing in it becomes markup.
+  assert.ok(!md.includes('<img'));
+  assert.ok(md.includes('data-code="graph TD\n  A[&quot;&lt;img src=x onerror=alert(1)&gt;&quot;] --&gt; B"'));
+
+  // An empty block has nothing to draw and stays a plain code block.
+  const empty = renderMarkdown('```mermaid\n\n```');
+  assert.ok(!empty.includes('mermaid-block'));
+  assert.ok(empty.includes('data-lang="mermaid"'));
+});
+
 test('renderMarkdown leaves intraword underscores, code and URLs literal', () => {
   const cases = [
     ['Set API_KEY_NAME first', '<p>Set API_KEY_NAME first</p>'],
@@ -279,6 +297,18 @@ test('renderMarkdown keeps table cells safe and leaves non-tables alone', () => 
   const fence = renderMarkdown('```\n| a | b |\n|---|---|\n```');
   assert.ok(fence.includes('class="code-block-container"'), fence);
   assert.ok(!fence.includes('<table>'), fence);
+});
+
+test('renameSvgId renames a diagram id and its references only', () => {
+  const svg =
+    '<svg id="mermaid-diagram-3" width="100%"><style>#mermaid-diagram-3 .node{fill:red}</style>' +
+    '<path marker-end="url(#mermaid-diagram-3_flowchart-pointEnd)"/><g id="mermaid-diagram-30"/></svg>';
+  assert.equal(
+    renameSvgId(svg, 'viewer'),
+    '<svg id="viewer" width="100%"><style>#viewer .node{fill:red}</style>' +
+      '<path marker-end="url(#viewer_flowchart-pointEnd)"/><g id="mermaid-diagram-30"/></svg>'
+  );
+  assert.equal(renameSvgId('<svg width="1"></svg>', 'viewer'), '<svg width="1"></svg>');
 });
 
 test('handleCopyCodeClick copies code from delegated click and ignores other targets', async () => {

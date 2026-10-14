@@ -1,6 +1,8 @@
 <script lang="ts">
   import { renderMarkdown } from '../../markdown';
   import { handleCopyCodeClick } from '../../copycode';
+  import { renderMermaid } from '../../mermaid';
+  import { theme } from '../../stores/theme.svelte';
 
   interface Props {
     source: string;
@@ -9,11 +11,17 @@
   let { source }: Props = $props();
 
   let renderedHtml = $derived(renderMarkdown(source));
+  let container = $state<HTMLDivElement>();
+
+  $effect(() => {
+    void renderedHtml;
+    renderMermaid(container, theme.resolved);
+  });
 </script>
 
 <!-- svelte-ignore a11y_click_events_have_key_events -->
 <!-- svelte-ignore a11y_no_static_element_interactions -->
-<div class="markdown-doc" onclick={handleCopyCodeClick}>
+<div class="markdown-doc" bind:this={container} onclick={handleCopyCodeClick}>
   {@html renderedHtml}
 </div>
 
@@ -136,7 +144,7 @@
     text-transform: uppercase;
   }
 
-  :global(.markdown-doc .copy-code-btn) {
+  :global(.markdown-doc .copy-code-btn, .markdown-doc .mermaid-toggle-btn, .markdown-doc .mermaid-expand-btn) {
     font-size: 10.88px;
     padding: 2px 6px;
     border-radius: 3px;
@@ -147,7 +155,7 @@
     transition: all 0.15s ease;
   }
 
-  :global(.markdown-doc .copy-code-btn:hover) {
+  :global(.markdown-doc .copy-code-btn:hover, .markdown-doc .mermaid-toggle-btn:hover, .markdown-doc .mermaid-expand-btn:hover) {
     color: var(--text-primary);
   }
 
@@ -155,6 +163,25 @@
     background-color: rgba(16, 185, 129, 0.15);
     color: var(--status-live);
     border-color: var(--status-live);
+  }
+
+  :global(.markdown-doc .code-block-actions) {
+    display: flex;
+    gap: 4px;
+  }
+
+  /* Mermaid sizes the SVG to the diagram; wide ones shrink to the column. */
+  :global(.markdown-doc .mermaid-diagram) {
+    padding: 8px 12px;
+    overflow-x: auto;
+    text-align: center;
+    background-color: var(--bg-primary);
+    cursor: zoom-in;
+  }
+
+  :global(.markdown-doc .mermaid-diagram svg) {
+    max-width: 100%;
+    height: auto;
   }
 
   :global(.markdown-doc pre) {

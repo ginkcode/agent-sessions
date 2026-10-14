@@ -100,7 +100,7 @@ export function highlightTextNodes(
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
     acceptNode(node) {
       const parent = node.parentElement;
-      if (!node.nodeValue?.trim() || !parent || parent.closest('mark, script, style, button, summary')) {
+      if (!node.nodeValue?.trim() || !parent || parent.closest('mark, script, style, button, summary, svg')) {
         return NodeFilter.FILTER_REJECT;
       }
       re.lastIndex = 0;
