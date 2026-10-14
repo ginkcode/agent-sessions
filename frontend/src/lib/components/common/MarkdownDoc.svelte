@@ -177,6 +177,9 @@
     text-align: center;
     background-color: var(--bg-primary);
     cursor: zoom-in;
+    /* Mermaid sizes labels without the text's break-word, which would
+       otherwise wrap them narrower and clip them. */
+    word-break: normal;
   }
 
   :global(.markdown-doc .mermaid-diagram svg) {
