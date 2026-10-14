@@ -24,6 +24,7 @@ import type {
   TerminalOption,
   TranslateSettings,
   TranslateSettingsRequest,
+  SaveImageRequest,
   HandoffReport,
   ExportRequest,
   ExportPreview,
@@ -136,6 +137,8 @@ export class MockBackendAPI {
   openedTerminals: string[] = [];
   /** Translation settings; the key stays here, as it stays in the backend. */
   translateConfig = { baseURL: '', model: '', language: 'Vietnamese', apiKey: '' };
+  /** Images saved, newest last. */
+  savedImages: SaveImageRequest[] = [];
   /** Texts sent to translate, newest last. */
   translated: string[] = [];
   translateDelayMs = 400;
@@ -466,6 +469,11 @@ export class MockBackendAPI {
       await new Promise((resolve) => setTimeout(resolve, this.translateDelayMs));
     }
     return `[${this.translateConfig.language}] ${text}`;
+  }
+
+  async saveImage(req: SaveImageRequest): Promise<string> {
+    this.savedImages.push(req);
+    return `/home/mock/${req.name || 'diagram'}.${req.format}`;
   }
 
   // Mirrors the backend: local sessions use the chosen terminal; WSL uses

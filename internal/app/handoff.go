@@ -83,6 +83,10 @@ func handoffDefaultName(id string) string {
 }
 
 func writeSecureLocalFile(destPath, content string) (string, error) {
+	return writeSecureLocalBytes(destPath, []byte(content))
+}
+
+func writeSecureLocalBytes(destPath string, content []byte) (string, error) {
 	if destPath == "" {
 		return "", nil
 	}
@@ -102,7 +106,7 @@ func writeSecureLocalFile(destPath, content string) (string, error) {
 	if err := tmp.Chmod(0o600); err != nil {
 		return "", fmt.Errorf("save file chmod: %w", err)
 	}
-	if _, err := tmp.WriteString(content); err != nil {
+	if _, err := tmp.Write(content); err != nil {
 		return "", fmt.Errorf("save file write: %w", err)
 	}
 	if err := tmp.Sync(); err != nil {

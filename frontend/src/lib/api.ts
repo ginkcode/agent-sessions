@@ -22,6 +22,7 @@ import type {
   TerminalSettings,
   TranslateSettings,
   TranslateSettingsRequest,
+  SaveImageRequest,
   ExportRequest,
   ExportPreview,
   BundleSummary,
@@ -53,6 +54,7 @@ export interface BackendAPI {
   translateSettings(): Promise<TranslateSettings>;
   setTranslateSettings(req: TranslateSettingsRequest): Promise<TranslateSettings>;
   translate(text: string): Promise<string>;
+  saveImage(req: SaveImageRequest): Promise<string>;
   openResumeInTerminal(ref: SessionRef): Promise<void>;
   openHandoffInTerminal(req: HandoffRequest): Promise<void>;
   openBundleHandoffInTerminal(req: BundleHandoffRequest): Promise<void>;
@@ -110,6 +112,7 @@ interface WailsAppBinding {
   TranslateSettings(): Promise<TranslateSettings>;
   SetTranslateSettings(req: TranslateSettingsRequest): Promise<TranslateSettings>;
   Translate(text: string): Promise<string>;
+  SaveImage(req: SaveImageRequest): Promise<string>;
   OpenResumeInTerminal(ref: SessionRef): Promise<void>;
   OpenHandoffInTerminal(req: HandoffRequest): Promise<void>;
   OpenBundleHandoffInTerminal(req: BundleHandoffRequest): Promise<void>;
@@ -292,6 +295,14 @@ class WailsBackendAPI implements BackendAPI {
   async translate(text: string): Promise<string> {
     try {
       return await this.binding.Translate(text);
+    } catch (e) {
+      throw normalizeError(e);
+    }
+  }
+
+  async saveImage(req: SaveImageRequest): Promise<string> {
+    try {
+      return await this.binding.SaveImage(req);
     } catch (e) {
       throw normalizeError(e);
     }
@@ -639,6 +650,8 @@ const UNGUARDED = new Set<string>([
   'translateSettings',
   'setTranslateSettings',
   'translate',
+  // Images are saved on this computer too.
+  'saveImage',
   'listHosts',
   'listWSLDistros',
   'connect',

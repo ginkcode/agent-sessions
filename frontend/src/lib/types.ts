@@ -346,6 +346,14 @@ export interface TranslateSettingsRequest {
   clearApiKey: boolean;
 }
 
+/** An image to save on this computer: SVG text, or a PNG in base64. */
+export interface SaveImageRequest {
+  /** Suggested file name without the extension. */
+  name: string;
+  format: 'svg' | 'png';
+  data: string;
+}
+
 /** Handoff files kept in the app data directory. */
 export interface HandoffCacheInfo {
   dir: string;

@@ -10,7 +10,8 @@ type Mermaid = (typeof import('mermaid'))['default'];
 const CACHE_LIMIT = 100;
 
 let loading: Promise<Mermaid> | null = null;
-let configured: ResolvedTheme | null = null;
+// The theme and label kind mermaid is set up for, as in draw's cache key.
+let configured: string | null = null;
 let nextId = 0;
 // Mermaid keeps one global configuration, so diagrams are drawn one at a time.
 let queue: Promise<void> = Promise.resolve();
@@ -23,12 +24,16 @@ function load(): Promise<Mermaid> {
   return loading;
 }
 
-async function draw(source: string, theme: ResolvedTheme): Promise<string> {
-  const key = `${theme}\n${source}`;
+// Labels are HTML by default, which wraps text best on screen. An image is
+// drawn with SVG text instead: a canvas won't take HTML labels (WebKit
+// taints it), and other programs show them poorly.
+async function draw(source: string, theme: ResolvedTheme, svgLabels = false): Promise<string> {
+  const setup = `${theme}${svgLabels ? ' svg' : ''}`;
+  const key = `${setup}\n${source}`;
   const cached = drawn.get(key);
   if (cached !== undefined) return cached;
   const mermaid = await load();
-  if (configured !== theme) {
+  if (configured !== setup) {
     // strict: no script or click handlers in diagrams, and labels are
     // sanitized; transcripts are untrusted.
     mermaid.initialize({
@@ -36,8 +41,9 @@ async function draw(source: string, theme: ResolvedTheme): Promise<string> {
       securityLevel: 'strict',
       suppressErrorRendering: true,
       theme: theme === 'dark' ? 'dark' : 'default',
+      htmlLabels: !svgLabels,
     });
-    configured = theme;
+    configured = setup;
   }
   const { svg } = await mermaid.render(`mermaid-diagram-${++nextId}`, source);
   if (drawn.size >= CACHE_LIMIT) drawn.delete(drawn.keys().next().value!);
@@ -127,4 +133,74 @@ export function renameSvgId(svg: string, id: string): string {
 /** A diagram's SVG drawn under another id, for showing it a second time. */
 export async function diagramSvg(source: string, theme: ResolvedTheme, id: string): Promise<string> {
   return renameSvgId(await enqueue(() => draw(source, theme)), id);
+}
+
+/** A diagram saved as an image, with its size in CSS pixels. */
+export interface DiagramImage {
+  svg: string;
+  width: number;
+  height: number;
+}
+
+/**
+ * A diagram as a standalone SVG file in the theme, on a background of the
+ * given CSS colour, at the size Mermaid drew it.
+ */
+export async function diagramImage(source: string, theme: ResolvedTheme, background: string): Promise<DiagramImage> {
+  const drawnSvg = renameSvgId(await enqueue(() => draw(source, theme, true)), 'mermaid-diagram-image');
+  // The HTML parser takes whatever Mermaid wrote; XMLSerializer then writes
+  // well-formed XML with the namespaces a file needs.
+  const svg = new DOMParser().parseFromString(drawnSvg, 'text/html').querySelector('svg');
+  if (!svg) throw new Error('Mermaid did not draw an SVG');
+  const box = svg.viewBox.baseVal;
+  if (!box || !(box.width > 0) || !(box.height > 0)) throw new Error('the diagram has no size');
+  const width = Math.ceil(box.width);
+  const height = Math.ceil(box.height);
+  svg.setAttribute('width', String(width));
+  svg.setAttribute('height', String(height));
+  svg.style.removeProperty('max-width');
+  if (!svg.getAttribute('style')) svg.removeAttribute('style');
+  const fill = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+  fill.setAttribute('x', String(box.x));
+  fill.setAttribute('y', String(box.y));
+  fill.setAttribute('width', String(box.width));
+  fill.setAttribute('height', String(box.height));
+  fill.setAttribute('fill', background);
+  svg.insertBefore(fill, svg.firstChild);
+  const text = `<?xml version="1.0" encoding="UTF-8"?>\n${new XMLSerializer().serializeToString(svg)}\n`;
+  return { svg: text, width, height };
+}
+
+// Canvas limits: WebKit refuses a canvas over 16M pixels, and every engine
+// one wider or taller than 16384.
+const MAX_CANVAS_PIXELS = 16_777_216;
+const MAX_CANVAS_SIDE = 16_384;
+
+/** The scale to draw a width x height image at: wanted, or less to fit a canvas. */
+export function rasterScale(width: number, height: number, wanted: number): number {
+  const byArea = Math.sqrt(MAX_CANVAS_PIXELS / (width * height));
+  const bySide = MAX_CANVAS_SIDE / Math.max(width, height);
+  return Math.min(wanted, byArea, bySide);
+}
+
+/** image as a PNG at scale times its size, or smaller to fit a canvas. */
+export async function diagramPng(image: DiagramImage, scale = 2): Promise<Blob> {
+  const url = URL.createObjectURL(new Blob([image.svg], { type: 'image/svg+xml' }));
+  try {
+    const img = new Image();
+    img.src = url;
+    await img.decode();
+    const k = rasterScale(image.width, image.height, scale);
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.floor(image.width * k));
+    canvas.height = Math.max(1, Math.floor(image.height * k));
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('no canvas to draw the image on');
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    return await new Promise<Blob>((resolve, reject) =>
+      canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error('the image could not be encoded'))), 'image/png')
+    );
+  } finally {
+    URL.revokeObjectURL(url);
+  }
 }

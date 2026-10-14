@@ -1,11 +1,16 @@
 <script lang="ts">
   import { onMount, tick, untrack } from 'svelte';
-  import { diagramSvg, setDiagramExpander } from '../../mermaid';
+  import { api } from '../../api';
+  import { copyFailed } from '../../guidance';
+  import { diagramImage, diagramPng, diagramSvg, setDiagramExpander } from '../../mermaid';
   import { theme } from '../../stores/theme.svelte';
+  import { toast } from '../../stores/toast.svelte';
+  import ContextMenu, { type ContextMenuItem } from './ContextMenu.svelte';
 
   // A Mermaid diagram in the whole window. It opens fitted to the window and
   // can be zoomed with the buttons, + / - / 0, or Ctrl/Cmd + wheel (a
-  // trackpad pinch), and dragged around when larger than the window.
+  // trackpad pinch), and dragged around when larger than the window. Export
+  // saves it as an SVG or PNG image on this computer, in the current theme.
   const MIN_ZOOM = 0.1;
   const MAX_ZOOM = 8;
   const STEP = 1.25;
@@ -24,6 +29,11 @@
   let drag: { x: number; y: number; left: number; top: number; id: number } | null = null;
   let dragging = $state(false);
   let returnFocus: HTMLElement | null = null;
+  let exportMenu = $state<{ x: number; y: number } | null>(null);
+  let exportButton = $state<HTMLButtonElement>();
+  let exporting = $state(false);
+  // Images can go to the clipboard only where the webview supports it.
+  const canCopyImage = typeof ClipboardItem !== 'undefined' && typeof navigator.clipboard?.write === 'function';
 
   onMount(() => {
     setDiagramExpander((next) => {
@@ -120,7 +130,76 @@
     viewport.scrollTop = py * zoom - ay;
   }
 
+  // The image as the viewer shows it: theme and background included.
+  function image() {
+    const background = dialog ? getComputedStyle(dialog).backgroundColor : 'white';
+    return diagramImage(source!, theme.resolved, background);
+  }
+
+  function blobBase64(blob: Blob): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result).replace(/^data:[^,]*,/, ''));
+      reader.onerror = () => reject(reader.error ?? new Error('the image could not be read'));
+      reader.readAsDataURL(blob);
+    });
+  }
+
+  async function saveImage(format: 'svg' | 'png'): Promise<void> {
+    if (source === null || exporting) return;
+    exporting = true;
+    try {
+      const drawn = await image();
+      const data = format === 'svg' ? drawn.svg : await blobBase64(await diagramPng(drawn));
+      const path = await api.saveImage({ name: 'diagram', format, data });
+      if (path) toast.show({ title: 'Image saved', body: path });
+    } catch (err) {
+      toast.show({
+        title: `Couldn't save the ${format.toUpperCase()} image`,
+        body: err instanceof Error ? err.message : String(err),
+        tone: 'error',
+      });
+    } finally {
+      exporting = false;
+    }
+  }
+
+  async function copyImage(): Promise<void> {
+    if (source === null || exporting) return;
+    exporting = true;
+    try {
+      // The item takes a promise so the write starts within the click, as
+      // Safari requires.
+      const png = image().then((drawn) => diagramPng(drawn));
+      await navigator.clipboard.write([new ClipboardItem({ 'image/png': png })]);
+      toast.show({ title: 'Image copied', body: 'The diagram is on the clipboard as a PNG image.' });
+    } catch (err) {
+      toast.show(copyFailed('the image', err));
+    } finally {
+      exporting = false;
+    }
+  }
+
+  let exportItems = $derived.by((): ContextMenuItem[] => {
+    const items: ContextMenuItem[] = [
+      { label: 'Save as SVG…', onSelect: () => void saveImage('svg') },
+      { label: 'Save as PNG…', onSelect: () => void saveImage('png') },
+    ];
+    if (canCopyImage) items.push({ label: 'Copy as PNG', onSelect: () => void copyImage() });
+    return items;
+  });
+
+  function toggleExportMenu(): void {
+    if (exportMenu || !exportButton) {
+      exportMenu = null;
+      return;
+    }
+    const rect = exportButton.getBoundingClientRect();
+    exportMenu = { x: rect.left, y: rect.bottom + 4 };
+  }
+
   async function close(): Promise<void> {
+    exportMenu = null;
     source = null;
     svg = '';
     error = null;
@@ -184,6 +263,18 @@
         <span class="zoom-level" aria-live="polite">{Math.round(zoom * 100)}%</span>
         <button type="button" class="viewer-btn" title="Zoom in (+)" aria-label="Zoom in" onclick={() => setZoom(zoom * STEP)}>+</button>
         <button type="button" class="viewer-btn" class:active={fitted} title="Fit to window (0)" onclick={fit}>Fit</button>
+        <button
+          type="button"
+          class="viewer-btn"
+          title="Save or copy the diagram as an image"
+          aria-haspopup="menu"
+          aria-expanded={exportMenu !== null}
+          disabled={!svg}
+          aria-busy={exporting}
+          bind:this={exportButton}
+          onpointerdown={(e) => exportMenu && e.stopPropagation()}
+          onclick={toggleExportMenu}
+        >{exporting ? 'Exporting…' : 'Export'}</button>
         <button type="button" class="viewer-btn" title="Close (Esc)" aria-label="Close" onclick={() => void close()}>✕</button>
       </div>
     </header>
@@ -207,6 +298,15 @@
         {/if}
       </div>
     </div>
+    {#if exportMenu}
+      <ContextMenu
+        x={exportMenu.x}
+        y={exportMenu.y}
+        items={exportItems}
+        ariaLabel="Export the diagram"
+        onClose={() => (exportMenu = null)}
+      />
+    {/if}
   </div>
 {/if}
 
@@ -258,6 +358,16 @@
   .viewer-btn:hover {
     color: var(--text-primary);
     background-color: var(--hover-bg);
+  }
+
+  .viewer-btn:disabled {
+    opacity: 0.5;
+    cursor: default;
+  }
+
+  .viewer-btn:disabled:hover {
+    color: var(--text-secondary);
+    background-color: var(--bg-primary);
   }
 
   .viewer-btn.active {

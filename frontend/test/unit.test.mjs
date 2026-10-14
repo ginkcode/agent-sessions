@@ -88,7 +88,7 @@ import {
   subscribeMouseNavigate,
 } from '../src/lib/api.ts';
 import { BUDGET_PRESETS, ALL_AGENTS, targetAgentsFor } from '../src/lib/portable.ts';
-import { renameSvgId } from '../src/lib/mermaid.ts';
+import { rasterScale, renameSvgId } from '../src/lib/mermaid.ts';
 
 test('formatTokens formats numbers into compact string representations', () => {
   assert.equal(formatTokens(0), '0');
@@ -309,6 +309,14 @@ test('renameSvgId renames a diagram id and its references only', () => {
       '<path marker-end="url(#viewer_flowchart-pointEnd)"/><g id="mermaid-diagram-30"/></svg>'
   );
   assert.equal(renameSvgId('<svg width="1"></svg>', 'viewer'), '<svg width="1"></svg>');
+});
+
+test('rasterScale keeps a PNG within the canvas limits', () => {
+  assert.equal(rasterScale(800, 600, 2), 2);
+  // 4000 x 4000 at 2x would be 64M pixels; WebKit takes 16M.
+  assert.equal(rasterScale(4000, 4000, 2), 1.024);
+  // A very wide diagram is held to 16384 pixels across.
+  assert.equal(rasterScale(20000, 100, 2), 16384 / 20000);
 });
 
 test('handleCopyCodeClick copies code from delegated click and ignores other targets', async () => {
