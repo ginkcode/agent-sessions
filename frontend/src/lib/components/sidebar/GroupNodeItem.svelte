@@ -3,7 +3,7 @@
   import GroupNodeItem from './GroupNodeItem.svelte';
   import AgentIcon from '../common/AgentIcon.svelte';
   import ContextMenu, { type ContextMenuItem } from '../common/ContextMenu.svelte';
-  import { isCollapsed as isKeyCollapsed, nodeKind } from '../../tree';
+  import { directoryName, isCollapsed as isKeyCollapsed, nodeKind } from '../../tree';
   import { importer } from '../../stores/importer.svelte';
 
   interface Props {
@@ -30,6 +30,9 @@
   let kind = $derived(nodeKind(node));
   let isCollapsed = $derived(isKeyCollapsed(node.key, collapsedKeys, defaultCollapsed));
   let isSelected = $derived(selectedKey === node.key);
+  // Directories show their name, with the whole path in a small line below.
+  let name = $derived(kind === 'directory' ? directoryName(node.label) : node.label);
+  let path = $derived(kind === 'directory' && name !== node.label ? node.label : '');
 
   function handleRowClick() {
     onSelect(node);
@@ -125,9 +128,14 @@
     </div>
 
     <span class="node-label" title={node.secondary || node.label}>
-      {node.label}
-      {#if node.cwdMissing}
-        <span class="missing-badge">[missing]</span>
+      <span class="node-name">
+        {name}
+        {#if node.cwdMissing}
+          <span class="missing-badge">[missing]</span>
+        {/if}
+      </span>
+      {#if path}
+        <span class="node-path">{path}</span>
       {/if}
     </span>
 
@@ -266,9 +274,23 @@
 
   .node-label {
     flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .node-name,
+  .node-path {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  .node-path {
+    margin-top: 1px;
+    font-size: 0.68rem;
+    font-weight: 400;
+    color: var(--text-muted);
   }
 
   .missing-badge {

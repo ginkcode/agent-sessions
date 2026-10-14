@@ -16,6 +16,17 @@ export function nodeKind(node: GroupNode): GroupNodeKind {
 }
 
 /**
+ * The last name in a directory label such as ~/Workspaces/app or
+ * C:\Users\me\app, for showing above the whole path. Labels without a
+ * name of their own (~, /, C:\, (unknown directory)) come back as they are.
+ */
+export function directoryName(label: string): string {
+  const trimmed = label.replace(/[\\/]+$/, '');
+  const name = trimmed.slice(Math.max(trimmed.lastIndexOf('/'), trimmed.lastIndexOf('\\')) + 1);
+  return name && !/^[A-Za-z]:$/.test(name) ? name : label;
+}
+
+/**
  * Computes the set of keys that should start collapsed: every session with
  * subagent children (topics stay hidden until the user opens them), plus
  * every 'directory' or 'agent' group whose child count meets the threshold.

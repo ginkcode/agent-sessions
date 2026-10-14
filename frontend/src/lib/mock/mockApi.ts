@@ -177,7 +177,7 @@ export class MockBackendAPI {
         for (const [cwd, dirSessions] of dirMap) {
           children.push({
             key: `agent-dir:${agent}:${cwd}`,
-            label: cwd.split('/').pop() || cwd,
+            label: cwd,
             kind: 'directory',
             secondary: cwd,
             agent,
@@ -230,7 +230,7 @@ export class MockBackendAPI {
       roots.push({
         key: `dir-agent:${cwd}`,
         kind: 'directory',
-        label: cwd.split('/').pop() || cwd,
+        label: cwd,
         secondary: cwd,
         cwd,
         cwdMissing: dirSessions.some((s) => s.cwdMissing),

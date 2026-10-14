@@ -60,6 +60,7 @@ import {
   defaultCollapsedKeys,
   isCollapsed,
   nodeKind,
+  directoryName,
   pruneKeys,
   sessionToSelect,
   knownDirectories,
@@ -297,6 +298,15 @@ test('renderMarkdown keeps table cells safe and leaves non-tables alone', () => 
   const fence = renderMarkdown('```\n| a | b |\n|---|---|\n```');
   assert.ok(fence.includes('class="code-block-container"'), fence);
   assert.ok(!fence.includes('<table>'), fence);
+});
+
+test('directoryName takes the last name of a directory label', () => {
+  assert.equal(directoryName('~/Workspaces/app'), 'app');
+  assert.equal(directoryName('/srv/app/'), 'app');
+  assert.equal(directoryName('C:\\Users\\me\\app'), 'app');
+  for (const label of ['~', '/', 'C:\\', '(unknown directory)']) {
+    assert.equal(directoryName(label), label);
+  }
 });
 
 test('renameSvgId renames a diagram id and its references only', () => {
