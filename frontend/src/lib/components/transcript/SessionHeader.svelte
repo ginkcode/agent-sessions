@@ -6,7 +6,9 @@
   import { manage } from '../../stores/manage.svelte';
   import { handoff } from '../../stores/handoff.svelte';
   import { exporter } from '../../stores/export.svelte';
-  import { ALL_AGENTS } from '../../portable';
+  import { ALL_AGENTS, copyToClipboard } from '../../portable';
+  import { copyFailed } from '../../guidance';
+  import { toast } from '../../stores/toast.svelte';
   import AgentIcon from '../common/AgentIcon.svelte';
   import NavButtons from './NavButtons.svelte';
   import { link } from '../../stores/link.svelte';
@@ -48,6 +50,26 @@
   let resumeMenuRoot: HTMLDivElement | undefined = $state();
   let continueMenuRoot: HTMLDivElement | undefined = $state();
   let exportMenuRoot: HTMLDivElement | undefined = $state();
+
+  // The copy button shows a tick for a moment after copying the path.
+  let cwdCopied = $state(false);
+  let cwdCopiedTimer: ReturnType<typeof setTimeout> | undefined;
+
+  async function copyCwd() {
+    try {
+      if (!(await copyToClipboard(meta.cwd))) {
+        toast.show(copyFailed('the path', 'The clipboard is not available.'));
+        return;
+      }
+      cwdCopied = true;
+      clearTimeout(cwdCopiedTimer);
+      cwdCopiedTimer = setTimeout(() => (cwdCopied = false), 1500);
+    } catch (err) {
+      toast.show(copyFailed('the path', err));
+    }
+  }
+
+  $effect(() => () => clearTimeout(cwdCopiedTimer));
 
   function handleNavigateToParent() {
     if (meta.parentId) {
@@ -296,6 +318,27 @@
       <span class="cwd-text">{meta.cwd}</span>
       {#if meta.cwdMissing}
         <span class="missing-badge">[missing]</span>
+      {/if}
+      {#if meta.cwd}
+        <button
+          type="button"
+          class="cwd-copy-btn"
+          class:copied={cwdCopied}
+          title={cwdCopied ? 'Copied' : 'Copy path'}
+          aria-label={cwdCopied ? 'Path copied' : 'Copy path'}
+          onclick={() => void copyCwd()}
+        >
+          {#if cwdCopied}
+            <svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true">
+              <path d="M3 8.5 6.5 12 13 4.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+          {:else}
+            <svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true">
+              <rect x="5.5" y="5.5" width="8" height="8" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.4" />
+              <path d="M10.5 3.5V3A1.5 1.5 0 0 0 9 1.5H3A1.5 1.5 0 0 0 1.5 3v6A1.5 1.5 0 0 0 3 10.5h.5" fill="none" stroke="currentColor" stroke-width="1.4" />
+            </svg>
+          {/if}
+        </button>
       {/if}
     </div>
 
@@ -605,9 +648,37 @@
   .cwd-item {
     font-family: var(--font-mono);
     max-width: 500px;
+    min-width: 0;
+    white-space: nowrap;
+  }
+
+  /* The path is cut short, never the copy button after it. */
+  .cwd-text {
+    min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
-    white-space: nowrap;
+  }
+
+  .cwd-copy-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 18px;
+    height: 18px;
+    padding: 0;
+    border-radius: 3px;
+    color: var(--text-muted);
+    cursor: pointer;
+  }
+
+  .cwd-copy-btn:hover {
+    color: var(--text-primary);
+    background-color: var(--hover-bg);
+  }
+
+  .cwd-copy-btn.copied {
+    color: var(--success, #10b981);
   }
 
   .missing-badge {
