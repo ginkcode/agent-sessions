@@ -60,3 +60,19 @@ export function messageText(message: Message): string {
     .map((part) => part.text!.trim())
     .join('\n\n');
 }
+
+/** parts with their text parts replaced by one holding a translation, where the first was. */
+export function withTranslation(parts: Part[], translation: string): Part[] {
+  const out: Part[] = [];
+  let placed = false;
+  for (const part of parts) {
+    if (part.kind !== 'text') {
+      out.push(part);
+    } else if (!placed) {
+      out.push({ kind: 'text', text: translation });
+      placed = true;
+    }
+  }
+  if (!placed) out.unshift({ kind: 'text', text: translation });
+  return out;
+}

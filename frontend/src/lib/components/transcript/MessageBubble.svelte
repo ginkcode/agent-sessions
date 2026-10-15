@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { Message, Part, SessionRef, SearchHitKind } from '../../types';
+  import type { Message, SessionRef, SearchHitKind } from '../../types';
   import { formatAbsoluteTime } from '../../date';
   import { preferences } from '../../stores/preferences.svelte';
   import { manage } from '../../stores/manage.svelte';
@@ -8,7 +8,9 @@
   import { translations, translationKey } from '../../stores/translations.svelte';
   import { copyToClipboard } from '../../portable';
   import { copyFailed } from '../../guidance';
-  import { messageMarkdown, messageText, visibleTranscriptParts, type TranscriptMode } from '../../transcript';
+  import { appState } from '../../stores/appState.svelte';
+  import { messageMarkdown, messageText, visibleTranscriptParts, withTranslation, type TranscriptMode } from '../../transcript';
+  import { printMessage } from '../../print';
   import ContextMenu, { type ContextMenuItem } from '../common/ContextMenu.svelte';
   import TextPart from './parts/TextPart.svelte';
   import ReasoningPart from './parts/ReasoningPart.svelte';
@@ -53,21 +55,7 @@
   let translated = $derived(translation?.status === 'done' && !translation.showOriginal);
 
   // A translation replaces the text parts with one, where the first was.
-  let visibleParts = $derived.by((): Part[] => {
-    if (!translated || !translation) return shownParts;
-    const out: Part[] = [];
-    let placed = false;
-    for (const part of shownParts) {
-      if (part.kind !== 'text') {
-        out.push(part);
-      } else if (!placed) {
-        out.push({ kind: 'text', text: translation.text });
-        placed = true;
-      }
-    }
-    if (!placed) out.unshift({ kind: 'text', text: translation.text });
-    return out;
-  });
+  let visibleParts = $derived(translated && translation ? withTranslation(shownParts, translation.text) : shownParts);
 
   let menu = $state<{ x: number; y: number } | null>(null);
 
@@ -92,12 +80,28 @@
     }
   }
 
+  // Prints what Chat level shows, in the language shown.
+  function print() {
+    const parts = visibleTranscriptParts(message, 'chat');
+    printMessage({
+      sessionRef,
+      title: appState.selectedSessionMeta?.title || 'Session',
+      role: isUser ? 'user' : 'assistant',
+      model: message.model,
+      time: formattedTime,
+      parts: translated && translation ? withTranslation(parts, translation.text) : parts,
+    });
+  }
+
   function translate() {
     void translations.translate(key, text);
   }
 
   let menuItems = $derived.by((): ContextMenuItem[] => {
-    const items: ContextMenuItem[] = [{ label: 'Copy', onSelect: () => void copyMessage() }];
+    const items: ContextMenuItem[] = [
+      { label: 'Copy', onSelect: () => void copyMessage() },
+      { label: 'Print / Save as PDF…', onSelect: print },
+    ];
     if (!translateSettings.configured) {
       items.push(
         { label: 'Translate', onSelect: () => {}, disabled: true, title: 'Set up translation in Settings' },

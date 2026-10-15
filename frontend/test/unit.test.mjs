@@ -15,7 +15,8 @@ import { formatRelativeTime, formatAbsoluteTime, isKnownTime, formatAgo, isTimeZ
 import { highlightCode, detectLanguage } from '../src/lib/highlight.ts';
 import { renderMarkdown } from '../src/lib/markdown.ts';
 import { reachesLineCount } from '../src/lib/layout.ts';
-import { isTranscriptMode, messageMarkdown, messageText, visibleTranscriptParts } from '../src/lib/transcript.ts';
+import { isTranscriptMode, messageMarkdown, messageText, visibleTranscriptParts, withTranslation } from '../src/lib/transcript.ts';
+import { printTitle } from '../src/lib/print.ts';
 import {
   refKey,
   refsEqual,
@@ -3023,4 +3024,19 @@ test('the empty tree offers to clear only the directory filter', async () => {
   const byQuery = await renderGroupTree({ query: 'deploy' });
   assert.match(byQuery, /No sessions match current filter/);
   assert.doesNotMatch(byQuery, /Clear directory filter|Clear filters/);
+});
+
+test('a translation replaces the text parts where the first was', () => {
+  const file = { kind: 'file', file: { name: 'a.png', mime: 'image/png', ref: 'r' } };
+  assert.deepEqual(
+    withTranslation([{ kind: 'text', text: 'one' }, file, { kind: 'text', text: 'two' }], 'xin chào'),
+    [{ kind: 'text', text: 'xin chào' }, file],
+  );
+  assert.deepEqual(withTranslation([file], 'xin chào'), [{ kind: 'text', text: 'xin chào' }, file]);
+});
+
+test('the print title names the session and role without unsafe file name characters', () => {
+  assert.equal(printTitle('Fix: a/b "c"?', 'assistant'), 'Fix a b c - Assistant message');
+  assert.equal(printTitle('  ', 'user'), 'User message');
+  assert.equal(printTitle('x'.repeat(200), 'user'), `${'x'.repeat(80)} - User message`);
 });

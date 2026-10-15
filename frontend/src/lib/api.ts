@@ -55,6 +55,8 @@ export interface BackendAPI {
   setTranslateSettings(req: TranslateSettingsRequest): Promise<TranslateSettings>;
   translate(text: string): Promise<string>;
   saveImage(req: SaveImageRequest): Promise<string>;
+  /** Opens the print dialog; print styles pick what is printed. */
+  printWindow(): Promise<void>;
   openResumeInTerminal(ref: SessionRef): Promise<void>;
   openHandoffInTerminal(req: HandoffRequest): Promise<void>;
   openBundleHandoffInTerminal(req: BundleHandoffRequest): Promise<void>;
@@ -113,6 +115,7 @@ interface WailsAppBinding {
   SetTranslateSettings(req: TranslateSettingsRequest): Promise<TranslateSettings>;
   Translate(text: string): Promise<string>;
   SaveImage(req: SaveImageRequest): Promise<string>;
+  PrintWindow(): Promise<void>;
   OpenResumeInTerminal(ref: SessionRef): Promise<void>;
   OpenHandoffInTerminal(req: HandoffRequest): Promise<void>;
   OpenBundleHandoffInTerminal(req: BundleHandoffRequest): Promise<void>;
@@ -303,6 +306,14 @@ class WailsBackendAPI implements BackendAPI {
   async saveImage(req: SaveImageRequest): Promise<string> {
     try {
       return await this.binding.SaveImage(req);
+    } catch (e) {
+      throw normalizeError(e);
+    }
+  }
+
+  async printWindow(): Promise<void> {
+    try {
+      return await this.binding.PrintWindow();
     } catch (e) {
       throw normalizeError(e);
     }
@@ -650,8 +661,9 @@ const UNGUARDED = new Set<string>([
   'translateSettings',
   'setTranslateSettings',
   'translate',
-  // Images are saved on this computer too.
+  // Images are saved, and pages printed, on this computer too.
   'saveImage',
+  'printWindow',
   'listHosts',
   'listWSLDistros',
   'connect',

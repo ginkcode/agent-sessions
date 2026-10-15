@@ -14,6 +14,7 @@
   import ImportDialog from './lib/components/common/ImportDialog.svelte';
   import ImportDirectoryDialog from './lib/components/common/ImportDirectoryDialog.svelte';
   import MediaViewer from './lib/components/common/MediaViewer.svelte';
+  import PrintSheet from './lib/components/common/PrintSheet.svelte';
   import AskpassDialog from './lib/components/common/AskpassDialog.svelte';
   import ReconnectBanner from './lib/components/common/ReconnectBanner.svelte';
   import HostSelector from './lib/components/sidebar/HostSelector.svelte';
@@ -328,6 +329,7 @@
   <ImportDialog />
   <ImportDirectoryDialog />
   <MediaViewer />
+  <PrintSheet />
   <AskpassDialog />
   <Toaster />
   </div>

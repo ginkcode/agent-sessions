@@ -1,15 +1,26 @@
 <script lang="ts" module>
-  import { ImageCache } from '../../../images';
+  import type { FileRef, SessionRef } from '../../../types';
+  import { api } from '../../../api';
+  import { epoch } from '../../../link';
+  import { ImageCache, type LoadedImage } from '../../../images';
 
   const cache = new ImageCache();
+
+  // The epoch keeps another host's session with the same id apart.
+  function imageKey(sessionRef: SessionRef, file: FileRef): string {
+    return `${epoch()}|${sessionRef.agent}|${sessionRef.id}|${file.ref}`;
+  }
+
+  /** The image attached as file, from the cache or fetched from the session. */
+  export function loadImage(sessionRef: SessionRef, file: FileRef): Promise<LoadedImage> {
+    const ref = file.ref;
+    if (!ref) return Promise.reject(new Error('The session does not keep this image.'));
+    return cache.load(imageKey(sessionRef, file), () => api.getBlob(sessionRef, ref));
+  }
 </script>
 
 <script lang="ts">
   import { untrack } from 'svelte';
-  import type { FileRef, SessionRef } from '../../../types';
-  import { api } from '../../../api';
-  import { epoch } from '../../../link';
-  import type { LoadedImage } from '../../../images';
   import { openViewer } from '../../../viewer';
 
   // An image attached to a message. It is fetched once it scrolls into view
@@ -22,8 +33,7 @@
   let { file, sessionRef }: Props = $props();
 
   let name = $derived(file.name || file.path?.split(/[\\/]/).pop() || 'Image');
-  // The epoch keeps another host's session with the same id apart.
-  let key = $derived(`${epoch()}|${sessionRef.agent}|${sessionRef.id}|${file.ref}`);
+  let key = $derived(imageKey(sessionRef, file));
   let image = $state<LoadedImage | null>(null);
   let error = $state<string | null>(null);
   let el = $state<HTMLElement>();
@@ -40,13 +50,12 @@
   // The placeholder is there only while loading.
   $effect(() => {
     if (!el) return;
-    const wanted = key;
-    const ref = file.ref!;
+    void key;
     let cancelled = false;
     const observer = new IntersectionObserver((entries) => {
       if (!entries.some((e) => e.isIntersecting)) return;
       observer.disconnect();
-      cache.load(wanted, () => api.getBlob(sessionRef, ref)).then(
+      loadImage(sessionRef, file).then(
         (loaded) => {
           if (!cancelled) image = loaded;
         },

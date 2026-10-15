@@ -34,29 +34,32 @@
 }
 
 /* color-scheme makes WebKitGTK draw native controls (select popups,
-   scrollbars, search fields) in the matching palette. */
-[data-theme="dark"] {
-  color-scheme: dark;
-  --bg-primary: #1c1c1e;
-  --bg-secondary: #26262a;
-  --bg-tertiary: #323238;
-  --border-color: rgba(255, 255, 255, 0.08);
-  --text-primary: #f2f2f2;
-  --text-secondary: #cccccc;
-  --text-muted: #b0b0b8;
-  --accent-color: #3b82f6;
-  --accent: var(--accent-color);
-  --accent-hover: #60a5fa;
-  --agent-claude: #d97757;
-  --agent-codex: #10a37f;
-  --agent-opencode: #3b82f6;
-  --badge-bg: #454545;
-  --hover-bg: rgba(255, 255, 255, 0.06);
-  --active-bg: rgba(59, 130, 246, 0.2);
-  --remote-footer-bg: #1e3a5f;
-  --status-live: #34d399;
-  --danger: #f87171;
-  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.2);
+   scrollbars, search fields) in the matching palette. Printing always uses
+   the light palette. */
+@media screen {
+  [data-theme="dark"] {
+    color-scheme: dark;
+    --bg-primary: #1c1c1e;
+    --bg-secondary: #26262a;
+    --bg-tertiary: #323238;
+    --border-color: rgba(255, 255, 255, 0.08);
+    --text-primary: #f2f2f2;
+    --text-secondary: #cccccc;
+    --text-muted: #b0b0b8;
+    --accent-color: #3b82f6;
+    --accent: var(--accent-color);
+    --accent-hover: #60a5fa;
+    --agent-claude: #d97757;
+    --agent-codex: #10a37f;
+    --agent-opencode: #3b82f6;
+    --badge-bg: #454545;
+    --hover-bg: rgba(255, 255, 255, 0.06);
+    --active-bg: rgba(59, 130, 246, 0.2);
+    --remote-footer-bg: #1e3a5f;
+    --status-live: #34d399;
+    --danger: #f87171;
+    --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.2);
+  }
 }
 
 * {
@@ -72,9 +75,11 @@
   --scrollbar-thumb-hover: rgba(0, 0, 0, 0.4);
 }
 
-[data-platform="linux"][data-theme="dark"] {
-  --scrollbar-thumb: rgba(255, 255, 255, 0.2);
-  --scrollbar-thumb-hover: rgba(255, 255, 255, 0.35);
+@media screen {
+  [data-platform="linux"][data-theme="dark"] {
+    --scrollbar-thumb: rgba(255, 255, 255, 0.2);
+    --scrollbar-thumb-hover: rgba(255, 255, 255, 0.35);
+  }
 }
 
 [data-platform="linux"] ::-webkit-scrollbar {
@@ -164,37 +169,39 @@ input, select {
   font-weight: bold;
 }
 
-/* Syntax highlighting tokens (Dark mode) */
-[data-theme="dark"] .hljs-keyword,
-[data-theme="dark"] .hljs-selector-tag,
-[data-theme="dark"] .hljs-built_in {
-  color: #ff7b72;
-}
-[data-theme="dark"] .hljs-string,
-[data-theme="dark"] .hljs-attr {
-  color: #a5d6ff;
-}
-[data-theme="dark"] .hljs-comment {
-  color: #8b949e;
-}
-[data-theme="dark"] .hljs-number,
-[data-theme="dark"] .hljs-literal {
-  color: #79c0ff;
-}
-[data-theme="dark"] .hljs-title,
-[data-theme="dark"] .hljs-function {
-  color: #d2a8ff;
-}
-[data-theme="dark"] .hljs-addition {
-  background-color: rgba(46, 160, 67, 0.2);
-  color: #7ee787;
-}
-[data-theme="dark"] .hljs-deletion {
-  background-color: rgba(248, 81, 73, 0.2);
-  color: #ffa198;
-}
-[data-theme="dark"] .hljs-meta {
-  color: #79c0ff;
+/* Syntax highlighting tokens (Dark mode); print stays light. */
+@media screen {
+  [data-theme="dark"] .hljs-keyword,
+  [data-theme="dark"] .hljs-selector-tag,
+  [data-theme="dark"] .hljs-built_in {
+    color: #ff7b72;
+  }
+  [data-theme="dark"] .hljs-string,
+  [data-theme="dark"] .hljs-attr {
+    color: #a5d6ff;
+  }
+  [data-theme="dark"] .hljs-comment {
+    color: #8b949e;
+  }
+  [data-theme="dark"] .hljs-number,
+  [data-theme="dark"] .hljs-literal {
+    color: #79c0ff;
+  }
+  [data-theme="dark"] .hljs-title,
+  [data-theme="dark"] .hljs-function {
+    color: #d2a8ff;
+  }
+  [data-theme="dark"] .hljs-addition {
+    background-color: rgba(46, 160, 67, 0.2);
+    color: #7ee787;
+  }
+  [data-theme="dark"] .hljs-deletion {
+    background-color: rgba(248, 81, 73, 0.2);
+    color: #ffa198;
+  }
+  [data-theme="dark"] .hljs-meta {
+    color: #79c0ff;
+  }
 }
 
 /* Fenced code block container & copy button */
@@ -290,4 +297,22 @@ input, select {
 .bulk-check:focus-visible {
   outline: 2px solid var(--accent-color);
   outline-offset: 1px;
+}
+
+/* Printing shows only the print sheet (PrintSheet.svelte): the page grows
+   with it instead of clipping it to the window. */
+@page {
+  margin: 14mm;
+}
+
+@media print {
+  html, body {
+    height: auto;
+    overflow: visible;
+    background: #ffffff;
+  }
+
+  body > :not(.print-sheet) {
+    display: none !important;
+  }
 }

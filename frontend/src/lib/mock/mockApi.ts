@@ -476,6 +476,10 @@ export class MockBackendAPI {
     return `/home/mock/${req.name || 'diagram'}.${req.format}`;
   }
 
+  async printWindow(): Promise<void> {
+    if (typeof window !== 'undefined') window.print();
+  }
+
   // Mirrors the backend: local sessions use the chosen terminal; WSL uses
   // the distro's console, while SSH sessions only offer Copy command.
   private async openTerminal(build: () => Promise<string>): Promise<void> {
