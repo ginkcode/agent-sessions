@@ -68,14 +68,6 @@
     e.stopPropagation();
     onToggleCollapse(node.key);
   }
-
-  function formatAgent(agent?: string): string {
-    if (!agent) return '';
-    if (agent === 'claude-code') return 'Claude';
-    if (agent === 'codex') return 'Codex';
-    if (agent === 'opencode') return 'OpenCode';
-    return agent;
-  }
 </script>
 
 <li
@@ -117,7 +109,7 @@
 
     <div class="icon-area">
       {#if kind === 'agent'}
-        <span class="agent-chip agent-{node.agent}">{formatAgent(node.agent)}</span>
+        <AgentIcon agent={node.agent} size={15} />
       {:else if kind === 'directory' && node.cwdMissing}
         <span class="node-icon missing" title="Directory no longer exists on disk">⚠️</span>
       {:else if kind === 'directory'}
@@ -340,29 +332,6 @@
   .selected .count-badge {
     background-color: rgba(37, 99, 235, 0.2);
     color: var(--accent-color);
-  }
-
-  .agent-chip {
-    font-size: 0.65rem;
-    padding: 1px 4px;
-    border-radius: 3px;
-    font-weight: 600;
-    text-transform: uppercase;
-  }
-
-  .agent-chip.agent-claude-code {
-    background: rgba(217, 119, 87, 0.15);
-    color: var(--agent-claude);
-  }
-
-  .agent-chip.agent-codex {
-    background: rgba(16, 163, 127, 0.15);
-    color: var(--agent-codex);
-  }
-
-  .agent-chip.agent-opencode {
-    background: rgba(59, 130, 246, 0.15);
-    color: var(--agent-opencode);
   }
 
   .children-list {
