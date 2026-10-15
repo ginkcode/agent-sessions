@@ -22,6 +22,7 @@ import (
 // default builds and tests never require GTK development headers.
 func run() {
 	application := app.NewApp()
+	app.SetNativePrint(nativePrinter())
 
 	// The embedded FS is rooted at "dist"; the asset server expects
 	// index.html at the FS root, so serve the "dist" subtree.
