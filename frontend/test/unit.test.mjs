@@ -2273,6 +2273,8 @@ async function renderSessionHeader(fixture, props = {}) {
     ["'../../portable'", lib('../../portable.ts')],
     ["'../../link'", lib('../../link.ts')],
     ["'../../transcript'", lib('../../transcript.ts')],
+    ["'../../guidance'", lib('../../guidance.ts')],
+    ["import { toast } from '../../stores/toast.svelte';", fixtureStore('toast')],
     ["import AgentIcon from '../common/AgentIcon.svelte';", 'const AgentIcon = () => {};'],
     ["import NavButtons from './NavButtons.svelte';", 'const NavButtons = () => {};'],
     ["import { appState } from '../../stores/appState.svelte';", fixtureStore('appState')],
@@ -2294,7 +2296,7 @@ async function renderSessionHeader(fixture, props = {}) {
   };
   return renderWithFixture(
     sessionHeaderModule,
-    { appState: {}, manage: { settings: { enabled: false } }, handoff: {}, exporter: {}, preferences: { timeZone: 'utc' }, ...fixture },
+    { appState: {}, manage: { settings: { enabled: false } }, handoff: {}, exporter: {}, toast: {}, preferences: { timeZone: 'utc' }, ...fixture },
     { meta, mode: 'activity', onModeChange() {}, onResume() {}, onReveal() {}, onDelete() {}, ...props },
   );
 }
