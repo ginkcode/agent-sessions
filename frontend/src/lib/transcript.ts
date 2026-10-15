@@ -1,4 +1,5 @@
 import type { FileRef, Message, Part } from './types';
+import { isImageFile } from './images';
 
 export type TranscriptMode = 'chat' | 'activity' | 'all';
 
@@ -32,7 +33,7 @@ export function visibleTranscriptParts(
 }
 
 function fileMarkdown(file: FileRef): string {
-  const name = file.name || file.path?.split(/[\\/]/).pop() || file.ref || 'Attachment';
+  const name = file.name || file.path?.split(/[\\/]/).pop() || (isImageFile(file) ? 'Image' : 'Attachment');
   if (!file.path) return name;
   const target = /[\s()<>]/.test(file.path) ? `<${file.path}>` : file.path;
   return `[${name.replace(/[[\]]/g, '\\$&')}](${target})`;

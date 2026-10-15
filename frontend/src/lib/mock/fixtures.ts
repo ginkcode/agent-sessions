@@ -134,6 +134,9 @@ export const mockMessages: Record<string, Message[]> = {
           kind: 'text',
           text: 'Make sure the catalog is thread-safe and supports incremental updates.',
         },
+        // A pasted screenshot, and one the session no longer has.
+        { kind: 'file', file: { mime: 'image/png', ref: 'rec:4096:1' } },
+        { kind: 'file', file: { name: 'missing.png', mime: 'image/png', ref: 'rec:4096:2' } },
       ],
     },
     {
@@ -153,6 +156,11 @@ export const mockMessages: Record<string, Message[]> = {
 };
 
 export const mockBlobs: Record<string, BlobResponse> = {
+  'session-claude-1:rec:4096:1': {
+    data: 'iVBORw0KGgoAAAANSUhEUgAAAGAAAABACAIAAABqVuVZAAABQ0lEQVR42u3CgWYUAADG8e9xxogxRowYo0zlbDktp3JWTv2dNadyKqfmbDmVqZnK2XJqTsvZ5lSmZlZijBgjInqPvcH3BN/PTwP8TFOD7KepU+ylqSF209Qw39LUCDtp6jRf09Qon9PUGfppaoztNDXOZpo6Sy9NTfApTV3gY5oq0E1TU6ynqSLv09Q0nTRV4l2ausZqmirTTlM3eJumKrxOU7dZSVNVltPUHV6mqRpLaeoeL9JUnWdp6iGtNNXgaZp6wkKaatJMU4vMp6kWj9PUcxppaolHaeoVD9LUCvU09Yb7aarN3TS1Ri1NdZhLUx+YTVNdqmlqA9JUj1tpaotKmupzM019YSZN7VBOU9+5nqb2uJqmflBKU7+4kqYOuJymDimmqd9cSlNHTKapYwpp6g8X09Rfzqepf0ykqf+cS/MEaUzGDs2mVLYAAAAASUVORK5CYII=',
+    mime: 'application/octet-stream',
+    isBinary: true,
+  },
   'session-claude-1:call-1': {
     data: 'On branch main\nnothing to commit, working tree clean',
     mime: 'text/plain',

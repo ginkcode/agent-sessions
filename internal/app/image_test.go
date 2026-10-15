@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -40,6 +41,37 @@ func TestSaveImage(t *testing.T) {
 	}
 	if got, _ := os.ReadFile(path); string(got) != string(png) {
 		t.Fatalf("png content = %v", got)
+	}
+}
+
+func TestSaveImageRasterFormats(t *testing.T) {
+	a, _, _ := setupHandoffTest(t)
+	dir := t.TempDir()
+	var asked []string
+	a.saveDialogOverride = func(ctx context.Context, defaultName string) (string, error) {
+		asked = append(asked, defaultName)
+		return filepath.Join(dir, defaultName), nil
+	}
+	for format, data := range map[string]string{
+		"jpeg": "\xff\xd8\xff\xe0rest",
+		"gif":  "GIF89a rest",
+		"webp": "RIFF\x10\x00\x00\x00WEBPVP8 ",
+	} {
+		path, err := a.SaveImage(SaveImageRequest{Name: "shot", Format: format, Data: base64.StdEncoding.EncodeToString([]byte(data))})
+		if err != nil {
+			t.Fatalf("SaveImage %s: %v", format, err)
+		}
+		if got, _ := os.ReadFile(path); string(got) != data {
+			t.Errorf("%s content = %q", format, got)
+		}
+		// Another format's bytes are refused.
+		if _, err := a.SaveImage(SaveImageRequest{Format: format, Data: base64.StdEncoding.EncodeToString([]byte("\x89PNG\r\n\x1a\n"))}); err == nil {
+			t.Errorf("%s took PNG bytes", format)
+		}
+	}
+	slices.Sort(asked)
+	if want := []string{"shot.gif", "shot.jpg", "shot.webp"}; !slices.Equal(asked, want) {
+		t.Errorf("names = %v, want %v", asked, want)
 	}
 }
 
@@ -82,6 +114,12 @@ func TestImageFileName(t *testing.T) {
 		if got := imageFileName(name, "svg"); got != want {
 			t.Errorf("imageFileName(%q) = %q, want %q", name, got, want)
 		}
+	}
+	if got := imageFileName("Screenshot 2026.PNG", "jpg"); got != "Screenshot 2026.jpg" {
+		t.Errorf("image extension kept: %q", got)
+	}
+	if got := imageFileName("v1.2", "png"); got != "v1.2.png" {
+		t.Errorf("other extension dropped: %q", got)
 	}
 	if strings.ContainsAny(imageFileName("x\ny", "png"), "\n") {
 		t.Error("control characters kept")

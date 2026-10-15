@@ -2,21 +2,26 @@
   import { onMount, tick, untrack } from 'svelte';
   import { api } from '../../api';
   import { copyFailed } from '../../guidance';
-  import { diagramImage, diagramPng, diagramSvg, setDiagramExpander } from '../../mermaid';
+  import { base64Blob, rasterPng } from '../../images';
+  import { diagramImage, diagramPng, diagramSvg } from '../../mermaid';
+  import { setViewer, type ViewerContent } from '../../viewer';
   import { theme } from '../../stores/theme.svelte';
   import { toast } from '../../stores/toast.svelte';
   import ContextMenu, { type ContextMenuItem } from './ContextMenu.svelte';
 
-  // A Mermaid diagram in the whole window. It opens fitted to the window and
-  // can be zoomed with the buttons, + / - / 0, or Ctrl/Cmd + wheel (a
-  // trackpad pinch), and dragged around when larger than the window. Export
-  // saves it as an SVG or PNG image on this computer, in the current theme.
+  // A Mermaid diagram or an attached image in the whole window. It opens
+  // fitted to the window and can be zoomed with the buttons, + / - / 0, or
+  // Ctrl/Cmd + wheel (a trackpad pinch), and dragged around when larger than
+  // the window. Export saves a diagram as an SVG or PNG image on this
+  // computer, in the current theme, and an image as it is.
   const MIN_ZOOM = 0.1;
   const MAX_ZOOM = 8;
   const STEP = 1.25;
   const PADDING = 24;
 
-  let source = $state<string | null>(null);
+  let content = $state<ViewerContent | null>(null);
+  let source = $derived(content?.kind === 'diagram' ? content.source : null);
+  let attached = $derived(content?.kind === 'image' ? content : null);
   let svg = $state('');
   let error = $state<string | null>(null);
   let zoom = $state(1);
@@ -36,14 +41,14 @@
   const canCopyImage = typeof ClipboardItem !== 'undefined' && typeof navigator.clipboard?.write === 'function';
 
   onMount(() => {
-    setDiagramExpander((next) => {
+    setViewer((next) => {
       returnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-      source = next;
+      content = next;
       svg = '';
       error = null;
       fitted = true;
     });
-    return () => setDiagramExpander(null);
+    return () => setViewer(null);
   });
 
   // Drawn again when the theme changes while open.
@@ -62,7 +67,7 @@
   });
 
   $effect(() => {
-    if (source !== null) dialog?.focus();
+    if (content !== null) dialog?.focus();
   });
 
   // Takes the size Mermaid drew the diagram at, then fits or zooms it.
@@ -75,6 +80,13 @@
     el.style.maxWidth = 'none';
     untrack(() => (fitted ? fit() : applySize()));
   });
+
+  function onImageLoad(e: Event): void {
+    const img = e.currentTarget as HTMLImageElement;
+    natural = { width: img.naturalWidth, height: img.naturalHeight };
+    if (fitted) fit();
+    else applySize();
+  }
 
   $effect(() => {
     if (!viewport) return;
@@ -100,17 +112,20 @@
   });
 
   function applySize(): void {
-    const el = canvas?.querySelector('svg');
+    const el = canvas?.querySelector<HTMLElement | SVGSVGElement>('svg, img');
     if (!el || !natural.width) return;
-    el.setAttribute('width', String(natural.width * zoom));
-    el.setAttribute('height', String(natural.height * zoom));
+    el.style.width = `${natural.width * zoom}px`;
+    el.style.height = `${natural.height * zoom}px`;
   }
 
   function fit(): void {
     if (!viewport || !natural.width) return;
     const width = viewport.clientWidth - 2 * PADDING;
     const height = viewport.clientHeight - 2 * PADDING;
-    zoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, Math.min(width / natural.width, height / natural.height)));
+    // An image smaller than the window shows at its own size; a diagram
+    // grows to fill the window.
+    const most = attached ? 1 : MAX_ZOOM;
+    zoom = Math.min(most, Math.max(MIN_ZOOM, Math.min(width / natural.width, height / natural.height)));
     fitted = true;
     applySize();
   }
@@ -164,15 +179,43 @@
     }
   }
 
+  // An attached image is saved as it is, in its own format.
+  async function saveAttached(): Promise<void> {
+    if (!attached || exporting) return;
+    exporting = true;
+    try {
+      const { name, format, data } = attached;
+      const path = await api.saveImage({ name, format, data });
+      if (path) toast.show({ title: 'Image saved', body: path });
+    } catch (err) {
+      toast.show({
+        title: "Couldn't save the image",
+        body: err instanceof Error ? err.message : String(err),
+        tone: 'error',
+      });
+    } finally {
+      exporting = false;
+    }
+  }
+
+  // The image to copy: a diagram drawn at 2x, an attached PNG as it is, and
+  // other attached images as a PNG.
+  async function pngToCopy(): Promise<Blob> {
+    if (attached) {
+      if (attached.format === 'png') return base64Blob(attached.data, 'image/png');
+      return rasterPng(attached.url, natural.width, natural.height);
+    }
+    return diagramPng(await image());
+  }
+
   async function copyImage(): Promise<void> {
-    if (source === null || exporting) return;
+    if (content === null || exporting) return;
     exporting = true;
     try {
       // The item takes a promise so the write starts within the click, as
       // Safari requires.
-      const png = image().then((drawn) => diagramPng(drawn));
-      await navigator.clipboard.write([new ClipboardItem({ 'image/png': png })]);
-      toast.show({ title: 'Image copied', body: 'The diagram is on the clipboard as a PNG image.' });
+      await navigator.clipboard.write([new ClipboardItem({ 'image/png': pngToCopy() })]);
+      toast.show({ title: 'Image copied', body: `The ${attached ? 'image' : 'diagram'} is on the clipboard as a PNG image.` });
     } catch (err) {
       toast.show(copyFailed('the image', err));
     } finally {
@@ -181,10 +224,12 @@
   }
 
   let exportItems = $derived.by((): ContextMenuItem[] => {
-    const items: ContextMenuItem[] = [
-      { label: 'Save as SVG…', onSelect: () => void saveImage('svg') },
-      { label: 'Save as PNG…', onSelect: () => void saveImage('png') },
-    ];
+    const items: ContextMenuItem[] = attached
+      ? [{ label: 'Save Image…', onSelect: () => void saveAttached() }]
+      : [
+          { label: 'Save as SVG…', onSelect: () => void saveImage('svg') },
+          { label: 'Save as PNG…', onSelect: () => void saveImage('png') },
+        ];
     if (canCopyImage) items.push({ label: 'Copy as PNG', onSelect: () => void copyImage() });
     return items;
   });
@@ -200,7 +245,7 @@
 
   async function close(): Promise<void> {
     exportMenu = null;
-    source = null;
+    content = null;
     svg = '';
     error = null;
     dragging = false;
@@ -246,18 +291,18 @@
   }
 </script>
 
-{#if source !== null}
+{#if content !== null}
   <div
     class="diagram-viewer"
     role="dialog"
     aria-modal="true"
-    aria-label="Diagram"
+    aria-label={attached ? attached.name : 'Diagram'}
     tabindex="-1"
     bind:this={dialog}
     onkeydown={onKeydown}
   >
     <header class="viewer-toolbar">
-      <span class="viewer-title">Diagram</span>
+      <span class="viewer-title">{attached ? attached.name : 'Diagram'}</span>
       <div class="viewer-actions">
         <button type="button" class="viewer-btn" title="Zoom out (-)" aria-label="Zoom out" onclick={() => setZoom(zoom / STEP)}>−</button>
         <span class="zoom-level" aria-live="polite">{Math.round(zoom * 100)}%</span>
@@ -266,10 +311,10 @@
         <button
           type="button"
           class="viewer-btn"
-          title="Save or copy the diagram as an image"
+          title={attached ? 'Save or copy the image' : 'Save or copy the diagram as an image'}
           aria-haspopup="menu"
           aria-expanded={exportMenu !== null}
-          disabled={!svg}
+          disabled={!attached && !svg}
           aria-busy={exporting}
           bind:this={exportButton}
           onpointerdown={(e) => exportMenu && e.stopPropagation()}
@@ -289,7 +334,9 @@
       onpointercancel={onPointerUp}
     >
       <div class="viewer-canvas" bind:this={canvas}>
-        {#if error}
+        {#if attached}
+          <img src={attached.url} alt={attached.name} draggable="false" onload={onImageLoad} />
+        {:else if error}
           <p class="viewer-message" role="alert">Diagram not rendered: {error}</p>
         {:else if svg}
           {@html svg}
@@ -303,7 +350,7 @@
         x={exportMenu.x}
         y={exportMenu.y}
         items={exportItems}
-        ariaLabel="Export the diagram"
+        ariaLabel={attached ? 'Export the image' : 'Export the diagram'}
         onClose={() => (exportMenu = null)}
       />
     {/if}
@@ -408,8 +455,14 @@
     box-sizing: border-box;
   }
 
-  .viewer-canvas :global(svg) {
+  .viewer-canvas :global(svg),
+  .viewer-canvas img {
     flex: none;
+  }
+
+  .viewer-canvas img {
+    max-width: none;
+    user-select: none;
   }
 
   .viewer-message {

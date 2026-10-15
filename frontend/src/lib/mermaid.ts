@@ -4,6 +4,8 @@
  */
 
 import type { ResolvedTheme } from './theme';
+import { rasterPng } from './images';
+import { openViewer } from './viewer';
 
 type Mermaid = (typeof import('mermaid'))['default'];
 
@@ -17,7 +19,6 @@ let nextId = 0;
 let queue: Promise<void> = Promise.resolve();
 // SVG by theme and source: a remounted message is drawn again without waiting.
 const drawn = new Map<string, string>();
-let expander: ((source: string) => void) | null = null;
 
 function load(): Promise<Mermaid> {
   loading ??= import('mermaid').then((m) => m.default);
@@ -105,16 +106,11 @@ export function toggleMermaidView(button: HTMLElement): void {
   showView(block, diagram);
 }
 
-/** Sets who shows a diagram in full; null when nobody does. */
-export function setDiagramExpander(fn: ((source: string) => void) | null): void {
-  expander = fn;
-}
-
 /** Opens the diagram of the Mermaid block holding el in full. */
 export function expandMermaid(el: HTMLElement): void {
   const block = el.closest<HTMLElement>('.mermaid-block');
   const source = block?.querySelector('.copy-code-btn')?.getAttribute('data-code');
-  if (source && block?.querySelector('.mermaid-diagram svg')) expander?.(source);
+  if (source && block?.querySelector('.mermaid-diagram svg')) openViewer({ kind: 'diagram', source });
 }
 
 /**
@@ -171,35 +167,11 @@ export async function diagramImage(source: string, theme: ResolvedTheme, backgro
   return { svg: text, width, height };
 }
 
-// Canvas limits: WebKit refuses a canvas over 16M pixels, and every engine
-// one wider or taller than 16384.
-const MAX_CANVAS_PIXELS = 16_777_216;
-const MAX_CANVAS_SIDE = 16_384;
-
-/** The scale to draw a width x height image at: wanted, or less to fit a canvas. */
-export function rasterScale(width: number, height: number, wanted: number): number {
-  const byArea = Math.sqrt(MAX_CANVAS_PIXELS / (width * height));
-  const bySide = MAX_CANVAS_SIDE / Math.max(width, height);
-  return Math.min(wanted, byArea, bySide);
-}
-
 /** image as a PNG at scale times its size, or smaller to fit a canvas. */
 export async function diagramPng(image: DiagramImage, scale = 2): Promise<Blob> {
   const url = URL.createObjectURL(new Blob([image.svg], { type: 'image/svg+xml' }));
   try {
-    const img = new Image();
-    img.src = url;
-    await img.decode();
-    const k = rasterScale(image.width, image.height, scale);
-    const canvas = document.createElement('canvas');
-    canvas.width = Math.max(1, Math.floor(image.width * k));
-    canvas.height = Math.max(1, Math.floor(image.height * k));
-    const ctx = canvas.getContext('2d');
-    if (!ctx) throw new Error('no canvas to draw the image on');
-    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-    return await new Promise<Blob>((resolve, reject) =>
-      canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error('the image could not be encoded'))), 'image/png')
-    );
+    return await rasterPng(url, image.width, image.height, scale);
   } finally {
     URL.revokeObjectURL(url);
   }

@@ -16,6 +16,8 @@
   import PatchPart from './parts/PatchPart.svelte';
   import CompactionPart from './parts/CompactionPart.svelte';
   import NoticePart from './parts/NoticePart.svelte';
+  import ImagePart from './parts/ImagePart.svelte';
+  import { isImageFile } from '../../images';
 
   interface Props {
     message: Message;
@@ -185,6 +187,8 @@
             <CompactionPart text={part.text} />
           {:else if part.kind === 'notice' && part.text}
             <NoticePart text={part.text} />
+          {:else if part.kind === 'file' && part.file && isImageFile(part.file)}
+            <ImagePart file={part.file} {sessionRef} />
           {:else if part.kind === 'file' && part.file}
             <div class="file-attachment-pill">
               <span>📎</span>

@@ -346,11 +346,11 @@ export interface TranslateSettingsRequest {
   clearApiKey: boolean;
 }
 
-/** An image to save on this computer: SVG text, or a PNG in base64. */
+/** An image to save on this computer: SVG text, or the image in base64. */
 export interface SaveImageRequest {
-  /** Suggested file name without the extension. */
+  /** Suggested file name; the extension follows the format. */
   name: string;
-  format: 'svg' | 'png';
+  format: 'svg' | 'png' | 'jpeg' | 'gif' | 'webp';
   data: string;
 }
 
