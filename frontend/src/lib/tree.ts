@@ -1,9 +1,6 @@
 import type { GroupNode, GroupNodeKind, SessionRef } from './types';
 import { refsEqual } from './manage';
 
-// Threshold: groups with at least this many children start collapsed.
-export const DEFAULT_COLLAPSE_THRESHOLD = 8;
-
 /**
  * Returns the node's kind, inferring it from fields when the backend did not
  * send one (older cache or mock data) so the UI never renders blank.
@@ -27,26 +24,23 @@ export function directoryName(label: string): string {
 }
 
 /**
- * Computes the set of keys that should start collapsed: every session with
- * subagent children (topics stay hidden until the user opens them), plus
- * every 'directory' or 'agent' group whose child count meets the threshold.
+ * Computes the set of keys that should start collapsed. The top-level
+ * groups (directories, or agents) start open and list what's under them;
+ * groups inside them (agents under a directory, directories under an agent)
+ * and sessions with subagents start closed until the user opens them.
  */
-export function defaultCollapsedKeys(
-  groups: GroupNode[],
-  threshold = DEFAULT_COLLAPSE_THRESHOLD
-): Set<string> {
+export function defaultCollapsedKeys(groups: GroupNode[]): Set<string> {
   const out = new Set<string>();
-  const walk = (nodes: GroupNode[]) => {
+  const walk = (nodes: GroupNode[], nested: boolean) => {
     for (const node of nodes) {
       const children = node.children ?? [];
-      const min = nodeKind(node) === 'session' ? 1 : threshold;
-      if (children.length > 0 && children.length >= min) {
+      if (children.length > 0 && (nested || nodeKind(node) === 'session')) {
         out.add(node.key);
       }
-      walk(children);
+      walk(children, true);
     }
   };
-  walk(groups);
+  walk(groups, false);
   return out;
 }
 
@@ -152,31 +146,27 @@ export function targetKey(host?: string): string {
   return hashHost(host);
 }
 
-export const BASE_COLLAPSED_STORAGE_KEY = 'agent-sessions:tree-collapsed';
+export const BASE_COLLAPSED_STORAGE_KEY = 'agent-sessions:tree-toggled';
+
+// Toggles saved by earlier versions. Each one flips a default that has
+// since changed, so kept they would open and close the wrong groups.
+const LEGACY_COLLAPSED_STORAGE_KEY = 'agent-sessions:tree-collapsed';
 
 /**
- * Returns the namespaced storage key for the given host.
- * Migrates legacy un-namespaced 'agent-sessions:tree-collapsed' to
- * 'agent-sessions:tree-collapsed:local' when visiting local.
+ * Returns the namespaced storage key for the given host, and drops that
+ * host's toggles saved under the legacy key.
  */
 export function storageKeyForCollapsed(host?: string): string {
   const target = targetKey(host);
-  const key = `${BASE_COLLAPSED_STORAGE_KEY}:${target}`;
-  if (target === 'local' && typeof localStorage !== 'undefined') {
+  if (typeof localStorage !== 'undefined') {
     try {
-      const existing = localStorage.getItem(key);
-      if (existing === null) {
-        const legacy = localStorage.getItem(BASE_COLLAPSED_STORAGE_KEY);
-        if (legacy !== null) {
-          localStorage.setItem(key, legacy);
-          localStorage.removeItem(BASE_COLLAPSED_STORAGE_KEY);
-        }
-      }
+      localStorage.removeItem(`${LEGACY_COLLAPSED_STORAGE_KEY}:${target}`);
+      if (target === 'local') localStorage.removeItem(LEGACY_COLLAPSED_STORAGE_KEY);
     } catch {
       // Storage access disabled or restricted
     }
   }
-  return key;
+  return `${BASE_COLLAPSED_STORAGE_KEY}:${target}`;
 }
 
 export function loadCollapsedKeys(host?: string): Set<string> {

@@ -56,7 +56,6 @@ import {
   searchTerms,
 } from '../src/lib/search.ts';
 import {
-  DEFAULT_COLLAPSE_THRESHOLD,
   defaultCollapsedKeys,
   isCollapsed,
   nodeKind,
@@ -1114,22 +1113,20 @@ function treeNode(key, kind, childCount = 0, childKind = 'session') {
   return { key, label: key, kind, sessionCount: childCount, children };
 }
 
-test('defaultCollapsedKeys collapses only groups at or above the threshold', () => {
+test('defaultCollapsedKeys opens top-level groups and closes the groups inside them', () => {
   assert.equal(defaultCollapsedKeys([]).size, 0);
 
-  const small = treeNode('small', 'directory', DEFAULT_COLLAPSE_THRESHOLD - 1, 'agent');
-  const big = treeNode('big', 'directory', DEFAULT_COLLAPSE_THRESHOLD, 'agent');
-  const bigAgent = treeNode('bigAgent', 'agent', DEFAULT_COLLAPSE_THRESHOLD);
-  const keys = defaultCollapsedKeys([small, big, bigAgent]);
-  assert.deepEqual([...keys].sort(), ['big', 'bigAgent']);
+  // By directory: each directory lists its agents, closed, however many.
+  const small = { ...treeNode('small', 'directory'), children: [treeNode('small/claude', 'agent', 1)] };
+  const big = { ...treeNode('big', 'directory'), children: [treeNode('big/claude', 'agent', 30), treeNode('big/codex', 'agent', 2)] };
+  assert.deepEqual([...defaultCollapsedKeys([small, big])].sort(), ['big/claude', 'big/codex', 'small/claude']);
 
-  assert.deepEqual([...defaultCollapsedKeys([small], 2)], ['small']);
-});
+  // By agent: each agent lists its directories, closed.
+  const agent = { ...treeNode('claude', 'agent'), children: [treeNode('claude/be', 'directory', 18), treeNode('claude/tmp', 'directory', 1)] };
+  assert.deepEqual([...defaultCollapsedKeys([agent])].sort(), ['claude/be', 'claude/tmp']);
 
-test('defaultCollapsedKeys recurses into nested groups', () => {
-  const nestedAgent = treeNode('dir/agent', 'agent', 10);
-  const dir = { ...treeNode('dir', 'directory'), children: [nestedAgent] };
-  assert.deepEqual([...defaultCollapsedKeys([dir])], ['dir/agent']);
+  // A top-level group of sessions stays open; an empty group has nothing to close.
+  assert.equal(defaultCollapsedKeys([treeNode('flat', 'agent', 50), treeNode('empty', 'directory')]).size, 0);
 });
 
 test('defaultCollapsedKeys collapses every session with subagents', () => {
@@ -1257,13 +1254,14 @@ test('searchFilterFromApp passes Windows directories through unchanged', () => {
 });
 
 test('tree helpers treat Windows and UNC keys as opaque strings', () => {
-  const drive = treeNode('dir-agent:C:\\Users\\me\\repo', 'directory', DEFAULT_COLLAPSE_THRESHOLD, 'agent');
+  const driveKey = 'dir-agent:C:\\Users\\me\\repo';
+  const drive = { ...treeNode(driveKey, 'directory'), children: [treeNode(`${driveKey}/0`, 'agent', 1)] };
   const unc = treeNode('dir-agent:\\\\fileserver\\share\\team-repo\\', 'directory', 1, 'agent');
   const root = { ...treeNode('dir-agent:C:\\', 'directory'), cwd: 'C:\\' };
   const tree = [drive, unc, root];
 
-  assert.deepEqual([...defaultCollapsedKeys(tree)], ['dir-agent:C:\\Users\\me\\repo']);
-  assert.equal(isCollapsed('dir-agent:C:\\Users\\me\\repo', new Set(), defaultCollapsedKeys(tree)), true);
+  assert.deepEqual([...defaultCollapsedKeys(tree)], [`${driveKey}/0`]);
+  assert.equal(isCollapsed(`${driveKey}/0`, new Set(), defaultCollapsedKeys(tree)), true);
   assert.equal(
     isCollapsed('dir-agent:\\\\fileserver\\share\\team-repo\\', new Set(['dir-agent:\\\\fileserver\\share\\team-repo\\']), new Set()),
     true
@@ -1722,7 +1720,7 @@ test('hashHost and targetKey provide deterministic namespaces per host', () => {
   assert.equal(hashHost('dev-box'), devHash);
 });
 
-test('storageKeyForCollapsed namespaces keys and migrates legacy un-namespaced key', () => {
+test('storageKeyForCollapsed namespaces keys and drops legacy toggles', () => {
   // Mock localStorage for node test environment
   const store = new Map();
   globalThis.localStorage = {
@@ -1737,16 +1735,18 @@ test('storageKeyForCollapsed namespaces keys and migrates legacy un-namespaced k
     const remoteKey = storageKeyForCollapsed('dev-box');
     assert.equal(remoteKey, `${BASE_COLLAPSED_STORAGE_KEY}:${hashHost('dev-box')}`);
 
-    // 2. Legacy key migration to local
-    store.set(BASE_COLLAPSED_STORAGE_KEY, JSON.stringify(['group:1', 'group:2']));
-    assert.equal(store.has(`${BASE_COLLAPSED_STORAGE_KEY}:local`), false);
-
-    const localKey = storageKeyForCollapsed();
-    assert.equal(localKey, `${BASE_COLLAPSED_STORAGE_KEY}:local`);
-    assert.equal(store.has(BASE_COLLAPSED_STORAGE_KEY), false); // Cleaned up
-    assert.deepEqual(JSON.parse(store.get(localKey)), ['group:1', 'group:2']);
+    // 2. Toggles saved by earlier versions flip other defaults; they're dropped.
+    const legacy = 'agent-sessions:tree-collapsed';
+    store.set(legacy, '["a"]');
+    store.set(`${legacy}:local`, '["b"]');
+    store.set(`${legacy}:${hashHost('dev-box')}`, '["c"]');
+    assert.equal(storageKeyForCollapsed(), `${BASE_COLLAPSED_STORAGE_KEY}:local`);
+    assert.deepEqual([...store.keys()], [`${legacy}:${hashHost('dev-box')}`]);
+    storageKeyForCollapsed('dev-box');
+    assert.equal(store.size, 0);
 
     // 3. loadCollapsedKeys and saveCollapsedKeys per target host
+    saveCollapsedKeys(new Set(['group:1', 'group:2']));
     saveCollapsedKeys(new Set(['remote:node']), 'dev-box');
     assert.deepEqual([...loadCollapsedKeys('dev-box')], ['remote:node']);
     assert.deepEqual([...loadCollapsedKeys()], ['group:1', 'group:2']); // Local untouched
