@@ -16,7 +16,7 @@ import { highlightCode, detectLanguage } from '../src/lib/highlight.ts';
 import { renderMarkdown } from '../src/lib/markdown.ts';
 import { reachesLineCount } from '../src/lib/layout.ts';
 import { isTranscriptMode, messageMarkdown, messageText, visibleTranscriptParts, withTranslation } from '../src/lib/transcript.ts';
-import { printTitle } from '../src/lib/print.ts';
+import { printBlocks, printMarkdown, printTitle } from '../src/lib/print.ts';
 import {
   refKey,
   refsEqual,
@@ -3035,8 +3035,35 @@ test('a translation replaces the text parts where the first was', () => {
   assert.deepEqual(withTranslation([file], 'xin chào'), [{ kind: 'text', text: 'xin chào' }, file]);
 });
 
-test('the print title names the session and role without unsafe file name characters', () => {
-  assert.equal(printTitle('Fix: a/b "c"?', 'assistant'), 'Fix a b c - Assistant message');
-  assert.equal(printTitle('  ', 'user'), 'User message');
-  assert.equal(printTitle('x'.repeat(200), 'user'), `${'x'.repeat(80)} - User message`);
+test('the print title is the edited title without unsafe file name characters', () => {
+  assert.equal(printTitle('Fix: a/b "c"?'), 'Fix a b c');
+  assert.equal(printTitle('  '), 'Message');
+  assert.equal(printTitle('x'.repeat(200)), 'x'.repeat(100));
+});
+
+test('a message to print becomes Markdown with its images as attachment lines', () => {
+  const shot = { mime: 'image/png', ref: 'r1' };
+  const named = { name: 'diagram [v2].png', mime: 'image/png', ref: 'r2' };
+  const { markdown, attachments } = printMarkdown([
+    { kind: 'text', text: '  Hello  ' },
+    { kind: 'file', file: shot },
+    { kind: 'file', file: { name: 'notes.txt', mime: 'text/plain' } },
+    { kind: 'file', file: named },
+    { kind: 'notice', text: 'Assistant error' },
+  ]);
+  assert.equal(
+    markdown,
+    'Hello\n\n![Image](attachment:1)\n\n📎 notes.txt\n\n![diagram v2.png](attachment:2)\n\n> Assistant error',
+  );
+  assert.deepEqual(attachments, [shot, named]);
+});
+
+test('print blocks split the Markdown at attachment lines outside code', () => {
+  assert.deepEqual(printBlocks('Intro\n\n![a.png](attachment:2)\nAfter\n```\n![x](attachment:1)\n```'), [
+    { kind: 'markdown', text: 'Intro\n' },
+    { kind: 'image', index: 2, alt: 'a.png' },
+    { kind: 'markdown', text: 'After\n```\n![x](attachment:1)\n```' },
+  ]);
+  assert.deepEqual(printBlocks('Inline ![a](attachment:1) stays'), [{ kind: 'markdown', text: 'Inline ![a](attachment:1) stays' }]);
+  assert.deepEqual(printBlocks(''), []);
 });

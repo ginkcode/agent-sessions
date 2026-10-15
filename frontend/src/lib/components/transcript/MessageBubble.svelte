@@ -80,15 +80,12 @@
     }
   }
 
-  // Prints what Chat level shows, in the language shown.
+  // Opens what Chat level shows, in the language shown, for editing and printing.
   function print() {
     const parts = visibleTranscriptParts(message, 'chat');
     printMessage({
       sessionRef,
-      title: appState.selectedSessionMeta?.title || 'Session',
-      role: isUser ? 'user' : 'assistant',
-      model: message.model,
-      time: formattedTime,
+      title: appState.selectedSessionMeta?.title ?? '',
       parts: translated && translation ? withTranslation(parts, translation.text) : parts,
     });
   }

@@ -1,44 +1,118 @@
 /**
- * Prints one message, or saves it as a PDF from the print dialog. The print
- * sheet lives in App.svelte and registers itself here, like the viewer.
+ * Prints one message, or saves it as a PDF from the print dialog. The message
+ * opens in an editor first, where its title and Markdown can be changed. The
+ * editor and the print sheet live in App.svelte and register themselves here,
+ * like the viewer.
  */
-import type { Part, SessionRef } from './types';
+import type { FileRef, Part, SessionRef } from './types';
+import { isImageFile } from './images';
 
 export interface PrintJob {
   sessionRef: SessionRef;
-  /** The session's title. */
+  /** The title offered in the editor: the session's. */
   title: string;
-  role: 'user' | 'assistant';
-  model?: string;
-  /** The message's time as the transcript shows it. */
-  time: string;
   /** What Chat level shows of the message, translated when it is shown so. */
   parts: Part[];
 }
 
-let printer: ((job: PrintJob) => void) | null = null;
+/** What is printed: the edited title and Markdown, and the message's images. */
+export interface PrintDocument {
+  sessionRef: SessionRef;
+  title: string;
+  markdown: string;
+  /** Images placed in the Markdown as ![name](attachment:N), N from 1. */
+  attachments: FileRef[];
+}
 
-/** Sets who prints messages; null when nobody does. */
-export function setPrinter(fn: ((job: PrintJob) => void) | null): void {
+let editor: ((job: PrintJob) => void) | null = null;
+let printer: ((doc: PrintDocument) => void) | null = null;
+
+/** Sets who edits a message before printing; null when nobody does. */
+export function setPrintEditor(fn: ((job: PrintJob) => void) | null): void {
+  editor = fn;
+}
+
+/** Sets who prints documents; null when nobody does. */
+export function setPrinter(fn: ((doc: PrintDocument) => void) | null): void {
   printer = fn;
 }
 
 export function printMessage(job: PrintJob): void {
-  printer?.(job);
+  editor?.(job);
+}
+
+export function printDocument(doc: PrintDocument): void {
+  printer?.(doc);
+}
+
+export function fileLabel(file: FileRef): string {
+  return file.name || file.path?.split(/[\\/]/).pop() || (isImageFile(file) ? 'Image' : 'Attachment');
+}
+
+const ATTACHMENT = /^!\[([^\]]*)\]\(attachment:(\d+)\)$/;
+
+/**
+ * The message as Markdown to edit: text as it is, images as
+ * ![name](attachment:N) lines, other files by name and the error notice as
+ * a quote.
+ */
+export function printMarkdown(parts: Part[]): { markdown: string; attachments: FileRef[] } {
+  const blocks: string[] = [];
+  const attachments: FileRef[] = [];
+  for (const part of parts) {
+    if (part.kind === 'text' && part.text?.trim()) {
+      blocks.push(part.text.trim());
+    } else if (part.kind === 'file' && part.file && isImageFile(part.file)) {
+      attachments.push(part.file);
+      blocks.push(`![${fileLabel(part.file).replace(/[[\]]/g, '')}](attachment:${attachments.length})`);
+    } else if (part.kind === 'file' && part.file) {
+      blocks.push(`📎 ${fileLabel(part.file)}`);
+    } else if (part.kind === 'notice' && part.text) {
+      blocks.push(`> ${part.text}`);
+    }
+  }
+  return { markdown: blocks.join('\n\n'), attachments };
+}
+
+export type PrintBlock = { kind: 'markdown'; text: string } | { kind: 'image'; index: number; alt: string };
+
+/**
+ * The Markdown split at lines that hold only an attachment image, which the
+ * Markdown renderer doesn't draw. Lines in fenced code stay text.
+ */
+export function printBlocks(markdown: string): PrintBlock[] {
+  const blocks: PrintBlock[] = [];
+  let text: string[] = [];
+  let fenced = false;
+  const flush = () => {
+    const joined = text.join('\n');
+    if (joined.trim()) blocks.push({ kind: 'markdown', text: joined });
+    text = [];
+  };
+  for (const line of markdown.split(/\r?\n/)) {
+    if (line.trimStart().startsWith('```')) fenced = !fenced;
+    const match = fenced ? null : ATTACHMENT.exec(line.trim());
+    if (match) {
+      flush();
+      blocks.push({ kind: 'image', index: Number(match[2]), alt: match[1] });
+    } else {
+      text.push(line);
+    }
+  }
+  flush();
+  return blocks;
 }
 
 /**
  * The document title while printing, which the dialog offers as the PDF's
- * file name: the session title and the role, without characters file
- * systems reject.
+ * file name: the title without characters file systems reject.
  */
-export function printTitle(title: string, role: 'user' | 'assistant'): string {
+export function printTitle(title: string): string {
   const clean = title
     .replace(/[\\/:*?"<>|\u0000-\u001f]+/g, ' ')
     .replace(/\s+/g, ' ')
     .trim()
-    .slice(0, 80)
+    .slice(0, 100)
     .trim();
-  const who = role === 'user' ? 'User message' : 'Assistant message';
-  return clean ? `${clean} - ${who}` : who;
+  return clean || 'Message';
 }
