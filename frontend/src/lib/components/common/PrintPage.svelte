@@ -84,16 +84,38 @@
 </div>
 
 <style>
+  /* Paper reads smaller than the screen: the transcript's sizes at 90%. */
   .print-page {
-    font-size: 14px;
+    font-size: 12.6px;
     line-height: 1.6;
     color: var(--text-primary);
   }
 
   .print-title {
-    font-size: 22px;
+    font-size: 19.8px;
     line-height: 1.3;
-    margin-bottom: 14px;
+    margin-bottom: 12px;
+  }
+
+  .print-page :global(h1) {
+    font-size: 18px;
+  }
+
+  .print-page :global(h2) {
+    font-size: 15.8px;
+  }
+
+  .print-page :global(h3) {
+    font-size: 13.7px;
+  }
+
+  .print-page :global(table),
+  .print-page :global(code.hljs) {
+    font-size: 11.5px;
+  }
+
+  .print-page :global(.code-lang-tag) {
+    font-size: 9.8px;
   }
 
   .print-page > :global(* + *) {
@@ -113,7 +135,7 @@
   }
 
   .print-note {
-    font-size: 12px;
+    font-size: 10.8px;
     color: var(--text-secondary);
   }
 
