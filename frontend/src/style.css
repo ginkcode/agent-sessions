@@ -1,4 +1,18 @@
 /* frontend/src/style.css tokens */
+
+/* Fontsource's JetBrains Mono subsets leave out box drawing, arrows and
+   shapes, so diagrams drawn in text fell back to another monospace font with
+   other widths and lost their alignment. These glyphs come from the official
+   JetBrains Mono 2.304 (SIL OFL, assets/fonts/JetBrainsMono-OFL.txt). */
+@font-face {
+  font-family: 'JetBrains Mono Variable';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 800;
+  src: url(./assets/fonts/jetbrains-mono-symbols-wght-normal.woff2) format('woff2-variations');
+  unicode-range: U+2190-23FF, U+2500-27BF, U+27F0-27FF, U+2900-297F, U+E0A0-E0FF;
+}
+
 :root {
   /* Surfaces separate by tone rather than outlines; borders are hairlines. */
   --bg-primary: #ffffff;
