@@ -244,6 +244,14 @@ test('renderMarkdown leaves mermaid blocks for the diagram renderer', () => {
   assert.ok(empty.includes('data-lang="mermaid"'));
 });
 
+test('renderMarkdown keeps lines that only look like headings as text', () => {
+  // These once matched no block and were never read, which hung the page.
+  assert.equal(renderMarkdown('###'), '<p>###</p>');
+  assert.equal(renderMarkdown('#tag'), '<p>#tag</p>');
+  assert.equal(renderMarkdown('####### seven'), '<p>####### seven</p>');
+  assert.equal(renderMarkdown('Intro\n###\n## Next'), '<p>Intro</p>\n<p>###</p>\n<h2>Next</h2>');
+});
+
 test('renderMarkdown leaves intraword underscores, code and URLs literal', () => {
   const cases = [
     ['Set API_KEY_NAME first', '<p>Set API_KEY_NAME first</p>'],

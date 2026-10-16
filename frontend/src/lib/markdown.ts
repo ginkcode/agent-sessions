@@ -264,8 +264,11 @@ export function renderMarkdown(source: string): string {
       continue;
     }
 
-    // Regular paragraph
-    const pLines: string[] = [];
+    // Regular paragraph. Its first line is taken whatever it starts with:
+    // a line no block above matched, such as "###" or "#tag", is text, and
+    // leaving it unread would loop forever.
+    const pLines: string[] = [line];
+    i++;
     while (
       i < len &&
       lines[i].trim() &&
@@ -281,10 +284,8 @@ export function renderMarkdown(source: string): string {
       i++;
     }
 
-    if (pLines.length > 0) {
-      const pText = pLines.map((l) => renderInline(l)).join('<br />');
-      out.push(`<p>${pText}</p>`);
-    }
+    const pText = pLines.map((l) => renderInline(l)).join('<br />');
+    out.push(`<p>${pText}</p>`);
   }
 
   return out.join('\n');
