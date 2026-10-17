@@ -536,9 +536,17 @@
     flex-direction: column;
   }
 
+  /* Each message remembers its height, so while a splitter is dragged the
+     ones off screen can skip layout without anything moving. Laying out a
+     long transcript at every width made the drag fall behind the pointer. */
   .message-index-anchor {
     border-radius: 9px;
     transition: background-color 0.25s ease, box-shadow 0.25s ease;
+    contain-intrinsic-size: auto 300px;
+  }
+
+  :global(html.splitter-dragging) .message-index-anchor {
+    content-visibility: auto;
   }
 
   :global(.message-index-anchor.search-jump-target) {

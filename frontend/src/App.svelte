@@ -125,17 +125,25 @@
     };
   });
 
-  function handleSidebarResize(delta: number) {
-    preferences.setSidebarWidth(preferences.widths.sidebar + delta);
+  // Each returns how far the edge moved, for the splitter to keep it under
+  // the pointer at a size limit.
+  function handleSidebarResize(delta: number): number {
+    const before = preferences.widths.sidebar;
+    preferences.setSidebarWidth(before + delta);
+    return preferences.widths.sidebar - before;
   }
 
-  function handleSessionListResize(delta: number) {
-    preferences.setSessionListWidth(preferences.widths.sessionList + delta);
+  function handleSessionListResize(delta: number): number {
+    const before = preferences.widths.sessionList;
+    preferences.setSessionListWidth(before + delta);
+    return preferences.widths.sessionList - before;
   }
 
   // Dragging the splitter down shrinks the panel.
-  function handlePanelResize(delta: number) {
-    terminals.setHeight(terminals.height - delta, window.innerHeight);
+  function handlePanelResize(delta: number): number {
+    const before = terminals.height;
+    terminals.setHeight(before - delta, window.innerHeight);
+    return before - terminals.height;
   }
 </script>
 

@@ -1,41 +1,62 @@
 <script lang="ts">
+  import { endSplitterDrag, startSplitterDrag } from '../../splitterDrag';
+
   interface Props {
     direction?: 'horizontal' | 'vertical';
     ariaLabel?: string;
-    onResize: (delta: number) => void;
+    /** Resizes by delta pixels and returns how much of it applied, which is
+     *  less at a size limit. Returning nothing means all of it applied. */
+    onResize: (delta: number) => number | void;
   }
 
   let { direction = 'horizontal', ariaLabel = 'Resize panel', onResize }: Props = $props();
 
   let isDragging = $state(false);
-  let startPos = 0;
 
   function handlePointerDown(e: PointerEvent) {
     if (e.button !== 0) return; // Only left click
+    // The press would otherwise start a text selection across the panes.
+    e.preventDefault();
+    window.getSelection()?.removeAllRanges();
     isDragging = true;
-    startPos = direction === 'horizontal' ? e.clientX : e.clientY;
+    startSplitterDrag(direction === 'horizontal' ? 'col-resize' : 'row-resize');
+    // Where the edge would be with no limits. Moves past a limit are owed,
+    // so the edge stays put until the pointer comes back to it.
+    let edgePos = direction === 'horizontal' ? e.clientX : e.clientY;
+    let pointerPos = edgePos;
+    let frame = 0;
 
     const target = e.currentTarget as HTMLElement;
     target.setPointerCapture(e.pointerId);
 
+    // One resize per frame, however often the pointer reports.
+    function apply() {
+      frame = 0;
+      const delta = pointerPos - edgePos;
+      if (delta === 0) return;
+      const applied = onResize(delta);
+      edgePos += typeof applied === 'number' ? applied : delta;
+    }
+
     function onPointerMove(moveEvent: PointerEvent) {
-      const currentPos = direction === 'horizontal' ? moveEvent.clientX : moveEvent.clientY;
-      const delta = currentPos - startPos;
-      if (delta !== 0) {
-        onResize(delta);
-        startPos = currentPos;
-      }
+      pointerPos = direction === 'horizontal' ? moveEvent.clientX : moveEvent.clientY;
+      if (!frame) frame = requestAnimationFrame(apply);
     }
 
     function onPointerUp(upEvent: PointerEvent) {
+      if (frame) cancelAnimationFrame(frame);
+      apply();
       isDragging = false;
-      target.releasePointerCapture(upEvent.pointerId);
+      endSplitterDrag();
+      if (target.hasPointerCapture(upEvent.pointerId)) target.releasePointerCapture(upEvent.pointerId);
       window.removeEventListener('pointermove', onPointerMove);
       window.removeEventListener('pointerup', onPointerUp);
+      window.removeEventListener('pointercancel', onPointerUp);
     }
 
     window.addEventListener('pointermove', onPointerMove);
     window.addEventListener('pointerup', onPointerUp);
+    window.addEventListener('pointercancel', onPointerUp);
   }
 
   function handleKeyDown(e: KeyboardEvent) {

@@ -330,3 +330,19 @@ input, select {
     display: none !important;
   }
 }
+
+/* While a splitter is dragged nothing is selected, and the resize cursor
+   stays when the pointer outruns the splitter. */
+html.splitter-dragging,
+html.splitter-dragging * {
+  -webkit-user-select: none !important;
+  user-select: none !important;
+}
+
+html[data-splitter-cursor='col-resize'] * {
+  cursor: col-resize !important;
+}
+
+html[data-splitter-cursor='row-resize'] * {
+  cursor: row-resize !important;
+}

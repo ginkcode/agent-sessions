@@ -11,6 +11,7 @@
   import { terminalKeyAction, terminalTheme } from '../../terminal';
   import { copyToClipboard, readClipboard } from '../../portable';
   import { isMac } from '../../../main';
+  import { onSplitterDragEnd, splitterDragging } from '../../splitterDrag';
 
   interface Props {
     tab: PanelTab;
@@ -24,6 +25,10 @@
   let fit: FitAddon | null = null;
   // The size the process was last told, to send only changes.
   let sent = { cols: 0, rows: 0 };
+  let sendTimer: ReturnType<typeof setTimeout> | undefined;
+  // Each new size makes a full-screen program redraw everything, so while
+  // the panel is dragged the process hears the size once it settles.
+  const SEND_SIZE_DELAY = 80;
   let menu = $state<{ x: number; y: number; items: ContextMenuItem[] } | null>(null);
 
   function cssVar(name: string): string {
@@ -93,13 +98,22 @@
         t.focus();
       },
     });
-    const observer = new ResizeObserver(() => resize());
+    const observer = new ResizeObserver((entries) => {
+      if (splitterDragging()) keepCursorInView(entries[entries.length - 1].contentRect.height);
+      else resize();
+    });
     observer.observe(host);
+    const offDragEnd = onSplitterDragEnd(() => {
+      if (t.element) t.element.style.transform = '';
+      resize();
+    });
     resize();
     if (active) t.focus();
 
     return () => {
+      clearTimeout(sendTimer);
       observer.disconnect();
+      offDragEnd();
       input.dispose();
       detach();
       t.dispose();
@@ -109,14 +123,35 @@
   }
 
   // Fits the terminal to its box and tells the process its new size. A
-  // hidden tab has no box and keeps its size until it is shown.
+  // hidden tab has no box and keeps its size until it is shown. Refitting
+  // at every frame of a splitter drag held each frame up, so the terminal
+  // fits once the drag ends.
   function resize() {
-    if (!term || !fit || host.clientWidth === 0 || host.clientHeight === 0) return;
+    if (!term || !fit || splitterDragging() || host.clientWidth === 0 || host.clientHeight === 0) return;
     const dims = fit.proposeDimensions();
     if (!dims || !Number.isFinite(dims.cols) || !Number.isFinite(dims.rows) || dims.cols < 1 || dims.rows < 1) return;
     if (dims.cols !== term.cols || dims.rows !== term.rows) fit.fit();
     terminals.setSize(term.cols, term.rows);
-    if (tab.status !== 'running' || (term.cols === sent.cols && term.rows === sent.rows)) return;
+    clearTimeout(sendTimer);
+    sendTimer = setTimeout(sendSize, SEND_SIZE_DELAY);
+  }
+
+  // Until it refits, the terminal keeps its rows. While the panel is too
+  // short for them, they move up as far as the cursor row needs to stay in
+  // view, which is where the refit puts them.
+  function keepCursorInView(height: number) {
+    const el = term?.element;
+    const screen = el?.querySelector<HTMLElement>('.xterm-screen');
+    if (!term || !el || !screen) return;
+    const buffer = term.buffer.active;
+    const row = buffer.baseY + buffer.cursorY - buffer.viewportY;
+    const rowBottom = ((row + 1) * screen.offsetHeight) / term.rows;
+    const shift = row < 0 || row >= term.rows ? 0 : Math.max(0, rowBottom - height);
+    el.style.transform = shift ? `translateY(${-shift}px)` : '';
+  }
+
+  function sendSize() {
+    if (!term || tab.status !== 'running' || (term.cols === sent.cols && term.rows === sent.rows)) return;
     sent = { cols: term.cols, rows: term.rows };
     void api.terminalResize(tab.id, term.cols, term.rows).catch(() => {});
   }
@@ -213,6 +248,16 @@
 
   .xterm-host :global(.xterm) {
     height: 100%;
+  }
+
+  /* Until the terminal refits after a splitter drag, it keeps its rows and
+     the panel clips them; keepCursorInView moves them. */
+  :global(html.splitter-dragging) .xterm-host {
+    overflow: hidden;
+  }
+
+  :global(html.splitter-dragging) .xterm-host :global(.xterm) {
+    height: auto;
   }
 
   /* xterm.css paints the viewport black; xterm 6 themes only the scrollable
