@@ -661,6 +661,7 @@ export class MockBackendAPI {
         'frontend/package.json', 'frontend/src/App.svelte', 'frontend/src/lib/api.ts', 'assets/logo.png',
         'frontend/src/lib/new.ts',
       ],
+      ignored: ['.env', '.env.local', 'frontend/.env.development'],
       status: {
         'frontend/src/App.svelte': 'M',
         'frontend/src/lib/new.ts': 'U',

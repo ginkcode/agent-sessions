@@ -10,7 +10,7 @@
     diffRows,
     fileChanges,
     fileLanguage,
-    filterFiles,
+    searchFiles,
     folderStatus,
     lineMarks,
     parentFolders,
@@ -39,7 +39,9 @@
   // Deleted files stay listed, struck through, while git status shows.
   let paths = $derived(withDeleted(files.listing?.files ?? [], status));
   let tree = $derived(buildFileTree(paths));
-  let matches = $derived(query.trim() ? filterFiles(paths, query) : []);
+  // Ignored files (such as .env) stay out of the tree but can be searched.
+  let ignored = $derived(new Set(files.listing?.ignored ?? []));
+  let matches = $derived(query.trim() ? searchFiles(paths, files.listing?.ignored, query) : []);
 
   let language = $derived(files.selected ? fileLanguage(files.selected) : null);
   let text = $derived(files.content?.text ?? '');
@@ -160,10 +162,23 @@
     copyTimer = setTimeout(() => (copyState = 'idle'), 1500);
   }
 
-  // Another file opened: the button starts over.
+  let pathCopyState = $state<'idle' | 'copied' | 'failed'>('idle');
+  let pathCopyTimer: ReturnType<typeof setTimeout> | null = null;
+
+  async function copyPath() {
+    if (!files.selected) return;
+    pathCopyState = (await copyToClipboard(files.selected)) ? 'copied' : 'failed';
+    if (pathCopyTimer) clearTimeout(pathCopyTimer);
+    pathCopyTimer = setTimeout(() => (pathCopyState = 'idle'), 1500);
+  }
+
+  const PATH_COPY_LABELS = { idle: 'Copy relative path', copied: 'Path copied', failed: 'Copy failed' };
+
+  // Another file opened: the buttons start over.
   $effect(() => {
     void files.selected;
     copyState = 'idle';
+    pathCopyState = 'idle';
   });
 
   const COPY_LABELS = { idle: 'Copy', copied: 'Copied', failed: 'Copy failed' };
@@ -294,7 +309,8 @@
                       class="match"
                       class:active={i === activeIndex}
                       class:unsupported={fileLanguage(path) === null}
-                      title={path}
+                      class:ignored={ignored.has(path)}
+                      title={ignored.has(path) ? `${path} · Ignored by .gitignore` : path}
                       onclick={() => pick(path)}
                       onmousemove={() => (activeIndex = i)}
                       onkeydown={() => {}}
@@ -302,6 +318,7 @@
                       <span class="match-name git-{st ?? 'none'}">{parts.name}</span>
                       {#if parts.dir}<span class="match-dir">{parts.dir}</span>{/if}
                       {#if st}<span class="git-letter git-{st}" title={STATUS_LABELS[st]}>{st}</span>{/if}
+                      {#if ignored.has(path)}<span class="ignored-tag">ignored</span>{/if}
                     </li>
                   {/each}
                 </ul>
@@ -328,6 +345,26 @@
           {:else}
             <div class="viewer-header">
               <span class="viewer-path" title={files.selected}>{files.selected}</span>
+              <button
+                type="button"
+                class="path-copy"
+                class:copied={pathCopyState === 'copied'}
+                class:failed={pathCopyState === 'failed'}
+                title={PATH_COPY_LABELS[pathCopyState]}
+                aria-label={PATH_COPY_LABELS[pathCopyState]}
+                onclick={copyPath}
+              >
+                {#if pathCopyState === 'copied'}
+                  <svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true">
+                    <path d="M3 8.5l3 3 7-7" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
+                  </svg>
+                {:else}
+                  <svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true">
+                    <rect x="5.5" y="5.5" width="8" height="8.5" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.3" />
+                    <path d="M10.5 3.5V3a1.5 1.5 0 0 0-1.5-1.5H4A1.5 1.5 0 0 0 2.5 3v6.5A1.5 1.5 0 0 0 4 11h.5" fill="none" stroke="currentColor" stroke-width="1.3" />
+                  </svg>
+                {/if}
+              </button>
               {#if files.content}<span class="viewer-size">{formatSize(files.content.size)}</span>{/if}
               {#if text && !files.loadingFile && language !== null}
                 {#if hasChanges}
@@ -682,6 +719,22 @@
     background-color: rgba(46, 160, 67, 0.22);
   }
 
+  /* Files .gitignore leaves out, found by search: dimmed, as VS Code does. */
+  .match.ignored .match-name,
+  .match.ignored .match-dir {
+    opacity: 0.6;
+  }
+  .ignored-tag {
+    margin-left: auto;
+    padding-left: 8px;
+    flex-shrink: 0;
+    font-size: 0.7rem;
+    color: var(--text-secondary);
+  }
+  .git-letter + .ignored-tag {
+    margin-left: 0;
+  }
+
   .match {
     display: flex;
     align-items: baseline;
@@ -726,6 +779,32 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  .path-copy {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 22px;
+    height: 22px;
+    margin-left: -4px;
+    border-radius: 4px;
+    color: var(--text-muted);
+    cursor: pointer;
+  }
+
+  .path-copy:hover {
+    background-color: var(--hover-bg);
+    color: var(--text-primary);
+  }
+
+  .path-copy.copied {
+    color: #22c55e;
+  }
+
+  .path-copy.failed {
+    color: #ef4444;
   }
 
   .viewer-size {

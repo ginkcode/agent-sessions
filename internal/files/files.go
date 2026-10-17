@@ -39,6 +39,10 @@ type Listing struct {
 	// Status is the git status of each changed file, by path: see the
 	// Status constants. Deleted files are in Status but not in Files.
 	Status map[string]Status `json:"status,omitempty"`
+	// Ignored are files .gitignore leaves out, such as .env, so a search
+	// can still find them. Ignored folders (node_modules, build output)
+	// are not looked into, so only files outside them are here.
+	Ignored []string `json:"ignored,omitempty"`
 }
 
 // Status is a file's git status, as VS Code's file tree shows it.
@@ -104,6 +108,7 @@ func List(ctx context.Context, root string) (Listing, error) {
 		if len(out.Files) > MaxFiles {
 			out.Files, out.Truncated = out.Files[:MaxFiles], true
 		}
+		out.Ignored = gitIgnored(ctx, root, MaxFiles-len(out.Files))
 		return out, nil
 	}
 	return walk(ctx, root)
@@ -148,6 +153,28 @@ func gitFiles(ctx context.Context, root string) ([]string, bool) {
 	}
 	slices.Sort(files)
 	return files, true
+}
+
+// gitIgnored lists the ignored files under root, at most limit of them.
+// With --directory git reports an ignored folder as one "dir/" entry
+// without walking it; those entries are dropped.
+func gitIgnored(ctx context.Context, root string, limit int) []string {
+	out, ok := runGit(ctx, root, "ls-files", "-z", "--others", "--ignored", "--exclude-standard", "--directory", "--no-empty-directory")
+	if !ok {
+		return nil
+	}
+	var ignored []string
+	for name := range strings.SplitSeq(string(out), "\x00") {
+		if len(ignored) >= limit {
+			break
+		}
+		if name == "" || strings.HasSuffix(name, "/") {
+			continue
+		}
+		ignored = append(ignored, name)
+	}
+	slices.Sort(ignored)
+	return ignored
 }
 
 // gitStatus returns the status of the changed files under root, by path

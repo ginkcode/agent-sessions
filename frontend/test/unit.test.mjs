@@ -106,7 +106,7 @@ import {
 import { BUDGET_PRESETS, ALL_AGENTS, copyToClipboard, targetAgentsFor } from '../src/lib/portable.ts';
 import { renameSvgId } from '../src/lib/mermaid.ts';
 import { splitHighlightedLines, splitLines } from '../src/lib/codeHighlight.ts';
-import { buildFileTree, diffRows, fileChanges, fileLanguage, filterFiles, folderStatus, lineMarks, matchScore, parentFolders, withDeleted } from '../src/lib/files.ts';
+import { buildFileTree, diffRows, fileChanges, fileLanguage, filterFiles, folderStatus, lineMarks, matchScore, parentFolders, searchFiles, withDeleted } from '../src/lib/files.ts';
 import { ImageCache, base64Blob, blobImage, isImageFile, rasterScale, sniffImageFormat } from '../src/lib/images.ts';
 
 test('formatTokens formats numbers into compact string representations', () => {
@@ -3788,4 +3788,15 @@ test('fileChanges marks an untracked file as all added', () => {
   assert.equal(fileChanges('M', undefined, 3), undefined);
   const c = [{ kind: 'added', start: 1, count: 1 }];
   assert.equal(fileChanges('M', c, 3), c);
+});
+
+test('searchFiles finds ignored files, below listed ones that match as well', () => {
+  const paths = ['src/env.ts', 'README.md'];
+  const ignored = ['.env', 'src/.env.local'];
+  const got = searchFiles(paths, ignored, '.env');
+  assert.ok(got.includes('.env') && got.includes('src/.env.local'));
+  assert.ok(!got.includes('README.md'));
+  assert.deepEqual(searchFiles(paths, ignored, 'env.ts'), ['src/env.ts']);
+  assert.deepEqual(searchFiles(['a/x.ts'], ['b/x.ts'], 'x.ts'), ['a/x.ts', 'b/x.ts']);
+  assert.deepEqual(searchFiles(paths, undefined, 'readme'), ['README.md']);
 });

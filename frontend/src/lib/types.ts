@@ -254,6 +254,8 @@ export interface FileListing {
   git?: boolean;
   /** Git status of each changed file; deleted files are here, not in files. */
   status?: Record<string, GitStatus>;
+  /** Files .gitignore leaves out (such as .env), for search only. */
+  ignored?: string[];
 }
 
 /** A file's git status letter, as VS Code shows it. */

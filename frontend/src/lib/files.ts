@@ -80,6 +80,30 @@ export function filterFiles(paths: string[], query: string, limit = 200): string
   return scored.slice(0, limit).map((s) => s.path);
 }
 
+/**
+ * The search results over the listed files and the ignored ones (such as
+ * .env), best match first. An ignored file ranks below a listed one that
+ * matches as well.
+ */
+export function searchFiles(paths: string[], ignored: string[] | undefined, query: string, limit = 200): string[] {
+  if (!ignored?.length) return filterFiles(paths, query, limit);
+  if (!query.trim()) return paths.slice(0, limit);
+  const scored: { path: string; score: number; ignored: boolean }[] = [];
+  for (const [list, isIgnored] of [
+    [paths, false],
+    [ignored, true],
+  ] as const) {
+    for (const path of list) {
+      const score = matchScore(path, query);
+      if (score >= 0) scored.push({ path, score, ignored: isIgnored });
+    }
+  }
+  scored.sort(
+    (a, b) => b.score - a.score || Number(a.ignored) - Number(b.ignored) || a.path.localeCompare(b.path)
+  );
+  return scored.slice(0, limit).map((s) => s.path);
+}
+
 // Extensions of source and text files, mapped to a highlight.js language
 // ('' shows plain text). The languages are those of highlight.js's common
 // bundle; .svelte, .vue and .html go to xml, which highlights their script

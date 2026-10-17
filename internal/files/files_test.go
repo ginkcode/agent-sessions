@@ -157,6 +157,9 @@ func TestGitStatusAndChanges(t *testing.T) {
 	git("commit", "-qm", "init")
 	write(t, repo, "sub/x.txt", "a\nB\nc\nnew\nd\n")
 	write(t, repo, "sub/new.txt", "u\n")
+	write(t, repo, ".gitignore", ".env\nnode_modules/\n")
+	write(t, repo, "sub/.env", "SECRET=1\n")
+	write(t, repo, "sub/node_modules/pkg/index.js", "x\n")
 	if err := os.Remove(filepath.Join(repo, "sub", "del.txt")); err != nil {
 		t.Fatal(err)
 	}
@@ -168,6 +171,9 @@ func TestGitStatusAndChanges(t *testing.T) {
 	}
 	if !slices.Equal(got.Files, []string{"new.txt", "x.txt"}) {
 		t.Errorf("files = %v", got.Files)
+	}
+	if !slices.Equal(got.Ignored, []string{".env"}) {
+		t.Errorf("ignored = %v, want only .env (node_modules not walked)", got.Ignored)
 	}
 	want := map[string]Status{"x.txt": Modified, "new.txt": Untracked, "del.txt": Deleted}
 	if len(got.Status) != len(want) {
