@@ -3,6 +3,7 @@ package engine
 import (
 	"context"
 
+	"github.com/ginkcode/agent-sessions/internal/files"
 	"github.com/ginkcode/agent-sessions/internal/index"
 	"github.com/ginkcode/agent-sessions/internal/model"
 	"github.com/ginkcode/agent-sessions/internal/provider"
@@ -30,6 +31,10 @@ type Backend interface {
 	CopyResumeCommand(ctx context.Context, ref model.SessionRef) (string, error)
 	RevealSource(ctx context.Context, ref model.SessionRef) (string, error)
 	Diagnostics(ctx context.Context) (provider.Diagnostics, error)
+
+	// Files of a session directory, for the read-only file viewer
+	ListFiles(ctx context.Context, dir string) (files.Listing, error)
+	ReadFile(ctx context.Context, dir, path string) (files.Content, error)
 
 	// Manage
 	GetSettings(ctx context.Context) (Settings, error)

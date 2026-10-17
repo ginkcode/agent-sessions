@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/ginkcode/agent-sessions/internal/files"
 	"github.com/ginkcode/agent-sessions/internal/index"
 	"github.com/ginkcode/agent-sessions/internal/manage"
 	"github.com/ginkcode/agent-sessions/internal/model"
@@ -448,6 +449,16 @@ func (e *Engine) CopyResumeCommand(_ context.Context, ref model.SessionRef) (str
 // RevealSource reveals the session's source directory path.
 func (e *Engine) RevealSource(_ context.Context, ref model.SessionRef) (string, error) {
 	return e.svc.RevealSource(ref)
+}
+
+// ListFiles lists the files of a session directory.
+func (e *Engine) ListFiles(ctx context.Context, dir string) (files.Listing, error) {
+	return e.svc.ListFiles(ctx, dir)
+}
+
+// ReadFile reads one file of a session directory.
+func (e *Engine) ReadFile(_ context.Context, dir, path string) (files.Content, error) {
+	return e.svc.ReadFile(dir, path)
 }
 
 // Diagnostics returns aggregated scanner health.

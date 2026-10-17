@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/ginkcode/agent-sessions/internal/engine"
+	"github.com/ginkcode/agent-sessions/internal/files"
 	"github.com/ginkcode/agent-sessions/internal/index"
 	"github.com/ginkcode/agent-sessions/internal/model"
 	"github.com/ginkcode/agent-sessions/internal/provider"
@@ -61,6 +62,14 @@ func (b offlineBackend) CopyResumeCommand(context.Context, model.SessionRef) (st
 
 func (b offlineBackend) RevealSource(context.Context, model.SessionRef) (string, error) {
 	return "", b.err()
+}
+
+func (b offlineBackend) ListFiles(context.Context, string) (files.Listing, error) {
+	return files.Listing{}, b.err()
+}
+
+func (b offlineBackend) ReadFile(context.Context, string, string) (files.Content, error) {
+	return files.Content{}, b.err()
 }
 
 func (b offlineBackend) Diagnostics(context.Context) (provider.Diagnostics, error) {

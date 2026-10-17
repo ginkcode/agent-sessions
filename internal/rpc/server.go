@@ -423,6 +423,20 @@ func (s *Server) dispatch(ctx context.Context, req Request) (any, error) {
 	case "diagnostics":
 		return backend.Diagnostics(ctx)
 
+	case "listFiles":
+		var p ListFilesParams
+		if err := json.Unmarshal(req.Params, &p); err != nil {
+			return nil, &ResponseError{Code: CodeInvalidParams, Message: err.Error()}
+		}
+		return backend.ListFiles(ctx, p.Dir)
+
+	case "readFile":
+		var p ReadFileParams
+		if err := json.Unmarshal(req.Params, &p); err != nil {
+			return nil, &ResponseError{Code: CodeInvalidParams, Message: err.Error()}
+		}
+		return backend.ReadFile(ctx, p.Dir, p.Path)
+
 	case "getSettings":
 		return backend.GetSettings(ctx)
 

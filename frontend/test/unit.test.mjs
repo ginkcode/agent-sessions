@@ -103,8 +103,10 @@ import {
   subscribeAskpassPrompt,
   subscribeMouseNavigate,
 } from '../src/lib/api.ts';
-import { BUDGET_PRESETS, ALL_AGENTS, targetAgentsFor } from '../src/lib/portable.ts';
+import { BUDGET_PRESETS, ALL_AGENTS, copyToClipboard, targetAgentsFor } from '../src/lib/portable.ts';
 import { renameSvgId } from '../src/lib/mermaid.ts';
+import { splitHighlightedLines, splitLines } from '../src/lib/codeHighlight.ts';
+import { buildFileTree, fileLanguage, filterFiles, matchScore, parentFolders } from '../src/lib/files.ts';
 import { ImageCache, base64Blob, blobImage, isImageFile, rasterScale, sniffImageFormat } from '../src/lib/images.ts';
 
 test('formatTokens formats numbers into compact string representations', () => {
@@ -3089,6 +3091,7 @@ async function loadConnectionStore() {
     store('handoff', 'handoff'),
     store('exporter', 'export'),
     store('importer', 'importer'),
+    store('files', 'files'),
     store('link', 'link'),
   ]);
   return connectionStoreModule;
@@ -3671,4 +3674,76 @@ test('print blocks split the Markdown at attachment lines outside code', () => {
   ]);
   assert.deepEqual(printBlocks('Inline ![a](attachment:1) stays'), [{ kind: 'markdown', text: 'Inline ![a](attachment:1) stays' }]);
   assert.deepEqual(printBlocks(''), []);
+});
+
+test('buildFileTree nests folders, folders before files', () => {
+  const tree = buildFileTree(['main.go', 'src/b.ts', 'src/a.ts', 'src/lib/x.ts', 'README.md']);
+  assert.deepEqual(tree.map((n) => n.name), ['src', 'main.go', 'README.md']);
+  const src = tree[0];
+  assert.deepEqual(src.children.map((n) => n.path), ['src/lib', 'src/a.ts', 'src/b.ts']);
+  assert.deepEqual(src.children[0].children.map((n) => n.path), ['src/lib/x.ts']);
+  assert.equal(tree[1].children, undefined);
+});
+
+test('filterFiles matches characters in order and ranks file names first', () => {
+  const paths = ['src/lib/apps/x.ts', 'src/app.ts', 'docs/a-p-p.md', 'main.go'];
+  assert.deepEqual(filterFiles(paths, 'app'), ['src/app.ts', 'docs/a-p-p.md', 'src/lib/apps/x.ts']);
+  assert.deepEqual(filterFiles(paths, 'src app'), ['src/app.ts', 'src/lib/apps/x.ts']);
+  assert.equal(matchScore('main.go', 'xyz'), -1);
+  assert.deepEqual(filterFiles(paths, ''), paths);
+  assert.equal(filterFiles(paths, '', 2).length, 2);
+});
+
+test('fileLanguage supports source and text files only', () => {
+  assert.equal(fileLanguage('internal/app.go'), 'go');
+  assert.equal(fileLanguage('src/App.svelte'), 'xml');
+  assert.equal(fileLanguage('x.TSX'), 'typescript');
+  assert.equal(fileLanguage('README.md'), 'markdown');
+  assert.equal(fileLanguage('Makefile'), 'makefile');
+  assert.equal(fileLanguage('Cargo.lock'), '');
+  assert.equal(fileLanguage('.env.local'), '');
+  assert.equal(fileLanguage('assets/logo.png'), null);
+  assert.equal(fileLanguage('app.exe'), null);
+  assert.equal(fileLanguage('noext'), null);
+});
+
+test('parentFolders lists the folders above a file', () => {
+  assert.deepEqual(parentFolders('a/b/c.ts'), ['a', 'a/b']);
+  assert.deepEqual(parentFolders('c.ts'), []);
+});
+
+test('splitHighlightedLines keeps every line complete HTML', () => {
+  const html = 'a <span class="hljs-comment">/* one\ntwo <span class="hljs-doctag">@x\ny</span> three\n*/</span> b\n';
+  assert.deepEqual(splitHighlightedLines(html), [
+    'a <span class="hljs-comment">/* one</span>',
+    '<span class="hljs-comment">two <span class="hljs-doctag">@x</span></span>',
+    '<span class="hljs-comment"><span class="hljs-doctag">y</span> three</span>',
+    '<span class="hljs-comment">*/</span> b',
+  ]);
+  assert.deepEqual(splitHighlightedLines('x\n\ny'), ['x', '', 'y']);
+  assert.deepEqual(splitHighlightedLines(''), ['']);
+  assert.deepEqual(splitLines('a\nb\n'), ['a', 'b']);
+  assert.deepEqual(splitLines('a\n\n'), ['a', '']);
+  assert.deepEqual(splitLines(''), ['']);
+});
+
+test('copyToClipboard writes natively in the desktop app, falling back to the web clipboard', async () => {
+  const written = [];
+  const web = { writeText: async (t) => { written.push(['web', t]); } };
+  const saved = Object.getOwnPropertyDescriptor(globalThis, 'navigator');
+  Object.defineProperty(globalThis, 'navigator', { value: { clipboard: web }, configurable: true });
+  try {
+    globalThis.runtime = { ClipboardSetText: async (t) => { written.push(['native', t]); return true; } };
+    assert.equal(await copyToClipboard('a'), true);
+    globalThis.runtime = { ClipboardSetText: async () => false };
+    assert.equal(await copyToClipboard('b'), true);
+    delete globalThis.runtime;
+    web.writeText = async () => { throw new Error('NotAllowedError'); };
+    assert.equal(await copyToClipboard('c'), false);
+    assert.deepEqual(written, [['native', 'a'], ['web', 'b']]);
+  } finally {
+    delete globalThis.runtime;
+    if (saved) Object.defineProperty(globalThis, 'navigator', saved);
+    else delete globalThis.navigator;
+  }
 });

@@ -130,6 +130,15 @@ type RevealSourceParams struct {
 	Ref model.SessionRef `json:"ref"`
 }
 
+type ListFilesParams struct {
+	Dir string `json:"dir"`
+}
+
+type ReadFileParams struct {
+	Dir  string `json:"dir"`
+	Path string `json:"path"`
+}
+
 type SetManageEnabledParams struct {
 	Enabled bool `json:"enabled"`
 }

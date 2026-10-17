@@ -10,6 +10,7 @@ import (
 	"sync/atomic"
 
 	"github.com/ginkcode/agent-sessions/internal/engine"
+	"github.com/ginkcode/agent-sessions/internal/files"
 	"github.com/ginkcode/agent-sessions/internal/index"
 	"github.com/ginkcode/agent-sessions/internal/model"
 	"github.com/ginkcode/agent-sessions/internal/paths"
@@ -378,6 +379,18 @@ func (c *Client) CopyResumeCommand(ctx context.Context, ref model.SessionRef) (s
 func (c *Client) RevealSource(ctx context.Context, ref model.SessionRef) (string, error) {
 	var out string
 	err := c.call(ctx, "revealSource", RevealSourceParams{Ref: ref}, &out)
+	return out, err
+}
+
+func (c *Client) ListFiles(ctx context.Context, dir string) (files.Listing, error) {
+	var out files.Listing
+	err := c.call(ctx, "listFiles", ListFilesParams{Dir: dir}, &out)
+	return out, err
+}
+
+func (c *Client) ReadFile(ctx context.Context, dir, path string) (files.Content, error) {
+	var out files.Content
+	err := c.call(ctx, "readFile", ReadFileParams{Dir: dir, Path: path}, &out)
 	return out, err
 }
 

@@ -8,6 +8,8 @@ import type {
   MessagesPage,
   BlobResponse,
   Diagnostics,
+  FileListing,
+  FileContent,
   ManageSettings,
   DeletePreview,
   DeleteResult,
@@ -83,6 +85,10 @@ export interface BackendAPI {
   terminalDropFiles(id: string, paths: string[]): Promise<string[]>;
   setTerminalOpen(mode: TerminalOpenMode): Promise<LaunchInfo>;
   revealSource(ref: SessionRef): Promise<void>;
+  /** Lists the files of a session directory on the selected host. */
+  listFiles(dir: string): Promise<FileListing>;
+  /** Reads one file, path relative to dir, on the selected host. */
+  readFile(dir: string, path: string): Promise<FileContent>;
   getDiagnostics(): Promise<Diagnostics>;
   openURL(url: string): Promise<void>;
   appVersion(): Promise<string>;
@@ -157,6 +163,8 @@ interface WailsAppBinding {
   TerminalDropFiles(id: string, paths: string[]): Promise<string[]>;
   SetTerminalOpen(mode: string): Promise<LaunchInfo>;
   RevealSource(ref: SessionRef): Promise<void>;
+  ListFiles(dir: string): Promise<FileListing>;
+  ReadFile(dir: string, path: string): Promise<FileContent>;
   Diagnostics(): Promise<Diagnostics>;
   OpenURL(url: string): Promise<void>;
   AppVersion(): Promise<string>;
@@ -463,6 +471,22 @@ class WailsBackendAPI implements BackendAPI {
   async revealSource(ref: SessionRef): Promise<void> {
     try {
       await this.binding.RevealSource(ref);
+    } catch (e) {
+      throw normalizeError(e);
+    }
+  }
+
+  async listFiles(dir: string): Promise<FileListing> {
+    try {
+      return await this.binding.ListFiles(dir);
+    } catch (e) {
+      throw normalizeError(e);
+    }
+  }
+
+  async readFile(dir: string, path: string): Promise<FileContent> {
+    try {
+      return await this.binding.ReadFile(dir, path);
     } catch (e) {
       throw normalizeError(e);
     }

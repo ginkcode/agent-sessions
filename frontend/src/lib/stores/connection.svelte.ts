@@ -19,6 +19,7 @@ import { search } from './search.svelte';
 import { handoff } from './handoff.svelte';
 import { exporter } from './export.svelte';
 import { importer } from './importer.svelte';
+import { files } from './files.svelte';
 import { link } from './link.svelte';
 
 // Local always has every capability; the backend reports none for it.
@@ -218,6 +219,7 @@ export class ConnectionStore {
     handoff.reset();
     exporter.reset();
     importer.reset();
+    files.reset();
     for (const cb of this.resetCallbacks) {
       try {
         cb(this.generation, host);

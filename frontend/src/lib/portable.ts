@@ -49,7 +49,19 @@ export function targetAgentsFor(sourceAgent?: string): AgentOption[] {
   return ALL_AGENTS.filter((a) => a.id !== sourceAgent);
 }
 
+/**
+ * Puts text on the clipboard and reports whether it worked. The desktop app
+ * writes it natively: its web view may refuse the page's own clipboard
+ * writes (NotAllowedError, e.g. when it decides the page is not focused).
+ * The browser build, and a failed native write, use the web clipboard.
+ */
 export async function copyToClipboard(text: string): Promise<boolean> {
+  try {
+    const runtime = (globalThis as any).runtime;
+    if (runtime?.ClipboardSetText && (await runtime.ClipboardSetText(text))) return true;
+  } catch (err) {
+    console.error('Native clipboard write failed:', err);
+  }
   if (typeof navigator === 'undefined' || !navigator.clipboard?.writeText) {
     return false;
   }

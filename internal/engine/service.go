@@ -15,10 +15,12 @@ import (
 	"unicode/utf8"
 
 	"github.com/ginkcode/agent-sessions/internal/bundle"
+	"github.com/ginkcode/agent-sessions/internal/files"
 	"github.com/ginkcode/agent-sessions/internal/group"
 	"github.com/ginkcode/agent-sessions/internal/launch"
 	"github.com/ginkcode/agent-sessions/internal/model"
 	"github.com/ginkcode/agent-sessions/internal/paths"
+	"github.com/ginkcode/agent-sessions/internal/pathutil"
 	"github.com/ginkcode/agent-sessions/internal/provider"
 	"github.com/ginkcode/agent-sessions/internal/scan"
 )
@@ -37,6 +39,10 @@ var ErrUnknownProvider = errors.New("unknown provider")
 
 // ErrUnknownGroup is returned when a group key does not match any group.
 var ErrUnknownGroup = errors.New("unknown group")
+
+// ErrUnknownDirectory is returned when the file viewer is asked for a
+// directory no session belongs to.
+var ErrUnknownDirectory = errors.New("not a session directory")
 
 // Service is the core application service. It owns the session catalog, the
 // provider set, and the transcript/bundle LRUs. It has no Wails or GUI dependencies.
@@ -539,4 +545,36 @@ func sortSessions(sessions []model.SessionMeta, opts SortOpts) {
 		}
 		return less(sessions[i], sessions[j])
 	})
+}
+
+// knownDirectory reports whether dir is the directory, or repository root,
+// of a session in the catalog. The file viewer only opens those, so a caller
+// cannot browse arbitrary paths through it.
+func (s *Service) knownDirectory(dir string) bool {
+	if dir == "" {
+		return false
+	}
+	want := pathutil.Clean(dir)
+	for _, m := range s.catalog.All() {
+		if m.CWD != "" && pathutil.Clean(m.CWD) == want || m.RepoRoot != "" && pathutil.Clean(m.RepoRoot) == want {
+			return true
+		}
+	}
+	return false
+}
+
+// ListFiles lists the files of a session directory for the file viewer.
+func (s *Service) ListFiles(ctx context.Context, dir string) (files.Listing, error) {
+	if !s.knownDirectory(dir) {
+		return files.Listing{}, fmt.Errorf("%w: %s", ErrUnknownDirectory, dir)
+	}
+	return files.List(ctx, dir)
+}
+
+// ReadFile reads one file of a session directory for the file viewer.
+func (s *Service) ReadFile(dir, rel string) (files.Content, error) {
+	if !s.knownDirectory(dir) {
+		return files.Content{}, fmt.Errorf("%w: %s", ErrUnknownDirectory, dir)
+	}
+	return files.Read(dir, rel)
 }

@@ -5,6 +5,7 @@
   import ContextMenu, { type ContextMenuItem } from '../common/ContextMenu.svelte';
   import { directoryName, isCollapsed as isKeyCollapsed, nodeKind } from '../../tree';
   import { importer } from '../../stores/importer.svelte';
+  import { files } from '../../stores/files.svelte';
 
   interface Props {
     node: GroupNode;
@@ -44,6 +45,12 @@
   let hasMenu = $derived(kind === 'directory' && Boolean(node.cwd));
 
   let menuItems = $derived.by((): ContextMenuItem[] => [
+    {
+      label: 'Go to File…',
+      disabled: node.cwdMissing,
+      title: node.cwdMissing ? 'This directory no longer exists on disk' : undefined,
+      onSelect: () => void files.show(node.cwd!),
+    },
     {
       label: 'Import Session Bundle Here…',
       disabled: node.cwdMissing,

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/ginkcode/agent-sessions/internal/engine"
+	"github.com/ginkcode/agent-sessions/internal/files"
 	"github.com/ginkcode/agent-sessions/internal/index"
 	"github.com/ginkcode/agent-sessions/internal/model"
 	"github.com/ginkcode/agent-sessions/internal/provider"
@@ -120,6 +121,14 @@ func (m *mockBackend) CopyResumeCommand(ctx context.Context, ref model.SessionRe
 
 func (m *mockBackend) RevealSource(ctx context.Context, ref model.SessionRef) (string, error) {
 	return "/path/to/" + ref.ID, nil
+}
+
+func (m *mockBackend) ListFiles(ctx context.Context, dir string) (files.Listing, error) {
+	return files.Listing{Root: dir, Files: []string{"main.go"}}, nil
+}
+
+func (m *mockBackend) ReadFile(ctx context.Context, dir, path string) (files.Content, error) {
+	return files.Content{Path: path, Text: "package main\n"}, nil
 }
 
 func (m *mockBackend) Diagnostics(ctx context.Context) (provider.Diagnostics, error) {

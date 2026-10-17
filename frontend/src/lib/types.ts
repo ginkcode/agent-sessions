@@ -244,6 +244,25 @@ export interface BlobResponse {
   isBinary: boolean;
 }
 
+/** The files of a session directory, for the Go to File dialog. */
+export interface FileListing {
+  root: string;
+  /** Slash-separated paths relative to root, sorted. */
+  files: string[];
+  truncated?: boolean;
+  /** The list came from git, so ignored files are left out. */
+  git?: boolean;
+}
+
+/** One file read for the Go to File dialog. */
+export interface FileContent {
+  path: string;
+  size: number;
+  text?: string;
+  binary?: boolean;
+  tooLarge?: boolean;
+}
+
 export interface Warning {
   file: string;
   line: number;

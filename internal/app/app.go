@@ -12,6 +12,7 @@ import (
 	"sync"
 
 	"github.com/ginkcode/agent-sessions/internal/engine"
+	"github.com/ginkcode/agent-sessions/internal/files"
 	"github.com/ginkcode/agent-sessions/internal/index"
 	"github.com/ginkcode/agent-sessions/internal/launch"
 	"github.com/ginkcode/agent-sessions/internal/manage"
@@ -307,6 +308,17 @@ func (a *App) RevealSource(ref model.SessionRef) error {
 		return err
 	}
 	return startDetached(desktopOpen(runtime.GOOS, dir, false))
+}
+
+// ListFiles lists the files of a session directory on the selected host,
+// for the read-only file viewer.
+func (a *App) ListFiles(dir string) (files.Listing, error) {
+	return a.activeBackend().ListFiles(a.appCtx(), dir)
+}
+
+// ReadFile reads one file of a session directory on the selected host.
+func (a *App) ReadFile(dir, path string) (files.Content, error) {
+	return a.activeBackend().ReadFile(a.appCtx(), dir, path)
 }
 
 // Diagnostics returns aggregated scanner health across providers.

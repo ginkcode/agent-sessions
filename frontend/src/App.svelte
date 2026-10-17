@@ -9,6 +9,7 @@
   import TranscriptView from './lib/components/transcript/TranscriptView.svelte';
   import ManageSettingsDialog from './lib/components/common/ManageSettingsDialog.svelte';
   import GlobalSearchDialog from './lib/components/common/GlobalSearchDialog.svelte';
+  import GoToFileDialog from './lib/components/common/GoToFileDialog.svelte';
   import HandoffDialog from './lib/components/common/HandoffDialog.svelte';
   import ExportDialog from './lib/components/common/ExportDialog.svelte';
   import ImportDialog from './lib/components/common/ImportDialog.svelte';
@@ -403,6 +404,7 @@
 
   <ManageSettingsDialog />
   <GlobalSearchDialog />
+  <GoToFileDialog />
   <HandoffDialog />
   <ExportDialog />
   <ImportDialog />
