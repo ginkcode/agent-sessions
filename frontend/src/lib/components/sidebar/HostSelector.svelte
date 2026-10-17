@@ -506,7 +506,11 @@
   }
 
   .manual-input {
+    /* A text input keeps a width of about 20 characters unless allowed to
+       shrink, which pushed the Go button out of the menu. */
     flex: 1;
+    min-width: 0;
+    width: 0;
     padding: 4px 8px;
     font-size: 0.74rem;
     background: var(--bg-secondary);
@@ -521,6 +525,7 @@
   }
 
   .manual-btn {
+    flex-shrink: 0;
     padding: 4px 8px;
     font-size: 0.74rem;
     background: var(--accent-color);
