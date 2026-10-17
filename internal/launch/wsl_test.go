@@ -89,6 +89,22 @@ func TestPosixTerminalScript(t *testing.T) {
 	if _, err := PosixTerminalScript(provider.Command{Argv: []string{"codex"}, Dir: filepath.Join(dir, "gone")}); err == nil {
 		t.Error("script built for a missing directory")
 	}
+
+	// A panel tab's script runs the agent the same way and then ends.
+	if err := os.Remove(out + ".pwd"); err != nil {
+		t.Fatal(err)
+	}
+	panel, err := PosixPanelScript(provider.Command{Argv: append([]string{"codex"}, posixTrickyArgs...), Dir: dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(panel, "exec ") || !strings.HasSuffix(panel, "exit \"$s\"\n") {
+		t.Errorf("panel script does not end with the agent:\n%s", panel)
+	}
+	if b, err := exec.Command("/bin/sh", "-c", panel).CombinedOutput(); err != nil {
+		t.Fatalf("%v: %s", err, b)
+	}
+	checkRecorded(t, out, dir, filepath.Dir(agent), posixTrickyArgs)
 }
 
 func TestFindSkipsWindowsCopyInWSL(t *testing.T) {

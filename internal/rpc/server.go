@@ -570,7 +570,7 @@ func (s *Server) dispatch(ctx context.Context, req Request) (any, error) {
 		if err := json.Unmarshal(req.Params, &p); err != nil {
 			return nil, &ResponseError{Code: CodeInvalidParams, Message: err.Error()}
 		}
-		return terminalScript(backend, req.Method, func(l terminalLauncher) (provider.Command, error) {
+		return terminalScript(backend, req.Method, p.Panel, func(l terminalLauncher) (provider.Command, error) {
 			return l.ResumeLaunch(ctx, p.Ref)
 		})
 
@@ -579,7 +579,7 @@ func (s *Server) dispatch(ctx context.Context, req Request) (any, error) {
 		if err := json.Unmarshal(req.Params, &p); err != nil {
 			return nil, &ResponseError{Code: CodeInvalidParams, Message: err.Error()}
 		}
-		return terminalScript(backend, req.Method, func(l terminalLauncher) (provider.Command, error) {
+		return terminalScript(backend, req.Method, p.Panel, func(l terminalLauncher) (provider.Command, error) {
 			return l.HandoffLaunch(ctx, p.Req)
 		})
 
@@ -588,7 +588,7 @@ func (s *Server) dispatch(ctx context.Context, req Request) (any, error) {
 		if err := json.Unmarshal(req.Params, &p); err != nil {
 			return nil, &ResponseError{Code: CodeInvalidParams, Message: err.Error()}
 		}
-		return terminalScript(backend, req.Method, func(l terminalLauncher) (provider.Command, error) {
+		return terminalScript(backend, req.Method, p.Panel, func(l terminalLauncher) (provider.Command, error) {
 			return l.BundleHandoffLaunch(ctx, p.Req)
 		})
 
@@ -611,8 +611,9 @@ type terminalLauncher interface {
 var _ terminalLauncher = (*engine.Engine)(nil)
 
 // terminalScript builds a command and renders the script a terminal runs for
-// it, with the agent found on this machine. The client opens the window.
-func terminalScript(backend engine.Backend, method string, build func(terminalLauncher) (provider.Command, error)) (string, error) {
+// it, with the agent found on this machine. The client opens the window, or
+// a tab in its terminal panel when panel is set.
+func terminalScript(backend engine.Backend, method string, panel bool, build func(terminalLauncher) (provider.Command, error)) (string, error) {
 	l, ok := backend.(terminalLauncher)
 	if !ok {
 		return "", &ResponseError{Code: CodeMethodNotFound, Message: fmt.Sprintf("method not supported: %s", method)}
@@ -620,6 +621,9 @@ func terminalScript(backend engine.Backend, method string, build func(terminalLa
 	cmd, err := build(l)
 	if err != nil {
 		return "", err
+	}
+	if panel {
+		return launch.PosixPanelScript(cmd)
 	}
 	return launch.PosixTerminalScript(cmd)
 }

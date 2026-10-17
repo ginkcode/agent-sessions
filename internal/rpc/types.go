@@ -121,6 +121,9 @@ type SearchParams struct {
 
 type CopyResumeCommandParams struct {
 	Ref model.SessionRef `json:"ref"`
+	// Panel asks a terminal script method for the app's terminal panel,
+	// whose script ends with the agent. Older servers ignore it.
+	Panel bool `json:"panel,omitempty"`
 }
 
 type RevealSourceParams struct {
@@ -153,7 +156,8 @@ type BuildHandoffParams struct {
 }
 
 type HandoffCommandParams struct {
-	Req engine.HandoffRequest `json:"req"`
+	Req   engine.HandoffRequest `json:"req"`
+	Panel bool                  `json:"panel,omitempty"` // as in CopyResumeCommandParams
 }
 
 type SaveHandoffParams struct {
@@ -188,7 +192,8 @@ type BuildBundleHandoffParams struct {
 }
 
 type BundleHandoffCommandParams struct {
-	Req engine.BundleHandoffRequest `json:"req"`
+	Req   engine.BundleHandoffRequest `json:"req"`
+	Panel bool                        `json:"panel,omitempty"` // as in CopyResumeCommandParams
 }
 
 type SaveBundleHandoffParams struct {

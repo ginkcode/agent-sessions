@@ -85,6 +85,33 @@ func TestTerminalScriptMethods(t *testing.T) {
 		t.Errorf("backend calls = %q", backend.calls)
 	}
 
+	// A panel tab's script ends with the agent.
+	wantPanel, err := launch.PosixPanelScript(cmd)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if wantPanel == want {
+		t.Fatal("panel and terminal scripts are the same")
+	}
+	for name, call := range map[string]func() (string, error){
+		"resume": func() (string, error) {
+			return client.ResumePanelScript(ctx, model.SessionRef{Agent: model.AgentClaude, ID: "s-1"})
+		},
+		"handoff": func() (string, error) {
+			return client.HandoffPanelScript(ctx, engine.HandoffRequest{Target: model.AgentCodex})
+		},
+		"bundle": func() (string, error) {
+			return client.BundleHandoffPanelScript(ctx, engine.BundleHandoffRequest{BundleID: "b-1", Target: model.AgentClaude})
+		},
+	} {
+		got, err := call()
+		if err != nil {
+			t.Errorf("panel %s: %v", name, err)
+		} else if got != wantPanel {
+			t.Errorf("panel %s script =\n%s\nwant\n%s", name, got, wantPanel)
+		}
+	}
+
 	// The engine's error reaches the client as its sentinel.
 	backend.err = engine.ErrUnknownSession
 	if _, err := client.ResumeTerminalScript(ctx, model.SessionRef{ID: "gone"}); !errors.Is(err, engine.ErrUnknownSession) {

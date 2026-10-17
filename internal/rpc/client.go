@@ -542,3 +542,25 @@ func (c *Client) BundleHandoffTerminalScript(ctx context.Context, req engine.Bun
 	err := c.call(ctx, "bundleHandoffTerminalScript", BundleHandoffCommandParams{Req: req}, &out)
 	return out, err
 }
+
+// ResumePanelScript is ResumeTerminalScript for a tab in the app's terminal
+// panel: the script ends when the agent exits.
+func (c *Client) ResumePanelScript(ctx context.Context, ref model.SessionRef) (string, error) {
+	var out string
+	err := c.call(ctx, "resumeTerminalScript", CopyResumeCommandParams{Ref: ref, Panel: true}, &out)
+	return out, err
+}
+
+// HandoffPanelScript is HandoffTerminalScript for a panel tab.
+func (c *Client) HandoffPanelScript(ctx context.Context, req engine.HandoffRequest) (string, error) {
+	var out string
+	err := c.call(ctx, "handoffTerminalScript", HandoffCommandParams{Req: req, Panel: true}, &out)
+	return out, err
+}
+
+// BundleHandoffPanelScript is BundleHandoffTerminalScript for a panel tab.
+func (c *Client) BundleHandoffPanelScript(ctx context.Context, req engine.BundleHandoffRequest) (string, error) {
+	var out string
+	err := c.call(ctx, "bundleHandoffTerminalScript", BundleHandoffCommandParams{Req: req, Panel: true}, &out)
+	return out, err
+}

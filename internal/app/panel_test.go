@@ -190,11 +190,11 @@ func TestPanelWSL(t *testing.T) {
 			t.Errorf("tab = %+v", tab)
 		}
 	}
-	want := append([]string{`C:\wsl.exe`}, launch.WSLExecArgs("Ubuntu", "script resume s1")...)
+	want := append([]string{`C:\wsl.exe`}, launch.WSLExecArgs("Ubuntu", "panel script resume s1")...)
 	if !slices.Equal(f.started[0].Argv, want) {
 		t.Errorf("argv = %q, want %q", f.started[0].Argv, want)
 	}
-	if !slices.Equal(stub.calls, []string{"resume:s1", "handoff:s1", "bundle:b-1"}) {
+	if !slices.Equal(stub.calls, []string{"panel resume:s1", "panel handoff:s1", "panel bundle:b-1"}) {
 		t.Errorf("server calls = %q", stub.calls)
 	}
 	if len(*opened) != 0 || *local != 0 {
@@ -248,13 +248,13 @@ func TestPanelSSH(t *testing.T) {
 			t.Errorf("argv %q lacks %q", line, want)
 		}
 	}
-	if got, want := argv[len(argv)-1], remote.QuoteArgs(launch.PosixBootstrapArgv("script resume s1")); got != want {
+	if got, want := argv[len(argv)-1], remote.QuoteArgs(launch.PosixBootstrapArgv("panel script resume s1")); got != want {
 		t.Errorf("remote command = %q, want %q", got, want)
 	}
 	if env := strings.Join(f.started[0].Env, "\n"); strings.Contains(env, "AGENT_SESSIONS_ASKPASS") || !strings.Contains(env, "SSH_ASKPASS_REQUIRE=never") {
 		t.Errorf("env uses askpass: %q", f.started[0].Env)
 	}
-	if !slices.Equal(stub.calls, []string{"resume:s1"}) {
+	if !slices.Equal(stub.calls, []string{"panel resume:s1"}) {
 		t.Errorf("server calls = %q", stub.calls)
 	}
 	// The external terminal still refuses SSH sessions.

@@ -44,12 +44,15 @@ type localLauncher interface {
 	BundleHandoffLaunch(context.Context, engine.BundleHandoffRequest) (provider.Command, error)
 }
 
-// remoteLauncher has a connected host build the script a terminal runs, with
-// the agent found on that host.
+// remoteLauncher has a connected host build the script a terminal or a
+// panel tab runs, with the agent found on that host.
 type remoteLauncher interface {
 	ResumeTerminalScript(context.Context, model.SessionRef) (string, error)
 	HandoffTerminalScript(context.Context, engine.HandoffRequest) (string, error)
 	BundleHandoffTerminalScript(context.Context, engine.BundleHandoffRequest) (string, error)
+	ResumePanelScript(context.Context, model.SessionRef) (string, error)
+	HandoffPanelScript(context.Context, engine.HandoffRequest) (string, error)
+	BundleHandoffPanelScript(context.Context, engine.BundleHandoffRequest) (string, error)
 }
 
 var _ remoteLauncher = (*rpc.Client)(nil)

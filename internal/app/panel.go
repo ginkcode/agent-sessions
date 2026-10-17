@@ -91,7 +91,7 @@ func (a *App) PanelResume(ref model.SessionRef, size TerminalSize) (term.Tab, er
 	return a.startPanelAgent(size, func(l localLauncher) (provider.Command, error) {
 		return l.ResumeLaunch(a.appCtx(), ref)
 	}, func(l remoteLauncher) (string, error) {
-		return l.ResumeTerminalScript(a.appCtx(), ref)
+		return l.ResumePanelScript(a.appCtx(), ref)
 	})
 }
 
@@ -101,7 +101,7 @@ func (a *App) PanelHandoff(req HandoffRequest, size TerminalSize) (term.Tab, err
 	return a.startPanelAgent(size, func(l localLauncher) (provider.Command, error) {
 		return l.HandoffLaunch(a.appCtx(), req)
 	}, func(l remoteLauncher) (string, error) {
-		return l.HandoffTerminalScript(a.appCtx(), req)
+		return l.HandoffPanelScript(a.appCtx(), req)
 	})
 }
 
@@ -110,7 +110,7 @@ func (a *App) PanelBundleHandoff(req BundleHandoffRequest, size TerminalSize) (t
 	return a.startPanelAgent(size, func(l localLauncher) (provider.Command, error) {
 		return l.BundleHandoffLaunch(a.appCtx(), req)
 	}, func(l remoteLauncher) (string, error) {
-		return l.BundleHandoffTerminalScript(a.appCtx(), req)
+		return l.BundleHandoffPanelScript(a.appCtx(), req)
 	})
 }
 

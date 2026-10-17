@@ -36,6 +36,21 @@ func (s *wslStub) BundleHandoffTerminalScript(_ context.Context, req engine.Bund
 	return "script bundle " + string(req.Target), s.err
 }
 
+func (s *wslStub) ResumePanelScript(_ context.Context, ref model.SessionRef) (string, error) {
+	s.calls = append(s.calls, "panel resume:"+ref.ID)
+	return "panel script resume " + ref.ID, s.err
+}
+
+func (s *wslStub) HandoffPanelScript(_ context.Context, req engine.HandoffRequest) (string, error) {
+	s.calls = append(s.calls, "panel handoff:"+req.Ref.ID)
+	return "panel script handoff " + string(req.Target), s.err
+}
+
+func (s *wslStub) BundleHandoffPanelScript(_ context.Context, req engine.BundleHandoffRequest) (string, error) {
+	s.calls = append(s.calls, "panel bundle:"+req.BundleID)
+	return "panel script bundle " + string(req.Target), s.err
+}
+
 // wslApp is an App connected to the Ubuntu distro, recording the consoles it
 // would open and any local terminal it should never open.
 func wslApp(backend engine.Backend) (*App, *[][2]string, *int) {

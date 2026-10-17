@@ -1,6 +1,7 @@
 package launch
 
 import (
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -18,17 +19,21 @@ func TestPanelArgvShapes(t *testing.T) {
 	cmd := provider.Command{Argv: []string{"codex", "resume", "abc"}, Dir: dir}
 	find := func(string) (Executable, error) { return Executable{Path: "/opt/bin/codex"}, nil }
 
-	argv, err := posixPanelArgv(cmd, find, "/bin/zsh")
+	argv, err := posixPanelArgv(cmd, find)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(argv) != 3 || argv[0] != "/bin/sh" || argv[1] != "-c" {
 		t.Fatalf("posix argv = %q", argv)
 	}
-	for _, want := range []string{"cd -- " + ShellEscape(dir), "/opt/bin/codex resume abc", "exec /bin/zsh -l"} {
+	for _, want := range []string{"cd -- " + ShellEscape(dir), "/opt/bin/codex resume abc", "exit \"$s\""} {
 		if !strings.Contains(argv[2], want) {
 			t.Errorf("script lacks %q:\n%s", want, argv[2])
 		}
+	}
+	// The tab ends with the agent; no shell takes over.
+	if strings.Contains(argv[2], "exec ") {
+		t.Errorf("script starts a shell after the agent:\n%s", argv[2])
 	}
 
 	winFind := func(string) (Executable, error) { return Executable{Path: `C:\bin\codex.exe`}, nil }
@@ -36,12 +41,12 @@ func TestPanelArgvShapes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !slices.Equal(argv[:4], []string{`C:\ps.exe`, "-NoLogo", "-NoExit", "-Command"}) || len(argv) != 5 || !strings.Contains(argv[4], `C:\bin\codex.exe`) {
+	if !slices.Equal(argv[:3], []string{`C:\ps.exe`, "-NoLogo", "-Command"}) || len(argv) != 4 || !strings.Contains(argv[3], `C:\bin\codex.exe`) || !strings.HasSuffix(argv[3], powerShellExitStatus) {
 		t.Fatalf("powershell argv = %q", argv)
 	}
 
 	for _, build := range []func(provider.Command) ([]string, error){
-		func(c provider.Command) ([]string, error) { return posixPanelArgv(c, find, "/bin/sh") },
+		func(c provider.Command) ([]string, error) { return posixPanelArgv(c, find) },
 		func(c provider.Command) ([]string, error) { return powerShellPanelArgv(c, winFind, "ps") },
 	} {
 		if _, err := build(provider.Command{Argv: []string{"codex"}, Dir: filepath.Join(dir, "missing")}); err == nil {
@@ -61,7 +66,7 @@ func TestPosixPanelArgvRunsAgent(t *testing.T) {
 	out := filepath.Join(platform.TempDir(t), "out")
 	agent := recordingAgent(t, out)
 	find := func(string) (Executable, error) { return Executable{Path: agent}, nil }
-	argv, err := posixPanelArgv(provider.Command{Argv: append([]string{"codex"}, posixTrickyArgs...), Dir: dir}, find, fakeLoginShell(t))
+	argv, err := posixPanelArgv(provider.Command{Argv: append([]string{"codex"}, posixTrickyArgs...), Dir: dir}, find)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -69,6 +74,31 @@ func TestPosixPanelArgvRunsAgent(t *testing.T) {
 		t.Fatalf("%v: %s", err, b)
 	}
 	checkRecorded(t, out, dir, filepath.Dir(agent), posixTrickyArgs)
+}
+
+// TestPosixPanelArgvExitStatus checks that a panel tab's script reports a
+// failed agent and exits with its status, so the tab shows it.
+func TestPosixPanelArgvExitStatus(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX shell scripts")
+	}
+	agent := filepath.Join(platform.TempDir(t), "codex")
+	if err := os.WriteFile(agent, []byte("#!/bin/sh\nexit 3\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	find := func(string) (Executable, error) { return Executable{Path: agent}, nil }
+	argv, err := posixPanelArgv(provider.Command{Argv: []string{"codex"}, Dir: platform.TempDir(t)}, find)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := exec.Command(argv[0], argv[1:]...).CombinedOutput()
+	var exit *exec.ExitError
+	if !errors.As(err, &exit) || exit.ExitCode() != 3 {
+		t.Fatalf("err = %v, want exit status 3", err)
+	}
+	if !strings.Contains(string(b), "codex exited with status 3.") {
+		t.Errorf("output = %q", b)
+	}
 }
 
 func TestPanelShellArgv(t *testing.T) {

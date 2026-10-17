@@ -405,13 +405,19 @@ func posixArgv(cmd provider.Command, find func(string) (Executable, error)) ([]s
 // posixScript is the /bin/sh script a terminal runs. It enters dir or stops,
 // runs the agent with its own directory first on PATH (so an npm shim's
 // `env node` finds the Node it was installed with), reports a failure, and
-// then replaces itself with the user's login shell so the window stays.
+// then replaces itself with the user's login shell so the window stays. With
+// no shell, as in the app's terminal panel, it exits with the agent's status
+// instead, so the tab ends with the agent.
 func posixScript(argv []string, dir, shell string) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "cd -- %s || { printf 'Press Enter to close. '; read -r _; exit 1; }\n", ShellEscape(dir))
 	fmt.Fprintf(&b, "PATH=%s\"${PATH:+:$PATH}\" %s\n", ShellEscape(filepath.Dir(argv[0])), JoinCommand(argv))
 	fmt.Fprintf(&b, "s=$?; [ \"$s\" -eq 0 ] || printf '\\n%%s exited with status %%s.\\n' %s \"$s\"\n", ShellEscape(filepath.Base(argv[0])))
-	fmt.Fprintf(&b, "exec %s -l\n", ShellEscape(shell))
+	if shell == "" {
+		b.WriteString("exit \"$s\"\n")
+	} else {
+		fmt.Fprintf(&b, "exec %s -l\n", ShellEscape(shell))
+	}
 	return b.String()
 }
 
@@ -462,6 +468,16 @@ func PosixTerminalScript(cmd provider.Command) (string, error) {
 		return "", err
 	}
 	return posixScript(argv, cmd.Dir, loginShell(runtime.GOOS, os.Getenv)), nil
+}
+
+// PosixPanelScript is PosixTerminalScript for a tab in the app's terminal
+// panel: the script ends when the agent does.
+func PosixPanelScript(cmd provider.Command) (string, error) {
+	argv, err := posixArgv(cmd, Find)
+	if err != nil {
+		return "", err
+	}
+	return posixScript(argv, cmd.Dir, ""), nil
 }
 
 // startDetached starts a terminal in its own session, so it outlives the
