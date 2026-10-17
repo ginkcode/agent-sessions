@@ -5,10 +5,24 @@ import { isStaleReply } from '../link';
 
 /**
  * State of the Go to File dialog: the directory it browses, its file list,
- * and the file shown.
+ * and the files open in tabs.
  */
 const WRAP_KEY = 'agent-sessions:file-wrap';
 const DIFF_KEY = 'agent-sessions:file-diff';
+
+/**
+ * A file open in the viewer. A preview tab (one click, as in VS Code) is
+ * replaced by the next file picked; a kept one (double click) stays.
+ */
+export interface FileTab {
+  path: string;
+  preview: boolean;
+  content: FileContent | null;
+  loading: boolean;
+  error: string | null;
+  /** Matches the read in flight, so a late reply for a replaced tab is dropped. */
+  token: number;
+}
 
 export class FilesStore {
   /** Soft-wraps long lines in the viewer; remembered between runs. */
@@ -21,60 +35,169 @@ export class FilesStore {
   listing = $state<FileListing | null>(null);
   loadingList = $state(false);
   listError = $state<string | null>(null);
+  /** A refresh is fetching the list again; the old one stays shown. */
+  refreshing = $state(false);
 
+  /** The folders open in the tree. */
+  expanded = $state(new Set<string>());
+  tabs = $state<FileTab[]>([]);
+  /** The path of the tab shown. */
   selected = $state<string | null>(null);
-  content = $state<FileContent | null>(null);
-  loadingFile = $state(false);
-  fileError = $state<string | null>(null);
 
+  // What was open in each directory (folders, tabs, the tab shown), kept
+  // while the app runs, so Go to File opens there as it was left.
+  private saved = new Map<string, { expanded: Set<string>; tabs: FileTab[]; selected: string | null }>();
   private listSeq = 0;
-  private fileSeq = 0;
+  private readSeq = 0;
 
   get open(): boolean {
     return this.dir !== null;
   }
 
+  get activeTab(): FileTab | undefined {
+    return this.tabs.find((t) => t.path === this.selected);
+  }
+
+  get content(): FileContent | null {
+    return this.activeTab?.content ?? null;
+  }
+
+  get loadingFile(): boolean {
+    return this.activeTab?.loading ?? false;
+  }
+
+  get fileError(): string | null {
+    return this.activeTab?.error ?? null;
+  }
+
   async show(dir: string): Promise<void> {
     if (this.dir === dir && this.listing) return;
-    this.reset();
+    this.save();
+    this.clear();
     this.dir = dir;
+    const saved = this.saved.get(dir);
+    if (saved) {
+      this.expanded = new Set(saved.expanded);
+      this.tabs = saved.tabs;
+      this.selected = saved.selected;
+      // The files may have changed since: read them again, keeping what
+      // shows until the new text arrives.
+      for (const tab of this.tabs) void this.read(tab.path);
+    }
     this.loadingList = true;
+    await this.list(dir);
+  }
+
+  /** Fetches the file list and the open files again, keeping both shown meanwhile. */
+  async refresh(): Promise<void> {
+    const dir = this.dir;
+    if (!dir || this.loadingList || this.refreshing) return;
+    this.refreshing = true;
+    for (const tab of this.tabs) void this.read(tab.path);
+    await this.list(dir);
+  }
+
+  private async list(dir: string): Promise<void> {
     const seq = ++this.listSeq;
     try {
       const listing = await api.listFiles(dir);
       if (seq !== this.listSeq) return;
       this.listing = listing;
+      this.listError = null;
     } catch (err) {
       if (seq !== this.listSeq || isStaleReply(err)) return;
       this.listError = errorText(err, 'Could not list the files.');
     } finally {
-      if (seq === this.listSeq) this.loadingList = false;
+      if (seq === this.listSeq) {
+        this.loadingList = false;
+        this.refreshing = false;
+      }
     }
   }
 
-  /** Shows path; with read false (a deleted file) nothing is fetched. */
-  async select(path: string, read = true): Promise<void> {
+  setExpanded(next: Set<string>): void {
+    this.expanded = next;
+  }
+
+  /**
+   * Shows path in a tab: its own if it has one, else the preview tab, or
+   * with keep a tab of its own. With read false (a deleted file) nothing is
+   * fetched.
+   */
+  openFile(path: string, opts: { keep?: boolean; read?: boolean } = {}): void {
     if (!this.dir) return;
-    this.selected = path;
-    this.content = null;
-    this.fileError = null;
-    if (!read) {
-      this.fileSeq++;
-      this.loadingFile = false;
+    const keep = opts.keep ?? false;
+    const existing = this.tabs.find((t) => t.path === path);
+    if (existing) {
+      if (keep) existing.preview = false;
+      this.selected = path;
       return;
     }
-    this.loadingFile = true;
+    const tab: FileTab = {
+      path,
+      preview: !keep,
+      content: null,
+      loading: false,
+      error: null,
+      token: 0,
+    };
+    const previewAt = keep ? -1 : this.tabs.findIndex((t) => t.preview);
+    if (previewAt >= 0) {
+      this.tabs[previewAt] = tab;
+    } else {
+      const activeAt = this.tabs.findIndex((t) => t.path === this.selected);
+      this.tabs.splice(activeAt >= 0 ? activeAt + 1 : this.tabs.length, 0, tab);
+    }
+    this.selected = path;
+    if (opts.read !== false) void this.read(path);
+  }
+
+  /** Turns a preview tab into one that stays. */
+  keepTab(path: string): void {
+    const tab = this.tabs.find((t) => t.path === path);
+    if (tab) tab.preview = false;
+  }
+
+  selectTab(path: string): void {
+    if (this.tabs.some((t) => t.path === path)) this.selected = path;
+  }
+
+  /** Closes a tab; closing the one shown shows its neighbour. */
+  closeTab(path: string): void {
+    const at = this.tabs.findIndex((t) => t.path === path);
+    if (at < 0) return;
+    this.tabs.splice(at, 1);
+    if (this.selected === path) {
+      this.selected = (this.tabs[at] ?? this.tabs[at - 1])?.path ?? null;
+    }
+  }
+
+  private async read(path: string): Promise<void> {
     const dir = this.dir;
-    const seq = ++this.fileSeq;
+    const tab = this.tabs.find((t) => t.path === path);
+    if (!dir || !tab) return;
+    const token = ++this.readSeq;
+    tab.token = token;
+    // A file read again keeps its old text on screen until the new one comes.
+    tab.loading = !tab.content;
+    // The tab may be replaced or closed while the file is read.
+    const current = () => this.dir === dir && this.tabs.find((t) => t.path === path && t.token === token);
     try {
       const content = await api.readFile(dir, path);
-      if (seq !== this.fileSeq) return;
-      this.content = content;
+      const t = current();
+      if (t) {
+        t.content = content;
+        t.error = null;
+      }
     } catch (err) {
-      if (seq !== this.fileSeq || isStaleReply(err)) return;
-      this.fileError = errorText(err, 'Could not read the file.');
+      const t = current();
+      if (t && !isStaleReply(err)) {
+        t.content = null;
+        t.error = errorText(err, 'Could not read the file.');
+      }
     } finally {
-      if (seq === this.fileSeq) this.loadingFile = false;
+      const t = current();
+      if (t) t.loading = false;
     }
   }
 
@@ -88,22 +211,34 @@ export class FilesStore {
     saveFlag(DIFF_KEY, this.diff);
   }
 
+  /** Closes the dialog. What was open is kept for next time. */
   close(): void {
-    this.reset();
+    this.save();
+    this.clear();
   }
 
   /** Forgets everything, e.g. when another host is selected. */
   reset(): void {
+    this.clear();
+    this.saved.clear();
+  }
+
+  private save(): void {
+    if (!this.dir) return;
+    this.saved.set(this.dir, { expanded: this.expanded, tabs: this.tabs, selected: this.selected });
+  }
+
+  private clear(): void {
     this.listSeq++;
-    this.fileSeq++;
+    this.readSeq++;
     this.dir = null;
     this.listing = null;
     this.loadingList = false;
+    this.refreshing = false;
     this.listError = null;
+    this.expanded = new Set();
+    this.tabs = [];
     this.selected = null;
-    this.content = null;
-    this.loadingFile = false;
-    this.fileError = null;
   }
 }
 

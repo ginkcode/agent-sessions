@@ -3800,3 +3800,82 @@ test('searchFiles finds ignored files, below listed ones that match as well', ()
   assert.deepEqual(searchFiles(['a/x.ts'], ['b/x.ts'], 'x.ts'), ['a/x.ts', 'b/x.ts']);
   assert.deepEqual(searchFiles(paths, undefined, 'readme'), ['README.md']);
 });
+
+const FILES_STORE_URL = new URL('../src/lib/stores/files.svelte.ts', import.meta.url);
+let filesStoreModule;
+
+async function loadFilesStore() {
+  const lib = (rel) => JSON.stringify(new URL(rel, FILES_STORE_URL).href);
+  filesStoreModule ??= await loadServerModule(FILES_STORE_URL, [
+    ["import { api } from '../api';", fixtureStore('api', '__storeFixture')],
+    ["'../manage'", lib('../manage.ts')],
+    ["'../link'", lib('../link.ts')],
+  ]);
+  return filesStoreModule;
+}
+
+test('FilesStore: one click previews, double click keeps a tab, folders are remembered', async () => {
+  const { FilesStore } = await loadFilesStore();
+  globalThis.__storeFixture = {
+    api: {
+      listFiles: async (dir) => ({ root: dir, files: ['a.ts', 'b.ts', 'c.ts', 'd.ts'] }),
+      readFile: async (_dir, path) => ({ path, size: 1, text: path }),
+    },
+  };
+  try {
+    const store = new FilesStore();
+    await store.show('/p');
+    const tabs = () => store.tabs.map((t) => `${t.path}${t.preview ? '*' : ''}`);
+
+    store.openFile('a.ts');
+    store.openFile('b.ts');
+    assert.deepEqual(tabs(), ['b.ts*'], 'a preview is replaced by the next file');
+    store.openFile('b.ts', { keep: true });
+    assert.deepEqual(tabs(), ['b.ts'], 'double click keeps the preview');
+    store.openFile('c.ts');
+    store.openFile('d.ts', { keep: true });
+    assert.deepEqual(tabs(), ['b.ts', 'c.ts*', 'd.ts']);
+    store.openFile('a.ts');
+    assert.deepEqual(tabs(), ['b.ts', 'a.ts*', 'd.ts']);
+    store.openFile('d.ts');
+    assert.deepEqual(tabs(), ['b.ts', 'a.ts*', 'd.ts'], 'a file with a tab is just shown');
+    assert.equal(store.selected, 'd.ts');
+    await new Promise((r) => setTimeout(r, 0));
+    assert.equal(store.content?.text, 'd.ts');
+
+    store.closeTab('d.ts');
+    assert.equal(store.selected, 'a.ts', 'closing the shown tab shows its neighbour');
+    store.closeTab('b.ts');
+    store.closeTab('a.ts');
+    assert.equal(store.selected, null);
+
+    store.openFile('a.ts', { keep: true });
+    store.openFile('b.ts');
+    store.setExpanded(new Set(['src']));
+    store.close();
+    assert.equal(store.expanded.size, 0);
+    assert.equal(store.tabs.length, 0);
+    await store.show('/p');
+    assert.deepEqual([...store.expanded], ['src'], 'open folders come back with the directory');
+    assert.deepEqual(tabs(), ['a.ts', 'b.ts*'], 'and so do the tabs');
+    assert.equal(store.selected, 'b.ts');
+
+    let listed = 0;
+    globalThis.__storeFixture.api.listFiles = async (dir) => {
+      listed++;
+      return { root: dir, files: ['a.ts', 'b.ts', 'e.ts'] };
+    };
+    globalThis.__storeFixture.api.readFile = async (_dir, path) => ({ path, size: 2, text: path + '!' });
+    await store.refresh();
+    await new Promise((r) => setTimeout(r, 0));
+    assert.equal(listed, 1);
+    assert.deepEqual(store.listing.files, ['a.ts', 'b.ts', 'e.ts'], 'refresh lists the files again');
+    assert.equal(store.content?.text, 'b.ts!', 'and reloads the open ones');
+    assert.equal(store.refreshing, false);
+    store.reset();
+    await store.show('/p');
+    assert.equal(store.expanded.size, 0, 'another host forgets them');
+  } finally {
+    delete globalThis.__storeFixture;
+  }
+});

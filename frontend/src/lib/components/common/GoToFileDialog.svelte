@@ -27,7 +27,6 @@
 
   let query = $state('');
   let activeIndex = $state(0);
-  let expanded = $state(new Set<string>());
   let input: HTMLInputElement | undefined = $state();
   let resultsEl: HTMLElement | undefined = $state();
   let restoreFocus: HTMLElement | null = null;
@@ -96,7 +95,6 @@
       restoreFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
       query = '';
       activeIndex = 0;
-      expanded = new Set();
       queueMicrotask(() => input?.focus());
     } else if (!open && wasOpen) {
       restoreFocus?.focus();
@@ -109,20 +107,36 @@
     files.close();
   }
 
-  function pick(path: string) {
+  // One click shows the file in the preview tab, which the next file
+  // replaces; a double click (or Enter in the search) keeps it in a tab.
+  function pick(path: string, keep = false) {
     // Show where the file is in the tree when the search is cleared.
-    const next = new Set(expanded);
-    for (const dir of parentFolders(path)) next.add(dir);
-    expanded = next;
+    const missing = parentFolders(path).filter((dir) => !files.expanded.has(dir));
+    if (missing.length) files.setExpanded(new Set([...files.expanded, ...missing]));
     // A deleted file has nothing on disk to read.
-    void files.select(path, fileStatus(path) !== 'D');
+    files.openFile(path, { keep, read: fileStatus(path) !== 'D' });
   }
 
   function toggle(dir: string) {
-    const next = new Set(expanded);
+    const next = new Set(files.expanded);
     if (next.has(dir)) next.delete(dir);
     else next.add(dir);
-    expanded = next;
+    files.setExpanded(next);
+  }
+
+  // Each tab keeps its scroll position. A plain map: saving it on every
+  // scroll must not rerun the effect that restores it.
+  const scrollTops = new Map<string, number>();
+  let codeScroll: HTMLElement | undefined = $state();
+  $effect(() => {
+    const el = codeScroll;
+    const path = files.selected;
+    if (el && path) el.scrollTop = scrollTops.get(path) ?? 0;
+  });
+
+  function closeTab(e: MouseEvent, path: string) {
+    e.stopPropagation();
+    files.closeTab(path);
   }
 
   function setQuery(value: string) {
@@ -147,7 +161,7 @@
     } else if (e.key === 'Enter') {
       e.preventDefault();
       const path = matches[activeIndex];
-      if (path) pick(path);
+      if (path) pick(path, true);
     }
   }
 
@@ -211,16 +225,16 @@
           type="button"
           class="tree-row"
           style:padding-left="{8 + depth * 14}px"
-          aria-expanded={expanded.has(node.path)}
+          aria-expanded={files.expanded.has(node.path)}
           onclick={() => toggle(node.path)}
         >
-          <span class="chevron" class:open={expanded.has(node.path)}>▸</span>
+          <span class="chevron" class:open={files.expanded.has(node.path)}>▸</span>
           <span class="tree-name git-{folders.get(node.path) ?? 'none'}">{node.name}</span>
           {#if folders.has(node.path)}
             <span class="git-dot git-{folders.get(node.path)}" title="Holds changed files">●</span>
           {/if}
         </button>
-        {#if expanded.has(node.path)}
+        {#if files.expanded.has(node.path)}
           <ul class="tree-list">{@render treeRows(node.children, depth + 1)}</ul>
         {/if}
       </li>
@@ -235,6 +249,7 @@
           style:padding-left="{8 + depth * 14 + 14}px"
           title={st ? `${node.path} · ${STATUS_LABELS[st]}` : node.path}
           onclick={() => pick(node.path)}
+          ondblclick={() => pick(node.path, true)}
         >
           <span class="tree-name git-{st ?? 'none'}">{node.name}</span>
           {#if st}<span class="git-letter git-{st}">{st}</span>{/if}
@@ -312,6 +327,7 @@
                       class:ignored={ignored.has(path)}
                       title={ignored.has(path) ? `${path} · Ignored by .gitignore` : path}
                       onclick={() => pick(path)}
+                      ondblclick={() => pick(path, true)}
                       onmousemove={() => (activeIndex = i)}
                       onkeydown={() => {}}
                     >
@@ -330,18 +346,70 @@
             {/if}
           </div>
 
-          {#if files.listing}
+          {#if files.listing || files.listError}
             <footer class="picker-footer">
-              {files.listing.files.length.toLocaleString()} files{files.listing.truncated ? ' (list cut short)' : ''}
-              {#if files.listing.git}· .gitignore applied{/if}
-              {#if changedCount > 0}· {changedCount} changed{/if}
+              <span class="footer-text">
+                {#if files.listing}
+                  {files.listing.files.length.toLocaleString()} files{files.listing.truncated ? ' (list cut short)' : ''}
+                  {#if files.listing.git}· .gitignore applied{/if}
+                  {#if changedCount > 0}· {changedCount} changed{/if}
+                {/if}
+              </span>
+              <button
+                type="button"
+                class="refresh-btn"
+                class:spinning={files.refreshing}
+                disabled={files.loadingList || files.refreshing}
+                title="Refresh: list the files again and reload the open ones"
+                aria-label="Refresh the file list"
+                onclick={() => void files.refresh()}
+              >
+                <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+                  <path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+                  <path d="M12.5 1.8v2.7H9.8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+                </svg>
+              </button>
             </footer>
           {/if}
         </aside>
 
         <section class="viewer" aria-label="File content">
+          {#if files.tabs.length > 0}
+            <div class="tab-bar" role="tablist" aria-label="Open files">
+              {#each files.tabs as tab (tab.path)}
+                {@const st = fileStatus(tab.path)}
+                <div
+                  class="file-tab"
+                  class:active={tab.path === files.selected}
+                  class:preview={tab.preview}
+                  role="tab"
+                  tabindex="0"
+                  aria-selected={tab.path === files.selected}
+                  title={tab.preview ? `${tab.path} · Preview: double-click to keep it open` : tab.path}
+                  onclick={() => files.selectTab(tab.path)}
+                  ondblclick={() => files.keepTab(tab.path)}
+                  onauxclick={(e) => e.button === 1 && closeTab(e, tab.path)}
+                  onkeydown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      files.selectTab(tab.path);
+                    }
+                  }}
+                >
+                  <span class="tab-name git-{st ?? 'none'}">{splitPath(tab.path).name}</span>
+                  <button
+                    type="button"
+                    class="tab-close"
+                    aria-label="Close {splitPath(tab.path).name}"
+                    title="Close"
+                    onclick={(e) => closeTab(e, tab.path)}>×</button
+                  >
+                </div>
+              {/each}
+            </div>
+          {/if}
           {#if !files.selected}
-            <div class="state center">Pick a file to see its content.</div>
+            <div class="state center">Pick a file to see its content. Double-click keeps it open in a tab.</div>
           {:else}
             <div class="viewer-header">
               <span class="viewer-path" title={files.selected}>{files.selected}</span>
@@ -417,7 +485,13 @@
             {:else if files.content && !text}
               <div class="state center">This file is empty.</div>
             {:else if files.content}
-              <div class="code-scroll">
+              <div
+                class="code-scroll"
+                bind:this={codeScroll}
+                onscroll={(e) => {
+                  if (files.selected) scrollTops.set(files.selected, e.currentTarget.scrollTop);
+                }}
+              >
                 <div class="code source" class:wrap={files.wrap} class:diff={showDiff}>
                   {#if showDiff}
                     {#each rows as row, r (r)}
@@ -568,7 +642,10 @@
   }
 
   .picker-footer {
-    padding: 6px 12px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 2px 6px 2px 12px;
     font-size: 0.72rem;
     color: var(--text-muted);
     border-top: 1px solid var(--border-color);
@@ -765,6 +842,115 @@
     min-width: 0;
     display: flex;
     flex-direction: column;
+  }
+
+  /* Wraps rather than hiding the counts when the list is narrow. */
+  .footer-text {
+    flex: 1;
+    min-width: 0;
+    padding: 4px 0;
+  }
+
+  .refresh-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 24px;
+    height: 24px;
+    border-radius: 4px;
+    color: var(--text-muted);
+    cursor: pointer;
+  }
+
+  .refresh-btn:hover:not(:disabled) {
+    background-color: var(--hover-bg);
+    color: var(--text-primary);
+  }
+
+  .refresh-btn:disabled {
+    cursor: default;
+  }
+
+  .refresh-btn.spinning svg {
+    animation: refresh-spin 0.8s linear infinite;
+  }
+
+  @keyframes refresh-spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  /* Open files, as VS Code's editor tabs. A preview tab is in italics. */
+  .tab-bar {
+    display: flex;
+    flex-shrink: 0;
+    overflow-x: auto;
+    border-bottom: 1px solid var(--border-color);
+    background-color: var(--bg-secondary);
+    scrollbar-width: thin;
+  }
+
+  .file-tab {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+    max-width: 220px;
+    padding: 6px 6px 6px 12px;
+    border-right: 1px solid var(--border-color);
+    border-top: 2px solid transparent;
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    cursor: pointer;
+    user-select: none;
+  }
+
+  .file-tab:hover {
+    background-color: var(--hover-bg);
+  }
+
+  .file-tab.active {
+    background-color: var(--bg-primary);
+    color: var(--text-primary);
+    border-top-color: var(--accent-color);
+  }
+
+  .file-tab.preview .tab-name {
+    font-style: italic;
+  }
+
+  .tab-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .tab-close {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 18px;
+    height: 18px;
+    border-radius: 4px;
+    font-size: 0.9rem;
+    line-height: 1;
+    color: var(--text-muted);
+    visibility: hidden;
+    cursor: pointer;
+  }
+
+  .file-tab.active .tab-close,
+  .file-tab:hover .tab-close,
+  .tab-close:focus-visible {
+    visibility: visible;
+  }
+
+  .tab-close:hover {
+    background-color: var(--hover-bg);
+    color: var(--text-primary);
   }
 
   .viewer-header {
