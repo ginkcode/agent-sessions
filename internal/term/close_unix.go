@@ -20,19 +20,16 @@ func afterStart(p pty.Pty) {
 }
 
 // terminate hangs up the process group (the process leads its own session)
-// and kills it if it is still running after killGrace.
+// and kills what is left of it after killGrace. The kill does not wait on
+// the process itself: a child that ignores SIGHUP outlives it, and on macOS
+// the terminal ends as soon as the process does. Killing a group that is
+// already empty does nothing.
 func (s *session) terminate() {
 	s.killOnce.Do(func() {
 		s.unpause()
 		pgid := s.cmd.Process.Pid
 		_ = syscall.Kill(-pgid, syscall.SIGHUP)
-		go func() {
-			select {
-			case <-s.exited:
-			case <-time.After(s.killGrace):
-				_ = syscall.Kill(-pgid, syscall.SIGKILL)
-			}
-		}()
+		time.AfterFunc(s.killGrace, func() { _ = syscall.Kill(-pgid, syscall.SIGKILL) })
 	})
 }
 

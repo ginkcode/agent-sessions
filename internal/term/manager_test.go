@@ -288,6 +288,18 @@ func TestFlowControlPausesReading(t *testing.T) {
 }
 
 func TestCloseKillsProcessGroup(t *testing.T) {
+	// The grandchild ignores SIGHUP, so it takes the SIGKILL to end it.
+	t.Run("holding the terminal", func(t *testing.T) {
+		testCloseKillsGrandchild(t, `sh -c 'trap "" HUP; echo pid:$$; exec sleep 60' & wait`)
+	})
+	// Here it lets go of the terminal, so the tab ends with the shell, before
+	// the kill, as every tab does on macOS. The kill still comes.
+	t.Run("after the tab ends", func(t *testing.T) {
+		testCloseKillsGrandchild(t, `sh -c 'trap "" HUP; echo pid:$$; exec sleep 60 </dev/null >/dev/null 2>&1' & wait`)
+	})
+}
+
+func testCloseKillsGrandchild(t *testing.T, script string) {
 	old := killGrace
 	killGrace = 300 * time.Millisecond
 	defer func() { killGrace = old }()
@@ -295,8 +307,7 @@ func TestCloseKillsProcessGroup(t *testing.T) {
 	rec := newRecorder()
 	m := NewManager(rec)
 	defer m.CloseAll()
-	// The grandchild ignores SIGHUP, so it takes the SIGKILL to end it.
-	tab, err := m.Start(sh(`sh -c 'trap "" HUP; echo pid:$$; exec sleep 60' & wait`), Tab{})
+	tab, err := m.Start(sh(script), Tab{})
 	if err != nil {
 		t.Fatal(err)
 	}
