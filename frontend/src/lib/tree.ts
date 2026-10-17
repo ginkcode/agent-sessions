@@ -84,6 +84,54 @@ export function sessionToSelect(
 }
 
 /**
+ * The keys of the nodes that hold a session: the group it is in, the groups
+ * around that one, and its own node where the tree shows sessions (flat
+ * mode, subagents). Empty when the tree does not have it, e.g. a filter
+ * hides it.
+ */
+export function nodesHolding(groups: GroupNode[], ref: SessionRef | null): Set<string> {
+  const keys = new Set<string>();
+  if (!ref) return keys;
+  const walk = (nodes: GroupNode[]) => {
+    for (const node of nodes) {
+      // A node lists every session under it, so only one that lists the
+      // session can hold it.
+      if (!node.sessions?.some((s) => refsEqual(s, ref))) continue;
+      keys.add(node.key);
+      if (node.children) walk(node.children);
+    }
+  };
+  walk(groups);
+  return keys;
+}
+
+/**
+ * The row to show as selected. The selected group stays when it holds the
+ * open session, or when the tree does not have the session. Otherwise it is
+ * the innermost row holding the session that shows: groups inside a closed
+ * one are hidden, so the closed one stands for them.
+ */
+export function nodeToHighlight(
+  groups: GroupNode[],
+  ref: SessionRef | null,
+  selectedKey: string | null,
+  manual: Set<string>,
+  defaults: Set<string>
+): string | null {
+  const holding = nodesHolding(groups, ref);
+  if (holding.size === 0 || (selectedKey && holding.has(selectedKey))) return selectedKey;
+  let innermost: string | null = null;
+  const walk = (nodes: GroupNode[]) => {
+    const node = nodes.find((n) => holding.has(n.key));
+    if (!node) return;
+    innermost = node.key;
+    if (node.children && !isCollapsed(node.key, manual, defaults)) walk(node.children);
+  };
+  walk(groups);
+  return innermost;
+}
+
+/**
  * Lists the distinct directories in the tree that still exist on disk,
  * sorted, as candidates to import a bundle into.
  */

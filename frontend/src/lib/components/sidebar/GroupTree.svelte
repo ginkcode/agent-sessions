@@ -1,21 +1,56 @@
 <script lang="ts">
-  import type { GroupNode } from '../../types';
+  import type { GroupNode, SessionRef } from '../../types';
   import { appState } from '../../stores/appState.svelte';
   import { manage } from '../../stores/manage.svelte';
-  import { filterSessionsByAge } from '../../manage';
-  import { sessionToSelect } from '../../tree';
+  import { filterSessionsByAge, refsEqual } from '../../manage';
+  import { nodeToHighlight, sessionToSelect } from '../../tree';
   import GroupNodeItem from './GroupNodeItem.svelte';
 
   // Selecting a group also selects the first session shown in the list
   // (after the age filter), so the transcript follows the tree.
   async function handleSelect(node: GroupNode) {
-    await appState.selectGroup(node.key, 'push');
-    // A later click superseded this one while sessions were loading.
-    if (appState.selectedGroupKey !== node.key) return;
-    const visible = filterSessionsByAge(appState.sessions, manage.ageFilter);
-    const ref = sessionToSelect(node, visible);
-    if (ref) await appState.selectSession(ref);
+    // The clicked row shows as selected at once, before its session opens.
+    clicked = node.key;
+    try {
+      await appState.selectGroup(node.key, 'push');
+      // A later click superseded this one while sessions were loading.
+      if (appState.selectedGroupKey !== node.key) return;
+      const visible = filterSessionsByAge(appState.sessions, manage.ageFilter);
+      const ref = sessionToSelect(node, visible);
+      if (ref) await appState.selectSession(ref);
+    } finally {
+      if (clicked === node.key) clicked = null;
+    }
   }
+
+  // The row shown as selected: the clicked group, or where the open session
+  // is when it was opened from outside that group.
+  let clicked = $state<string | null>(null);
+  let highlightedKey = $derived(
+    clicked ??
+    nodeToHighlight(
+      appState.groups,
+      appState.selectedSessionRef,
+      appState.selectedGroupKey,
+      appState.collapsedKeys,
+      appState.defaultCollapsed
+    )
+  );
+  let container = $state<HTMLDivElement>();
+
+  // Another session opened: its row comes into view. Only once per session,
+  // so tree reloads leave the scrolling alone.
+  let revealed: SessionRef | null = null;
+  $effect(() => {
+    const ref = appState.selectedSessionRef;
+    if (!ref || refsEqual(ref, revealed) || !highlightedKey || !container) return;
+    revealed = ref;
+    const tree = container;
+    // After the rows render, and with them any group that opened.
+    requestAnimationFrame(() => {
+      tree.querySelector('.node-row.selected')?.scrollIntoView({ block: 'nearest' });
+    });
+  });
 
   function handleToggleCollapse(key: string) {
     appState.toggleCollapsed(key);
@@ -36,7 +71,7 @@
   }
 </script>
 
-<div class="tree-container" role="tree" aria-label="Session groups">
+<div class="tree-container" role="tree" aria-label="Session groups" bind:this={container}>
   {#if appState.loadingGroups}
     <div class="tree-message loading">Loading groups…</div>
   {:else if appState.groups.length === 0}
@@ -72,7 +107,7 @@
         <GroupNodeItem
           {node}
           level={0}
-          selectedKey={appState.selectedGroupKey}
+          selectedKey={highlightedKey}
           collapsedKeys={appState.collapsedKeys}
           defaultCollapsed={appState.defaultCollapsed}
           onSelect={handleSelect}

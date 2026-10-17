@@ -76,6 +76,8 @@ import {
   directoryName,
   pruneKeys,
   sessionToSelect,
+  nodesHolding,
+  nodeToHighlight,
   knownDirectories,
   directoryNodeKey,
   hashHost,
@@ -1181,6 +1183,38 @@ test('defaultCollapsedKeys collapses every session with subagents', () => {
 
   const keys = defaultCollapsedKeys([agent]);
   assert.deepEqual([...keys].sort(), ['sess1', 'sessN']);
+});
+
+test('the tree highlights the row where the open session is', () => {
+  const a = { agent: 'claude-code', id: 'a' };
+  const b = { agent: 'codex', id: 'b' };
+  const sub = { agent: 'claude-code', id: 'a-sub' };
+  const session = (ref, children) => ({ key: `session:${ref.id}`, label: ref.id, kind: 'session', sessionCount: 1, sessions: children ? [ref, ...children.flatMap((c) => c.sessions)] : [ref], children });
+  const tree = [
+    {
+      key: 'dir:/x', label: '/x', kind: 'directory', sessionCount: 3, sessions: [a, sub, b],
+      children: [
+        { key: 'dir-agent:/x:claude', label: 'Claude', kind: 'agent', sessionCount: 2, sessions: [a, sub], children: [session(a, [session(sub)])] },
+        { key: 'dir-agent:/x:codex', label: 'Codex', kind: 'agent', sessionCount: 1, sessions: [b] },
+      ],
+    },
+    { key: 'dir:/y', label: '/y', kind: 'directory', sessionCount: 0, sessions: [] },
+  ];
+  assert.deepEqual([...nodesHolding(tree, b)], ['dir:/x', 'dir-agent:/x:codex']);
+  assert.deepEqual([...nodesHolding(tree, sub)], ['dir:/x', 'dir-agent:/x:claude', 'session:a', 'session:a-sub']);
+  assert.deepEqual([...nodesHolding(tree, { ...b })], ['dir:/x', 'dir-agent:/x:codex'], 'refs compare by value');
+  assert.equal(nodesHolding(tree, { agent: 'codex', id: 'gone' }).size, 0);
+  assert.equal(nodesHolding(tree, null).size, 0);
+
+  const none = new Set();
+  assert.equal(nodeToHighlight(tree, b, 'dir:/x', none, none), 'dir:/x', 'the clicked group holds it');
+  assert.equal(nodeToHighlight(tree, b, 'dir:/y', none, none), 'dir-agent:/x:codex', 'opened from outside the group');
+  assert.equal(nodeToHighlight(tree, b, null, none, none), 'dir-agent:/x:codex');
+  assert.equal(nodeToHighlight(tree, sub, null, none, none), 'session:a-sub');
+  assert.equal(nodeToHighlight(tree, b, null, new Set(['dir:/x']), none), 'dir:/x', 'a closed group stands for its rows');
+  assert.equal(nodeToHighlight(tree, sub, null, none, new Set(['session:a'])), 'session:a', 'closed by default');
+  assert.equal(nodeToHighlight(tree, { agent: 'codex', id: 'gone' }, 'dir:/y', none, none), 'dir:/y', 'filtered out of the tree');
+  assert.equal(nodeToHighlight(tree, null, null, none, none), null);
 });
 
 test('isCollapsed flips the default state for manually toggled keys', () => {
@@ -3576,12 +3610,12 @@ async function renderGroupTree(filter) {
   groupTreeModule ??= await loadServerComponent(GROUP_TREE_URL, [
     ["import { appState } from '../../stores/appState.svelte';", fixtureStore('appState')],
     ["import { manage } from '../../stores/manage.svelte';", 'const manage = {};'],
-    ["import { filterSessionsByAge } from '../../manage';", 'const filterSessionsByAge = () => [];'],
-    ["import { sessionToSelect } from '../../tree';", 'const sessionToSelect = () => null;'],
+    ["import { filterSessionsByAge, refsEqual } from '../../manage';", 'const filterSessionsByAge = () => [];const refsEqual = (a, b) => a === b;'],
+    ["import { nodeToHighlight, sessionToSelect } from '../../tree';", 'const nodeToHighlight = () => null;const sessionToSelect = () => null;'],
     ["import GroupNodeItem from './GroupNodeItem.svelte';", 'const GroupNodeItem = () => {};'],
   ]);
   return renderWithFixture(groupTreeModule, {
-    appState: { loadingGroups: false, groups: [], filter: { query: '', path: '', liveOnly: false, archived: false, ...filter } },
+    appState: { loadingGroups: false, groups: [], selectedSessionRef: null, filter: { query: '', path: '', liveOnly: false, archived: false, ...filter } },
   });
 }
 
