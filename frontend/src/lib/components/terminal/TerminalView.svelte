@@ -8,7 +8,7 @@
   import { api } from '../../api';
   import { terminals, type PanelTab } from '../../stores/terminals.svelte';
   import { theme } from '../../stores/theme.svelte';
-  import { terminalKeyAction, terminalTheme } from '../../terminal';
+  import { terminalKeyAction, terminalTabShortcut, terminalTheme } from '../../terminal';
   import { copyToClipboard, readClipboard } from '../../portable';
   import { isMac } from '../../../main';
   import { onSplitterDragEnd, splitterDragging } from '../../splitterDrag';
@@ -70,6 +70,10 @@
     t.attachCustomKeyEventHandler((event) => {
       const action = terminalKeyAction(event, isMac);
       if (action === 'app') return false;
+      // A tab shortcut goes to the app only when that tab exists: programs
+      // in the terminal may use Alt+digit themselves.
+      const tabNumber = event.type === 'keydown' ? terminalTabShortcut(event, isMac) : null;
+      if (tabNumber !== null && tabNumber <= terminals.tabs.length) return false;
       if (action === 'copy') {
         event.preventDefault();
         void copySelection();

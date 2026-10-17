@@ -49,6 +49,38 @@ export function isPanelToggle(e: Pick<KeyboardEvent, 'key' | 'code' | 'ctrlKey' 
   return e.ctrlKey && !e.metaKey && !e.altKey && (e.code === 'Backquote' || e.key === '`');
 }
 
+/** Whether a key opens a new shell tab: Cmd+T on macOS, Ctrl+Shift+T elsewhere. */
+export function isNewShellShortcut(
+  e: Pick<KeyboardEvent, 'key' | 'code' | 'ctrlKey' | 'metaKey' | 'altKey' | 'shiftKey'>,
+  mac: boolean,
+): boolean {
+  const chord = mac ? e.metaKey && !e.ctrlKey && !e.shiftKey : e.ctrlKey && e.shiftKey && !e.metaKey;
+  if (!chord || e.altKey) return false;
+  // The letter typed, or where the layout types no Latin letters (Cyrillic,
+  // Greek) the key in T's place.
+  return /^[a-z]$/i.test(e.key) ? e.key.toLowerCase() === 't' : e.code === 'KeyT';
+}
+
+/** The New shell shortcut as the platform writes it. */
+export function newShellShortcutLabel(mac: boolean): string {
+  return mac ? '⌘T' : 'Ctrl+Shift+T';
+}
+
+/**
+ * The panel tab a key selects, counting from 1: Cmd+1–9 on macOS, Alt+1–9
+ * elsewhere. The key's position is read, so layouts that type other
+ * characters on the digit row work too. Null for any other key.
+ */
+export function terminalTabShortcut(
+  e: Pick<KeyboardEvent, 'code' | 'ctrlKey' | 'metaKey' | 'altKey' | 'shiftKey'>,
+  mac: boolean,
+): number | null {
+  const chord = mac ? e.metaKey && !e.altKey : e.altKey && !e.metaKey;
+  if (!chord || e.ctrlKey || e.shiftKey) return null;
+  const match = /^(?:Digit|Numpad)([1-9])$/.exec(e.code);
+  return match ? Number(match[1]) : null;
+}
+
 /**
  * What a key pressed in a panel terminal does besides typing: copy or paste
  * (Cmd+C/V on macOS, Ctrl+Shift+C/V elsewhere), or 'app' for the app's own
@@ -59,7 +91,7 @@ export function terminalKeyAction(
   mac: boolean,
 ): 'copy' | 'paste' | 'app' | null {
   if (e.type !== 'keydown') return null;
-  if (isPanelToggle(e)) return 'app';
+  if (isPanelToggle(e) || isNewShellShortcut(e, mac)) return 'app';
   if (e.key === ',' && (mac ? e.metaKey && !e.ctrlKey : e.ctrlKey && !e.metaKey) && !e.altKey) return 'app';
   const key = e.key.toLowerCase();
   const chord = mac ? e.metaKey && !e.ctrlKey && !e.shiftKey : e.ctrlKey && e.shiftKey && !e.metaKey;

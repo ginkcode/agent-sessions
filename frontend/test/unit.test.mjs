@@ -42,6 +42,9 @@ import {
   isPanelToggle,
   openMode,
   terminalKeyAction,
+  terminalTabShortcut,
+  isNewShellShortcut,
+  newShellShortcutLabel,
   terminalOptions,
   terminalTheme,
 } from '../src/lib/terminal.ts';
@@ -2627,6 +2630,38 @@ test('terminal keys: Ctrl+` toggles the panel; copy and paste follow the platfor
   assert.equal(terminalKeyAction(key('x', { metaKey: true }), true), null);
 });
 
+test('New shell shortcut: Cmd+T on macOS, Ctrl+Shift+T elsewhere', () => {
+  const key = (k, code, mods = {}) => ({ key: k, code, ctrlKey: false, metaKey: false, altKey: false, shiftKey: false, ...mods });
+  assert.ok(isNewShellShortcut(key('t', 'KeyT', { metaKey: true }), true));
+  assert.ok(isNewShellShortcut(key('T', 'KeyT', { ctrlKey: true, shiftKey: true }), false));
+  assert.ok(isNewShellShortcut(key('t', 'KeyK', { metaKey: true }), true), 'layouts with T elsewhere');
+  assert.ok(!isNewShellShortcut(key('y', 'KeyT', { metaKey: true }), true), 'their key in T\'s place types another letter');
+  assert.ok(isNewShellShortcut(key('е', 'KeyT', { metaKey: true }), true), 'a layout without Latin letters');
+  assert.ok(!isNewShellShortcut(key('t', 'KeyT', { ctrlKey: true }), false), 'Ctrl+T reaches the terminal');
+  assert.ok(!isNewShellShortcut(key('t', 'KeyT', { ctrlKey: true }), true));
+  assert.ok(!isNewShellShortcut(key('T', 'KeyT', { metaKey: true, shiftKey: true }), true));
+  assert.ok(!isNewShellShortcut(key('t', 'KeyT', { metaKey: true }), false));
+  assert.ok(!isNewShellShortcut(key('T', 'KeyT', { ctrlKey: true, shiftKey: true, altKey: true }), false));
+  assert.equal(terminalKeyAction({ ...key('t', 'KeyT', { metaKey: true }), type: 'keydown' }, true), 'app');
+  assert.equal(terminalKeyAction({ ...key('T', 'KeyT', { ctrlKey: true, shiftKey: true }), type: 'keydown' }, false), 'app');
+  assert.deepEqual([newShellShortcutLabel(true), newShellShortcutLabel(false)], ['⌘T', 'Ctrl+Shift+T']);
+});
+
+test('terminal tab shortcuts: Cmd+1–9 on macOS, Alt+1–9 elsewhere', () => {
+  const key = (code, mods = {}) => ({ code, ctrlKey: false, metaKey: false, altKey: false, shiftKey: false, ...mods });
+  assert.equal(terminalTabShortcut(key('Digit1', { metaKey: true }), true), 1);
+  assert.equal(terminalTabShortcut(key('Digit9', { metaKey: true }), true), 9);
+  assert.equal(terminalTabShortcut(key('Numpad3', { metaKey: true }), true), 3);
+  assert.equal(terminalTabShortcut(key('Digit2', { altKey: true }), false), 2);
+  assert.equal(terminalTabShortcut(key('Digit0', { metaKey: true }), true), null);
+  assert.equal(terminalTabShortcut(key('KeyA', { metaKey: true }), true), null);
+  assert.equal(terminalTabShortcut(key('Digit1', { altKey: true }), true), null, 'Option+digit types on macOS');
+  assert.equal(terminalTabShortcut(key('Digit1', { metaKey: true }), false), null);
+  assert.equal(terminalTabShortcut(key('Digit1', { metaKey: true, shiftKey: true }), true), null);
+  assert.equal(terminalTabShortcut(key('Digit1', { altKey: true, ctrlKey: true }), false), null, 'AltGr');
+  assert.equal(terminalTabShortcut(key('Digit1'), false), null);
+});
+
 test('terminalTheme takes the app colors and falls back per theme', () => {
   const vars = { '--bg-primary': '#101010', '--text-primary': '#eeeeee', '--accent-color': '#3b82f6' };
   const dark = terminalTheme('dark', (name) => vars[name] ?? '');
@@ -2824,6 +2859,21 @@ test('TerminalsStore asks before closing a running agent, not a shell', async ()
     assert.equal(store.close(shell.id), true);
     assert.deepEqual([store.tabs.length, store.active, store.open], [0, null, false]);
     assert.equal(mock.panelTerminals.size, 0);
+  });
+});
+
+test('TerminalsStore selects a tab by its position while the panel shows', async () => {
+  await withTerminals(async ({ store }) => {
+    const first = await store.newShell('/a');
+    const second = await store.newShell('/b');
+    assert.equal(store.active, second.id);
+    assert.equal(store.selectNth(1), true);
+    assert.equal(store.active, first.id);
+    assert.equal(store.selectNth(3), false, 'no third tab');
+    assert.equal(store.active, first.id);
+    store.setOpen(false);
+    assert.equal(store.selectNth(2), false, 'a hidden panel keeps its tab');
+    assert.equal(store.active, first.id);
   });
 });
 

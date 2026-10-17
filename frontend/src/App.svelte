@@ -38,7 +38,7 @@
   import { formatVersion } from './lib/format';
   import { themeButtonTitle } from './lib/theme';
   import { hostLabel } from './lib/hosts';
-  import { isPanelToggle } from './lib/terminal';
+  import { isNewShellShortcut, isPanelToggle, terminalTabShortcut } from './lib/terminal';
   import { isMac } from './main';
 
   let isWails = $state(false);
@@ -84,6 +84,20 @@
         if (!launcher.info.panel || hasOpenModal()) return;
         event.preventDefault();
         void terminals.toggle(shellCwd);
+        return;
+      }
+      // Cmd+T on macOS, Ctrl+Shift+T elsewhere: a new shell tab, showing the panel.
+      if (isNewShellShortcut(event, isMac)) {
+        if (!launcher.info.panel || hasOpenModal()) return;
+        event.preventDefault();
+        if (!event.repeat) void terminals.newShell(shellCwd);
+        return;
+      }
+      // Cmd+1–9 on macOS, Alt+1–9 elsewhere: selects a terminal tab.
+      const tabNumber = terminalTabShortcut(event, isMac);
+      if (tabNumber !== null) {
+        if (!launcher.info.panel || hasOpenModal()) return;
+        if (terminals.selectNth(tabNumber)) event.preventDefault();
         return;
       }
       // Cmd+, on macOS, Ctrl+, elsewhere: the convention for Settings.

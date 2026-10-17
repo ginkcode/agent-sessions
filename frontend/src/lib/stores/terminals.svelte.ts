@@ -346,6 +346,17 @@ export class TerminalsStore {
     if (this.tabs.some((t) => t.id === id)) this.active = id;
   }
 
+  /**
+   * Selects the tab at a position counting from 1, when the panel shows and
+   * has that many tabs; returns whether it did.
+   */
+  selectNth(n: number): boolean {
+    const tab = this.tabs[n - 1];
+    if (!this.open || !tab) return false;
+    this.active = tab.id;
+    return true;
+  }
+
   /** Shows or hides the panel; showing an empty panel opens a shell. */
   async toggle(cwd = ''): Promise<void> {
     if (this.open) {

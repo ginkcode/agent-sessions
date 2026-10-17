@@ -4,6 +4,8 @@
   import { api } from '../../api';
   import { terminals } from '../../stores/terminals.svelte';
   import { hostLabel } from '../../hosts';
+  import { isMac } from '../../../main';
+  import { newShellShortcutLabel } from '../../terminal';
 
   interface Props {
     /** The directory a new shell starts in, on the selected host. */
@@ -18,9 +20,11 @@
 
   let confirmingTab = $derived(terminals.tabs.find((t) => t.id === terminals.confirming));
 
-  // The directory the tab started in; the tab itself shows the rest.
-  function tabTitle(tab: (typeof terminals.tabs)[number]): string {
-    return tab.dir || (tab.kind === 'shell' ? 'Home directory' : tab.label);
+  // The directory the tab started in, the tab itself shows the rest, and
+  // the shortcut that selects it.
+  function tabTitle(tab: (typeof terminals.tabs)[number], index: number): string {
+    const title = tab.dir || (tab.kind === 'shell' ? 'Home directory' : tab.label);
+    return index < 9 ? `${title} (${isMac ? '⌘' : 'Alt+'}${index + 1})` : title;
   }
 
   function handleTabKeydown(event: KeyboardEvent, id: string) {
@@ -34,8 +38,8 @@
 <section class="terminal-panel" class:hidden aria-label="Terminal" style="height: {terminals.height}px">
   <header class="panel-header">
     <div class="tabs" role="tablist" aria-label="Terminals">
-      {#each terminals.tabs as tab (tab.id)}
-        <div class="tab" class:active={tab.id === terminals.active} title={tabTitle(tab)}>
+      {#each terminals.tabs as tab, index (tab.id)}
+        <div class="tab" class:active={tab.id === terminals.active} title={tabTitle(tab, index)}>
           <button
             type="button"
             class="tab-select"
@@ -72,7 +76,7 @@
       <button
         type="button"
         class="icon-button"
-        title="New shell"
+        title="New shell ({newShellShortcutLabel(isMac)})"
         aria-label="New shell"
         onclick={() => void terminals.newShell(cwd)}
       >
