@@ -252,6 +252,24 @@ export interface FileListing {
   truncated?: boolean;
   /** The list came from git, so ignored files are left out. */
   git?: boolean;
+  /** Git status of each changed file; deleted files are here, not in files. */
+  status?: Record<string, GitStatus>;
+}
+
+/** A file's git status letter, as VS Code shows it. */
+export type GitStatus = 'M' | 'A' | 'U' | 'D' | 'R' | 'C';
+
+/**
+ * Lines that differ from the last commit, in current line numbers. A
+ * deletion has count 0 and start the line after which lines went (0: before
+ * the first).
+ */
+export interface LineChange {
+  kind: 'added' | 'modified' | 'deleted';
+  start: number;
+  count: number;
+  /** The lines it replaced or removed, as at the last commit. */
+  removed?: string[];
 }
 
 /** One file read for the Go to File dialog. */
@@ -261,6 +279,7 @@ export interface FileContent {
   text?: string;
   binary?: boolean;
   tooLarge?: boolean;
+  changes?: LineChange[];
 }
 
 export interface Warning {

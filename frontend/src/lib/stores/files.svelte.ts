@@ -8,10 +8,13 @@ import { isStaleReply } from '../link';
  * and the file shown.
  */
 const WRAP_KEY = 'agent-sessions:file-wrap';
+const DIFF_KEY = 'agent-sessions:file-diff';
 
 export class FilesStore {
   /** Soft-wraps long lines in the viewer; remembered between runs. */
-  wrap = $state(readWrap());
+  wrap = $state(readFlag(WRAP_KEY, false));
+  /** Shows a changed file as a diff against the last commit. */
+  diff = $state(readFlag(DIFF_KEY, false));
 
   /** The directory being browsed; null while the dialog is closed. */
   dir = $state<string | null>(null);
@@ -49,11 +52,17 @@ export class FilesStore {
     }
   }
 
-  async select(path: string): Promise<void> {
+  /** Shows path; with read false (a deleted file) nothing is fetched. */
+  async select(path: string, read = true): Promise<void> {
     if (!this.dir) return;
     this.selected = path;
     this.content = null;
     this.fileError = null;
+    if (!read) {
+      this.fileSeq++;
+      this.loadingFile = false;
+      return;
+    }
     this.loadingFile = true;
     const dir = this.dir;
     const seq = ++this.fileSeq;
@@ -71,11 +80,12 @@ export class FilesStore {
 
   toggleWrap(): void {
     this.wrap = !this.wrap;
-    try {
-      localStorage.setItem(WRAP_KEY, this.wrap ? '1' : '0');
-    } catch {
-      // Storage disabled; the choice lasts this run.
-    }
+    saveFlag(WRAP_KEY, this.wrap);
+  }
+
+  toggleDiff(): void {
+    this.diff = !this.diff;
+    saveFlag(DIFF_KEY, this.diff);
   }
 
   close(): void {
@@ -97,11 +107,21 @@ export class FilesStore {
   }
 }
 
-function readWrap(): boolean {
+function readFlag(key: string, fallback: boolean): boolean {
   try {
-    return typeof localStorage !== 'undefined' && localStorage.getItem(WRAP_KEY) === '1';
+    if (typeof localStorage === 'undefined') return fallback;
+    const saved = localStorage.getItem(key);
+    return saved === null ? fallback : saved === '1';
   } catch {
-    return false;
+    return fallback;
+  }
+}
+
+function saveFlag(key: string, on: boolean): void {
+  try {
+    localStorage.setItem(key, on ? '1' : '0');
+  } catch {
+    // Storage disabled; the choice lasts this run.
   }
 }
 

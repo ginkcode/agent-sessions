@@ -659,7 +659,14 @@ export class MockBackendAPI {
       files: [
         '.gitignore', 'README.md', 'go.mod', 'main.go', 'internal/app/app.go', 'internal/app/app_test.go',
         'frontend/package.json', 'frontend/src/App.svelte', 'frontend/src/lib/api.ts', 'assets/logo.png',
+        'frontend/src/lib/new.ts',
       ],
+      status: {
+        'frontend/src/App.svelte': 'M',
+        'frontend/src/lib/new.ts': 'U',
+        'internal/app/old.go': 'D',
+        'go.mod': 'M',
+      },
     };
   }
 
@@ -667,7 +674,16 @@ export class MockBackendAPI {
     if (path.endsWith('.png')) return { path, size: 2048, binary: true };
     if (path.endsWith('.svelte')) {
       const text = `<script lang="ts">\n  import { onMount } from 'svelte';\n  /* The count shown. */\n  let count = $state(0);\n  onMount(() => console.log('ready', 42, 'a long line that goes on and on to show how soft wrapping looks when the text is much wider than the viewer pane'));\n  /* a block\n     comment */\n</script>\n\n<button class="btn" onclick={() => count++}>Clicked {count}</button>\n\n<style>\n  .btn {\n    color: #3b82f6;\n    padding: 4px 8px;\n  }\n</style>\n`;
-      return { path, size: text.length, text };
+      return {
+        path,
+        size: text.length,
+        text,
+        changes: [
+          { kind: 'modified', start: 5, count: 1, removed: ["  onMount(() => console.log('ready'));"] },
+          { kind: 'added', start: 6, count: 2 },
+          { kind: 'deleted', start: 12, count: 0, removed: ['  /* buttons */', '  button { margin: 0; }'] },
+        ],
+      };
     }
     const text = path.endsWith('.go')
       ? `package main\n\nimport "fmt"\n\n// main prints a greeting from ${dir}.\nfunc main() {\n\tfmt.Println("hello")\n}\n`

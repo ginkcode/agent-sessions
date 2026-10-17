@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -35,6 +36,33 @@ type Listing struct {
 	Truncated bool     `json:"truncated,omitempty"`
 	// Git reports that the list came from git, so ignored files are left out.
 	Git bool `json:"git,omitempty"`
+	// Status is the git status of each changed file, by path: see the
+	// Status constants. Deleted files are in Status but not in Files.
+	Status map[string]Status `json:"status,omitempty"`
+}
+
+// Status is a file's git status, as VS Code's file tree shows it.
+type Status string
+
+const (
+	Modified  Status = "M"
+	Added     Status = "A"
+	Untracked Status = "U"
+	Deleted   Status = "D"
+	Renamed   Status = "R"
+	Conflict  Status = "C"
+)
+
+// LineChange is a run of lines that differs from the last commit, in the
+// file's current line numbers (1-based). A deletion has Count 0 and Start
+// the line after which lines were removed (0: before the first line).
+type LineChange struct {
+	Kind  string `json:"kind"` // "added", "modified" or "deleted"
+	Start int    `json:"start"`
+	Count int    `json:"count"`
+	// Removed is the text of the lines this change replaced or removed, as
+	// they were at the last commit, for the diff view.
+	Removed []string `json:"removed,omitempty"`
 }
 
 // Content is one file read for display.
@@ -46,6 +74,9 @@ type Content struct {
 	Binary bool `json:"binary,omitempty"`
 	// TooLarge is set when the file exceeds MaxReadBytes; Text is then empty.
 	TooLarge bool `json:"tooLarge,omitempty"`
+	// Changes are the lines that differ from the last commit, for a text
+	// file in a git work tree.
+	Changes []LineChange `json:"changes,omitempty"`
 }
 
 // skipDirs are left out of a listing made without git: dependencies, build
@@ -69,7 +100,7 @@ func List(ctx context.Context, root string) (Listing, error) {
 		return Listing{}, fmt.Errorf("%s is not a directory", root)
 	}
 	if files, ok := gitFiles(ctx, root); ok {
-		out := Listing{Root: root, Files: files, Git: true}
+		out := Listing{Root: root, Files: files, Git: true, Status: gitStatus(ctx, root)}
 		if len(out.Files) > MaxFiles {
 			out.Files, out.Truncated = out.Files[:MaxFiles], true
 		}
@@ -78,23 +109,33 @@ func List(ctx context.Context, root string) (Listing, error) {
 	return walk(ctx, root)
 }
 
-// gitFiles lists tracked and untracked, not ignored, files under root.
-func gitFiles(ctx context.Context, root string) ([]string, bool) {
+// runGit runs git in root and returns its output.
+func runGit(ctx context.Context, root string, args ...string) ([]byte, bool) {
 	git, err := exec.LookPath("git")
 	if err != nil {
 		return nil, false
 	}
 	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, git, "-C", root, "ls-files", "-z", "--cached", "--others", "--exclude-standard") //nolint:gosec
+	argv := append([]string{"-C", root, "--literal-pathspecs", "-c", "core.quotepath=off"}, args...)
+	cmd := exec.CommandContext(ctx, git, argv...) //nolint:gosec
 	var stdout bytes.Buffer
 	cmd.Stdout = &stdout
 	if cmd.Run() != nil {
 		return nil, false
 	}
+	return stdout.Bytes(), true
+}
+
+// gitFiles lists tracked and untracked, not ignored, files under root.
+func gitFiles(ctx context.Context, root string) ([]string, bool) {
+	out, ok := runGit(ctx, root, "ls-files", "-z", "--cached", "--others", "--exclude-standard")
+	if !ok {
+		return nil, false
+	}
 	seen := make(map[string]bool)
 	files := []string{}
-	for name := range strings.SplitSeq(stdout.String(), "\x00") {
+	for name := range strings.SplitSeq(string(out), "\x00") {
 		// A deleted tracked file is still listed until the change is staged.
 		if name == "" || seen[name] {
 			continue
@@ -107,6 +148,121 @@ func gitFiles(ctx context.Context, root string) ([]string, bool) {
 	}
 	slices.Sort(files)
 	return files, true
+}
+
+// gitStatus returns the status of the changed files under root, by path
+// relative to root. It is nil when git cannot tell.
+func gitStatus(ctx context.Context, root string) map[string]Status {
+	prefix, ok := runGit(ctx, root, "rev-parse", "--show-prefix")
+	if !ok {
+		return nil
+	}
+	out, ok := runGit(ctx, root, "status", "--porcelain=v1", "-z", "--untracked-files=all", "--", ".")
+	if !ok {
+		return nil
+	}
+	return parseStatus(string(out), strings.TrimSpace(string(prefix)))
+}
+
+// parseStatus reads `git status --porcelain=v1 -z` output. Its paths are
+// from the repository top; prefix (root's place in it, ending in /) is cut
+// from them.
+func parseStatus(out, prefix string) map[string]Status {
+	status := make(map[string]Status)
+	fields := strings.Split(out, "\x00")
+	for i := 0; i < len(fields); i++ {
+		entry := fields[i]
+		if len(entry) < 4 {
+			continue
+		}
+		x, y, path := entry[0], entry[1], entry[3:]
+		// A rename or copy is followed by the path it came from.
+		if x == 'R' || x == 'C' {
+			i++
+		}
+		rel, ok := strings.CutPrefix(path, prefix)
+		if !ok {
+			continue
+		}
+		status[rel] = statusOf(x, y)
+	}
+	return status
+}
+
+// statusOf picks the one letter VS Code would show for an XY status.
+func statusOf(x, y byte) Status {
+	switch {
+	case x == '?' && y == '?':
+		return Untracked
+	case x == 'U' || y == 'U' || x == 'A' && y == 'A' || x == 'D' && y == 'D':
+		return Conflict
+	case y == 'D' || x == 'D' && y == ' ':
+		return Deleted
+	case x == 'A':
+		return Added
+	case x == 'R':
+		return Renamed
+	}
+	return Modified
+}
+
+// gitChanges returns the lines of rel that differ from the last commit, or
+// nil outside a work tree, before the first commit, or for an unchanged file.
+func gitChanges(ctx context.Context, root, rel string) []LineChange {
+	out, ok := runGit(ctx, root, "diff", "--no-color", "--no-ext-diff", "-U0", "HEAD", "--", rel)
+	if !ok {
+		return nil
+	}
+	return parseHunks(string(out))
+}
+
+// parseHunks reads a -U0 diff: each @@ -a,b +c,d @@ header and the lines
+// it removed. "\ No newline at end of file" notes are skipped.
+func parseHunks(diff string) []LineChange {
+	var changes []LineChange
+	var cur *LineChange
+	inHunk := false
+	for line := range strings.SplitSeq(diff, "\n") {
+		if rest, ok := strings.CutPrefix(line, "@@ -"); ok {
+			inHunk = false
+			oldPart, rest, ok := strings.Cut(rest, " +")
+			if !ok {
+				continue
+			}
+			newPart, _, ok := strings.Cut(rest, " @@")
+			if !ok {
+				continue
+			}
+			_, oldCount := hunkRange(oldPart)
+			newStart, newCount := hunkRange(newPart)
+			c := LineChange{Kind: "modified", Start: newStart, Count: newCount}
+			switch {
+			case oldCount == 0:
+				c.Kind = "added"
+			case newCount == 0:
+				c = LineChange{Kind: "deleted", Start: newStart}
+			}
+			changes = append(changes, c)
+			cur = &changes[len(changes)-1]
+			inHunk = true
+			continue
+		}
+		if inHunk && cur != nil && strings.HasPrefix(line, "-") {
+			cur.Removed = append(cur.Removed, strings.TrimSuffix(line[1:], "\r"))
+		}
+	}
+	return changes
+}
+
+// hunkRange reads "start,count" or "start" (count 1).
+func hunkRange(s string) (start, count int) {
+	a, b, hasCount := strings.Cut(s, ",")
+	start, _ = strconv.Atoi(a)
+	count = 1
+	if hasCount {
+		count, _ = strconv.Atoi(b)
+	}
+	return start, count
 }
 
 func walk(ctx context.Context, root string) (Listing, error) {
@@ -174,7 +330,7 @@ func Resolve(root, rel string) (string, error) {
 
 // Read returns the contents of the file rel names under root, unless it is
 // binary or larger than MaxReadBytes.
-func Read(root, rel string) (Content, error) {
+func Read(ctx context.Context, root, rel string) (Content, error) {
 	full, err := Resolve(root, rel)
 	if err != nil {
 		return Content{}, err
@@ -209,6 +365,7 @@ func Read(root, rel string) (Content, error) {
 		return out, nil
 	}
 	out.Text = string(data)
+	out.Changes = gitChanges(ctx, root, out.Path)
 	return out, nil
 }
 

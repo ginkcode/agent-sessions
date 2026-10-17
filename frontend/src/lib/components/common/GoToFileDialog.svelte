@@ -4,7 +4,20 @@
   import { hostLabel } from '../../hosts';
   import { highlightFile, splitHighlightedLines, splitLines } from '../../codeHighlight';
   import { copyToClipboard } from '../../portable';
-  import { buildFileTree, fileLanguage, filterFiles, parentFolders, type FileTreeNode } from '../../files';
+  import {
+    STATUS_LABELS,
+    buildFileTree,
+    diffRows,
+    fileChanges,
+    fileLanguage,
+    filterFiles,
+    folderStatus,
+    lineMarks,
+    parentFolders,
+    withDeleted,
+    type FileTreeNode,
+  } from '../../files';
+  import type { GitStatus } from '../../types';
   import { directoryName } from '../../tree';
   import LoadingSpinner from './LoadingSpinner.svelte';
 
@@ -19,7 +32,12 @@
   let resultsEl: HTMLElement | undefined = $state();
   let restoreFocus: HTMLElement | null = null;
 
-  let paths = $derived(files.listing?.files ?? []);
+  // Git status, when the directory is a work tree.
+  let status = $derived(files.listing?.status);
+  let folders = $derived(folderStatus(status));
+  let changedCount = $derived(status ? Object.keys(status).length : 0);
+  // Deleted files stay listed, struck through, while git status shows.
+  let paths = $derived(withDeleted(files.listing?.files ?? [], status));
   let tree = $derived(buildFileTree(paths));
   let matches = $derived(query.trim() ? filterFiles(paths, query) : []);
 
@@ -32,6 +50,24 @@
   // Highlighted lines are HTML; plain ones are text.
   let htmlLines = $derived(html !== null ? splitHighlightedLines(html) : null);
   let plainLines = $derived(text ? splitLines(text) : []);
+  let changes = $derived(
+    files.selected ? fileChanges(status?.[files.selected], files.content?.changes, plainLines.length) : undefined
+  );
+  let marks = $derived(lineMarks(changes, plainLines.length));
+  // The diff view shows when it is on and the file has changes to show.
+  let hasChanges = $derived(Boolean(changes?.length));
+  let showDiff = $derived(files.diff && hasChanges);
+  let rows = $derived(showDiff ? diffRows(changes, plainLines.length) : []);
+  const MARK_LABELS = {
+    added: 'Added line',
+    modified: 'Changed line',
+    'deleted-above': 'Lines removed above',
+    'deleted-below': 'Lines removed below',
+  };
+
+  function fileStatus(path: string): GitStatus | undefined {
+    return status?.[path];
+  }
   $effect(() => {
     const code = text;
     const lang = language;
@@ -76,7 +112,8 @@
     const next = new Set(expanded);
     for (const dir of parentFolders(path)) next.add(dir);
     expanded = next;
-    void files.select(path);
+    // A deleted file has nothing on disk to read.
+    void files.select(path, fileStatus(path) !== 'D');
   }
 
   function toggle(dir: string) {
@@ -163,13 +200,17 @@
           onclick={() => toggle(node.path)}
         >
           <span class="chevron" class:open={expanded.has(node.path)}>▸</span>
-          <span class="tree-name">{node.name}</span>
+          <span class="tree-name git-{folders.get(node.path) ?? 'none'}">{node.name}</span>
+          {#if folders.has(node.path)}
+            <span class="git-dot git-{folders.get(node.path)}" title="Holds changed files">●</span>
+          {/if}
         </button>
         {#if expanded.has(node.path)}
           <ul class="tree-list">{@render treeRows(node.children, depth + 1)}</ul>
         {/if}
       </li>
     {:else}
+      {@const st = fileStatus(node.path)}
       <li>
         <button
           type="button"
@@ -177,10 +218,11 @@
           class:selected={files.selected === node.path}
           class:unsupported={fileLanguage(node.path) === null}
           style:padding-left="{8 + depth * 14 + 14}px"
-          title={node.path}
+          title={st ? `${node.path} · ${STATUS_LABELS[st]}` : node.path}
           onclick={() => pick(node.path)}
         >
-          <span class="tree-name">{node.name}</span>
+          <span class="tree-name git-{st ?? 'none'}">{node.name}</span>
+          {#if st}<span class="git-letter git-{st}">{st}</span>{/if}
         </button>
       </li>
     {/if}
@@ -244,6 +286,7 @@
                 <ul id="goto-file-results" class="match-list" role="listbox" aria-label="Matching files">
                   {#each matches as path, i (path)}
                     {@const parts = splitPath(path)}
+                    {@const st = fileStatus(path)}
                     <li
                       id="goto-file-{i}"
                       role="option"
@@ -256,8 +299,9 @@
                       onmousemove={() => (activeIndex = i)}
                       onkeydown={() => {}}
                     >
-                      <span class="match-name">{parts.name}</span>
+                      <span class="match-name git-{st ?? 'none'}">{parts.name}</span>
                       {#if parts.dir}<span class="match-dir">{parts.dir}</span>{/if}
+                      {#if st}<span class="git-letter git-{st}" title={STATUS_LABELS[st]}>{st}</span>{/if}
                     </li>
                   {/each}
                 </ul>
@@ -273,6 +317,7 @@
             <footer class="picker-footer">
               {files.listing.files.length.toLocaleString()} files{files.listing.truncated ? ' (list cut short)' : ''}
               {#if files.listing.git}· .gitignore applied{/if}
+              {#if changedCount > 0}· {changedCount} changed{/if}
             </footer>
           {/if}
         </aside>
@@ -285,6 +330,18 @@
               <span class="viewer-path" title={files.selected}>{files.selected}</span>
               {#if files.content}<span class="viewer-size">{formatSize(files.content.size)}</span>{/if}
               {#if text && !files.loadingFile && language !== null}
+                {#if hasChanges}
+                  <button
+                    type="button"
+                    class="copy-btn"
+                    class:on={files.diff}
+                    aria-pressed={files.diff}
+                    title={files.diff ? 'Show the file without the removed lines' : 'Show the changes since the last commit, with removed lines'}
+                    onclick={() => files.toggleDiff()}
+                  >
+                    Git diff
+                  </button>
+                {/if}
                 <button
                   type="button"
                   class="copy-btn"
@@ -308,7 +365,9 @@
                 </button>
               {/if}
             </div>
-            {#if files.loadingFile}
+            {#if fileStatus(files.selected) === 'D'}
+              <div class="state center">This file was deleted since the last commit.</div>
+            {:else if files.loadingFile}
               <div class="state center"><LoadingSpinner size={16} label="Loading file…" /></div>
             {:else if files.fileError}
               <div class="state center error" role="alert">{files.fileError}</div>
@@ -322,16 +381,31 @@
               <div class="state center">This file is empty.</div>
             {:else if files.content}
               <div class="code-scroll">
-                <div class="code source" class:wrap={files.wrap}>
-                  {#if htmlLines}
+                <div class="code source" class:wrap={files.wrap} class:diff={showDiff}>
+                  {#if showDiff}
+                    {#each rows as row, r (r)}
+                      {#if row.kind === 'removed'}
+                        <span aria-hidden="true" class="ln sign">−</span>
+                        <span class="line removed">{row.text}</span>
+                      {:else}
+                        <span aria-hidden="true" class="ln" class:sign={row.mark}>{row.mark ? '+' : row.index + 1}</span>
+                        {#if htmlLines}
+                          <!-- highlight.js escapes the file's text -->
+                          <span class="line" class:added={row.mark}>{@html htmlLines[row.index]}</span>
+                        {:else}
+                          <span class="line" class:added={row.mark}>{plainLines[row.index]}</span>
+                        {/if}
+                      {/if}
+                    {/each}
+                  {:else if htmlLines}
                     {#each htmlLines as line, i (i)}
-                      <span class="ln" aria-hidden="true">{i + 1}</span>
+                      <span aria-hidden="true" class="ln mark-{marks[i] ?? 'none'}" title={marks[i] && MARK_LABELS[marks[i]]}>{i + 1}</span>
                       <!-- highlight.js escapes the file's text -->
                       <span class="line">{@html line}</span>
                     {/each}
                   {:else}
                     {#each plainLines as line, i (i)}
-                      <span class="ln" aria-hidden="true">{i + 1}</span>
+                      <span aria-hidden="true" class="ln mark-{marks[i] ?? 'none'}" title={marks[i] && MARK_LABELS[marks[i]]}>{i + 1}</span>
                       <span class="line">{line}</span>
                     {/each}
                   {/if}
@@ -515,6 +589,97 @@
 
   .unsupported {
     color: var(--text-muted);
+  }
+
+  /* Git status, VS Code's colours. */
+  .git-M,
+  .git-R {
+    color: #d29922;
+  }
+  .git-A,
+  .git-U {
+    color: #3fb950;
+  }
+  .git-D {
+    color: #f85149;
+  }
+  .git-C {
+    color: #db61a2;
+  }
+  /* Only the deleted file is struck through, not the folders holding it. */
+  .tree-row.file .tree-name.git-D,
+  .match-name.git-D {
+    text-decoration: line-through;
+  }
+  :global(:root:not([data-theme='dark'])) .git-M,
+  :global(:root:not([data-theme='dark'])) .git-R {
+    color: #9a6700;
+  }
+  :global(:root:not([data-theme='dark'])) .git-A,
+  :global(:root:not([data-theme='dark'])) .git-U {
+    color: #1a7f37;
+  }
+  :global(:root:not([data-theme='dark'])) .git-D {
+    color: #cf222e;
+  }
+  :global(:root:not([data-theme='dark'])) .git-C {
+    color: #bf3989;
+  }
+
+  .git-letter {
+    margin-left: auto;
+    padding-left: 8px;
+    flex-shrink: 0;
+    font-size: 0.72rem;
+    font-weight: 600;
+  }
+
+  .git-dot {
+    margin-left: auto;
+    padding-left: 8px;
+    flex-shrink: 0;
+    font-size: 0.5rem;
+  }
+
+  /* Changed lines: a bar at the gutter's right edge, as in VS Code. A
+     triangle-ish marker on the line border shows where lines were removed. */
+  .ln.mark-added {
+    box-shadow: inset -3px 0 0 #3fb950;
+  }
+  .ln.mark-modified {
+    box-shadow: inset -3px 0 0 #2f81f7;
+  }
+  .ln.mark-deleted-above {
+    background-image: linear-gradient(#f85149, #f85149);
+    background-size: 100% 2px;
+    background-position: top;
+    background-repeat: no-repeat;
+  }
+  .ln.mark-deleted-below {
+    background-image: linear-gradient(#f85149, #f85149);
+    background-size: 100% 2px;
+    background-position: bottom;
+    background-repeat: no-repeat;
+  }
+
+  /* Diff view: removed lines on red, changed and added ones on green,
+     with − and + in the gutter. */
+  .line.removed {
+    background-color: rgba(248, 81, 73, 0.15);
+    color: var(--text-secondary);
+  }
+  .line.added {
+    background-color: rgba(46, 160, 67, 0.15);
+  }
+  .ln.sign {
+    color: var(--text-secondary);
+    font-weight: 600;
+  }
+  .code.diff .ln:has(+ .line.removed) {
+    background-color: rgba(248, 81, 73, 0.22);
+  }
+  .code.diff .ln:has(+ .line.added) {
+    background-color: rgba(46, 160, 67, 0.22);
   }
 
   .match {

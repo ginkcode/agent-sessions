@@ -572,9 +572,9 @@ func (s *Service) ListFiles(ctx context.Context, dir string) (files.Listing, err
 }
 
 // ReadFile reads one file of a session directory for the file viewer.
-func (s *Service) ReadFile(dir, rel string) (files.Content, error) {
+func (s *Service) ReadFile(ctx context.Context, dir, rel string) (files.Content, error) {
 	if !s.knownDirectory(dir) {
 		return files.Content{}, fmt.Errorf("%w: %s", ErrUnknownDirectory, dir)
 	}
-	return files.Read(dir, rel)
+	return files.Read(ctx, dir, rel)
 }

@@ -457,8 +457,8 @@ func (e *Engine) ListFiles(ctx context.Context, dir string) (files.Listing, erro
 }
 
 // ReadFile reads one file of a session directory.
-func (e *Engine) ReadFile(_ context.Context, dir, path string) (files.Content, error) {
-	return e.svc.ReadFile(dir, path)
+func (e *Engine) ReadFile(ctx context.Context, dir, path string) (files.Content, error) {
+	return e.svc.ReadFile(ctx, dir, path)
 }
 
 // Diagnostics returns aggregated scanner health.

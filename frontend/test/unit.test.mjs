@@ -106,7 +106,7 @@ import {
 import { BUDGET_PRESETS, ALL_AGENTS, copyToClipboard, targetAgentsFor } from '../src/lib/portable.ts';
 import { renameSvgId } from '../src/lib/mermaid.ts';
 import { splitHighlightedLines, splitLines } from '../src/lib/codeHighlight.ts';
-import { buildFileTree, fileLanguage, filterFiles, matchScore, parentFolders } from '../src/lib/files.ts';
+import { buildFileTree, diffRows, fileChanges, fileLanguage, filterFiles, folderStatus, lineMarks, matchScore, parentFolders, withDeleted } from '../src/lib/files.ts';
 import { ImageCache, base64Blob, blobImage, isImageFile, rasterScale, sniffImageFormat } from '../src/lib/images.ts';
 
 test('formatTokens formats numbers into compact string representations', () => {
@@ -3746,4 +3746,46 @@ test('copyToClipboard writes natively in the desktop app, falling back to the we
     if (saved) Object.defineProperty(globalThis, 'navigator', saved);
     else delete globalThis.navigator;
   }
+});
+
+test('git marks: deleted files listed, folders take their most important change', () => {
+  const status = { 'src/a.ts': 'U', 'src/lib/b.ts': 'M', 'gone.txt': 'D', 'docs/new.md': 'A' };
+  assert.deepEqual(withDeleted(['src/a.ts', 'src/lib/b.ts'], status), ['gone.txt', 'src/a.ts', 'src/lib/b.ts']);
+  assert.deepEqual(withDeleted(['x'], undefined), ['x']);
+  assert.deepEqual(Object.fromEntries(folderStatus(status)), { src: 'M', 'src/lib': 'M', docs: 'A' });
+  assert.equal(folderStatus(undefined).size, 0);
+});
+
+test('lineMarks places gutter bars for changed lines and markers for removed ones', () => {
+  const marks = lineMarks(
+    [
+      { kind: 'modified', start: 2, count: 1 },
+      { kind: 'added', start: 4, count: 2 },
+      { kind: 'deleted', start: 0, count: 0 },
+      { kind: 'deleted', start: 6, count: 0 },
+    ],
+    6
+  );
+  assert.deepEqual(marks, ['deleted-above', 'modified', undefined, 'added', 'added', 'deleted-below']);
+  assert.deepEqual(lineMarks(undefined, 2), [undefined, undefined]);
+  assert.deepEqual(lineMarks([{ kind: 'deleted', start: 0, count: 0 }], 0), []);
+});
+
+test('diffRows puts removed lines above what replaced them', () => {
+  const changes = [
+    { kind: 'deleted', start: 0, count: 0, removed: ['first'] },
+    { kind: 'modified', start: 2, count: 1, removed: ['old two'] },
+    { kind: 'added', start: 3, count: 1 },
+    { kind: 'deleted', start: 3, count: 0, removed: ['old end'] },
+  ];
+  const rows = diffRows(changes, 3).map((r) => (r.kind === 'removed' ? `-${r.text}` : `${r.index + 1}${r.mark ? ':' + r.mark : ''}`));
+  assert.deepEqual(rows, ['-first', '1', '-old two', '2:modified', '3:added', '-old end']);
+  assert.deepEqual(diffRows(undefined, 2).map((r) => r.index), [0, 1]);
+});
+
+test('fileChanges marks an untracked file as all added', () => {
+  assert.deepEqual(fileChanges('U', undefined, 3), [{ kind: 'added', start: 1, count: 3 }]);
+  assert.equal(fileChanges('M', undefined, 3), undefined);
+  const c = [{ kind: 'added', start: 1, count: 1 }];
+  assert.equal(fileChanges('M', c, 3), c);
 });
