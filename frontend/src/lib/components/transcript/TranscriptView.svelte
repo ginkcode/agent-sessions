@@ -26,6 +26,8 @@
   // Larger pages when jumping to the end, to cut round-trips on long sessions.
   const JUMP_PAGE_SIZE = 500;
   const SHOW_BOTTOM_BTN_PX = 400;
+  // How near the end the view must be to follow new messages.
+  const FOLLOW_SLACK_PX = 40;
 
   let messages = $state<Message[]>([]);
   let isLoading = $state(false);
@@ -36,6 +38,11 @@
   let resumeCopied = $state(false);
   let resumeOpening = $state(false);
   let containerEl: HTMLElement | null = $state(null);
+  let listEl: HTMLElement | null = $state(null);
+  // Once the view reaches the end of the transcript, it stays there as
+  // messages arrive, until the user scrolls up.
+  let following = false;
+  let lastScrollTop = 0;
   let showScrollBottomBtn = $state(false);
   let jumpingToBottom = $state(false);
   let pendingLoad: Promise<void> | null = null;
@@ -113,6 +120,7 @@
     messages = [];
     pageOffset = 0;
     hasMore = false;
+    following = false;
 
     try {
       const page = await api.getMessages(ref, 0, PAGE_SIZE);
@@ -165,6 +173,7 @@
     messages = [];
     pageOffset = offset;
     hasMore = false;
+    following = false;
 
     try {
       // Only the page around the target is requested; header metadata is
@@ -278,9 +287,18 @@
     return el.scrollHeight - el.scrollTop - el.clientHeight;
   }
 
+  // The end of what is loaded is not the end while pages remain.
+  function atEnd(el: HTMLElement): boolean {
+    return !hasMore && distanceFromBottom(el) <= FOLLOW_SLACK_PX;
+  }
+
   function handleScroll(e: Event) {
-    const scrollBottom = distanceFromBottom(e.currentTarget as HTMLElement);
+    const el = e.currentTarget as HTMLElement;
+    const scrollBottom = distanceFromBottom(el);
     showScrollBottomBtn = scrollBottom > SHOW_BOTTOM_BTN_PX;
+    if (atEnd(el)) following = true;
+    else if (el.scrollTop < lastScrollTop && scrollBottom > FOLLOW_SLACK_PX) following = false;
+    lastScrollTop = el.scrollTop;
 
     if (scrollBottom < 250 && hasMore && !isLoadingMore && !isLoading) {
       loadMoreMessages();
@@ -300,10 +318,27 @@
       if (!containerEl) return;
       const remaining = distanceFromBottom(containerEl);
       showScrollBottomBtn = remaining > SHOW_BOTTOM_BTN_PX;
+      // A transcript that fits has no scroll to reach its end with.
+      if (atEnd(containerEl)) following = true;
       if (remaining < 250 && hasMore && !isLoadingMore && !isLoading) {
         void loadMoreMessages();
       }
     });
+  });
+
+  // While following, any growth keeps the end in view: new messages, and
+  // diagrams and images that render late. So does a shorter pane.
+  $effect(() => {
+    const el = containerEl;
+    const list = listEl;
+    if (!el || !list) return;
+    lastScrollTop = el.scrollTop;
+    const observer = new ResizeObserver(() => {
+      if (following) el.scrollTop = el.scrollHeight;
+    });
+    observer.observe(el);
+    observer.observe(list);
+    return () => observer.disconnect();
   });
 
   // Load the remaining pages first so "Bottom" reaches the real end of the
@@ -320,6 +355,7 @@
       }
       await tick();
       if (containerEl && currentRefKey === key) {
+        following = !hasMore;
         containerEl.scrollTo({ top: containerEl.scrollHeight, behavior: 'smooth' });
       }
     } finally {
@@ -433,7 +469,7 @@
       aria-label="Messages list"
       onscroll={handleScroll}
     >
-      <div class="messages-inner-list">
+      <div class="messages-inner-list" bind:this={listEl}>
         {#if messages.length === 0}
           <div class="empty-messages-notice">
             <span class="empty-icon">📭</span>
