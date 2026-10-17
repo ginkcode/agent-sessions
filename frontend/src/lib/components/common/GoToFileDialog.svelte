@@ -586,11 +586,12 @@
     align-items: center;
     gap: 4px;
     width: 100%;
-    padding-top: 3px;
-    padding-bottom: 3px;
+    padding-top: 5px;
+    padding-bottom: 5px;
     padding-right: 8px;
     border-radius: 4px;
-    font-size: 0.8rem;
+    font-size: 0.75rem;
+    line-height: 1.3;
     text-align: left;
     color: var(--text-primary);
     cursor: pointer;
@@ -739,9 +740,10 @@
     display: flex;
     align-items: baseline;
     gap: 8px;
-    padding: 4px 8px;
+    padding: 5px 8px;
     border-radius: 4px;
-    font-size: 0.8rem;
+    font-size: 0.75rem;
+    line-height: 1.3;
     cursor: pointer;
     white-space: nowrap;
     overflow: hidden;
