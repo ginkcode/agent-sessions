@@ -46,6 +46,9 @@
     resumeOpening = false,
   }: Props = $props();
 
+  // The agent's name, for the icon badge's tooltip and screen readers.
+  let agentName = $derived(ALL_AGENTS.find((a) => a.id === meta.ref.agent)?.label ?? meta.ref.agent);
+
   let messageTotal = $derived(meta.counts.user + meta.counts.assistant);
   // The ▾ menu offers the place agents do not open by default.
   let otherOpen = $derived<TerminalOpenMode>(launcher.openMode === 'panel' ? 'external' : 'panel');
@@ -120,7 +123,14 @@
   <div class="header-top-row">
     <div class="header-badges">
       <NavButtons />
-      <span class="agent-badge agent-{meta.ref.agent}">{meta.ref.agent}</span>
+      <span
+        class="agent-badge agent-{meta.ref.agent}"
+        role="img"
+        aria-label={agentName}
+        title={agentName}
+      >
+        <AgentIcon agent={meta.ref.agent} size={14} />
+      </span>
       {#if meta.live}
         <span class="live-badge">● LIVE</span>
       {/if}
@@ -380,6 +390,35 @@
       <span class="count-val">{messageTotal} msgs</span>
     </div>
 
+    <!-- Token use, on the path's line; it wraps below when space runs out. -->
+    <div class="stats-group">
+      <div class="stat-pill">
+        <span class="stat-label">In:</span>
+        <span class="stat-val">{formatTokens(meta.tokens.input)}</span>
+      </div>
+      <span class="stat-sep">·</span>
+      <div class="stat-pill">
+        <span class="stat-label">Out:</span>
+        <span class="stat-val">{formatTokens(meta.tokens.output)}</span>
+      </div>
+      {#if meta.tokens.cacheRead && meta.tokens.cacheRead > 0}
+        <span class="stat-sep">·</span>
+        <div class="stat-pill">
+          <span class="stat-label">Cache:</span>
+          <span class="stat-val">{formatTokens(meta.tokens.cacheRead)}</span>
+        </div>
+      {/if}
+      {#if meta.costUsd && meta.costUsd > 0}
+        <span class="stat-sep">·</span>
+        <div class="stat-pill">
+          <span class="stat-label">Cost:</span>
+          <span class="stat-val">{formatCost(meta.costUsd)}</span>
+        </div>
+      {/if}
+    </div>
+  </div>
+
+  <div class="header-time-row">
     {#each [{ label: 'Created', value: meta.createdAt }, { label: 'Updated', value: meta.updatedAt }] as stamp (stamp.label)}
       {#if isKnownTime(stamp.value)}
         <div class="meta-item time-item" title="{stamp.label} {formatAgo(stamp.value)}">
@@ -388,32 +427,6 @@
         </div>
       {/if}
     {/each}
-  </div>
-
-  <div class="header-stats-row">
-    <div class="stat-pill">
-      <span class="stat-label">In:</span>
-      <span class="stat-val">{formatTokens(meta.tokens.input)}</span>
-    </div>
-    <span class="stat-sep">·</span>
-    <div class="stat-pill">
-      <span class="stat-label">Out:</span>
-      <span class="stat-val">{formatTokens(meta.tokens.output)}</span>
-    </div>
-    {#if meta.tokens.cacheRead && meta.tokens.cacheRead > 0}
-      <span class="stat-sep">·</span>
-      <div class="stat-pill">
-        <span class="stat-label">Cache:</span>
-        <span class="stat-val">{formatTokens(meta.tokens.cacheRead)}</span>
-      </div>
-    {/if}
-    {#if meta.costUsd && meta.costUsd > 0}
-      <span class="stat-sep">·</span>
-      <div class="stat-pill">
-        <span class="stat-label">Cost:</span>
-        <span class="stat-val">{formatCost(meta.costUsd)}</span>
-      </div>
-    {/if}
   </div>
 </header>
 
@@ -464,11 +477,12 @@
   }
 
   .agent-badge {
-    font-size: 0.68rem;
-    font-weight: 600;
-    padding: 1px 6px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 20px;
     border-radius: 4px;
-    text-transform: uppercase;
   }
 
   .agent-badge.agent-claude-code {
@@ -678,6 +692,31 @@
     white-space: nowrap;
   }
 
+  /* One line: the path gives up room (ending in …, full on hover) so the
+     branch, message count and token use stay beside it. Narrow panes wrap. */
+  @container (min-width: 641px) {
+    .header-meta-row {
+      flex-wrap: nowrap;
+    }
+    .cwd-item {
+      flex: 0 1 auto;
+      min-width: 140px;
+    }
+    .header-meta-row > .meta-item:not(.cwd-item),
+    .stats-group {
+      flex-shrink: 0;
+    }
+    .branch-item {
+      flex-shrink: 1;
+      min-width: 0;
+      max-width: 180px;
+    }
+    .branch-text {
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+  }
+
   /* The path is cut short, never the copy button after it. */
   .cwd-text {
     min-width: 0;
@@ -717,10 +756,19 @@
     font-family: var(--font-mono);
   }
 
-  .header-stats-row {
+  .stats-group {
     display: flex;
     align-items: center;
     gap: 6px;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .header-time-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 12px;
     font-size: 0.72rem;
     color: var(--text-muted);
     font-variant-numeric: tabular-nums;
