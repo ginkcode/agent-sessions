@@ -8,9 +8,10 @@ import './style.css'
 import { mount } from 'svelte'
 import App from './App.svelte'
 import { api } from './lib/api'
-import { setupLinkInterceptor } from './lib/navigation'
+import { setupDropGuard, setupLinkInterceptor } from './lib/navigation'
 
 setupLinkInterceptor(api);
+setupDropGuard();
 
 // WebKitGTK paints native GTK scrollbars on a layer above page content, so
 // they show through dialogs and floating buttons. style.css replaces them

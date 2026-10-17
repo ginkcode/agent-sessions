@@ -106,6 +106,9 @@ type connection struct {
 	cancel      context.CancelFunc
 	stopped     bool
 	stopMaster  masterStopper
+	// busy reports whether a built-in terminal tab still uses a host's ssh
+	// master; its master is then left to ControlPersist.
+	busy func(host string) bool
 }
 
 // masterStopper closes the shared ssh connection (ControlMaster) for a host
@@ -193,6 +196,19 @@ func (c *connection) backend(local engine.Backend) engine.Backend {
 		return b
 	}
 	return local
+}
+
+func (c *connection) setBusy(busy func(host string) bool) {
+	c.mu.Lock()
+	c.busy = busy
+	c.mu.Unlock()
+}
+
+// sshOptions is how ssh reaches hosts, with the shared master's settings.
+func (c *connection) sshOptions() remote.SSHOptions {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.opts
 }
 
 func (c *connection) setEmitter(e engine.Emitter) {
@@ -440,7 +456,10 @@ func (c *connection) Disconnect() {
 // A missing master (never started, or already gone) is not an error worth
 // reporting.
 func (c *connection) releaseHost(alias string, opts remote.SSHOptions) {
-	if c.stopMaster == nil || opts.ControlMaster == "no" {
+	c.mu.Lock()
+	busy := c.busy
+	c.mu.Unlock()
+	if c.stopMaster == nil || opts.ControlMaster == "no" || busy != nil && busy(alias) {
 		return
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), stopMasterTimeout)

@@ -22,6 +22,7 @@ import (
 	"github.com/ginkcode/agent-sessions/internal/provider/all"
 	"github.com/ginkcode/agent-sessions/internal/remote"
 	"github.com/ginkcode/agent-sessions/internal/scan"
+	"github.com/ginkcode/agent-sessions/internal/term"
 	"github.com/ginkcode/agent-sessions/internal/translate"
 	"github.com/ginkcode/agent-sessions/internal/version"
 )
@@ -51,6 +52,11 @@ type App struct {
 	openInOverride func(launch.TerminalApp, provider.Command) error
 	// wslTerminalOverride replaces launch.OpenWSLTerminal in tests.
 	wslTerminalOverride func(distro, script string) error
+	// terminals runs the built-in terminal panel's tabs; nil outside the
+	// desktop app. panelOverride replaces what the panel needs from this
+	// computer in tests.
+	terminals     terminalManager
+	panelOverride *panelSystem
 	// translator replaces the default translation client in tests.
 	translator *translate.Client
 
@@ -177,6 +183,10 @@ func (a *App) OnStartup(ctx context.Context) {
 	a.wailsEvents = wailsEmitter
 	a.ensureConn()
 	a.conn.setEmitter(wailsEmitter)
+	if a.terminals == nil {
+		a.terminals = term.NewManager(wailsEmitter)
+	}
+	a.conn.setBusy(a.terminals.Running)
 	a.events = newCatalogBus(ctx)
 
 	a.localEngine = engine.NewEngine(
@@ -220,6 +230,10 @@ func (a *App) OnShutdown(ctx context.Context) {
 
 // Close gracefully terminates background scans, watchers, indexers, and the database.
 func (a *App) Close() error {
+	// Terminals end first: an SSH tab shares the connection's ssh master.
+	if a.terminals != nil {
+		a.terminals.CloseAll()
+	}
 	if a.conn != nil {
 		a.conn.Shutdown()
 	}

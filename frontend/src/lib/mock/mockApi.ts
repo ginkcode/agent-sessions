@@ -37,6 +37,9 @@ import type {
   HostCapabilities,
   HostEntry,
   WSLEntry,
+  TerminalOpenMode,
+  TerminalSize,
+  TerminalTab,
 } from '../types.js';
 import { mockSessions, mockMessages, mockBlobs, mockDiagnostics } from './fixtures.js';
 import { refKey } from '../manage.js';
@@ -61,6 +64,20 @@ function normalizeSearchDir(value?: string): string {
 
 function isInsideDir(cwd: string, dir: string): boolean {
   return cwd === dir || cwd.startsWith(`${dir}/`);
+}
+
+function toBase64(text: string): string {
+  let binary = '';
+  for (const byte of new TextEncoder().encode(text)) binary += String.fromCharCode(byte);
+  return btoa(binary);
+}
+
+/** A terminal of the mock panel: it echoes input and runs nothing. */
+interface MockTerminal {
+  tab: TerminalTab;
+  line: string;
+  size: TerminalSize;
+  unacked: number;
 }
 
 function escapeHTML(value: string): string {
@@ -129,7 +146,7 @@ export class MockBackendAPI {
   };
   private askpassReplies: Record<string, string> = {};
   /** Terminal support the mock reports; tests can enable it. */
-  launch: LaunchInfo = { terminal: false, shell: 'posix' };
+  launch: LaunchInfo = { terminal: false, shell: 'posix', panel: true, open: 'panel' };
   /** Terminal apps "installed", and the one chosen ('' is Automatic). */
   terminals: TerminalOption[] = [];
   chosenTerminal = '';
@@ -513,6 +530,120 @@ export class MockBackendAPI {
 
   async openBundleHandoffInTerminal(req: BundleHandoffRequest): Promise<void> {
     await this.openTerminal(() => this.bundleHandoffCommand(req));
+  }
+
+  /** The mock panel's running terminals by id. */
+  panelTerminals = new Map<string, MockTerminal>();
+  private nextTerminal = 1;
+
+  // Mirrors the backend: agents start on the host the session belongs to,
+  // SSH included; a shell needs no connection to the host's server.
+  private startPanel(kind: TerminalTab['kind'], size: TerminalSize, banner: string, needsServer: boolean, dir = ''): TerminalTab {
+    if (!this.launch.panel) throw new Error('the built-in terminal is not available');
+    const host = this.connState.phase === 'local' ? '' : (this.connState.host ?? '');
+    if (host && wslDistro(host) && !this.launch.wsl) throw new Error('WSL is not installed');
+    if (host && needsServer && this.connState.phase !== 'connected') throw new Error('remote disconnected');
+    const tab: TerminalTab = { id: `t${this.nextTerminal++}`, label: kind === 'agent' ? 'Agent' : 'Shell', host, kind, ...(dir && { dir }) };
+    this.panelTerminals.set(tab.id, { tab, line: '', size: { ...size }, unacked: 0 });
+    // Output can arrive before the start reply, as it can from the backend.
+    this.terminalOutput(tab.id, `\x1b[2m${banner}\x1b[0m\r\n${this.prompt(tab)}`);
+    return { ...tab };
+  }
+
+  private prompt(tab: TerminalTab): string {
+    return `\x1b[32m${tab.host || 'mock'}\x1b[0m $ `;
+  }
+
+  private terminalOutput(id: string, text: string): void {
+    const t = this.panelTerminals.get(id);
+    if (t) t.unacked += new TextEncoder().encode(text).length;
+    this.emit('term:data', { id, data: toBase64(text) });
+  }
+
+  async panelResume(ref: SessionRef, size: TerminalSize): Promise<TerminalTab> {
+    return this.startPanel('agent', size, `[mock] ${await this.copyResumeCommand(ref)}`, true);
+  }
+
+  async panelHandoff(req: HandoffRequest, size: TerminalSize): Promise<TerminalTab> {
+    return this.startPanel('agent', size, `[mock] ${await this.handoffCommand(req)}`, true);
+  }
+
+  async panelBundleHandoff(req: BundleHandoffRequest, size: TerminalSize): Promise<TerminalTab> {
+    return this.startPanel('agent', size, `[mock] ${await this.bundleHandoffCommand(req)}`, true);
+  }
+
+  async panelShell(cwd: string, size: TerminalSize): Promise<TerminalTab> {
+    return this.startPanel('shell', size, `[mock] shell in ${cwd || '~'}`, false, cwd);
+  }
+
+  // Echoes typed input; Enter starts a new prompt and "exit" ends the tab.
+  async terminalWrite(id: string, data: string): Promise<void> {
+    const t = this.panelTerminals.get(id);
+    if (!t) throw new Error(`terminal not found: ${id}`);
+    let out = '';
+    for (const ch of data) {
+      if (ch === '\r') {
+        const line = t.line.trim();
+        t.line = '';
+        if (line === 'exit') {
+          this.terminalOutput(id, `${out}\r\n`);
+          this.endTerminal(id, 0);
+          return;
+        }
+        out += `\r\n${line ? `mock: ${line}\r\n` : ''}${this.prompt(t.tab)}`;
+      } else if (ch === '\x7f') {
+        if (t.line) {
+          t.line = t.line.slice(0, -1);
+          out += '\b \b';
+        }
+      } else if (ch >= ' ') {
+        t.line += ch;
+        out += ch;
+      }
+    }
+    if (out) this.terminalOutput(id, out);
+  }
+
+  async terminalResize(id: string, cols: number, rows: number): Promise<void> {
+    const t = this.panelTerminals.get(id);
+    if (!t) throw new Error(`terminal not found: ${id}`);
+    t.size = { cols, rows };
+  }
+
+  async terminalAck(id: string, n: number): Promise<void> {
+    const t = this.panelTerminals.get(id);
+    if (t) t.unacked = Math.max(0, t.unacked - n);
+  }
+
+  async terminalClose(id: string): Promise<void> {
+    if (this.panelTerminals.has(id)) this.endTerminal(id, 129);
+  }
+
+  /** Paths given to terminalDropFiles, newest last. */
+  droppedFiles: string[][] = [];
+
+  // Mirrors the backend: an SSH host gets copies in a private folder, and
+  // paths are quoted as a POSIX shell needs.
+  async terminalDropFiles(id: string, paths: string[]): Promise<string[]> {
+    const t = this.panelTerminals.get(id);
+    if (!t) throw new Error(`terminal not found: ${id}`);
+    this.droppedFiles.push([...paths]);
+    const copied = t.tab.host && !wslDistro(t.tab.host);
+    return paths.map((p) => {
+      const path = copied ? `/tmp/agent-sessions-drop.mock/${p.split(/[\\/]/).pop()}` : p;
+      return /^[\w./:+,@%=-]+$/.test(path) ? path : `'${path.replaceAll("'", "'\\''")}'`;
+    });
+  }
+
+  private endTerminal(id: string, code: number): void {
+    this.panelTerminals.delete(id);
+    this.emit('term:exit', { id, code });
+  }
+
+  async setTerminalOpen(mode: TerminalOpenMode): Promise<LaunchInfo> {
+    if (mode !== 'panel' && mode !== 'external') throw new Error(`unknown terminal mode "${mode}"`);
+    this.launch = { ...this.launch, open: mode };
+    return this.launchInfo();
   }
 
   async revealSource(ref: SessionRef): Promise<void> {
@@ -999,6 +1130,29 @@ export class MockBackendAPI {
   }
 
   private listeners = new Map<string, Set<(...data: any[]) => void>>();
+
+  // A browser does not tell a page where dropped files are, so they are
+  // given made-up paths with their names.
+  onFileDrop(callback: (x: number, y: number, paths: string[]) => void): () => void {
+    if (typeof window === 'undefined') return () => {};
+    const files = (e: DragEvent) => e.dataTransfer?.types.includes('Files') ?? false;
+    const over = (e: DragEvent) => {
+      if (files(e)) e.preventDefault();
+    };
+    const drop = (e: DragEvent) => {
+      if (!files(e)) return;
+      e.preventDefault();
+      const el = document.elementFromPoint(e.clientX, e.clientY);
+      if (!el || getComputedStyle(el).getPropertyValue('--wails-drop-target').trim() !== 'drop') return;
+      callback(e.clientX, e.clientY, [...(e.dataTransfer?.files ?? [])].map((f) => `/mock/drops/${f.name}`));
+    };
+    window.addEventListener('dragover', over);
+    window.addEventListener('drop', drop);
+    return () => {
+      window.removeEventListener('dragover', over);
+      window.removeEventListener('drop', drop);
+    };
+  }
 
   onEvent(name: string, callback: (...data: any[]) => void): () => void {
     let set = this.listeners.get(name);

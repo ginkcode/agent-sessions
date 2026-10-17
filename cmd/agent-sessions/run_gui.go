@@ -49,6 +49,10 @@ func run() {
 		MaxWidth:    maxSize,
 		MaxHeight:   maxSize,
 		AssetServer: &assetserver.Options{Assets: assets},
+		// Files dropped on the terminal panel arrive as paths. The webview
+		// keeps its own drop handling: on Windows, turning it off would
+		// stop the drop reaching the page that reads the paths.
+		DragAndDrop: &options.DragAndDrop{EnableFileDrop: true},
 		OnStartup: func(ctx context.Context) {
 			// GTK is initialized by now; the window is not painted yet.
 			disableFontHinting()

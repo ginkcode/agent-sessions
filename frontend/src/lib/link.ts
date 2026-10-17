@@ -1,4 +1,4 @@
-import type { ConnectionPhase, HostEntry } from './types';
+import type { ConnectionPhase, HostEntry, TerminalOpenMode } from './types';
 import { hostLabel, shellCommand, wslDistro } from './hosts';
 
 // Bumped each time the stores reset for a new backend.
@@ -135,11 +135,15 @@ export function filterHosts(hosts: HostEntry[], query: string): HostEntry[] {
 }
 
 /**
- * Tooltip for the Resume button. A remote session's command is built for
- * that host and has to be pasted into an interactive shell there. A local
- * or WSL session opens in a terminal where this computer supports it.
+ * Tooltip for the Resume button. The built-in panel resumes any session,
+ * on its host. Otherwise a remote session's command is built for that host
+ * and has to be pasted into an interactive shell there, and a local or WSL
+ * session opens in a terminal where this computer supports it.
  */
-export function resumeButtonTitle(host: string | undefined, terminal = false): string {
+export function resumeButtonTitle(host: string | undefined, terminal = false, open: TerminalOpenMode = 'external'): string {
+  if (terminal && open === 'panel') {
+    return `Resume this session in the built-in terminal${host ? ` on ${hostLabel(host)}` : ''}. Use ▾ for other ways to resume`;
+  }
   if (terminal && (!host || wslDistro(host))) {
     return 'Resume this session in a new terminal window. Use ▾ to copy the command instead';
   }

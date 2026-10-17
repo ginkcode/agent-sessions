@@ -34,7 +34,17 @@ import {
 } from '../src/lib/manage.ts';
 import { MockBackendAPI, highlightedSnippet } from '../src/lib/mock/mockApi.ts';
 import { NavHistory, navigationButton, navigationShortcut } from '../src/lib/navHistory.ts';
-import { canOpenTerminal, terminalOptions } from '../src/lib/terminal.ts';
+import {
+  canOpenExternal,
+  canOpenOther,
+  canOpenPanel,
+  canOpenTerminal,
+  isPanelToggle,
+  openMode,
+  terminalKeyAction,
+  terminalOptions,
+  terminalTheme,
+} from '../src/lib/terminal.ts';
 import { hostLabel, shellCommand, wslDistro } from '../src/lib/hosts.ts';
 import {
   StaleReplyError,
@@ -619,6 +629,28 @@ test('NavHistory forgets deleted sessions and their subagents', () => {
   first.remove([{ agent: 'claude', id: 'a' }]);
   assert.equal(first.canGoBack, false);
   assert.equal(navId(first.forward()), 'b');
+});
+
+test('the drop guard keeps drags from other apps from navigating the app', async () => {
+  const { setupDropGuard } = await import('../src/lib/navigation.ts');
+  const target = new EventTarget();
+  setupDropGuard(target);
+  const drag = (type) => {
+    const e = new Event(type, { cancelable: true });
+    e.dataTransfer = { dropEffect: 'none' };
+    target.dispatchEvent(e);
+    return e;
+  };
+  const over = drag('dragover');
+  assert.deepEqual([over.defaultPrevented, over.dataTransfer.dropEffect], [true, 'copy']);
+  assert.equal(drag('drop').defaultPrevented, true);
+
+  // Dragging selected text inside the app keeps its default.
+  target.dispatchEvent(new Event('dragstart'));
+  assert.equal(drag('dragover').defaultPrevented, false);
+  assert.equal(drag('drop').defaultPrevented, false);
+  target.dispatchEvent(new Event('dragend'));
+  assert.equal(drag('drop').defaultPrevented, true);
 });
 
 test('navigation shortcuts and mouse side buttons', () => {
@@ -2067,6 +2099,15 @@ test('resumeButtonTitle offers the terminal for local sessions, never over SSH',
     'Resume this session in a new terminal window. Use ▾ to copy the command instead',
   );
   assert.match(resumeButtonTitle('plgl', true), /^Copy shell command .* Run it on plgl/);
+  // The built-in panel opens sessions from every host, SSH included.
+  assert.equal(
+    resumeButtonTitle(undefined, true, 'panel'),
+    'Resume this session in the built-in terminal. Use ▾ for other ways to resume',
+  );
+  assert.equal(
+    resumeButtonTitle('plgl', true, 'panel'),
+    'Resume this session in the built-in terminal on plgl. Use ▾ for other ways to resume',
+  );
 });
 
 test('copiedGuidance tells local Windows users to paste into PowerShell', () => {
@@ -2093,7 +2134,7 @@ test('openedGuidance and openFailed describe Open in terminal', () => {
 test('MockBackendAPI opens terminals only when supported and not over SSH', async () => {
   const mock = new MockBackendAPI();
   const [meta] = await mock.listSessions('', {}, { field: 'updatedAt', dir: 'desc' });
-  assert.deepEqual(await mock.launchInfo(), { terminal: false, shell: 'posix' });
+  assert.deepEqual(await mock.launchInfo(), { terminal: false, shell: 'posix', panel: true, open: 'panel' });
   await assert.rejects(mock.openResumeInTerminal(meta.ref), /not supported on this platform/);
 
   mock.launch = { terminal: true, shell: 'powershell' };
@@ -2232,6 +2273,41 @@ test('Settings shows the terminal choice only where it can be chosen', async () 
   assert.doesNotMatch(failed, /Looking for terminal apps/);
 });
 
+test('Settings chooses where agents open when the built-in panel runs', async () => {
+  const checked = (html, label) => new RegExp(`<input[^>]*type="radio"[^>]*checked[^>]*/?>\\s*${label}`).test(html);
+  // Windows: the panel makes the section appear, without a terminal app choice.
+  const windows = await renderSettingsDialog(
+    { info: { terminal: true, chooseTerminal: false, shell: 'powershell', panel: true }, openMode: 'panel', savingOpenMode: false },
+    undefined,
+    { section: 'terminal' },
+  );
+  assert.match(windows, /Terminal \(this computer\)/);
+  assert.match(windows, /<legend[^>]*>Open agents in<\/legend>/);
+  assert.ok(checked(windows, 'Built-in panel'), 'the panel is chosen');
+  assert.ok(!checked(windows, 'External terminal'));
+  assert.match(windows, /in a tab of the terminal panel, for sessions on this computer, WSL and SSH hosts/);
+  assert.doesNotMatch(windows, /External terminal app|aria-label="Terminal app"|Looking for terminal apps/);
+
+  // Linux: the external terminal app is chosen below the mode.
+  const terminal = {
+    choose: true, selected: '', selectedName: '', missing: false,
+    auto: { id: 'konsole', name: 'Konsole' }, options: [{ id: 'konsole', name: 'Konsole' }],
+  };
+  const linux = await renderSettingsDialog(
+    { info: { terminal: true, chooseTerminal: true, shell: 'posix', panel: true, open: 'external' }, openMode: 'external', savingOpenMode: false, terminal },
+    undefined,
+    { section: 'terminal' },
+  );
+  assert.ok(checked(linux, 'External terminal'), 'the external terminal is chosen');
+  assert.ok(!checked(linux, 'Built-in panel'));
+  assert.match(linux, /<h4[^>]*>External terminal app<\/h4>/);
+  assert.match(linux, /Automatic \(Konsole\)/);
+  assert.match(linux, /The Resume ▾ menu still offers the built-in panel/);
+
+  const tabs = [...windows.matchAll(/role="tab"[^>]*>([^<]+)<\/button>/g)].map((m) => m[1]);
+  assert.ok(tabs.includes('Terminal'));
+});
+
 test('Settings lists its sections in a side navigation', async () => {
   const info = { terminal: true, chooseTerminal: true, shell: 'posix' };
   const html = await renderSettingsDialog({ info });
@@ -2336,6 +2412,32 @@ test('SessionHeader splits Resume into open and copy when a terminal is availabl
     assert.doesNotMatch(html, /More ways to resume/);
     assert.match(html, /title="Copy shell command to resume this session/);
   }
+});
+
+test('SessionHeader Resume ▾ offers the place agents do not open by default', async () => {
+  // A server render keeps the menu closed: check the button and its toggle.
+  const panel = await renderSessionHeader({
+    link: { dataHost: 'plgl' },
+    launcher: { canOpen: true, openMode: 'panel', canOpenPanel: true, canOpenExternal: false },
+  });
+  assert.match(panel, /resume-main[^"]*"[^>]*title="Resume this session in the built-in terminal on plgl/);
+  assert.match(panel, /aria-label="More ways to resume"/);
+
+  // External mode where the session has no external terminal (SSH): the
+  // main button copies and ▾ still offers the built-in panel.
+  const ssh = await renderSessionHeader({
+    link: { dataHost: 'plgl' },
+    launcher: { canOpen: false, openMode: 'external', canOpenPanel: true, canOpenExternal: false },
+  });
+  assert.match(ssh, /resume-main[^"]*"[^>]*title="Copy shell command to resume this session/);
+  assert.match(ssh, /aria-label="More ways to resume"/);
+
+  // Neither place opens: Resume only copies.
+  const none = await renderSessionHeader({
+    link: { dataHost: 'plgl' },
+    launcher: { canOpen: false, openMode: 'external', canOpenPanel: false, canOpenExternal: false },
+  });
+  assert.doesNotMatch(none, /More ways to resume/);
 });
 
 const HANDOFF_DIALOG_URL = new URL('../src/lib/components/common/HandoffDialog.svelte', import.meta.url);
@@ -2469,6 +2571,410 @@ test('LauncherStore offers Open in terminal for local and WSL data only', async 
   const missing = async () => { throw new Error('ListWSLDistros is not a function'); };
   assert.deepEqual(await run(missing, undefined), { canOpen: false, copyShell: 'posix' });
   assert.equal((await run(missing, 'wsl:Ubuntu')).canOpen, false);
+});
+
+test('canOpenTerminal follows where agents open; the panel reaches SSH hosts', () => {
+  const panel = { terminal: true, wsl: true, shell: 'powershell', panel: true };
+  const external = { ...panel, open: 'external' };
+  assert.equal(openMode(panel), 'panel');
+  assert.equal(openMode({ ...panel, open: 'panel' }), 'panel');
+  assert.equal(openMode(external), 'external');
+  // An older backend has no panel, whatever the saved choice.
+  assert.equal(openMode({ terminal: true, shell: 'posix', open: 'panel' }), 'external');
+
+  const cases = [
+    // [name, launch info, data host, terminal, external, panel, other]
+    ['panel, local', panel, undefined, true, true, true, true],
+    ['panel, WSL', panel, 'wsl:Ubuntu', true, true, true, true],
+    ['panel, SSH', panel, 'plgl', true, false, true, false],
+    ['panel, WSL not installed', { ...panel, wsl: false }, 'wsl:Ubuntu', false, false, false, false],
+    ['panel, empty WSL distribution', panel, 'wsl:', false, false, false, false],
+    ['panel, no local terminal app', { ...panel, terminal: false }, undefined, true, false, true, false],
+    ['external, local', external, undefined, true, true, true, true],
+    ['external, SSH', external, 'plgl', false, false, true, true],
+    ['no panel, SSH', { terminal: true, shell: 'posix' }, 'plgl', false, false, false, false],
+  ];
+  for (const [name, info, host, terminal, ext, pan, other] of cases) {
+    assert.deepEqual(
+      [canOpenTerminal(info, host), canOpenExternal(info, host), canOpenPanel(info, host), canOpenOther(info, host)],
+      [terminal, ext, pan, other],
+      name,
+    );
+  }
+});
+
+test('terminal keys: Ctrl+` toggles the panel; copy and paste follow the platform', () => {
+  const key = (k, mods = {}) => ({ type: 'keydown', key: k, code: '', ctrlKey: false, metaKey: false, altKey: false, shiftKey: false, ...mods });
+  assert.ok(isPanelToggle(key('`', { ctrlKey: true })));
+  assert.ok(isPanelToggle({ ...key('Dead', { ctrlKey: true }), code: 'Backquote' }), 'layouts with a dead backquote');
+  assert.ok(!isPanelToggle(key('`')));
+  assert.ok(!isPanelToggle(key('`', { ctrlKey: true, altKey: true })));
+
+  assert.equal(terminalKeyAction(key('`', { ctrlKey: true }), false), 'app');
+  assert.equal(terminalKeyAction(key(',', { ctrlKey: true }), false), 'app');
+  assert.equal(terminalKeyAction(key(',', { metaKey: true }), true), 'app');
+  // Elsewhere Ctrl+C stays an interrupt; Ctrl+Shift+C copies.
+  assert.equal(terminalKeyAction(key('c', { ctrlKey: true }), false), null);
+  assert.equal(terminalKeyAction(key('C', { ctrlKey: true, shiftKey: true }), false), 'copy');
+  assert.equal(terminalKeyAction(key('V', { ctrlKey: true, shiftKey: true }), false), 'paste');
+  assert.equal(terminalKeyAction({ ...key('C', { ctrlKey: true, shiftKey: true }), type: 'keyup' }), null);
+  // macOS: Cmd+C and Cmd+V; Ctrl+C reaches the terminal.
+  assert.equal(terminalKeyAction(key('c', { metaKey: true }), true), 'copy');
+  assert.equal(terminalKeyAction(key('v', { metaKey: true }), true), 'paste');
+  assert.equal(terminalKeyAction(key('c', { ctrlKey: true }), true), null);
+  assert.equal(terminalKeyAction(key('x', { metaKey: true }), true), null);
+});
+
+test('terminalTheme takes the app colors and falls back per theme', () => {
+  const vars = { '--bg-primary': '#101010', '--text-primary': '#eeeeee', '--accent-color': '#3b82f6' };
+  const dark = terminalTheme('dark', (name) => vars[name] ?? '');
+  assert.deepEqual([dark.background, dark.foreground, dark.cursor, dark.cursorAccent], ['#101010', '#eeeeee', '#3b82f6', '#101010']);
+  const light = terminalTheme('light', () => '');
+  assert.deepEqual([light.background, light.foreground, light.cursor], ['#ffffff', '#0b1220', '#0b1220']);
+  assert.notEqual(light.red, dark.red);
+});
+
+test('LauncherStore saves where agents open and reports a failure', async () => {
+  const { LauncherStore } = await loadLauncherStore();
+  const calls = [];
+  let fail = false;
+  globalThis.__storeFixture = {
+    api: {
+      launchInfo: async () => ({ terminal: true, shell: 'posix', panel: true }),
+      setTerminalOpen: async (mode) => {
+        calls.push(mode);
+        if (fail) throw new Error('config.toml: permission denied');
+        return { terminal: true, shell: 'posix', panel: true, open: mode };
+      },
+    },
+    link: { dataHost: 'plgl' },
+  };
+  try {
+    const store = new LauncherStore();
+    await store.init();
+    assert.deepEqual([store.openMode, store.canOpen, store.canOpenPanel, store.canOpenExternal], ['panel', true, true, false]);
+    await store.setOpenMode('external');
+    assert.deepEqual([store.openMode, store.canOpen, store.savingOpenMode], ['external', false, false]);
+    fail = true;
+    await store.setOpenMode('panel');
+    assert.equal(store.openMode, 'external');
+    assert.match(store.terminalError, /permission denied/);
+    assert.deepEqual(calls, ['external', 'panel']);
+  } finally {
+    delete globalThis.__storeFixture;
+  }
+});
+
+const TERMINALS_STORE_URL = new URL('../src/lib/stores/terminals.svelte.ts', import.meta.url);
+let terminalsStoreModule;
+
+// The real TerminalsStore on a mock backend with its fake terminals.
+async function loadTerminalsStore() {
+  const lib = (rel) => JSON.stringify(new URL(rel, TERMINALS_STORE_URL).href);
+  terminalsStoreModule ??= await loadServerModule(TERMINALS_STORE_URL, [
+    [
+      "import { api, subscribeTerminalData, subscribeTerminalExit } from '../api';",
+      fixtureStore('api', '__storeFixture') +
+        "const subscribeTerminalData = (fn) => api.onEvent('term:data', fn);" +
+        "const subscribeTerminalExit = (fn) => api.onEvent('term:exit', fn);",
+    ],
+    ["'../link'", lib('../link.ts')],
+    ["'../portable'", lib('../portable.ts')],
+    ["'../guidance'", lib('../guidance.ts')],
+    ["'../hosts'", lib('../hosts.ts')],
+    ["import { toast } from './toast.svelte';", fixtureStore('toast', '__storeFixture')],
+  ]);
+  return terminalsStoreModule;
+}
+
+async function withTerminals(fn) {
+  const { TerminalsStore, ...rest } = await loadTerminalsStore();
+  const mock = new MockBackendAPI();
+  const toasts = [];
+  const storage = new Map();
+  const hadStorage = 'localStorage' in globalThis;
+  const previous = globalThis.localStorage;
+  globalThis.localStorage = {
+    getItem: (k) => storage.get(k) ?? null,
+    setItem: (k, v) => storage.set(k, String(v)),
+  };
+  // The fixture proxy calls methods on itself; bind them to the mock.
+  const api = new Proxy(mock, { get: (m, key) => (typeof m[key] === 'function' ? m[key].bind(m) : m[key]) });
+  const toast = {
+    current: null,
+    show: (t) => {
+      toasts.push(t);
+      toast.current = { ...t, id: toasts.length };
+    },
+    dismiss: () => (toast.current = null),
+  };
+  globalThis.__storeFixture = { api, toast };
+  const store = new TerminalsStore();
+  store.init();
+  try {
+    return await fn({ store, mock, toasts, toast, storage, TerminalsStore, ...rest });
+  } finally {
+    store.destroy();
+    delete globalThis.__storeFixture;
+    if (hadStorage) globalThis.localStorage = previous;
+    else delete globalThis.localStorage;
+  }
+}
+
+function sinkFor(store, id) {
+  const sink = { text: '', exits: [], pastes: [] };
+  const decoder = new TextDecoder();
+  sink.detach = store.attach(id, {
+    write: (data) => (sink.text += decoder.decode(data)),
+    exit: (code) => sink.exits.push(code),
+    paste: (text) => sink.pastes.push(text),
+  });
+  return sink;
+}
+
+test('TerminalsStore buffers output until the view attaches, then streams it', async () => {
+  await withTerminals(async ({ store, mock }) => {
+    const [meta] = await mock.listSessions('', {}, { field: 'updatedAt', dir: 'desc' });
+    store.setSize(100, 30);
+    const tab = await store.runResume(meta.ref);
+    assert.deepEqual([tab.kind, tab.status, tab.label, store.active, store.open], ['agent', 'running', ALL_AGENTS.find((a) => a.id === meta.ref.agent).label, tab.id, true]);
+    assert.deepEqual(mock.panelTerminals.get(tab.id).size, { cols: 100, rows: 30 }, 'the tab starts at the views size');
+
+    // The banner arrived before the start reply and waits for the view.
+    const sink = sinkFor(store, tab.id);
+    assert.match(sink.text, /\[mock\] .*mock\x1b\[0m \$ $/s);
+    await mock.terminalWrite(tab.id, 'ls\r');
+    assert.match(sink.text, /ls\r\nmock: ls\r\n/);
+
+    sink.detach();
+  });
+});
+
+test('TerminalsStore closes a tab when its process exits, keeping a quick failure readable', async () => {
+  const realNow = Date.now;
+  let now = 1_000_000;
+  Date.now = () => now;
+  try {
+    await withTerminals(async ({ store, mock, KEEP_FAILED_MS }) => {
+      const first = await store.newShell();
+      const second = await store.newShell();
+      store.select(first.id);
+      // Typing exit closes the tab; the neighbour stays.
+      await mock.terminalWrite(first.id, 'exit\r');
+      assert.deepEqual(store.tabs.map((t) => t.id), [second.id]);
+      assert.deepEqual([store.active, store.open], [second.id, true]);
+
+      // A failure right after the start stays, with its exit code shown.
+      const failed = await store.newShell();
+      const sink = sinkFor(store, failed.id);
+      mock.emit('term:exit', { id: failed.id, code: 127 });
+      assert.deepEqual([store.tabs.at(-1).status, store.tabs.at(-1).exitCode, sink.exits], ['exited', 127, [127]]);
+      // A view mounted later still learns how the tab ended.
+      sink.detach();
+      assert.deepEqual(sinkFor(store, failed.id).exits, [127]);
+
+      // A failure later on, like exit after a failed command, closes.
+      now += KEEP_FAILED_MS;
+      mock.emit('term:exit', { id: second.id, code: 1 });
+      assert.deepEqual(store.tabs.map((t) => t.id), [failed.id]);
+
+      // The last tab closing hides the panel.
+      store.close(failed.id);
+      assert.deepEqual([store.tabs.length, store.open], [0, false]);
+
+      // A process that finished before its start returned never shows a tab.
+      const panelShell = mock.panelShell.bind(mock);
+      mock.panelShell = async (cwd, size) => {
+        const tab = await panelShell(cwd, size);
+        mock.emit('term:exit', { id: tab.id, code: 0 });
+        return tab;
+      };
+      assert.equal((await store.newShell()).status, 'exited');
+      assert.equal(store.tabs.length, 0);
+    });
+  } finally {
+    Date.now = realNow;
+  }
+});
+
+test('TerminalsStore asks before closing a running agent, not a shell', async () => {
+  await withTerminals(async ({ store, mock }) => {
+    const [meta] = await mock.listSessions('', {}, { field: 'updatedAt', dir: 'desc' });
+    const agent = await store.runResume(meta.ref, meta.cwd);
+    const shell = await store.newShell('/work');
+    assert.equal(store.active, shell.id);
+    // The backend's directory wins; the caller's fills in where it has none.
+    assert.deepEqual([agent.dir, shell.dir], [meta.cwd, '/work']);
+
+    assert.equal(store.close(agent.id), false);
+    assert.deepEqual([store.confirming, store.active, store.tabs.length], [agent.id, agent.id, 2]);
+    store.cancelClose();
+    assert.equal(store.confirming, null);
+    assert.ok(mock.panelTerminals.has(agent.id));
+
+    store.close(agent.id);
+    store.confirmClose();
+    assert.deepEqual(store.tabs.map((t) => t.id), [shell.id]);
+    assert.equal(store.active, shell.id);
+    assert.ok(!mock.panelTerminals.has(agent.id), 'closing ended the agent');
+
+    // A shell closes at once; the last tab hides the panel.
+    assert.equal(store.close(shell.id), true);
+    assert.deepEqual([store.tabs.length, store.active, store.open], [0, null, false]);
+    assert.equal(mock.panelTerminals.size, 0);
+  });
+});
+
+test('TerminalsStore reports a failed start and opens a shell when toggled empty', async () => {
+  await withTerminals(async ({ store, mock, toasts }) => {
+    const [meta] = await mock.listSessions('', {}, { field: 'updatedAt', dir: 'desc' });
+    mock.launch = { ...mock.launch, panel: false };
+    await assert.rejects(store.runResume(meta.ref), /not available/);
+    assert.equal(await store.newShell(), null);
+    assert.equal(toasts.at(-1).title, "Couldn't open a terminal");
+    assert.equal(store.tabs.length, 0);
+
+    mock.launch = { ...mock.launch, panel: true };
+    await store.toggle('/work');
+    assert.deepEqual([store.open, store.tabs.length, store.tabs[0].kind], [true, 1, 'shell']);
+    await store.toggle();
+    assert.deepEqual([store.open, store.tabs.length], [false, 1], 'hiding keeps the tabs running');
+    await store.toggle();
+    assert.equal(store.tabs.length, 1, 'showing again opens no second shell');
+  });
+});
+
+test('TerminalsStore ends terminals whose start reply went stale', async () => {
+  await withTerminals(async ({ store, mock }) => {
+    const panelShell = mock.panelShell.bind(mock);
+    mock.panelShell = async (cwd, size) => {
+      await panelShell(cwd, size);
+      throw new StaleReplyError();
+    };
+    assert.equal(await store.newShell(), null);
+    assert.equal(store.tabs.length, 0);
+    assert.equal(mock.panelTerminals.size, 0, 'the orphan was closed');
+  });
+});
+
+test('TerminalsStore sends a tab its input one write at a time, in order', async () => {
+  await withTerminals(async ({ store, mock }) => {
+    const tab = await store.newShell();
+    const sent = [];
+    const pending = [];
+    mock.terminalWrite = (id, data) => {
+      sent.push(`${id}:${data}`);
+      return new Promise((resolve) => pending.push(resolve));
+    };
+    store.write(tab.id, 'a');
+    store.write(tab.id, 'b');
+    store.write(tab.id, 'c');
+    assert.deepEqual(sent, [`${tab.id}:a`], 'later input waits for the write in flight');
+    pending.shift()();
+    await new Promise((r) => setTimeout(r));
+    assert.deepEqual(sent, [`${tab.id}:a`, `${tab.id}:bc`], 'what waited goes together');
+    pending.shift()();
+    await new Promise((r) => setTimeout(r));
+    store.write(tab.id, 'd');
+    assert.deepEqual(sent.at(-1), `${tab.id}:d`, 'an idle tab writes at once');
+    pending.shift()();
+  });
+});
+
+test('TerminalsStore types dropped files into the active tab, copying them to an SSH host', async () => {
+  await withTerminals(async ({ store, mock, toasts, toast }) => {
+    const local = await store.newShell();
+    const sink = sinkFor(store, local.id);
+    await store.dropFiles(['/home/me/shot.png', '/home/me/my shot.png']);
+    assert.deepEqual(sink.pastes, ['/home/me/shot.png ', "'/home/me/my shot.png' "], 'each path is its own paste');
+    assert.equal(toasts.length, 0);
+
+    mock.connState = { ...mock.connState, phase: 'connected', host: 'box' };
+    const remote = await store.newShell();
+    const remoteSink = sinkFor(store, remote.id);
+    const drop = mock.terminalDropFiles.bind(mock);
+    let shownWhileCopying;
+    mock.terminalDropFiles = async (id, paths) => {
+      shownWhileCopying = toast.current?.title;
+      return drop(id, paths);
+    };
+    await store.dropFiles(['C:\\Users\\me\\shot.png']);
+    assert.equal(shownWhileCopying, 'Copying the file to box');
+    assert.equal(toast.current, null, 'the progress toast goes once the copy is done');
+    assert.deepEqual(remoteSink.pastes, ['/tmp/agent-sessions-drop.mock/shot.png ']);
+    assert.deepEqual(sink.pastes.length, 2, 'only the active tab gets the paths');
+
+    mock.terminalDropFiles = async () => {
+      throw new Error('Permission denied (publickey)');
+    };
+    await store.dropFiles(['/a.png', '/b.png']);
+    assert.deepEqual([toasts.at(-2).title, toasts.at(-1).title, toasts.at(-1).body], ['Copying 2 files to box', "Couldn't add the dropped files", 'Permission denied (publickey)']);
+    assert.equal(remoteSink.pastes.length, 1);
+
+    // An ended tab takes no files.
+    mock.terminalDropFiles = drop;
+    store.select(local.id);
+    const failed = mock.droppedFiles.length;
+    store.tabs = store.tabs.map((t) => (t.id === local.id ? { ...t, status: 'exited', exitCode: 1 } : t));
+    await store.dropFiles(['/c.png']);
+    assert.equal(mock.droppedFiles.length, failed);
+  });
+});
+
+test('TerminalsStore keeps its height within the window and remembers the layout', async () => {
+  const { clampPanelHeight, PANEL_HEIGHT, decodeTerminalData } = await loadTerminalsStore();
+  assert.equal(clampPanelHeight(50, 1000), PANEL_HEIGHT.min);
+  assert.equal(clampPanelHeight(900, 1000), 700);
+  assert.equal(clampPanelHeight(900, 800), 500, 'the sessions keep 300px');
+  assert.equal(clampPanelHeight(333.4, 1000), 333);
+  assert.deepEqual(new TextDecoder().decode(decodeTerminalData(Buffer.from('héllo ✓').toString('base64'))), 'héllo ✓');
+
+  await withTerminals(async ({ store, storage, TerminalsStore }) => {
+    assert.deepEqual([store.open, store.height], [false, PANEL_HEIGHT.default]);
+    store.setHeight(400, 1000);
+    store.setOpen(true);
+    assert.deepEqual(JSON.parse(storage.get('agent-sessions:terminal-panel')), { open: true, height: 400 });
+    const restored = new TerminalsStore();
+    restored.init();
+    assert.deepEqual([restored.open, restored.height], [true, 400]);
+    restored.destroy();
+
+    storage.set('agent-sessions:terminal-panel', '{not json');
+    const fallback = new TerminalsStore();
+    fallback.init();
+    assert.deepEqual([fallback.open, fallback.height], [false, PANEL_HEIGHT.default]);
+    fallback.destroy();
+  });
+});
+
+test('MockBackendAPI runs fake panel terminals on every host', async () => {
+  const mock = new MockBackendAPI();
+  const [meta] = await mock.listSessions('', {}, { field: 'updatedAt', dir: 'desc' });
+  const events = [];
+  mock.onEvent('term:data', (e) => events.push(['data', e.id, Buffer.from(e.data, 'base64').toString()]));
+  mock.onEvent('term:exit', (e) => events.push(['exit', e.id, e.code]));
+
+  const local = await mock.panelResume(meta.ref, { cols: 80, rows: 24 });
+  assert.deepEqual([local.host, local.kind], ['', 'agent']);
+  assert.ok(events.some(([kind, id]) => kind === 'data' && id === local.id), 'output can precede the reply');
+  await mock.terminalWrite(local.id, 'ab\x7f\r');
+  assert.match(events.at(-1)[2], /^ab\x08 \x08\r\nmock: a\r\n/);
+  assert.ok(mock.panelTerminals.get(local.id).unacked > 0);
+  await mock.terminalAck(local.id, 1 << 20);
+  assert.equal(mock.panelTerminals.get(local.id).unacked, 0);
+  await mock.terminalClose(local.id);
+  assert.deepEqual(events.at(-1), ['exit', local.id, 129]);
+  await assert.rejects(mock.terminalWrite(local.id, 'x'), /terminal not found/);
+
+  // SSH works in the panel; agents need the server, a shell does not.
+  await mock.connect('dev-box');
+  assert.equal((await mock.panelResume(meta.ref, { cols: 80, rows: 24 })).host, 'dev-box');
+  mock.setMockConnectionState({ phase: 'reconnecting' });
+  await assert.rejects(mock.panelResume(meta.ref, { cols: 80, rows: 24 }), /remote disconnected/);
+  assert.equal((await mock.panelShell('', { cols: 80, rows: 24 })).kind, 'shell');
+
+  assert.equal((await mock.setTerminalOpen('external')).open, 'external');
+  await assert.rejects(mock.setTerminalOpen('tmux'), /unknown terminal mode/);
 });
 
 const CONNECTION_STORE_URL = new URL('../src/lib/stores/connection.svelte.ts', import.meta.url);

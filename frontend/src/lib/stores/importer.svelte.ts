@@ -15,6 +15,7 @@ import { directoryNodeKey } from '../tree';
 import { toast } from './toast.svelte';
 import { link } from './link.svelte';
 import { launcher } from './launcher.svelte';
+import { terminals } from './terminals.svelte';
 import { appState } from './appState.svelte';
 
 export class ImporterStore {
@@ -405,8 +406,9 @@ export class ImporterStore {
   }
 
   /**
-   * Writes the handoff files and opens a terminal that starts the target
-   * agent with them. The dialog closes once the terminal is up.
+   * Writes the handoff files and starts the target agent with them, in the
+   * built-in panel or a new terminal as Settings chooses. The dialog closes
+   * once the terminal is up.
    */
   async openInTerminal(): Promise<void> {
     this.clipboardError = null;
@@ -423,8 +425,12 @@ export class ImporterStore {
 
     this.launching = true;
     try {
-      await api.openBundleHandoffInTerminal(req);
-      toast.show(openedGuidance('launch', this.target));
+      if (launcher.openMode === 'panel') {
+        if (!(await terminals.runBundleHandoff(req, this.bundle.source.cwd))) return;
+      } else {
+        await api.openBundleHandoffInTerminal(req);
+        toast.show(openedGuidance('launch', this.target));
+      }
       this.close();
     } catch (err) {
       if (isStaleReply(err)) return;

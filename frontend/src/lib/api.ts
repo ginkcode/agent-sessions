@@ -34,6 +34,11 @@ import type {
   HostEntry,
   WSLEntry,
   AskpassPrompt,
+  TerminalOpenMode,
+  TerminalSize,
+  TerminalTab,
+  TerminalDataEvent,
+  TerminalExitEvent,
 } from './types';
 import { MockBackendAPI } from './mock/mockApi';
 import { epoch, guardEpoch } from './link';
@@ -60,11 +65,33 @@ export interface BackendAPI {
   openResumeInTerminal(ref: SessionRef): Promise<void>;
   openHandoffInTerminal(req: HandoffRequest): Promise<void>;
   openBundleHandoffInTerminal(req: BundleHandoffRequest): Promise<void>;
+  /** Starts a tab in the built-in terminal panel; size is its first size. */
+  panelResume(ref: SessionRef, size: TerminalSize): Promise<TerminalTab>;
+  panelHandoff(req: HandoffRequest, size: TerminalSize): Promise<TerminalTab>;
+  panelBundleHandoff(req: BundleHandoffRequest, size: TerminalSize): Promise<TerminalTab>;
+  /** A plain shell on the selected host, in cwd when it exists there. */
+  panelShell(cwd: string, size: TerminalSize): Promise<TerminalTab>;
+  terminalWrite(id: string, data: string): Promise<void>;
+  terminalResize(id: string, cols: number, rows: number): Promise<void>;
+  /** Acknowledges n bytes of output the panel has written. */
+  terminalAck(id: string, n: number): Promise<void>;
+  terminalClose(id: string): Promise<void>;
+  /**
+   * Readies files dropped on a tab and returns their paths as typed at its
+   * prompt; an SSH tab's host gets copies of them.
+   */
+  terminalDropFiles(id: string, paths: string[]): Promise<string[]>;
+  setTerminalOpen(mode: TerminalOpenMode): Promise<LaunchInfo>;
   revealSource(ref: SessionRef): Promise<void>;
   getDiagnostics(): Promise<Diagnostics>;
   openURL(url: string): Promise<void>;
   appVersion(): Promise<string>;
   onEvent(name: string, callback: (...data: any[]) => void): () => void;
+  /**
+   * Calls back with the paths of files dropped on an element styled
+   * `--wails-drop-target: drop`. One listener at a time.
+   */
+  onFileDrop(callback: (x: number, y: number, paths: string[]) => void): () => void;
   getSettings(): Promise<ManageSettings>;
   setManageEnabled(enabled: boolean): Promise<ManageSettings>;
   setAllowPermanentDelete(allow: boolean): Promise<ManageSettings>;
@@ -119,6 +146,16 @@ interface WailsAppBinding {
   OpenResumeInTerminal(ref: SessionRef): Promise<void>;
   OpenHandoffInTerminal(req: HandoffRequest): Promise<void>;
   OpenBundleHandoffInTerminal(req: BundleHandoffRequest): Promise<void>;
+  PanelResume(ref: SessionRef, size: TerminalSize): Promise<TerminalTab>;
+  PanelHandoff(req: HandoffRequest, size: TerminalSize): Promise<TerminalTab>;
+  PanelBundleHandoff(req: BundleHandoffRequest, size: TerminalSize): Promise<TerminalTab>;
+  PanelShell(req: { cwd: string }, size: TerminalSize): Promise<TerminalTab>;
+  TerminalWrite(id: string, data: string): Promise<void>;
+  TerminalResize(id: string, cols: number, rows: number): Promise<void>;
+  TerminalAck(id: string, n: number): Promise<void>;
+  TerminalClose(id: string): Promise<void>;
+  TerminalDropFiles(id: string, paths: string[]): Promise<string[]>;
+  SetTerminalOpen(mode: string): Promise<LaunchInfo>;
   RevealSource(ref: SessionRef): Promise<void>;
   Diagnostics(): Promise<Diagnostics>;
   OpenURL(url: string): Promise<void>;
@@ -338,6 +375,86 @@ class WailsBackendAPI implements BackendAPI {
   async openBundleHandoffInTerminal(req: BundleHandoffRequest): Promise<void> {
     try {
       return await this.binding.OpenBundleHandoffInTerminal(req);
+    } catch (e) {
+      throw normalizeError(e);
+    }
+  }
+
+  async panelResume(ref: SessionRef, size: TerminalSize): Promise<TerminalTab> {
+    try {
+      return await this.binding.PanelResume(ref, size);
+    } catch (e) {
+      throw normalizeError(e);
+    }
+  }
+
+  async panelHandoff(req: HandoffRequest, size: TerminalSize): Promise<TerminalTab> {
+    try {
+      return await this.binding.PanelHandoff(req, size);
+    } catch (e) {
+      throw normalizeError(e);
+    }
+  }
+
+  async panelBundleHandoff(req: BundleHandoffRequest, size: TerminalSize): Promise<TerminalTab> {
+    try {
+      return await this.binding.PanelBundleHandoff(req, size);
+    } catch (e) {
+      throw normalizeError(e);
+    }
+  }
+
+  async panelShell(cwd: string, size: TerminalSize): Promise<TerminalTab> {
+    try {
+      return await this.binding.PanelShell({ cwd }, size);
+    } catch (e) {
+      throw normalizeError(e);
+    }
+  }
+
+  async terminalWrite(id: string, data: string): Promise<void> {
+    try {
+      await this.binding.TerminalWrite(id, data);
+    } catch (e) {
+      throw normalizeError(e);
+    }
+  }
+
+  async terminalResize(id: string, cols: number, rows: number): Promise<void> {
+    try {
+      await this.binding.TerminalResize(id, cols, rows);
+    } catch (e) {
+      throw normalizeError(e);
+    }
+  }
+
+  async terminalAck(id: string, n: number): Promise<void> {
+    try {
+      await this.binding.TerminalAck(id, n);
+    } catch (e) {
+      throw normalizeError(e);
+    }
+  }
+
+  async terminalClose(id: string): Promise<void> {
+    try {
+      await this.binding.TerminalClose(id);
+    } catch (e) {
+      throw normalizeError(e);
+    }
+  }
+
+  async terminalDropFiles(id: string, paths: string[]): Promise<string[]> {
+    try {
+      return await this.binding.TerminalDropFiles(id, paths);
+    } catch (e) {
+      throw normalizeError(e);
+    }
+  }
+
+  async setTerminalOpen(mode: TerminalOpenMode): Promise<LaunchInfo> {
+    try {
+      return await this.binding.SetTerminalOpen(mode);
     } catch (e) {
       throw normalizeError(e);
     }
@@ -638,6 +755,15 @@ class WailsBackendAPI implements BackendAPI {
     }
     return () => {};
   }
+
+  // The runtime keeps one drop listener and ignores later ones until
+  // OnFileDropOff.
+  onFileDrop(callback: (x: number, y: number, paths: string[]) => void): () => void {
+    const runtime = (window as any).runtime;
+    if (!runtime?.OnFileDrop) return () => {};
+    runtime.OnFileDrop(callback, true);
+    return () => runtime.OnFileDropOff?.();
+  }
 }
 
 export function createAPI(): BackendAPI {
@@ -652,11 +778,21 @@ export function createAPI(): BackendAPI {
 // Connection control and events are not tied to the loaded data.
 const UNGUARDED = new Set<string>([
   'onEvent',
+  'onFileDrop',
   'openURL',
   'appVersion',
   'launchInfo',
   'terminalSettings',
   'setTerminal',
+  'setTerminalOpen',
+  // Panel terminals outlive a host switch: their input, output and shells
+  // are not tied to the loaded data. Agent launches are.
+  'panelShell',
+  'terminalWrite',
+  'terminalResize',
+  'terminalAck',
+  'terminalClose',
+  'terminalDropFiles',
   // Translation runs on this computer whichever host is selected.
   'translateSettings',
   'setTranslateSettings',
@@ -686,6 +822,28 @@ export const ASKPASS_PROMPT_EVENT = 'askpass:prompt';
 // event, "back" or "forward": its web view does not report them to the page
 // as buttons 3 and 4.
 export const MOUSE_NAVIGATE_EVENT = 'nav:mouse';
+export const TERMINAL_DATA_EVENT = 'term:data';
+export const TERMINAL_EXIT_EVENT = 'term:exit';
+
+export function subscribeTerminalData(
+  fn: (event: TerminalDataEvent) => void,
+  backend: BackendAPI = api
+): () => void {
+  return backend.onEvent(TERMINAL_DATA_EVENT, (event: TerminalDataEvent) => {
+    if (!event || typeof event.id !== 'string' || typeof event.data !== 'string') return;
+    fn(event);
+  });
+}
+
+export function subscribeTerminalExit(
+  fn: (event: TerminalExitEvent) => void,
+  backend: BackendAPI = api
+): () => void {
+  return backend.onEvent(TERMINAL_EXIT_EVENT, (event: TerminalExitEvent) => {
+    if (!event || typeof event.id !== 'string') return;
+    fn(event);
+  });
+}
 
 export function subscribeConnectionState(
   fn: (state: ConnectionState) => void,

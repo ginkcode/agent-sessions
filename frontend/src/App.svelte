@@ -20,6 +20,7 @@
   import ReconnectBanner from './lib/components/common/ReconnectBanner.svelte';
   import HostSelector from './lib/components/sidebar/HostSelector.svelte';
   import Toaster from './lib/components/common/Toaster.svelte';
+  import TerminalPanel from './lib/components/terminal/TerminalPanel.svelte';
   import { theme } from './lib/stores/theme.svelte';
   import { preferences } from './lib/stores/preferences.svelte';
   import { appState } from './lib/stores/appState.svelte';
@@ -30,12 +31,14 @@
   import { link } from './lib/stores/link.svelte';
   import { launcher } from './lib/stores/launcher.svelte';
   import { translateSettings } from './lib/stores/translate.svelte';
+  import { terminals } from './lib/stores/terminals.svelte';
   import { hasOpenModal, isEditableTarget } from './lib/search';
   import { navigationButton, navigationShortcut, type NavDirection } from './lib/navHistory';
   import { api, subscribeMouseNavigate } from './lib/api';
   import { formatVersion } from './lib/format';
   import { themeButtonTitle } from './lib/theme';
   import { hostLabel } from './lib/hosts';
+  import { isPanelToggle } from './lib/terminal';
   import { isMac } from './main';
 
   let isWails = $state(false);
@@ -44,6 +47,8 @@
   // inert during a first connect so nothing on screen passes for the
   // host's sessions.
   let stale = $derived(link.stale || link.locked);
+  // A new shell starts in the shown session's directory.
+  let shellCwd = $derived(appState.selectedSessionMeta?.cwd ?? '');
 
   onMount(() => {
     theme.init();
@@ -54,6 +59,7 @@
     search.init();
     void launcher.init();
     void translateSettings.init();
+    terminals.init();
     isWails = typeof window !== 'undefined' && Boolean((window as any).go?.app?.App);
     api
       .appVersion()
@@ -71,6 +77,13 @@
         if (event.key.startsWith('Browser') ? hasOpenModal() : isEditableTarget(event.target) || hasOpenModal()) return;
         event.preventDefault();
         go(direction);
+        return;
+      }
+      // Ctrl+`, as in editors: shows or hides the terminal panel.
+      if (isPanelToggle(event)) {
+        if (!launcher.info.panel || hasOpenModal()) return;
+        event.preventDefault();
+        void terminals.toggle(shellCwd);
         return;
       }
       // Cmd+, on macOS, Ctrl+, elsewhere: the convention for Settings.
@@ -106,6 +119,7 @@
       window.removeEventListener('mousedown', onMouseButton);
       window.removeEventListener('mouseup', onMouseButton);
       search.destroy();
+      terminals.destroy();
       appState.destroy();
       connectionStore.destroy();
     };
@@ -117,6 +131,11 @@
 
   function handleSessionListResize(delta: number) {
     preferences.setSessionListWidth(preferences.widths.sessionList + delta);
+  }
+
+  // Dragging the splitter down shrinks the panel.
+  function handlePanelResize(delta: number) {
+    terminals.setHeight(terminals.height - delta, window.innerHeight);
   }
 </script>
 
@@ -231,6 +250,32 @@
         {/if}
       </div>
       <div class="footer-actions">
+        {#if launcher.info.panel}
+          <button
+            type="button"
+            class="icon-button terminal-button"
+            class:active={terminals.open}
+            title={terminals.open ? 'Hide terminal (Ctrl+`)' : 'Open terminal (Ctrl+`)'}
+            aria-label={terminals.open ? 'Hide terminal' : 'Open terminal'}
+            aria-pressed={terminals.open}
+            onclick={() => void terminals.toggle(shellCwd)}
+          >
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <polyline points="4 17 10 11 4 5" />
+              <line x1="12" y1="19" x2="20" y2="19" />
+            </svg>
+          </button>
+        {/if}
         <button
           type="button"
           class="icon-button import-button"
@@ -335,6 +380,14 @@
   <AskpassDialog />
   <Toaster />
   </div>
+  <!-- Outside .shell: the inert on stale panes never reaches the terminals. -->
+  {#if launcher.info.panel}
+    {#if terminals.open}
+      <Splitter direction="vertical" ariaLabel="Resize terminal panel" onResize={handlePanelResize} />
+    {/if}
+    <!-- Hidden, not unmounted: the terminals keep their scrollback. -->
+    <TerminalPanel cwd={shellCwd} hidden={!terminals.open} />
+  {/if}
 </div>
 
 <style>
@@ -350,8 +403,8 @@
     position: relative;
     display: flex;
     flex-direction: row;
-    flex: 1;
-    min-height: 0;
+    flex: 1 1 0;
+    min-height: 300px;
     width: 100%;
     overflow: hidden;
     background-color: var(--bg-primary);
@@ -420,6 +473,10 @@
   .icon-button:hover {
     color: var(--text-primary);
     background-color: var(--hover-bg);
+  }
+
+  .terminal-button.active {
+    color: var(--accent-color);
   }
 
   .sidebar-mode-section {

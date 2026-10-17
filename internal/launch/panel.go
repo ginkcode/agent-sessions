@@ -1,0 +1,80 @@
+package launch
+
+import (
+	"os"
+	"runtime"
+
+	"github.com/ginkcode/agent-sessions/internal/provider"
+)
+
+// PanelArgv returns what the app's built-in terminal panel runs for cmd on
+// this computer, in cmd.Dir: the script an external terminal runs, which
+// ends in the user's shell (Windows PowerShell on Windows) after the agent
+// exits.
+func PanelArgv(cmd provider.Command) ([]string, error) {
+	if runtime.GOOS == "windows" {
+		ps, err := windowsPowerShell()
+		if err != nil {
+			return nil, err
+		}
+		return powerShellPanelArgv(cmd, Find, ps)
+	}
+	return posixPanelArgv(cmd, Find, loginShell(runtime.GOOS, os.Getenv))
+}
+
+// PanelShellArgv returns the plain shell a panel tab runs on this computer:
+// the user's login shell, or Windows PowerShell.
+func PanelShellArgv() ([]string, error) {
+	if runtime.GOOS == "windows" {
+		ps, err := windowsPowerShell()
+		if err != nil {
+			return nil, err
+		}
+		return []string{ps, "-NoLogo"}, nil
+	}
+	return []string{loginShell(runtime.GOOS, os.Getenv), "-l"}, nil
+}
+
+func posixPanelArgv(cmd provider.Command, find func(string) (Executable, error), shell string) ([]string, error) {
+	argv, err := posixArgv(cmd, find)
+	if err != nil {
+		return nil, err
+	}
+	return []string{"/bin/sh", "-c", posixScript(argv, cmd.Dir, shell)}, nil
+}
+
+func powerShellPanelArgv(cmd provider.Command, find func(string) (Executable, error), ps string) ([]string, error) {
+	script, err := terminalScript(cmd, find)
+	if err != nil {
+		return nil, err
+	}
+	return []string{ps, "-NoLogo", "-NoExit", "-Command", script}, nil
+}
+
+// PanelShellScript is the /bin/sh script a WSL or SSH host's shell tab
+// runs: it enters dir when there is one and it exists, then becomes the
+// user's login shell.
+func PanelShellScript(dir string) string {
+	script := `exec "${SHELL:-/bin/sh}" -l` + "\n"
+	if dir != "" {
+		script = "cd -- " + ShellEscape(dir) + " 2>/dev/null\n" + script
+	}
+	return script
+}
+
+// PosixBootstrapArgv runs script with /bin/sh. The script travels in
+// OctalEscape form, so the argv means the same to whatever shell an ssh
+// server runs it with, fish and tcsh included (see bootstrapLine).
+func PosixBootstrapArgv(script string) []string {
+	return []string{"/bin/sh", "-c", octalDecoder, "sh", OctalEscape(script)}
+}
+
+// WSLPanelArgv returns the wsl.exe argv that runs script with /bin/sh in
+// distro.
+func WSLPanelArgv(distro, script string) ([]string, error) {
+	wsl, err := WSLBinary()
+	if err != nil {
+		return nil, err
+	}
+	return append([]string{wsl}, WSLExecArgs(distro, script)...), nil
+}

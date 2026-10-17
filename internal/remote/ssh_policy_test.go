@@ -131,3 +131,47 @@ func TestSSHExplicitBinary(t *testing.T) {
 		t.Fatalf("explicit binary ignored: %v, %v", cmd, err)
 	}
 }
+
+func TestSSHInteractive(t *testing.T) {
+	for _, windows := range []bool{false, true} {
+		args, err := buildSSHArgs("box", []string{"/bin/sh", "-c", "x"}, SSHOptions{
+			ControlMaster: "no", ForceTTY: true, Interactive: true,
+		}, windows)
+		if err != nil {
+			t.Fatal(err)
+		}
+		line := strings.Join(args, " ")
+		if !strings.Contains(line, "-o BatchMode=no") || strings.Contains(line, "BatchMode=yes") {
+			t.Errorf("windows=%v: %q must allow prompts", windows, line)
+		}
+		if !strings.Contains(line, " -t ") || strings.Contains(line, " -T ") {
+			t.Errorf("windows=%v: %q must force a TTY", windows, line)
+		}
+		if !strings.HasSuffix(line, "-- box '/bin/sh' '-c' 'x'") {
+			t.Errorf("windows=%v: %q does not end in the remote command", windows, line)
+		}
+	}
+
+	t.Setenv("SSH_ASKPASS", "private-test-value")
+	t.Setenv("SSH_AUTH_SOCK", "agent-test-socket")
+	env := strings.Join(sshEnvironment(SSHOptions{Interactive: true, AskpassBinary: "ignored", AskpassSock: "ignored", AskpassToken: "ignored"}, false), "\n")
+	if strings.Contains(env, "private-test-value") || strings.Contains(env, "ignored") || strings.Contains(env, "dummy:0") {
+		t.Fatal("an interactive ssh uses askpass")
+	}
+	if !strings.Contains(env, "SSH_AUTH_SOCK=agent-test-socket") {
+		t.Fatal("an interactive ssh must keep the agent")
+	}
+}
+
+func TestSSHCommandLine(t *testing.T) {
+	argv, env, err := SSHCommandLine("box", []string{"true"}, SSHOptions{Binary: "/opt/ssh", ControlMaster: "no", ForceTTY: true, Interactive: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if argv[0] != "/opt/ssh" || argv[len(argv)-2] != "box" || argv[len(argv)-1] != "'true'" || len(env) == 0 {
+		t.Fatalf("argv = %q", argv)
+	}
+	if _, _, err := SSHCommandLine("-oProxyCommand=x", nil, SSHOptions{}); err == nil {
+		t.Fatal("an unsafe alias was accepted")
+	}
+}

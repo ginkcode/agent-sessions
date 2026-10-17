@@ -26,6 +26,11 @@ type SSHOptions struct {
 	AskpassSock         string
 	AskpassToken        string
 	ExtraOptions        []string
+	// Interactive is for an ssh the user types into, such as in the
+	// built-in terminal panel: ssh may ask for passwords and host keys on
+	// its terminal, so BatchMode is off and askpass is not used. With
+	// ForceTTY it gets a terminal on Windows too.
+	Interactive bool
 }
 
 // LoginShell, as the first element of a remote command, runs the rest under
@@ -102,7 +107,7 @@ func buildSSHArgs(alias string, remoteCmd []string, opts SSHOptions, windows boo
 	}
 
 	batch := "no"
-	if windows {
+	if windows && !opts.Interactive {
 		batch = "yes"
 	}
 	args = append(args,
@@ -140,9 +145,12 @@ func buildSSHArgs(alias string, remoteCmd []string, opts SSHOptions, windows boo
 		)
 	}
 
-	if opts.NoTTY || windows {
+	switch {
+	case opts.Interactive && opts.ForceTTY:
+		args = append(args, "-t")
+	case opts.NoTTY || windows:
 		args = append(args, "-T")
-	} else if opts.ForceTTY {
+	case opts.ForceTTY:
 		args = append(args, "-t")
 	}
 
@@ -199,6 +207,24 @@ func BuildSSHCmd(ctx context.Context, alias string, remoteCmd []string, opts SSH
 	return cmd, nil
 }
 
+// SSHCommandLine returns the argv, ssh first, and the environment that run
+// remoteCmd on alias, for a caller that starts ssh itself, such as the
+// built-in terminal panel in a pseudo-terminal.
+func SSHCommandLine(alias string, remoteCmd []string, opts SSHOptions) (argv, env []string, err error) {
+	windows := runtime.GOOS == "windows"
+	args, err := buildSSHArgs(alias, remoteCmd, opts, windows)
+	if err != nil {
+		return nil, nil, err
+	}
+	bin := opts.Binary
+	if bin == "" {
+		if bin, err = defaultSSHBinary(); err != nil {
+			return nil, nil, err
+		}
+	}
+	return append([]string{bin}, args...), sshEnvironment(opts, windows), nil
+}
+
 // SupportsSSHAskpass is false until Windows has a current-user-restricted
 // named-pipe credential channel. Unix socket permission stubs are not enough.
 func SupportsSSHAskpass() bool { return runtime.GOOS != "windows" }
@@ -221,7 +247,7 @@ func newSSHCommand(ctx context.Context, bin string, args ...string) (*exec.Cmd, 
 
 func sshEnvironment(opts SSHOptions, windows bool) []string {
 	env := os.Environ()
-	if windows {
+	if windows || opts.Interactive {
 		var clean []string
 		for _, entry := range env {
 			key, _, _ := strings.Cut(entry, "=")

@@ -300,6 +300,43 @@ export interface LaunchInfo {
   shell: 'powershell' | 'posix';
   /** Open in terminal also works for a WSL distribution's sessions; absent on older backends. */
   wsl?: boolean;
+  /** The built-in terminal panel runs here; absent on older backends. */
+  panel?: boolean;
+  /** Where Resume and "Continue in" open agents: the panel or an external terminal. */
+  open?: TerminalOpenMode;
+}
+
+export type TerminalOpenMode = 'panel' | 'external';
+
+/** A size in character cells. */
+export interface TerminalSize {
+  cols: number;
+  rows: number;
+}
+
+/** A terminal running in the built-in panel, as the backend started it. */
+export interface TerminalTab {
+  id: string;
+  label: string;
+  /** Where it runs: "" for this computer, or the WSL or SSH host. */
+  host: string;
+  kind: 'agent' | 'shell';
+  /**
+   * The directory it starts in, where the backend knows it; empty is the
+   * home directory, or unknown for an agent on a WSL or SSH host.
+   */
+  dir?: string;
+}
+
+export interface TerminalDataEvent {
+  id: string;
+  /** Output, base64-encoded. */
+  data: string;
+}
+
+export interface TerminalExitEvent {
+  id: string;
+  code: number;
 }
 
 /** A terminal app installed on this computer. */

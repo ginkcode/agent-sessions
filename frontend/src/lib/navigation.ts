@@ -37,3 +37,25 @@ export function setupLinkInterceptor(api: BackendAPI): void {
     e.preventDefault();
   });
 }
+
+/**
+ * Stops files, links or text dragged in from other apps from navigating the
+ * WebView to them when dropped. WebKitGTK opens a dropped file unless the
+ * page cancels the drag, and the Wails runtime cancels only drags it
+ * recognizes as files. The paths of dropped files still reach the app:
+ * the desktop shell reads them from the native drop.
+ */
+export function setupDropGuard(target: Window = window): void {
+  // A drag that started in the page, like selected text, keeps its default.
+  let internal = false;
+  target.addEventListener('dragstart', () => (internal = true), true);
+  target.addEventListener('dragend', () => (internal = false), true);
+  const guard = (e: DragEvent) => {
+    if (internal) return;
+    e.preventDefault();
+    if (e.type === 'dragover' && e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+  };
+  for (const type of ['dragenter', 'dragover', 'drop']) {
+    target.addEventListener(type, guard as EventListener, true);
+  }
+}

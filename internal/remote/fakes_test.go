@@ -1,11 +1,15 @@
 package remote
 
 import (
+	"bytes"
 	"encoding/json"
+	"errors"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -92,6 +96,8 @@ func sshFakeMain() int {
 		return fakeProbe(args, true)
 	case "probe-freebsd":
 		return fakeProbe(args, false)
+	case "shell":
+		return fakeShell(args, stdin)
 	case "deploy":
 		return fakeDeploy(args, stdin, false)
 	case "deploy-mismatch":
@@ -100,6 +106,28 @@ func sshFakeMain() int {
 		_, _ = os.Stderr.WriteString("unknown fake mode\n")
 		return 2
 	}
+}
+
+// fakeShell runs the remote command here with /bin/sh as the login shell:
+// what follows --exec for wsl.exe, else ssh's last argument.
+func fakeShell(args []string, stdin []byte) int {
+	argv := []string{"/bin/sh", "-c", scriptArg(args)}
+	if i := slices.Index(args, "--exec"); i >= 0 {
+		argv = args[i+1:]
+	}
+	cmd := exec.Command(argv[0], argv[1:]...)
+	cmd.Env = append(os.Environ(), "SHELL=/bin/sh")
+	cmd.Stdin = bytes.NewReader(stdin)
+	cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
+	if err := cmd.Run(); err != nil {
+		var exit *exec.ExitError
+		if errors.As(err, &exit) {
+			return exit.ExitCode()
+		}
+		_, _ = os.Stderr.WriteString(err.Error() + "\n")
+		return 2
+	}
+	return 0
 }
 
 func readStdin() ([]byte, error) {

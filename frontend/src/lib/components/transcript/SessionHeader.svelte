@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { SessionMeta } from '../../types';
+  import type { SessionMeta, TerminalOpenMode } from '../../types';
   import { formatTokens, formatCost } from '../../format';
   import { formatAbsoluteTime, formatAgo, isKnownTime } from '../../date';
   import { appState } from '../../stores/appState.svelte';
@@ -23,8 +23,11 @@
     onModeChange: (mode: TranscriptMode) => void;
     /** Copies the resume command. */
     onResume: () => void;
-    /** Resumes in a new terminal; offered when launcher.canOpen. */
-    onOpenResume?: () => void;
+    /**
+     * Resumes in a terminal: where agents open by default, or the other
+     * place when where is given. Offered where launcher can open it.
+     */
+    onOpenResume?: (where?: TerminalOpenMode) => void;
     onReveal: () => void;
     onDelete: () => void;
     resumeCopied?: boolean;
@@ -44,6 +47,13 @@
   }: Props = $props();
 
   let messageTotal = $derived(meta.counts.user + meta.counts.assistant);
+  // The ▾ menu offers the place agents do not open by default.
+  let otherOpen = $derived<TerminalOpenMode>(launcher.openMode === 'panel' ? 'external' : 'panel');
+  let canOpenOther = $derived(Boolean(otherOpen === 'panel' ? launcher.canOpenPanel : launcher.canOpenExternal));
+  const OPEN_IN: Record<TerminalOpenMode, { label: string; title: string }> = {
+    panel: { label: 'Open in built-in terminal', title: 'Resume this session in the terminal panel below' },
+    external: { label: 'Open in external terminal', title: 'Resume this session in a new terminal window' },
+  };
   let resumeMenuOpen = $state(false);
   let continueMenuOpen = $state(false);
   let exportMenuOpen = $state(false);
@@ -126,14 +136,14 @@
     </div>
 
     <div class="header-actions">
-      {#if launcher.canOpen}
+      {#if launcher.canOpen || canOpenOther}
         <div class="menu-container resume-split" bind:this={resumeMenuRoot}>
           <button
             type="button"
             class="action-btn resume-btn resume-main"
-            title={resumeButtonTitle(link.dataHost, true)}
+            title={launcher.canOpen ? resumeButtonTitle(link.dataHost, true, launcher.openMode) : resumeButtonTitle(link.dataHost)}
             disabled={resumeOpening}
-            onclick={onOpenResume}
+            onclick={() => (launcher.canOpen ? onOpenResume() : onResume())}
           >
             {resumeCopied ? '✓ Copied' : resumeOpening ? 'Opening…' : 'Resume'}
           </button>
@@ -156,18 +166,34 @@
           </button>
           {#if resumeMenuOpen}
             <div class="action-dropdown-menu" role="menu">
-              <button
-                type="button"
-                class="action-menu-item"
-                role="menuitem"
-                title="Copy the resume command to run it yourself"
-                onclick={() => {
-                  resumeMenuOpen = false;
-                  onResume();
-                }}
-              >
-                <span>Copy command</span>
-              </button>
+              {#if canOpenOther}
+                <button
+                  type="button"
+                  class="action-menu-item"
+                  role="menuitem"
+                  title={OPEN_IN[otherOpen].title}
+                  onclick={() => {
+                    resumeMenuOpen = false;
+                    onOpenResume(otherOpen);
+                  }}
+                >
+                  <span>{OPEN_IN[otherOpen].label}</span>
+                </button>
+              {/if}
+              {#if launcher.canOpen}
+                <button
+                  type="button"
+                  class="action-menu-item"
+                  role="menuitem"
+                  title="Copy the resume command to run it yourself"
+                  onclick={() => {
+                    resumeMenuOpen = false;
+                    onResume();
+                  }}
+                >
+                  <span>Copy command</span>
+                </button>
+              {/if}
             </div>
           {/if}
         </div>

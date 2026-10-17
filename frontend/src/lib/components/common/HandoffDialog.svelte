@@ -283,7 +283,7 @@
           <button
             type="button"
             class="btn primary-btn"
-            title="Start the agent with this handoff in a new terminal window"
+            title={launcher.openMode === 'panel' ? 'Start the agent with this handoff in the terminal panel below' : 'Start the agent with this handoff in a new terminal window'}
             disabled={handoff.launching || !handoff.preview}
             onclick={() => handoff.openInTerminal()}
           >

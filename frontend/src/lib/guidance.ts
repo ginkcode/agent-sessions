@@ -80,6 +80,22 @@ export function openFailed(err: unknown): ToastMessage {
   };
 }
 
+/** Shown while files dropped on an SSH host's terminal are copied there. */
+export function copyingDrop(host: string, count: number): ToastMessage {
+  return {
+    title: `Copying ${count === 1 ? 'the file' : `${count} files`} to ${host}`,
+    body: 'Their paths are typed in the terminal once they are in a private folder on the host.',
+  };
+}
+
+export function dropFailed(err: unknown): ToastMessage {
+  return {
+    title: "Couldn't add the dropped files",
+    body: err instanceof Error ? err.message : String(err),
+    tone: 'error',
+  };
+}
+
 export function copyFailed(what: string, err: unknown): ToastMessage {
   return {
     title: `Couldn't copy ${what}`,

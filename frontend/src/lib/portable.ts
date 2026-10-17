@@ -61,3 +61,20 @@ export async function copyToClipboard(text: string): Promise<boolean> {
     return false;
   }
 }
+
+/**
+ * The clipboard's text, or '' when it cannot be read. The desktop app reads
+ * it natively: its web view may refuse the page's own clipboard reads.
+ */
+export async function readClipboard(): Promise<string> {
+  try {
+    const runtime = (globalThis as any).runtime;
+    if (runtime?.ClipboardGetText) return (await runtime.ClipboardGetText()) || '';
+    if (typeof navigator !== 'undefined' && navigator.clipboard?.readText) {
+      return await navigator.clipboard.readText();
+    }
+  } catch (err) {
+    console.error('Clipboard read failed:', err);
+  }
+  return '';
+}

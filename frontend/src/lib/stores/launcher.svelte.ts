@@ -1,8 +1,8 @@
 import { api } from '../api';
-import type { LaunchInfo, TerminalSettings } from '../types';
+import type { LaunchInfo, TerminalOpenMode, TerminalSettings } from '../types';
 import { errorText } from '../manage';
 import { link } from './link.svelte';
-import { canOpenTerminal } from '../terminal';
+import { canOpenExternal, canOpenPanel, canOpenTerminal, openMode } from '../terminal';
 
 /** Whether this machine can open sessions in a terminal, and its shell. */
 export class LauncherStore {
@@ -11,6 +11,7 @@ export class LauncherStore {
   terminal = $state<TerminalSettings | null>(null);
   terminalError = $state<string | null>(null);
   savingTerminal = $state(false);
+  savingOpenMode = $state(false);
 
   async init(): Promise<void> {
     try {
@@ -49,12 +50,41 @@ export class LauncherStore {
     }
   }
 
+  /** Chooses where agents open: the built-in panel or an external terminal. */
+  async setOpenMode(mode: TerminalOpenMode): Promise<void> {
+    this.savingOpenMode = true;
+    try {
+      this.info = await api.setTerminalOpen(mode);
+      this.terminalError = null;
+    } catch (err) {
+      this.terminalError = errorText(err, 'Failed to save where agents open');
+    } finally {
+      this.savingOpenMode = false;
+    }
+  }
+
+  /** Where Resume and "Continue in" open agents. */
+  get openMode(): TerminalOpenMode {
+    return openMode(this.info);
+  }
+
   /**
-   * Open in terminal is offered for local data on a supporting platform,
-   * and for a WSL distribution's data where this computer can open it.
+   * Open in terminal is offered where agents open: the panel for any
+   * host, or an external terminal for local data on a supporting platform
+   * and a WSL distribution's data where this computer can open it.
    */
   get canOpen(): boolean {
     return canOpenTerminal(this.info, link.dataHost);
+  }
+
+  /** Whether an external terminal opens for the shown data. */
+  get canOpenExternal(): boolean {
+    return canOpenExternal(this.info, link.dataHost);
+  }
+
+  /** Whether the built-in panel opens for the shown data. */
+  get canOpenPanel(): boolean {
+    return canOpenPanel(this.info, link.dataHost);
   }
 
   /** The shell a copied command is meant for; remote ones are POSIX. */

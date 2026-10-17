@@ -1,6 +1,6 @@
 <script lang="ts">
   import { tick, untrack } from 'svelte';
-  import type { SessionRef, Message, MessageJump } from '../../types';
+  import type { SessionRef, Message, MessageJump, TerminalOpenMode } from '../../types';
   import { appState } from '../../stores/appState.svelte';
   import { search } from '../../stores/search.svelte';
   import { highlightTextNodes, jumpOffset } from '../../search';
@@ -11,6 +11,7 @@
   import { toast } from '../../stores/toast.svelte';
   import { link } from '../../stores/link.svelte';
   import { launcher } from '../../stores/launcher.svelte';
+  import { terminals } from '../../stores/terminals.svelte';
   import { preferences } from '../../stores/preferences.svelte';
   import { isStaleReply } from '../../link';
   import type { TranscriptMode } from '../../transcript';
@@ -345,12 +346,16 @@
     }
   }
 
-  async function handleOpenResume() {
+  async function handleOpenResume(where: TerminalOpenMode = launcher.openMode) {
     if (!appState.selectedSessionRef || resumeOpening) return;
     resumeOpening = true;
     try {
-      await api.openResumeInTerminal(appState.selectedSessionRef);
-      toast.show(openedGuidance('resume'));
+      if (where === 'panel') {
+        await terminals.runResume(appState.selectedSessionRef, appState.selectedSessionMeta?.cwd);
+      } else {
+        await api.openResumeInTerminal(appState.selectedSessionRef);
+        toast.show(openedGuidance('resume'));
+      }
     } catch (err) {
       if (isStaleReply(err)) return;
       toast.show(openFailed(err));

@@ -16,7 +16,7 @@
       [
         { id: 'general', label: 'General' },
         { id: 'translation', label: 'Translation' },
-        { id: 'terminal', label: 'Terminal', hidden: !launcher.info.chooseTerminal },
+        { id: 'terminal', label: 'Terminal', hidden: !launcher.info.panel && !launcher.info.chooseTerminal },
         { id: 'management', label: 'Session management' },
         { id: 'handoff', label: 'Handoff files' },
       ] as { id: SettingsSection; label: string; hidden?: boolean }[]
@@ -196,11 +196,45 @@
           {:else if section === 'terminal'}
             <section class="section terminal">
               <h3>Terminal (this computer)</h3>
-              <p class="hint">Resume and "Continue in" → Open in terminal start the agent in a new window of this app.</p>
               {#if launcher.terminalError}
                 <p class="error" role="alert">{launcher.terminalError}</p>
               {/if}
-              {#if launcher.terminal}
+              {#if launcher.info.panel}
+                <fieldset class="open-mode">
+                  <legend>Open agents in</legend>
+                  <label class="setting">
+                    <input
+                      type="radio"
+                      name="terminal-open"
+                      checked={launcher.openMode === 'panel'}
+                      disabled={launcher.savingOpenMode}
+                      onchange={() => void launcher.setOpenMode('panel')}
+                    />
+                    Built-in panel
+                  </label>
+                  <label class="setting">
+                    <input
+                      type="radio"
+                      name="terminal-open"
+                      checked={launcher.openMode === 'external'}
+                      disabled={launcher.savingOpenMode}
+                      onchange={() => void launcher.setOpenMode('external')}
+                    />
+                    External terminal
+                  </label>
+                </fieldset>
+                <p class="hint">
+                  {launcher.openMode === 'panel'
+                    ? 'Resume and "Continue in" start the agent in a tab of the terminal panel, for sessions on this computer, WSL and SSH hosts. Ctrl+` shows or hides the panel.'
+                    : 'Resume and "Continue in" start the agent in a new terminal window, for sessions on this computer and WSL. The Resume ▾ menu still offers the built-in panel.'}
+                </p>
+              {:else}
+                <p class="hint">Resume and "Continue in" → Open in terminal start the agent in a new window of this app.</p>
+              {/if}
+              {#if launcher.info.chooseTerminal && launcher.info.panel}
+                <h4>External terminal app</h4>
+              {/if}
+              {#if launcher.info.chooseTerminal && launcher.terminal}
                 <div class="terminal-row">
                   <Dropdown
                     options={terminalOptions(launcher.terminal)}
@@ -217,7 +251,7 @@
                 {#if launcher.terminal.hint}
                   <p class="hint">{launcher.terminal.hint}</p>
                 {/if}
-              {:else if !launcher.terminalError}
+              {:else if launcher.info.chooseTerminal && !launcher.terminalError}
                 <p class="hint">Looking for terminal apps…</p>
               {/if}
             </section>
@@ -331,6 +365,9 @@
   .section + .section { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--border-color); }
   h3 { margin: 0 0 6px; font-size: .85rem; }
   .section .hint, .section .error { margin: 0 0 10px; line-height: 1.5; }
+  .open-mode { border: 0; margin: 0 0 6px; padding: 0; }
+  .open-mode legend { padding: 0; margin-bottom: 6px; font-weight: 500; }
+  h4 { margin: 14px 0 8px; font-size: .85rem; }
   .terminal-row, .transcript-row, .time-zone-row { margin-bottom: 10px; }
   .cache-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
   .cache-usage { color: var(--text-secondary); }

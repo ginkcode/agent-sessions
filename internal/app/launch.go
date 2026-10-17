@@ -26,6 +26,12 @@ type LaunchInfo struct {
 	// WSL is true when Open in terminal also works for a WSL distribution's
 	// sessions.
 	WSL bool `json:"wsl"`
+	// Panel is true when the built-in terminal panel runs agents and
+	// shells, for local, WSL and SSH sessions alike.
+	Panel bool `json:"panel"`
+	// Open is where Resume and "Continue in" open agents: "panel" or
+	// "external".
+	Open string `json:"open"`
 }
 
 // ErrTerminalRemote refuses Open in terminal for an SSH host's session.
@@ -50,7 +56,14 @@ var _ remoteLauncher = (*rpc.Client)(nil)
 
 // LaunchInfo reports the local terminal support and copy-command shell.
 func (a *App) LaunchInfo() LaunchInfo {
-	info := LaunchInfo{Terminal: a.terminalAvailable(), ChooseTerminal: launch.ChooseTerminal(), Shell: "posix", WSL: a.wslTerminalAvailable()}
+	info := LaunchInfo{
+		Terminal:       a.terminalAvailable(),
+		ChooseTerminal: launch.ChooseTerminal(),
+		Shell:          "posix",
+		WSL:            a.wslTerminalAvailable(),
+		Panel:          a.terminals != nil,
+		Open:           a.terminalOpen(),
+	}
 	if runtime.GOOS == "windows" {
 		info.Shell = "powershell"
 	}
@@ -94,24 +107,61 @@ func (a *App) OpenBundleHandoffInTerminal(req BundleHandoffRequest) error {
 	})
 }
 
+// launchTarget is where one call's agent runs: on this computer, in a WSL
+// distribution, or on an SSH host. The external terminal and the built-in
+// panel route the same way.
+type launchTarget struct {
+	route
+	// distro is set for a WSL distribution.
+	distro string
+}
+
+func (a *App) launchTarget() launchTarget {
+	r := a.route()
+	t := launchTarget{route: r}
+	if distro, ok := remote.ParseWSLTarget(r.host); ok {
+		t.distro = distro
+	}
+	return t
+}
+
+// local returns the engine that builds commands on this computer.
+func (t launchTarget) local() (localLauncher, error) {
+	l, ok := t.backend.(localLauncher)
+	if !ok {
+		return nil, launch.ErrUnsupported
+	}
+	return l, nil
+}
+
+// remote returns the connected host's server, which builds the script with
+// the agent and shell installed there.
+func (t launchTarget) remote() (remoteLauncher, error) {
+	l, ok := t.backend.(remoteLauncher)
+	if !ok {
+		return nil, fmt.Errorf("%w %s", rpc.ErrDisconnected, t.host)
+	}
+	return l, nil
+}
+
 // openInTerminal builds the command on the local engine and opens it. A WSL
 // distribution's session opens in a console on this computer that runs it
 // in the distribution; an SSH host's session is refused rather than started
 // on this machine.
 func (a *App) openInTerminal(build func(localLauncher) (provider.Command, error), script func(remoteLauncher) (string, error)) error {
-	r := a.route()
-	if distro, ok := remote.ParseWSLTarget(r.host); ok {
-		return a.openInWSL(r, distro, script)
+	t := a.launchTarget()
+	if t.distro != "" {
+		return a.openInWSL(t, script)
 	}
 	if !a.terminalSupported() {
 		return launch.ErrUnsupported
 	}
-	if r.host != "" {
+	if t.host != "" {
 		return ErrTerminalRemote
 	}
-	l, ok := r.backend.(localLauncher)
-	if !ok {
-		return launch.ErrUnsupported
+	l, err := t.local()
+	if err != nil {
+		return err
 	}
 	open, err := a.terminalOpener()
 	if err != nil {
@@ -126,7 +176,7 @@ func (a *App) openInTerminal(build func(localLauncher) (provider.Command, error)
 
 // openInWSL has the distribution build the script, so the agent and shell
 // are the ones installed there, and opens it in a new console.
-func (a *App) openInWSL(r route, distro string, script func(remoteLauncher) (string, error)) error {
+func (a *App) openInWSL(t launchTarget, script func(remoteLauncher) (string, error)) error {
 	open := a.wslTerminalOverride
 	if open == nil {
 		if !a.wslTerminalAvailable() {
@@ -134,15 +184,15 @@ func (a *App) openInWSL(r route, distro string, script func(remoteLauncher) (str
 		}
 		open = launch.OpenWSLTerminal
 	}
-	l, ok := r.backend.(remoteLauncher)
-	if !ok {
-		return fmt.Errorf("%w %s", rpc.ErrDisconnected, r.host)
+	l, err := t.remote()
+	if err != nil {
+		return err
 	}
 	s, err := script(l)
 	if err != nil {
 		return err
 	}
-	return open(distro, s)
+	return open(t.distro, s)
 }
 
 func (a *App) terminalSupported() bool {
