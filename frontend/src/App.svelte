@@ -145,10 +145,21 @@
     terminals.setHeight(before - delta, window.innerHeight);
     return before - terminals.height;
   }
+
+  // On the left the panel sits below the sidebar and the session list, as
+  // wide as both, and the transcript keeps the full height.
+  let panelLeft = $derived(launcher.info.panel && terminals.position === 'left');
 </script>
 
 <div class="app-layout">
   <ReconnectBanner />
+  <div
+    class="workspace"
+    class:panel-left={panelLeft}
+    style:grid-template-columns={panelLeft
+      ? `${preferences.widths.sidebar}px 0 ${preferences.widths.sessionList}px 0 minmax(0, 1fr)`
+      : undefined}
+  >
   <div class="shell">
     <!-- Pane 1: Sidebar -->
     <aside
@@ -391,11 +402,15 @@
   <!-- Outside .shell: the inert on stale panes never reaches the terminals. -->
   {#if launcher.info.panel}
     {#if terminals.open}
-      <Splitter direction="vertical" ariaLabel="Resize terminal panel" onResize={handlePanelResize} />
+      <div class="panel-splitter">
+        <Splitter direction="vertical" ariaLabel="Resize terminal panel" onResize={handlePanelResize} />
+      </div>
     {/if}
-    <!-- Hidden, not unmounted: the terminals keep their scrollback. -->
+    <!-- Hidden, not unmounted: the terminals keep their scrollback. Moving
+         the panel only changes the grid, for the same reason. -->
     <TerminalPanel cwd={shellCwd} hidden={!terminals.open} />
   {/if}
+  </div>
 </div>
 
 <style>
@@ -405,6 +420,73 @@
     width: 100vw;
     height: 100vh;
     overflow: hidden;
+  }
+
+  /* The panes and the terminal panel below them. On the left the panes'
+     own box steps aside so they and the panel share one grid: the sidebar
+     and the session list above the panel, the transcript beside both. The
+     column widths come from the pane widths. */
+  .workspace {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 0;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .panel-splitter {
+    display: flex;
+    flex-shrink: 0;
+  }
+
+  .workspace.panel-left {
+    display: grid;
+    grid-template-rows: minmax(0, 1fr) auto auto;
+    grid-template-areas:
+      'sidebar split-sidebar list split-list main'
+      'panel-split panel-split panel-split split-list main'
+      'panel panel panel split-list main';
+    background-color: var(--bg-primary);
+    color: var(--text-primary);
+  }
+
+  .panel-left .shell {
+    display: contents;
+  }
+
+  .panel-left .sidebar {
+    grid-area: sidebar;
+    width: auto !important;
+    min-width: 0;
+  }
+
+  .panel-left .sidebar + :global(.splitter) {
+    grid-area: split-sidebar;
+  }
+
+  .panel-left .session-list-container {
+    grid-area: list;
+    width: auto !important;
+    min-width: 0;
+  }
+
+  .panel-left .session-list-container + :global(.splitter) {
+    grid-area: split-list;
+  }
+
+  .panel-left .transcript-container {
+    grid-area: main;
+    min-width: 0;
+  }
+
+  .panel-left .panel-splitter {
+    grid-area: panel-split;
+  }
+
+  .panel-left > :global(.terminal-panel) {
+    grid-area: panel;
+    min-width: 0;
   }
 
   .shell {

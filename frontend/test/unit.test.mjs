@@ -2206,6 +2206,7 @@ async function renderSettingsDialog(
       ["import Dropdown from './Dropdown.svelte';", 'const Dropdown = globalThis.__dropdown;'],
       ["import { manage } from '../../stores/manage.svelte';", fixtureStore('manage')],
       ["import { launcher } from '../../stores/launcher.svelte';", fixtureStore('launcher')],
+      ["import { terminals } from '../../stores/terminals.svelte';", fixtureStore('terminals')],
       ["import { translateSettings } from '../../stores/translate.svelte';", fixtureStore('translateSettings')],
       ["import { preferences } from '../../stores/preferences.svelte';", fixtureStore('preferences')],
     ]);
@@ -2217,6 +2218,7 @@ async function renderSettingsDialog(
   return renderWithFixture(settingsDialogModule, {
     manage,
     launcher: { terminalError: null, terminal: null, ...launcher },
+    terminals: { position: 'bottom' },
     translateSettings: { ...TRANSLATE_DEFAULTS, ...translateSettings },
     preferences,
   });
@@ -2930,19 +2932,24 @@ test('TerminalsStore keeps its height within the window and remembers the layout
   assert.deepEqual(new TextDecoder().decode(decodeTerminalData(Buffer.from('héllo ✓').toString('base64'))), 'héllo ✓');
 
   await withTerminals(async ({ store, storage, TerminalsStore }) => {
-    assert.deepEqual([store.open, store.height], [false, PANEL_HEIGHT.default]);
+    assert.deepEqual([store.open, store.height, store.position], [false, PANEL_HEIGHT.default, 'bottom']);
     store.setHeight(400, 1000);
+    store.setPosition('left');
     store.setOpen(true);
-    assert.deepEqual(JSON.parse(storage.get('agent-sessions:terminal-panel')), { open: true, height: 400 });
+    assert.deepEqual(JSON.parse(storage.get('agent-sessions:terminal-panel')), {
+      open: true,
+      height: 400,
+      position: 'left',
+    });
     const restored = new TerminalsStore();
     restored.init();
-    assert.deepEqual([restored.open, restored.height], [true, 400]);
+    assert.deepEqual([restored.open, restored.height, restored.position], [true, 400, 'left']);
     restored.destroy();
 
     storage.set('agent-sessions:terminal-panel', '{not json');
     const fallback = new TerminalsStore();
     fallback.init();
-    assert.deepEqual([fallback.open, fallback.height], [false, PANEL_HEIGHT.default]);
+    assert.deepEqual([fallback.open, fallback.height, fallback.position], [false, PANEL_HEIGHT.default, 'bottom']);
     fallback.destroy();
   });
 });

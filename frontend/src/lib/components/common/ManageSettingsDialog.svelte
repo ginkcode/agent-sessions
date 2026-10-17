@@ -1,6 +1,7 @@
 <script lang="ts">
   import { manage, type SettingsSection } from '../../stores/manage.svelte';
   import { launcher } from '../../stores/launcher.svelte';
+  import { terminals } from '../../stores/terminals.svelte';
   import { translateSettings } from '../../stores/translate.svelte';
   import { formatBytes } from '../../format';
   import { terminalOptions } from '../../terminal';
@@ -228,6 +229,27 @@
                     ? 'Resume and "Continue in" start the agent in a tab of the terminal panel, for sessions on this computer, WSL and SSH hosts. Ctrl+` shows or hides the panel.'
                     : 'Resume and "Continue in" start the agent in a new terminal window, for sessions on this computer and WSL. The Resume ▾ menu still offers the built-in panel.'}
                 </p>
+                <fieldset class="open-mode">
+                  <legend>Panel position</legend>
+                  <label class="setting">
+                    <input
+                      type="radio"
+                      name="terminal-position"
+                      checked={terminals.position === 'bottom'}
+                      onchange={() => terminals.setPosition('bottom')}
+                    />
+                    Bottom, full width
+                  </label>
+                  <label class="setting">
+                    <input
+                      type="radio"
+                      name="terminal-position"
+                      checked={terminals.position === 'left'}
+                      onchange={() => terminals.setPosition('left')}
+                    />
+                    Left, below the session list
+                  </label>
+                </fieldset>
               {:else}
                 <p class="hint">Resume and "Continue in" → Open in terminal start the agent in a new window of this app.</p>
               {/if}

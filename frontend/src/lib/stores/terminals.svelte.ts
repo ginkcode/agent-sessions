@@ -18,6 +18,16 @@ const STORAGE_KEY = 'agent-sessions:terminal-panel';
 export const PANEL_HEIGHT = { min: 120, default: 280, maxShare: 0.7, shellMin: 300 };
 
 /**
+ * Where the panel sits: below all the panes, or on the left below the
+ * sidebar and the session list, leaving the transcript full height.
+ */
+export type PanelPosition = 'bottom' | 'left';
+
+export function isPanelPosition(value: unknown): value is PanelPosition {
+  return value === 'bottom' || value === 'left';
+}
+
+/**
  * A tab whose process ends closes, except a failure this soon after it
  * started: the tab stays so its error can be read.
  */
@@ -58,7 +68,8 @@ function agentName(agent: AgentID | string): string {
 }
 
 /**
- * The built-in terminal panel: its tabs, whether it is open, and its height.
+ * The built-in terminal panel: its tabs, whether it is open, where it sits
+ * and its size.
  * Output arrives as events for every tab and is routed to each tab's view;
  * it is buffered until the view mounts, even when it arrives before the
  * call that started the tab returned.
@@ -68,6 +79,7 @@ export class TerminalsStore {
   active = $state<string | null>(null);
   open = $state(false);
   height = $state(PANEL_HEIGHT.default);
+  position = $state<PanelPosition>('bottom');
   /** A running agent tab whose close waits for confirmation. */
   confirming = $state<string | null>(null);
   /** The size the views last reported, for a new tab's first size. */
@@ -99,6 +111,7 @@ export class TerminalsStore {
       if (typeof saved.height === 'number' && Number.isFinite(saved.height)) {
         this.height = Math.max(PANEL_HEIGHT.min, Math.round(saved.height));
       }
+      if (isPanelPosition(saved.position)) this.position = saved.position;
     } catch {
       // Keep the defaults.
     }
@@ -353,6 +366,11 @@ export class TerminalsStore {
     this.save();
   }
 
+  setPosition(position: PanelPosition): void {
+    this.position = position;
+    this.save();
+  }
+
   /** Records a view's size so the next tab starts at it. */
   setSize(cols: number, rows: number): void {
     if (cols > 0 && rows > 0) this.size = { cols, rows };
@@ -361,7 +379,7 @@ export class TerminalsStore {
   private save(): void {
     if (typeof localStorage === 'undefined') return;
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({ open: this.open, height: this.height }));
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ open: this.open, height: this.height, position: this.position }));
     } catch {
       // Storage disabled.
     }

@@ -83,6 +83,23 @@
       <button
         type="button"
         class="icon-button"
+        title={terminals.position === 'left' ? 'Move terminal to the bottom' : 'Move terminal to the left, below the session list'}
+        aria-label={terminals.position === 'left' ? 'Move terminal to the bottom' : 'Move terminal to the left'}
+        onclick={() => terminals.setPosition(terminals.position === 'left' ? 'bottom' : 'left')}
+      >
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <!-- The layout it moves to. -->
+          <rect x="3" y="3" width="18" height="18" rx="2" />
+          {#if terminals.position === 'left'}
+            <path d="M3 15h18" />
+          {:else}
+            <path d="M3 15h11M14 3v18" />
+          {/if}
+        </svg>
+      </button>
+      <button
+        type="button"
+        class="icon-button"
         title="Hide terminal (Ctrl+`)"
         aria-label="Hide terminal"
         onclick={() => terminals.setOpen(false)}
