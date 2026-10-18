@@ -1,5 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { isFullscreenShortcut, toggleFullscreen } from './lib/fullscreen';
+  import { toast } from './lib/stores/toast.svelte';
   import Splitter from './lib/components/common/Splitter.svelte';
   import ModeSelector from './lib/components/sidebar/ModeSelector.svelte';
   import PathFilter from './lib/components/sidebar/PathFilter.svelte';
@@ -72,6 +74,13 @@
       void (direction === 'back' ? appState.goBack() : appState.goForward());
     };
     const onKeydown = (event: KeyboardEvent) => {
+      if (isFullscreenShortcut(event, isMac)) {
+        event.preventDefault();
+        if (!event.repeat) void toggleFullscreen().catch((err) => {
+          toast.show({ title: 'Could not toggle fullscreen', body: String(err), tone: 'error' });
+        });
+        return;
+      }
       const direction = navigationShortcut(event, isMac);
       if (direction) {
         // Alt+Left/Right and Cmd+[ move the caret or indent in a text field.

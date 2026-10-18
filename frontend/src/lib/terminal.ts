@@ -1,5 +1,6 @@
 import type { LaunchInfo, TerminalOpenMode, TerminalSettings } from './types';
 import { wslDistro } from './hosts';
+import { isFullscreenShortcut } from './fullscreen';
 
 /**
  * Where Resume and "Continue in" open agents: the built-in panel unless the
@@ -91,7 +92,7 @@ export function terminalKeyAction(
   mac: boolean,
 ): 'copy' | 'paste' | 'app' | null {
   if (e.type !== 'keydown') return null;
-  if (isPanelToggle(e) || isNewShellShortcut(e, mac)) return 'app';
+  if (isPanelToggle(e) || isNewShellShortcut(e, mac) || isFullscreenShortcut(e, mac)) return 'app';
   if (e.key === ',' && (mac ? e.metaKey && !e.ctrlKey : e.ctrlKey && !e.metaKey) && !e.altKey) return 'app';
   const key = e.key.toLowerCase();
   const chord = mac ? e.metaKey && !e.ctrlKey && !e.shiftKey : e.ctrlKey && e.shiftKey && !e.metaKey;

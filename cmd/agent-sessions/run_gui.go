@@ -12,6 +12,7 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
 	"github.com/wailsapp/wails/v2/pkg/options/linux"
+	"github.com/wailsapp/wails/v2/pkg/options/mac"
 
 	"github.com/ginkcode/agent-sessions/frontend"
 	"github.com/ginkcode/agent-sessions/internal/app"
@@ -61,6 +62,12 @@ func run() {
 		},
 		OnShutdown: application.OnShutdown,
 		Bind:       []interface{}{application},
+		// Set Mac explicitly: Wails leaves the native zoom/fullscreen button
+		// disabled when Mac options are nil. Escape belongs to in-app dialogs,
+		// not to the window's fullscreen state.
+		Mac: &mac.Options{
+			DisableEscapeExitsFullscreen: true,
+		},
 		Linux: &linux.Options{
 			Icon:             frontend.AppIcon,
 			WebviewGpuPolicy: linux.WebviewGpuPolicyOnDemand,
