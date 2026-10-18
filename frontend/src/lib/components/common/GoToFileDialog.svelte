@@ -690,6 +690,10 @@
     margin: 0 auto;
   }
 
+  .presentation .markdown-preview {
+    max-width: 1600px;
+  }
+
   .presentation-btn {
     display: inline-flex;
     align-items: center;
