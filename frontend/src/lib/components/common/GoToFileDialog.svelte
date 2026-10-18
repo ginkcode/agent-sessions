@@ -350,7 +350,6 @@
           type="button"
           class="tree-row file"
           class:selected={files.selected === node.path}
-          class:unsupported={fileLanguage(node.path) === null}
           style:padding-left="{8 + depth * 14 + 14}px"
           title={st ? `${node.path} · ${STATUS_LABELS[st]}` : node.path}
           onclick={() => pick(node.path)}
@@ -437,7 +436,6 @@
                       aria-selected={i === activeIndex}
                       class="match"
                       class:active={i === activeIndex}
-                      class:unsupported={fileLanguage(path) === null}
                       class:ignored={ignored.has(path)}
                       title={ignored.has(path) ? `${path} · Ignored by .gitignore` : path}
                       onclick={() => pick(path)}
@@ -557,7 +555,7 @@
                 {/if}
               </button>
               {#if files.content}<span class="viewer-size">{formatSize(files.content.size)}</span>{/if}
-              {#if text && !files.loadingFile && language !== null}
+              {#if text && !files.loadingFile}
                 {#if language === 'markdown'}
                   <button type="button" class="copy-btn" class:on={showMarkdown} aria-pressed={showMarkdown} title={showMarkdown ? 'Show Markdown source' : 'Preview Markdown'} onclick={() => (markdownPreview = !markdownPreview)}>Preview</button>
                 {/if}
@@ -626,8 +624,6 @@
               <div class="state center"><LoadingSpinner size={16} label="Loading file…" /></div>
             {:else if files.fileError}
               <div class="state center error" role="alert">{files.fileError}</div>
-            {:else if language === null}
-              <div class="state center">This file type is not supported yet. Only source code and text files can be shown.</div>
             {:else if files.content?.binary}
               <div class="state center">This is a binary file, so it can't be shown.</div>
             {:else if files.content?.tooLarge}
@@ -884,10 +880,6 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-  }
-
-  .unsupported {
-    color: var(--text-muted);
   }
 
   /* Git status, VS Code's colours. */
