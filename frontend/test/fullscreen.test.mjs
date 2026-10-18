@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { isFullscreenShortcut, toggleFullscreen } from '../src/lib/fullscreen.ts';
+import { isFullscreenShortcut, toggleFullscreen, preventDesktopEscapeFullscreen } from '../src/lib/fullscreen.ts';
 import { terminalKeyAction } from '../src/lib/terminal.ts';
 
 const key = { type: 'keydown', key: 'F', code: 'KeyF', metaKey: true, shiftKey: true, ctrlKey: false, altKey: false };
@@ -58,5 +58,24 @@ test('fullscreen falls back to browser APIs and recovers from failures', async (
     else globalThis.window = oldWindow;
     if (oldDocument === undefined) delete globalThis.document;
     else globalThis.document = oldDocument;
+  }
+});
+
+test('desktop Escape cancels WebKit fullscreen exit without swallowing the key', () => {
+  const previous = globalThis.window;
+  let cancelled = 0;
+  const escape = { key: 'Escape', preventDefault: () => cancelled++ };
+  try {
+    globalThis.window = {};
+    preventDesktopEscapeFullscreen(escape);
+    assert.equal(cancelled, 0, 'browser keeps its native Escape behavior');
+    globalThis.window = { go: { app: { App: {} } } };
+    preventDesktopEscapeFullscreen(escape);
+    assert.equal(cancelled, 1);
+    preventDesktopEscapeFullscreen({ ...escape, key: 'Enter' });
+    assert.equal(cancelled, 1);
+  } finally {
+    if (previous === undefined) delete globalThis.window;
+    else globalThis.window = previous;
   }
 });

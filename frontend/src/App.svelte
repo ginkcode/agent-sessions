@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { isFullscreenShortcut, toggleFullscreen } from './lib/fullscreen';
+  import { isFullscreenShortcut, toggleFullscreen, preventDesktopEscapeFullscreen } from './lib/fullscreen';
   import { toast } from './lib/stores/toast.svelte';
   import Splitter from './lib/components/common/Splitter.svelte';
   import ModeSelector from './lib/components/sidebar/ModeSelector.svelte';
@@ -135,10 +135,12 @@
       if (!hasOpenModal()) go(direction);
     });
     window.addEventListener('keydown', onKeydown);
+    window.addEventListener('keydown', preventDesktopEscapeFullscreen);
     window.addEventListener('mousedown', onMouseButton);
     window.addEventListener('mouseup', onMouseButton);
     return () => {
       unsubscribeMouseNavigate();
+      window.removeEventListener('keydown', preventDesktopEscapeFullscreen);
       window.removeEventListener('keydown', onKeydown);
       window.removeEventListener('mousedown', onMouseButton);
       window.removeEventListener('mouseup', onMouseButton);

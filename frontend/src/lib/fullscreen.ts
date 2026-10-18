@@ -8,6 +8,13 @@ export function isFullscreenShortcut(
     : e.code === 'F11' && !e.metaKey && !e.shiftKey;
 }
 
+// WebKit can consume Escape before NSWindow.cancelOperation is reached.
+// Cancel its default action, but do not stop propagation: dialogs and xterm
+// must still receive Escape. Browser fullscreen deliberately keeps its exit key.
+export function preventDesktopEscapeFullscreen(e: Pick<KeyboardEvent, 'key' | 'preventDefault'>): void {
+  if (e.key === 'Escape' && window.go?.app?.App) e.preventDefault();
+}
+
 let toggling = false;
 
 export async function toggleFullscreen(): Promise<void> {
