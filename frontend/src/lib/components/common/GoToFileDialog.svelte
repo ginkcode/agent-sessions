@@ -26,6 +26,17 @@
   import { api } from '../../api';
   import { toast } from '../../stores/toast.svelte';
   import { absoluteFilePath, markdownFileTarget } from '../../fileActions';
+  import { TAB_CLOSE_ACTIONS, tabsToClose } from '../../tabActions';
+
+  let tabContext = $state<{ path: string; x: number; y: number } | null>(null);
+  let tabItems = $derived.by(() => {
+    if (!tabContext) return [];
+    const { path } = tabContext;
+    return TAB_CLOSE_ACTIONS.map(({ action, label }) => {
+      const targets = tabsToClose(files.tabs.map((t) => t.path), path, action);
+      return { label, disabled: targets.length === 0, onSelect: () => targets.forEach((p) => files.closeTab(p)) };
+    });
+  });
 
   // Files larger than this are shown without highlighting, which is slow on
   // very long text.
@@ -127,6 +138,7 @@
   function openContext(e: MouseEvent, path: string, directory: boolean) {
     e.preventDefault();
     e.stopPropagation();
+    tabContext = null;
     context = { path, directory, x: e.clientX, y: e.clientY };
   }
 
@@ -180,6 +192,7 @@
 
   function close() {
     presentation = false;
+    tabContext = null;
     context = null;
     files.close();
   }
@@ -372,6 +385,9 @@
 {#if files.open}
   <!-- Clicking outside leaves the dialog open; Escape or × closes it. -->
   <div class="dialog-backdrop" role="presentation">
+    {#if tabContext}
+      <ContextMenu x={tabContext.x} y={tabContext.y} items={tabItems} ariaLabel="File tab actions" onClose={() => (tabContext = null)} />
+    {/if}
     {#if context}
       <ContextMenu x={context.x} y={context.y} items={contextItems} ariaLabel="File actions" onClose={() => (context = null)} />
     {/if}
@@ -488,6 +504,12 @@
                   title={tab.preview ? `${tab.path} · Preview: double-click to keep it open` : tab.path}
                   onclick={() => files.selectTab(tab.path)}
                   ondblclick={() => files.keepTab(tab.path)}
+                  oncontextmenu={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    context = null;
+                    tabContext = { path: tab.path, x: e.clientX, y: e.clientY };
+                  }}
                   onauxclick={(e) => e.button === 1 && closeTab(e, tab.path)}
                   onkeydown={(e) => {
                     if (e.key === 'Enter' || e.key === ' ') {

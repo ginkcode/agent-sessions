@@ -82,6 +82,21 @@ export class TerminalsStore {
   position = $state<PanelPosition>('bottom');
   /** A running agent tab whose close waits for confirmation. */
   confirming = $state<string | null>(null);
+  private closeQueue: string[] = [];
+
+  /** Bulk closes pause at each running agent rather than skipping confirmation. */
+  closeMany(ids: string[]): void {
+    this.cancelClose();
+    this.closeQueue = [...ids];
+    this.continueClosing();
+  }
+
+  private continueClosing(): void {
+    while (this.closeQueue.length) {
+      const id = this.closeQueue.shift()!;
+      if (!this.close(id)) return;
+    }
+  }
   /** The size the views last reported, for a new tab's first size. */
   size: TerminalSize = { cols: 80, rows: 24 };
 
@@ -292,13 +307,19 @@ export class TerminalsStore {
     }
     const startedAt = this.startedAt.get(id) ?? 0;
     this.startedAt.delete(id);
-    if (this.confirming === id) this.confirming = null;
+    const resumeClosing = this.confirming === id;
+    if (resumeClosing) this.confirming = null;
     if (code === 0 || Date.now() - startedAt >= KEEP_FAILED_MS) {
       this.remove(tab);
+      if (resumeClosing) this.continueClosing();
       return;
     }
     this.tabs = this.tabs.map((t) => (t.id === id ? { ...t, status: 'exited', exitCode: code } : t));
     this.sinks.get(id)?.exit(code);
+    if (resumeClosing) {
+      this.close(id);
+      this.continueClosing();
+    }
   }
 
   /**
@@ -336,10 +357,12 @@ export class TerminalsStore {
 
   confirmClose(): void {
     if (this.confirming) this.close(this.confirming, true);
+    this.continueClosing();
   }
 
   cancelClose(): void {
     this.confirming = null;
+    this.closeQueue = [];
   }
 
   select(id: string): void {

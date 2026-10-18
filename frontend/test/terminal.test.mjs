@@ -432,6 +432,28 @@ test('TerminalsStore asks before closing a running agent, not a shell', async ()
   });
 });
 
+test('TerminalsStore bulk closing pauses at each running agent and Cancel stops the queue', async () => {
+  await withTerminals(async ({ store, mock }) => {
+    const [meta] = await mock.listSessions('', {}, { field: 'updatedAt', dir: 'desc' });
+    const first = await store.runResume(meta.ref, meta.cwd);
+    const second = await store.runResume(meta.ref, meta.cwd);
+    const shell = await store.newShell('/work');
+    store.closeMany([first.id, second.id, shell.id]);
+    assert.equal(store.confirming, first.id);
+    assert.equal(store.tabs.length, 3);
+    store.confirmClose();
+    assert.equal(store.confirming, second.id);
+    assert.deepEqual(store.tabs.map(t => t.id), [second.id, shell.id]);
+    store.cancelClose();
+    store.confirmClose();
+    assert.equal(store.tabs.length, 2, 'Cancel also drops remaining bulk targets');
+    store.closeMany([second.id, shell.id]);
+    store.confirmClose();
+    assert.equal(store.tabs.length, 0);
+    assert.equal(store.confirming, null);
+  });
+});
+
 test('TerminalsStore selects a tab by its position while the panel shows', async () => {
   await withTerminals(async ({ store }) => {
     const first = await store.newShell('/a');

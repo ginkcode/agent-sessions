@@ -6,6 +6,18 @@
   import { hostLabel } from '../../hosts';
   import { isMac } from '../../../main';
   import { newShellShortcutLabel } from '../../terminal';
+  import ContextMenu from '../common/ContextMenu.svelte';
+  import { TAB_CLOSE_ACTIONS, tabsToClose } from '../../tabActions';
+
+  let tabContext = $state<{ id: string; x: number; y: number } | null>(null);
+  let tabItems = $derived.by(() => {
+    if (!tabContext) return [];
+    const { id } = tabContext;
+    return TAB_CLOSE_ACTIONS.map(({ action, label }) => {
+      const targets = tabsToClose(terminals.tabs.map((t) => t.id), id, action);
+      return { label, disabled: targets.length === 0, onSelect: () => terminals.closeMany(targets) };
+    });
+  });
 
   interface Props {
     /** The directory a new shell starts in, on the selected host. */
@@ -35,11 +47,18 @@
   }
 </script>
 
+{#if tabContext && !hidden}
+  <ContextMenu x={tabContext.x} y={tabContext.y} items={tabItems} ariaLabel="Terminal tab actions" onClose={() => (tabContext = null)} />
+{/if}
+
 <section class="terminal-panel" class:hidden aria-label="Terminal" style="height: {terminals.height}px">
   <header class="panel-header">
     <div class="tabs" role="tablist" aria-label="Terminals">
       {#each terminals.tabs as tab, index (tab.id)}
-        <div class="tab" class:active={tab.id === terminals.active} title={tabTitle(tab, index)}>
+        <div class="tab" role="presentation" class:active={tab.id === terminals.active} title={tabTitle(tab, index)} oncontextmenu={(e) => {
+          e.preventDefault();
+          tabContext = { id: tab.id, x: e.clientX, y: e.clientY };
+        }}>
           <button
             type="button"
             class="tab-select"
