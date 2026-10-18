@@ -715,6 +715,10 @@ export class MockBackendAPI {
   private forwardRules = new Map<string, PortForwardRule[]>();
   private nextForward = 0;
 
+  async terminalFonts(): Promise<string[]> {
+    return ['Consolas', 'DejaVu Sans Mono', 'FiraCode Nerd Font Mono', 'Menlo', 'SF Mono'];
+  }
+
   async listPortForwards(): Promise<PortForwardState> {
     const host = this.connState.host ?? '';
     const rules = this.forwardRules.get(host) ?? [];

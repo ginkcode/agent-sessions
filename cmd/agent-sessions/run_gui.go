@@ -24,6 +24,7 @@ import (
 func run() {
 	application := app.NewApp()
 	app.SetNativePrint(nativePrinter())
+	app.SetNativeTerminalFonts(nativeTerminalFonts)
 
 	// The embedded FS is rooted at "dist"; the asset server expects
 	// index.html at the FS root, so serve the "dist" subtree.

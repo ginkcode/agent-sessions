@@ -8,6 +8,8 @@
   import { api } from '../../api';
   import { terminals, type PanelTab } from '../../stores/terminals.svelte';
   import { theme } from '../../stores/theme.svelte';
+  import { preferences } from '../../stores/preferences.svelte';
+  import { terminalFontFamily } from '../../terminalFont';
   import { terminalKeyAction, terminalTabShortcut, terminalTheme } from '../../terminal';
   import { copyToClipboard, readClipboard } from '../../portable';
   import { isMac } from '../../../main';
@@ -39,7 +41,7 @@
     let disposed = false;
     let cleanup = () => {};
     // Cells are measured when the terminal opens, so the font must be there.
-    const font = cssVar('--font-mono');
+    const font = terminalFontFamily(preferences.terminalFont, cssVar('--font-mono'));
     const ready = document.fonts?.load ? document.fonts.load(`13px ${font}`).catch(() => {}) : Promise.resolve();
     void ready.then(() => {
       if (disposed) return;
@@ -169,6 +171,20 @@
     const text = await readClipboard();
     if (text && tab.status === 'running') term?.paste(text);
   }
+
+  $effect(() => {
+    const font = terminalFontFamily(preferences.terminalFont, cssVar('--font-mono'));
+    const t = term;
+    if (!t || t.options.fontFamily === font) return;
+    let current = true;
+    const ready = document.fonts?.load ? document.fonts.load(`13px ${font}`).catch(() => {}) : Promise.resolve();
+    void ready.then(() => {
+      if (!current || term !== t) return;
+      t.options.fontFamily = font;
+      resize();
+    });
+    return () => { current = false; };
+  });
 
   $effect(() => {
     const resolved = theme.resolved;

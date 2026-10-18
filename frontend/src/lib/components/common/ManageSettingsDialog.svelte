@@ -1,4 +1,5 @@
 <script lang="ts">
+  import TerminalFontSetting from './TerminalFontSetting.svelte';
   import { manage, type SettingsSection } from '../../stores/manage.svelte';
   import { launcher } from '../../stores/launcher.svelte';
   import { terminals } from '../../stores/terminals.svelte';
@@ -250,6 +251,7 @@
                     Left, below the session list
                   </label>
                 </fieldset>
+                <TerminalFontSetting />
               {:else}
                 <p class="hint">Resume and "Continue in" → Open in terminal start the agent in a new window of this app.</p>
               {/if}

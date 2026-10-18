@@ -93,6 +93,7 @@ export interface BackendAPI {
   revealFile(dir: string, path: string): Promise<void>;
   copyFile(dir: string, path: string): Promise<void>;
   downloadFile(dir: string, path: string): Promise<string>;
+  terminalFonts(): Promise<string[]>;
   listPortForwards(): Promise<PortForwardState>;
   savePortForward(rule: PortForwardRequest): Promise<PortForwardState>;
   startPortForward(id: string): Promise<PortForwardState>;
@@ -177,6 +178,7 @@ interface WailsAppBinding {
   RevealFile(dir: string, path: string): Promise<void>;
   CopyFile(dir: string, path: string): Promise<void>;
   DownloadFile(dir: string, path: string): Promise<string>;
+  TerminalFonts(): Promise<string[]>;
   ListPortForwards(): Promise<PortForwardState>;
   SavePortForward(rule: PortForwardRequest): Promise<PortForwardState>;
   StartPortForward(id: string): Promise<PortForwardState>;
@@ -533,6 +535,10 @@ class WailsBackendAPI implements BackendAPI {
     }
   }
 
+  async terminalFonts(): Promise<string[]> {
+    try { return (await this.binding.TerminalFonts()) ?? []; } catch (e) { throw normalizeError(e); }
+  }
+
   async listPortForwards(): Promise<PortForwardState> {
     try { return await this.binding.ListPortForwards(); } catch (e) { throw normalizeError(e); }
   }
@@ -868,6 +874,7 @@ const UNGUARDED = new Set<string>([
   'appVersion',
   'launchInfo',
   'terminalSettings',
+  'terminalFonts',
   'setTerminal',
   'setTerminalOpen',
   // Panel terminals outlive a host switch: their input, output and shells

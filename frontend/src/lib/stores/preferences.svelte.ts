@@ -1,5 +1,8 @@
 import { isTranscriptMode, type TranscriptMode } from '../transcript';
 import { isTimeZoneMode, type TimeZoneMode } from '../date';
+import { isTerminalFont } from '../terminalFont';
+
+const TERMINAL_FONT_KEY = 'agent-sessions:terminal-font';
 
 const STORAGE_KEY = 'agent-sessions:pane-widths';
 const TIME_ZONE_KEY = 'agent-sessions:time-zone';
@@ -26,6 +29,7 @@ export class PreferencesStore {
   transcriptMode = $state<TranscriptMode>('activity');
   // Zone for message and session timestamps.
   timeZone = $state<TimeZoneMode>('utc');
+  terminalFont = $state('');
 
   init(): void {
     if (typeof localStorage === 'undefined') return;
@@ -59,6 +63,13 @@ export class PreferencesStore {
       // Storage disabled; keep UTC
     }
 
+    try {
+      const font = localStorage.getItem(TERMINAL_FONT_KEY);
+      if (isTerminalFont(font)) this.terminalFont = font;
+    } catch {
+      // Storage disabled; keep the app default.
+    }
+
     if (typeof window !== 'undefined') {
       window.addEventListener('resize', () => this.handleWindowResize());
       this.handleWindowResize();
@@ -84,6 +95,16 @@ export class PreferencesStore {
       localStorage.setItem(TRANSCRIPT_MODE_KEY, mode);
     } catch {
       // Storage quota or disabled
+    }
+  }
+
+  setTerminalFont(font: string): void {
+    if (!isTerminalFont(font)) return;
+    this.terminalFont = font;
+    try {
+      localStorage.setItem(TERMINAL_FONT_KEY, font);
+    } catch {
+      // Storage disabled; selection still applies for this run.
     }
   }
 
