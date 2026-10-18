@@ -152,6 +152,7 @@ async function loadFilesStore() {
     ["import { api } from '../api';", fixtureStore('api', '__storeFixture')],
     ["'../manage'", lib('../manage.ts')],
     ["'../link'", lib('../link.ts')],
+    ["'../files'", lib('../files.ts')],
   ]);
   return filesStoreModule;
 }
@@ -217,6 +218,18 @@ test('FilesStore: one click previews, double click keeps a tab, folders are reme
     store.reset();
     await store.show('/p');
     assert.equal(store.expanded.size, 0, 'another host forgets them');
+
+    store.setExpanded(new Set(['unrelated']));
+    store.openFile('docs/nested/formats.md', { keep: true });
+    assert.deepEqual([...store.expanded], ['unrelated', 'docs', 'docs/nested'], 'programmatic opens reveal every ancestor without collapsing other folders');
+    assert.equal(store.selected, 'docs/nested/formats.md');
+    store.setExpanded(new Set());
+    store.openFile('docs/nested/formats.md', { keep: true });
+    assert.deepEqual([...store.expanded], ['docs', 'docs/nested'], 'reopening an existing tab reveals its tree path');
+    store.setExpanded(new Set());
+    store.selectTab('a.ts');
+    store.selectTab('docs/nested/formats.md');
+    assert.deepEqual([...store.expanded], ['docs', 'docs/nested'], 'switching file tabs reveals the selected file');
   } finally {
     delete globalThis.__storeFixture;
   }

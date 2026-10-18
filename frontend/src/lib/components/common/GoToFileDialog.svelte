@@ -13,7 +13,6 @@
     searchFiles,
     folderStatus,
     lineMarks,
-    parentFolders,
     withDeleted,
     type FileTreeNode,
   } from '../../files';
@@ -200,9 +199,6 @@
   // One click shows the file in the preview tab, which the next file
   // replaces; a double click (or Enter in the search) keeps it in a tab.
   function pick(path: string, keep = false) {
-    // Show where the file is in the tree when the search is cleared.
-    const missing = parentFolders(path).filter((dir) => !files.expanded.has(dir));
-    if (missing.length) files.setExpanded(new Set([...files.expanded, ...missing]));
     // A deleted file has nothing on disk to read.
     files.openFile(path, { keep, read: fileStatus(path) !== 'D' });
   }

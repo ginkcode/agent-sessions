@@ -444,6 +444,13 @@ func (s *Server) dispatch(ctx context.Context, req Request) (any, error) {
 		}
 		return backend.ResolveFile(ctx, p.Dir, p.Path)
 
+	case "resolveTerminalFile":
+		var p ReadFileParams
+		if err := json.Unmarshal(req.Params, &p); err != nil {
+			return nil, &ResponseError{Code: CodeInvalidParams, Message: err.Error()}
+		}
+		return backend.ResolveTerminalFile(ctx, p.Dir, p.Path)
+
 	case "prepareFileDownload":
 		var p FileDownloadParams
 		if err := json.Unmarshal(req.Params, &p); err != nil {

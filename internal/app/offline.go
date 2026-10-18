@@ -75,6 +75,9 @@ func (b offlineBackend) ReadFile(context.Context, string, string) (files.Content
 func (b offlineBackend) ResolveFile(context.Context, string, string) (string, error) {
 	return "", b.err()
 }
+func (b offlineBackend) ResolveTerminalFile(context.Context, string, string) (files.TerminalFile, error) {
+	return files.TerminalFile{}, b.err()
+}
 func (b offlineBackend) PrepareFileDownload(context.Context, string, string, string) (files.Download, error) {
 	return files.Download{}, b.err()
 }

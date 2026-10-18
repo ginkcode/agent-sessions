@@ -668,12 +668,23 @@ export class MockBackendAPI {
     console.info('[MockAPI] revealSource:', ref);
   }
 
+  async resolveTerminalFile(dir: string, path: string): Promise<{ dir: string; path: string }> {
+    if (!dir) throw new Error('The terminal working directory is unknown.');
+    const root = dir.replace(/\\/g, '/').replace(/\/$/, '');
+    let relative = path.replace(/\\/g, '/');
+    if (relative.startsWith(root + '/')) relative = relative.slice(root.length + 1);
+    relative = relative.replace(/^\.\//, '');
+    const listing = await this.listFiles(root);
+    if (![...listing.files, ...(listing.ignored ?? [])].includes(relative)) throw new Error('File not found in an authorized project.');
+    return { dir: root, path: relative };
+  }
+
   async listFiles(dir: string): Promise<FileListing> {
     return {
       root: dir,
       git: true,
       files: [
-        '.gitignore', 'README.md', 'go.mod', 'main.go', 'internal/app/app.go', 'internal/app/app_test.go',
+        '.gitignore', 'README.md', 'Makefile', 'docs/formats.md', 'go.mod', 'main.go', 'internal/app/app.go', 'internal/app/app_test.go',
         'frontend/package.json', 'frontend/src/App.svelte', 'frontend/src/lib/api.ts', 'assets/logo.png',
         'frontend/src/lib/new.ts',
       ],

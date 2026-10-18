@@ -52,6 +52,19 @@ func TestRemoteDownloadFile(t *testing.T) {
 	}
 }
 
+func (s *stubRemoteBackend) ResolveTerminalFile(_ context.Context, dir, path string) (files.TerminalFile, error) {
+	return files.TerminalFile{Dir: dir, Path: path}, nil
+}
+
+func TestResolveTerminalFileRoutesToSelectedHost(t *testing.T) {
+	a := setupRemoteApp(&stubRemoteBackend{})
+	// These are opaque remote paths, not desktop filesystem paths.
+	got, err := a.ResolveTerminalFile(`C:\remote\project`, `sub\Makefile`)
+	if err != nil || got.Dir != `C:\remote\project` || got.Path != `sub\Makefile` {
+		t.Fatalf("remote resolution: %+v %v", got, err)
+	}
+}
+
 func TestRemoteNativeFileActionsRejected(t *testing.T) {
 	a := setupRemoteApp(&stubRemoteBackend{})
 	if err := a.CopyFile("/project", "file"); err == nil {

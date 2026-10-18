@@ -2,6 +2,7 @@ import { api } from '../api';
 import type { FileContent, FileListing } from '../types';
 import { errorText } from '../manage';
 import { isStaleReply } from '../link';
+import { parentFolders } from '../files';
 
 /**
  * State of the Go to File dialog: the directory it browses, its file list,
@@ -126,6 +127,7 @@ export class FilesStore {
    */
   openFile(path: string, opts: { keep?: boolean; read?: boolean } = {}): void {
     if (!this.dir) return;
+    this.revealPath(path);
     const keep = opts.keep ?? false;
     const existing = this.tabs.find((t) => t.path === path);
     if (existing) {
@@ -158,8 +160,16 @@ export class FilesStore {
     if (tab) tab.preview = false;
   }
 
+  private revealPath(path: string): void {
+    const missing = parentFolders(path).filter((dir) => !this.expanded.has(dir));
+    if (missing.length) this.expanded = new Set([...this.expanded, ...missing]);
+  }
+
   selectTab(path: string): void {
-    if (this.tabs.some((t) => t.path === path)) this.selected = path;
+    if (this.tabs.some((t) => t.path === path)) {
+      this.revealPath(path);
+      this.selected = path;
+    }
   }
 
   /** Closes a tab; closing the one shown shows its neighbour. */

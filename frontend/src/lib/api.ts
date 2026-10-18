@@ -1,4 +1,5 @@
 import type { PortForwardRequest, PortForwardState } from './portForward';
+import type { TerminalFileTarget } from './terminalFileOpen';
 import type {
   GroupMode,
   FilterOpts,
@@ -87,6 +88,7 @@ export interface BackendAPI {
   setTerminalOpen(mode: TerminalOpenMode): Promise<LaunchInfo>;
   revealSource(ref: SessionRef): Promise<void>;
   /** Lists the files of a session directory on the selected host. */
+  resolveTerminalFile(dir: string, path: string): Promise<TerminalFileTarget>;
   listFiles(dir: string): Promise<FileListing>;
   /** Reads one file, path relative to dir, on the selected host. */
   readFile(dir: string, path: string): Promise<FileContent>;
@@ -173,6 +175,7 @@ interface WailsAppBinding {
   TerminalDropFiles(id: string, paths: string[]): Promise<string[]>;
   SetTerminalOpen(mode: string): Promise<LaunchInfo>;
   RevealSource(ref: SessionRef): Promise<void>;
+  ResolveTerminalFile(dir: string, path: string): Promise<TerminalFileTarget>;
   ListFiles(dir: string): Promise<FileListing>;
   ReadFile(dir: string, path: string): Promise<FileContent>;
   RevealFile(dir: string, path: string): Promise<void>;
@@ -493,6 +496,10 @@ class WailsBackendAPI implements BackendAPI {
     } catch (e) {
       throw normalizeError(e);
     }
+  }
+
+  async resolveTerminalFile(dir: string, path: string): Promise<TerminalFileTarget> {
+    try { return await this.binding.ResolveTerminalFile(dir, path); } catch (e) { throw normalizeError(e); }
   }
 
   async listFiles(dir: string): Promise<FileListing> {

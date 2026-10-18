@@ -49,6 +49,18 @@ other machines over SSH or in WSL distributions.
   redaction. It is delivered as a file the new agent reads, then waits for
   you.
 
+**Terminal file links**
+
+- In the built-in terminal, Cmd+click (macOS) or Ctrl+click (Linux/Windows)
+  a file path to open it in Go to File. This includes extensionless names
+  such as `Makefile` and paths in Git status output.
+- Files must be inside a project already known to the session catalog. Select
+  and connect to the terminal's host before opening its files.
+- Relative paths use the current directory when the shell emits OSC 7 directory
+  notifications; otherwise they use the terminal's starting directory. After
+  `cd`, that fallback may be inaccurate. Links in older output also use the
+  latest reported directory. Absolute paths avoid this ambiguity.
+
 **Share**
 
 - Export a session as a `.agent-session.zip` bundle. *Complete* bundles keep

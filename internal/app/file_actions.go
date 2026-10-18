@@ -11,10 +11,18 @@ import (
 	"runtime"
 	"strings"
 
+	"github.com/ginkcode/agent-sessions/internal/files"
 	"github.com/ginkcode/agent-sessions/internal/remote"
 	"github.com/ginkcode/agent-sessions/internal/rpc"
 	wruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
+
+// ResolveTerminalFile resolves a clicked terminal path on the selected host.
+// Resolution and catalog authorization deliberately happen on the backend, so
+// remote paths are never interpreted using the desktop host's path semantics.
+func (a *App) ResolveTerminalFile(dir, path string) (files.TerminalFile, error) {
+	return a.route().backend.ResolveTerminalFile(a.appCtx(), dir, path)
+}
 
 // RevealFile selects a local project file or folder in the native file manager.
 func (a *App) RevealFile(dir, path string) error {

@@ -14,6 +14,12 @@
   import { copyToClipboard, readClipboard } from '../../portable';
   import { isMac } from '../../../main';
   import { onSplitterDragEnd, splitterDragging } from '../../splitterDrag';
+  import { installTerminalFileLinks } from '../../terminalFileLinks';
+  import { createTerminalFileOpener } from '../../terminalFileOpen';
+  import { files } from '../../stores/files.svelte';
+  import { link } from '../../stores/link.svelte';
+  import { epoch, isStaleReply } from '../../link';
+  import { toast } from '../../stores/toast.svelte';
 
   interface Props {
     tab: PanelTab;
@@ -92,6 +98,19 @@
     term = t;
     fit = f;
 
+    const opener = createTerminalFileOpener({
+      link: () => link,
+      epoch,
+      resolve: (cwd, path) => api.resolveTerminalFile(cwd, path),
+      files,
+      report: (body) => toast.show({ title: 'Could not open terminal file', body, tone: 'error' }),
+      isStale: isStaleReply,
+    });
+    const fileLinks = installTerminalFileLinks(t, {
+      isMac,
+      cwd: tab.dir,
+      onOpen: (path, cwd) => { void opener.open(tab.host, path, cwd); },
+    });
     const id = tab.id;
     const input = t.onData((data) => {
       if (tab.status === 'running') terminals.write(id, data);
@@ -121,6 +140,8 @@
       observer.disconnect();
       offDragEnd();
       input.dispose();
+      fileLinks.dispose();
+      opener.dispose();
       detach();
       t.dispose();
       term = null;
