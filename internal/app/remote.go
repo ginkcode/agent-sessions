@@ -108,7 +108,8 @@ type connection struct {
 	stopMaster  masterStopper
 	// busy reports whether a built-in terminal tab still uses a host's ssh
 	// master; its master is then left to ControlPersist.
-	busy func(host string) bool
+	busy     func(host string) bool
+	forwards *portForwards
 }
 
 // masterStopper closes the shared ssh connection (ControlMaster) for a host
@@ -219,6 +220,9 @@ func (c *connection) setEmitter(e engine.Emitter) {
 
 func (c *connection) emit() {
 	c.mu.Lock()
+	if c.forwards != nil {
+		c.forwards.sync(c.state, c.opts)
+	}
 	e := c.emitter
 	st := c.state
 	c.mu.Unlock()
@@ -471,6 +475,9 @@ func (c *connection) releaseHost(alias string, opts remote.SSHOptions) {
 func (c *connection) Shutdown() {
 	c.mu.Lock()
 	c.stopped = true
+	if c.forwards != nil {
+		c.forwards.sync(ConnectionState{Phase: ConnLocal}, c.opts)
+	}
 	prevHost := c.wantHost
 	opts := c.opts
 	c.wantHost = ""
@@ -487,6 +494,11 @@ func (c *connection) Shutdown() {
 }
 
 func (c *connection) closeLocked() {
+	if c.forwards != nil {
+		st := c.state
+		st.Phase = ConnDisconnected
+		c.forwards.sync(st, c.opts)
+	}
 	if c.cancel != nil {
 		c.cancel()
 		c.cancel = nil

@@ -1,3 +1,4 @@
+import { validatePortForward, type PortForwardRequest, type PortForwardState, type PortForwardRule } from '../portForward';
 import type {
   GroupMode,
   FilterOpts,
@@ -709,6 +710,47 @@ export class MockBackendAPI {
       ? `package main\n\nimport "fmt"\n\n// main prints a greeting from ${dir}.\nfunc main() {\n\tfmt.Println("hello")\n}\n`
       : `// ${path}\nexport const answer = 42;\n`;
     return { path, size: text.length, text };
+  }
+
+  private forwardRules = new Map<string, PortForwardRule[]>();
+  private nextForward = 0;
+
+  async listPortForwards(): Promise<PortForwardState> {
+    const host = this.connState.host ?? '';
+    const rules = this.forwardRules.get(host) ?? [];
+    return { host, rules: rules.map(r => ({ ...r, status: this.connState.phase === 'connected' ? r.status : 'disconnected' })) };
+  }
+
+  async savePortForward(rule: PortForwardRequest): Promise<PortForwardState> {
+    const error = validatePortForward(rule);
+    if (error) throw new Error(error);
+    const { host } = await this.listPortForwards();
+    if (!host || wslDistro(host)) throw new Error('Select an SSH host.');
+    const rules = this.forwardRules.get(host) ?? [];
+    if (rules.some(r => r.id !== rule.id && r.localPort === rule.localPort)) throw new Error('Local port is already configured.');
+    const next: PortForwardRule = { ...rule, id: rule.id || `forward-${++this.nextForward}`, status: 'stopped' };
+    this.forwardRules.set(host, [...rules.filter(r => r.id !== next.id), next]);
+    return this.listPortForwards();
+  }
+
+  async startPortForward(id: string): Promise<PortForwardState> {
+    const rules = this.forwardRules.get(this.connState.host ?? '') ?? [];
+    const rule = rules.find(r => r.id === id);
+    if (rule) rule.status = 'active';
+    return this.listPortForwards();
+  }
+
+  async stopPortForward(id: string): Promise<PortForwardState> {
+    const rules = this.forwardRules.get(this.connState.host ?? '') ?? [];
+    const rule = rules.find(r => r.id === id);
+    if (rule) rule.status = 'stopped';
+    return this.listPortForwards();
+  }
+
+  async removePortForward(id: string): Promise<PortForwardState> {
+    const host = this.connState.host ?? '';
+    this.forwardRules.set(host, (this.forwardRules.get(host) ?? []).filter(r => r.id !== id));
+    return this.listPortForwards();
   }
 
   async getDiagnostics(): Promise<Diagnostics> {

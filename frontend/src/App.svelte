@@ -1,5 +1,8 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import PortForwardDialog from './lib/components/common/PortForwardDialog.svelte';
+  import { portForward } from './lib/stores/portForward.svelte';
+  import { wslDistro } from './lib/hosts';
   import { isFullscreenShortcut, toggleFullscreen, preventDesktopEscapeFullscreen } from './lib/fullscreen';
   import { toast } from './lib/stores/toast.svelte';
   import Splitter from './lib/components/common/Splitter.svelte';
@@ -52,6 +55,18 @@
   let stale = $derived(link.stale || link.locked);
   // A new shell starts in the shown session's directory.
   let shellCwd = $derived(appState.selectedSessionMeta?.cwd ?? '');
+
+  $effect(() => {
+    const host = connectionStore.host;
+    void connectionStore.phase;
+    if (!host || wslDistro(host)) {
+      portForward.data = { host: '', rules: [] };
+      return;
+    }
+    void portForward.refresh();
+    const timer = setInterval(() => void portForward.refresh(), 2000);
+    return () => clearInterval(timer);
+  });
 
   onMount(() => {
     theme.init();
@@ -323,6 +338,21 @@
         {/if}
         <button
           type="button"
+          class="icon-button forwarding-button"
+          title="Port forwarding"
+          aria-label="Port forwarding"
+          disabled={!connectionStore.host || Boolean(wslDistro(connectionStore.host))}
+          onclick={() => void portForward.show()}
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="4" width="7" height="6" rx="1" /><rect x="15" y="14" width="7" height="6" rx="1" /><path d="M5 10v7h7m-2-3 3 3-3 3M19 14V7h-7m2-3-3 3 3 3" /></svg>
+          {#if portForward.data.host === connectionStore.host}
+            {@const activeCount = portForward.data.rules.filter(r => r.status === 'active').length}
+            {#if activeCount}<span class="forward-count">{activeCount}</span>{/if}
+            {#if portForward.data.rules.some(r => r.status === 'failed')}<span class="forward-error" aria-label="A forwarding rule failed">!</span>{/if}
+          {/if}
+        </button>
+        <button
+          type="button"
           class="icon-button import-button"
           title="Import session bundle into a directory"
           aria-label="Import session bundle into a directory"
@@ -416,6 +446,7 @@
   <ManageSettingsDialog />
   <GlobalSearchDialog />
   <GoToFileDialog />
+  <PortForwardDialog />
   <HandoffDialog />
   <ExportDialog />
   <ImportDialog />
@@ -630,6 +661,11 @@
     align-items: center;
     gap: 6px;
   }
+
+  .forwarding-button { position: relative; }
+  .forwarding-button:disabled { opacity: 0.4; cursor: default; }
+  .forward-count, .forward-error { position: absolute; right: -3px; top: -4px; min-width: 12px; height: 12px; border-radius: 8px; font-size: 9px; line-height: 12px; background: var(--accent-color); color: white; }
+  .forward-error { background: var(--danger, #ef4444); left: -3px; right: auto; }
 
   .footer-actions {
     display: flex;

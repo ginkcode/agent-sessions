@@ -1,3 +1,4 @@
+import type { PortForwardRequest, PortForwardState } from './portForward';
 import type {
   GroupMode,
   FilterOpts,
@@ -92,6 +93,11 @@ export interface BackendAPI {
   revealFile(dir: string, path: string): Promise<void>;
   copyFile(dir: string, path: string): Promise<void>;
   downloadFile(dir: string, path: string): Promise<string>;
+  listPortForwards(): Promise<PortForwardState>;
+  savePortForward(rule: PortForwardRequest): Promise<PortForwardState>;
+  startPortForward(id: string): Promise<PortForwardState>;
+  stopPortForward(id: string): Promise<PortForwardState>;
+  removePortForward(id: string): Promise<PortForwardState>;
   getDiagnostics(): Promise<Diagnostics>;
   openURL(url: string): Promise<void>;
   appVersion(): Promise<string>;
@@ -171,6 +177,11 @@ interface WailsAppBinding {
   RevealFile(dir: string, path: string): Promise<void>;
   CopyFile(dir: string, path: string): Promise<void>;
   DownloadFile(dir: string, path: string): Promise<string>;
+  ListPortForwards(): Promise<PortForwardState>;
+  SavePortForward(rule: PortForwardRequest): Promise<PortForwardState>;
+  StartPortForward(id: string): Promise<PortForwardState>;
+  StopPortForward(id: string): Promise<PortForwardState>;
+  RemovePortForward(id: string): Promise<PortForwardState>;
   Diagnostics(): Promise<Diagnostics>;
   OpenURL(url: string): Promise<void>;
   AppVersion(): Promise<string>;
@@ -522,6 +533,26 @@ class WailsBackendAPI implements BackendAPI {
     }
   }
 
+  async listPortForwards(): Promise<PortForwardState> {
+    try { return await this.binding.ListPortForwards(); } catch (e) { throw normalizeError(e); }
+  }
+
+  async savePortForward(rule: PortForwardRequest): Promise<PortForwardState> {
+    try { return await this.binding.SavePortForward(rule); } catch (e) { throw normalizeError(e); }
+  }
+
+  async startPortForward(id: string): Promise<PortForwardState> {
+    try { return await this.binding.StartPortForward(id); } catch (e) { throw normalizeError(e); }
+  }
+
+  async stopPortForward(id: string): Promise<PortForwardState> {
+    try { return await this.binding.StopPortForward(id); } catch (e) { throw normalizeError(e); }
+  }
+
+  async removePortForward(id: string): Promise<PortForwardState> {
+    try { return await this.binding.RemovePortForward(id); } catch (e) { throw normalizeError(e); }
+  }
+
   async getDiagnostics(): Promise<Diagnostics> {
     try {
       return await this.binding.Diagnostics();
@@ -854,6 +885,11 @@ const UNGUARDED = new Set<string>([
   // Images are saved, and pages printed, on this computer too.
   'saveImage',
   'printWindow',
+  'listPortForwards',
+  'savePortForward',
+  'startPortForward',
+  'stopPortForward',
+  'removePortForward',
   'listHosts',
   'listWSLDistros',
   'connect',

@@ -2,6 +2,7 @@ package app
 
 import (
 	"errors"
+	"path/filepath"
 
 	"github.com/ginkcode/agent-sessions/internal/remote"
 )
@@ -85,5 +86,16 @@ func (a *App) ensureConn() {
 	defer a.backendMu.Unlock()
 	if a.conn == nil {
 		a.conn = newConnection(a.wailsEvents)
+	}
+	if a.conn.forwards == nil {
+		path, err := a.localConfigPath()
+		p := newPortForwards(filepath.Join(filepath.Dir(path), "port-forwards.json"))
+		if err != nil {
+			p.loadErr = err
+		}
+		a.conn.mu.Lock()
+		p.sync(a.conn.state, a.conn.opts)
+		a.conn.forwards = p
+		a.conn.mu.Unlock()
 	}
 }
