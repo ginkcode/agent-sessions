@@ -172,6 +172,16 @@ make help            # every target
 Frontend checks run from `frontend/`: `npm test`, `npm run check` and
 `npm run build`.
 
+### File icon credits
+
+Go to File uses [vscode-icons](https://github.com/vscode-icons/vscode-icons)
+v13.0.0, copyright the vscode-icons contributors. The icons are copied unchanged
+and licensed under [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/);
+branded icons remain subject to their owners' licences. See
+[`frontend/public/file-icons/LICENSE.md`](frontend/public/file-icons/LICENSE.md).
+To regenerate the local icons and filename mappings, run
+`node scripts/file-icons.mjs` from `frontend/` (requires `unzip` and network access).
+
 ## Release
 
 Pushing a `v<version>` tag runs `.github/workflows/release.yml`: it tests,

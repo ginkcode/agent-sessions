@@ -20,6 +20,7 @@
   import type { GitStatus } from '../../types';
   import { directoryName } from '../../tree';
   import LoadingSpinner from './LoadingSpinner.svelte';
+  import FileIcon from './FileIcon.svelte';
 
   // Files larger than this are shown without highlighting, which is slow on
   // very long text.
@@ -229,6 +230,7 @@
           onclick={() => toggle(node.path)}
         >
           <span class="chevron" class:open={files.expanded.has(node.path)}>▸</span>
+          <FileIcon path={node.path} folder expanded={files.expanded.has(node.path)} />
           <span class="tree-name git-{folders.get(node.path) ?? 'none'}">{node.name}</span>
           {#if folders.has(node.path)}
             <span class="git-dot git-{folders.get(node.path)}" title="Holds changed files">●</span>
@@ -251,6 +253,7 @@
           onclick={() => pick(node.path)}
           ondblclick={() => pick(node.path, true)}
         >
+          <FileIcon path={node.path} />
           <span class="tree-name git-{st ?? 'none'}">{node.name}</span>
           {#if st}<span class="git-letter git-{st}">{st}</span>{/if}
         </button>
@@ -331,6 +334,7 @@
                       onmousemove={() => (activeIndex = i)}
                       onkeydown={() => {}}
                     >
+                      <FileIcon {path} />
                       <span class="match-name git-{st ?? 'none'}">{parts.name}</span>
                       {#if parts.dir}<span class="match-dir">{parts.dir}</span>{/if}
                       {#if st}<span class="git-letter git-{st}" title={STATUS_LABELS[st]}>{st}</span>{/if}
@@ -396,6 +400,7 @@
                     }
                   }}
                 >
+                  <FileIcon path={tab.path} />
                   <span class="tab-name git-{st ?? 'none'}">{splitPath(tab.path).name}</span>
                   <button
                     type="button"
@@ -815,7 +820,7 @@
 
   .match {
     display: flex;
-    align-items: baseline;
+    align-items: center;
     gap: 8px;
     padding: 5px 8px;
     border-radius: 4px;
