@@ -244,6 +244,8 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 4px 24px;
     padding: 6px 12px;
     background-color: var(--bg-secondary);
     font-size: 11.52px;
