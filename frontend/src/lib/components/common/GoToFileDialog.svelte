@@ -30,6 +30,9 @@
   // very long text.
   const HIGHLIGHT_LIMIT = 500_000;
 
+  let presentation = $state(false);
+  let presentationFontSize = $state(20);
+
   let query = $state('');
   let activeIndex = $state(0);
   let input: HTMLInputElement | undefined = $state();
@@ -173,6 +176,7 @@
   });
 
   function close() {
+    presentation = false;
     context = null;
     files.close();
   }
@@ -340,7 +344,8 @@
     if (files.open && e.key === 'Escape' && !e.defaultPrevented) {
       e.preventDefault();
       e.stopPropagation();
-      close();
+      if (presentation) presentation = false;
+      else close();
     } else if (files.open && isWrapShortcut(e)) {
       e.preventDefault();
       files.toggleWrap();
@@ -354,7 +359,7 @@
     {#if context}
       <ContextMenu x={context.x} y={context.y} items={contextItems} ariaLabel="File actions" onClose={() => (context = null)} />
     {/if}
-    <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="goto-file-title">
+    <div class="dialog" class:presentation role="dialog" aria-modal="true" aria-labelledby="goto-file-title">
       <header class="dialog-header">
         <h2 id="goto-file-title">Go to File</h2>
         <span class="root" title={files.dir}>{directoryName(files.dir ?? '')}</span>
@@ -549,6 +554,28 @@
                   {COPY_LABELS[copyState]}
                 </button>
               {/if}
+              {#if presentation}
+                <button type="button" class="copy-btn" aria-label="Decrease presentation font size" title="Decrease font size" disabled={presentationFontSize <= 12} onclick={() => (presentationFontSize -= 2)}>−</button>
+                <span class="font-size" aria-live="polite">{presentationFontSize}px</span>
+                <button type="button" class="copy-btn" aria-label="Increase presentation font size" title="Increase font size" disabled={presentationFontSize >= 48} onclick={() => (presentationFontSize += 2)}>+</button>
+              {/if}
+              <button
+                type="button"
+                class="copy-btn presentation-btn"
+                class:on={presentation}
+                aria-pressed={presentation}
+                aria-label={presentation ? 'Exit presentation mode' : 'Presentation mode'}
+                title={presentation ? 'Exit presentation mode (Escape)' : 'Presentation mode'}
+                onclick={() => (presentation = !presentation)}
+              >
+                <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+                  {#if presentation}
+                    <path d="M1 5h4V1m10 4h-4V1M1 11h4v4m10-4h-4v4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" />
+                  {:else}
+                    <path d="M6 2H2v4m8-4h4v4M2 10v4h4m8-4v4h-4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" />
+                  {/if}
+                </svg>
+              </button>
             </div>
             {#if fileStatus(files.selected) === 'D'}
               <div class="state center">This file was deleted since the last commit.</div>
@@ -572,7 +599,7 @@
                   if (files.selected) scrollTops.set(files.selected, e.currentTarget.scrollTop);
                 }}
               >
-                <div class="code source" class:wrap={files.wrap} class:diff={showDiff}>
+                <div class="code source" class:wrap={files.wrap} class:diff={showDiff} style:font-size={presentation ? `${presentationFontSize}px` : undefined}>
                   {#if showDiff}
                     {#each rows as row, r (r)}
                       {#if row.kind === 'removed'}
@@ -634,6 +661,24 @@
     flex-direction: column;
     color: var(--text-primary);
     overflow: hidden;
+  }
+
+  .presentation .picker,
+  .presentation .tab-bar,
+  .presentation .dialog-header {
+    display: none;
+  }
+
+  .presentation-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .font-size {
+    flex-shrink: 0;
+    color: var(--text-muted);
+    font-variant-numeric: tabular-nums;
   }
 
   .dialog-header {
