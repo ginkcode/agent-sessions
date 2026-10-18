@@ -131,6 +131,13 @@ func (m *mockBackend) ReadFile(ctx context.Context, dir, path string) (files.Con
 	return files.Content{Path: path, Text: "package main\n"}, nil
 }
 
+func (m *mockBackend) ResolveFile(ctx context.Context, dir, path string) (string, error) {
+	return dir + "/" + path, nil
+}
+func (m *mockBackend) PrepareFileDownload(ctx context.Context, dir, path, token string) (files.Download, error) {
+	return files.Download{Name: path, Token: token}, nil
+}
+
 func (m *mockBackend) Diagnostics(ctx context.Context) (provider.Diagnostics, error) {
 	return provider.Diagnostics{}, nil
 }

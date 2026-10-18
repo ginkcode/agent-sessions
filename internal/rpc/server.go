@@ -437,6 +437,20 @@ func (s *Server) dispatch(ctx context.Context, req Request) (any, error) {
 		}
 		return backend.ReadFile(ctx, p.Dir, p.Path)
 
+	case "resolveFile":
+		var p ReadFileParams
+		if err := json.Unmarshal(req.Params, &p); err != nil {
+			return nil, &ResponseError{Code: CodeInvalidParams, Message: err.Error()}
+		}
+		return backend.ResolveFile(ctx, p.Dir, p.Path)
+
+	case "prepareFileDownload":
+		var p FileDownloadParams
+		if err := json.Unmarshal(req.Params, &p); err != nil {
+			return nil, &ResponseError{Code: CodeInvalidParams, Message: err.Error()}
+		}
+		return backend.PrepareFileDownload(ctx, p.Dir, p.Path, p.Token)
+
 	case "getSettings":
 		return backend.GetSettings(ctx)
 

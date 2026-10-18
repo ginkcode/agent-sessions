@@ -72,6 +72,13 @@ func (b offlineBackend) ReadFile(context.Context, string, string) (files.Content
 	return files.Content{}, b.err()
 }
 
+func (b offlineBackend) ResolveFile(context.Context, string, string) (string, error) {
+	return "", b.err()
+}
+func (b offlineBackend) PrepareFileDownload(context.Context, string, string, string) (files.Download, error) {
+	return files.Download{}, b.err()
+}
+
 func (b offlineBackend) Diagnostics(context.Context) (provider.Diagnostics, error) {
 	return provider.Diagnostics{}, b.err()
 }

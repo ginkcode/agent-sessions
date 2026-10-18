@@ -21,6 +21,10 @@
   import { directoryName } from '../../tree';
   import LoadingSpinner from './LoadingSpinner.svelte';
   import FileIcon from './FileIcon.svelte';
+  import ContextMenu, { type ContextMenuItem } from './ContextMenu.svelte';
+  import { api } from '../../api';
+  import { toast } from '../../stores/toast.svelte';
+  import { absoluteFilePath } from '../../fileActions';
 
   // Files larger than this are shown without highlighting, which is slow on
   // very long text.
@@ -104,7 +108,72 @@
     wasOpen = open;
   });
 
+  let context = $state<{ path: string; directory: boolean; x: number; y: number } | null>(null);
+  let actionBusy = $state(false);
+
+  $effect(() => {
+    void files.dir;
+    void files.open;
+    void link.dataHost;
+    context = null;
+  });
+
+  function openContext(e: MouseEvent, path: string, directory: boolean) {
+    e.preventDefault();
+    e.stopPropagation();
+    context = { path, directory, x: e.clientX, y: e.clientY };
+  }
+
+  async function fileAction(action: 'reveal' | 'copy' | 'download' | 'absolute' | 'relative', path: string) {
+    const dir = files.dir;
+    if (!dir || actionBusy) return;
+    if (action !== 'absolute' && action !== 'relative' && link.blockedReason) {
+      toast.show({ title: 'File action unavailable', body: link.blockedReason, tone: 'error' });
+      return;
+    }
+    actionBusy = true;
+    try {
+      if (action === 'absolute' || action === 'relative') {
+        const value = action === 'absolute' ? absoluteFilePath(dir, path) : path;
+        if (!await copyToClipboard(value)) throw new Error('Could not write to the clipboard.');
+        toast.show({ title: 'Path copied', body: value });
+      } else if (action === 'reveal') {
+        await api.revealFile(dir, path);
+      } else if (action === 'copy') {
+        await api.copyFile(dir, path);
+        toast.show({ title: 'Copied', body: `${path} is ready to paste in your file manager.` });
+      } else {
+        const saved = await api.downloadFile(dir, path);
+        if (saved) toast.show({ title: 'Downloaded', body: saved });
+      }
+    } catch (err) {
+      toast.show({ title: 'File action failed', body: err instanceof Error ? err.message : String(err), tone: 'error' });
+    } finally {
+      actionBusy = false;
+    }
+  }
+
+  let contextItems = $derived.by((): ContextMenuItem[] => {
+    if (!context) return [];
+    const { path, directory } = context;
+    const remote = Boolean(link.dataHost);
+    const disabled = actionBusy || link.locked || fileStatus(path) === 'D';
+    const items: ContextMenuItem[] = [];
+    if (!remote) items.push({ label: 'Reveal', disabled, onSelect: () => void fileAction('reveal', path) });
+    items.push({
+      label: remote ? 'Download' : 'Copy', disabled,
+      title: remote && directory ? 'Download this directory as a ZIP archive' : undefined,
+      onSelect: () => void fileAction(remote ? 'download' : 'copy', path),
+    });
+    items.push(
+      { label: 'Copy Path', disabled: actionBusy, onSelect: () => void fileAction('absolute', path) },
+      { label: 'Copy Relative Path', disabled: actionBusy, onSelect: () => void fileAction('relative', path) },
+    );
+    return items;
+  });
+
   function close() {
+    context = null;
     files.close();
   }
 
@@ -228,6 +297,7 @@
           style:padding-left="{8 + depth * 14}px"
           aria-expanded={files.expanded.has(node.path)}
           onclick={() => toggle(node.path)}
+          oncontextmenu={(e) => openContext(e, node.path, true)}
         >
           <span class="chevron" class:open={files.expanded.has(node.path)}>▸</span>
           <FileIcon path={node.path} folder expanded={files.expanded.has(node.path)} />
@@ -252,6 +322,7 @@
           title={st ? `${node.path} · ${STATUS_LABELS[st]}` : node.path}
           onclick={() => pick(node.path)}
           ondblclick={() => pick(node.path, true)}
+          oncontextmenu={(e) => openContext(e, node.path, false)}
         >
           <FileIcon path={node.path} />
           <span class="tree-name git-{st ?? 'none'}">{node.name}</span>
@@ -280,6 +351,9 @@
 {#if files.open}
   <!-- Clicking outside leaves the dialog open; Escape or × closes it. -->
   <div class="dialog-backdrop" role="presentation">
+    {#if context}
+      <ContextMenu x={context.x} y={context.y} items={contextItems} ariaLabel="File actions" onClose={() => (context = null)} />
+    {/if}
     <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="goto-file-title">
       <header class="dialog-header">
         <h2 id="goto-file-title">Go to File</h2>
@@ -331,6 +405,7 @@
                       title={ignored.has(path) ? `${path} · Ignored by .gitignore` : path}
                       onclick={() => pick(path)}
                       ondblclick={() => pick(path, true)}
+                      oncontextmenu={(e) => openContext(e, path, false)}
                       onmousemove={() => (activeIndex = i)}
                       onkeydown={() => {}}
                     >

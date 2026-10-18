@@ -89,6 +89,9 @@ export interface BackendAPI {
   listFiles(dir: string): Promise<FileListing>;
   /** Reads one file, path relative to dir, on the selected host. */
   readFile(dir: string, path: string): Promise<FileContent>;
+  revealFile(dir: string, path: string): Promise<void>;
+  copyFile(dir: string, path: string): Promise<void>;
+  downloadFile(dir: string, path: string): Promise<string>;
   getDiagnostics(): Promise<Diagnostics>;
   openURL(url: string): Promise<void>;
   appVersion(): Promise<string>;
@@ -165,6 +168,9 @@ interface WailsAppBinding {
   RevealSource(ref: SessionRef): Promise<void>;
   ListFiles(dir: string): Promise<FileListing>;
   ReadFile(dir: string, path: string): Promise<FileContent>;
+  RevealFile(dir: string, path: string): Promise<void>;
+  CopyFile(dir: string, path: string): Promise<void>;
+  DownloadFile(dir: string, path: string): Promise<string>;
   Diagnostics(): Promise<Diagnostics>;
   OpenURL(url: string): Promise<void>;
   AppVersion(): Promise<string>;
@@ -487,6 +493,30 @@ class WailsBackendAPI implements BackendAPI {
   async readFile(dir: string, path: string): Promise<FileContent> {
     try {
       return await this.binding.ReadFile(dir, path);
+    } catch (e) {
+      throw normalizeError(e);
+    }
+  }
+
+  async revealFile(dir: string, path: string): Promise<void> {
+    try {
+      await this.binding.RevealFile(dir, path);
+    } catch (e) {
+      throw normalizeError(e);
+    }
+  }
+
+  async copyFile(dir: string, path: string): Promise<void> {
+    try {
+      await this.binding.CopyFile(dir, path);
+    } catch (e) {
+      throw normalizeError(e);
+    }
+  }
+
+  async downloadFile(dir: string, path: string): Promise<string> {
+    try {
+      return await this.binding.DownloadFile(dir, path);
     } catch (e) {
       throw normalizeError(e);
     }

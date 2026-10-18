@@ -648,6 +648,21 @@ export class MockBackendAPI {
     return this.launchInfo();
   }
 
+  async revealFile(dir: string, path: string): Promise<void> {
+    console.info('[MockAPI] revealFile:', dir, path);
+  }
+
+  async copyFile(dir: string, path: string): Promise<void> {
+    console.info('[MockAPI] copyFile:', dir, path);
+  }
+
+  async downloadFile(dir: string, path: string): Promise<string> {
+    console.info('[MockAPI] downloadFile:', dir, path);
+    const name = path.split('/').pop();
+    const directory = ['frontend', 'frontend/src', 'frontend/src/lib', 'internal', 'assets'].includes(path);
+    return `/Downloads/${name}${directory ? '.zip' : ''}`;
+  }
+
   async revealSource(ref: SessionRef): Promise<void> {
     console.info('[MockAPI] revealSource:', ref);
   }
