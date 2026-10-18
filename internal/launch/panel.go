@@ -23,16 +23,18 @@ func PanelArgv(cmd provider.Command) ([]string, error) {
 }
 
 // PanelShellArgv returns the plain shell a panel tab runs on this computer:
-// the user's login shell, or Windows PowerShell.
+// the user's shell with ephemeral prompt-time OSC7 cwd reporting, or Windows
+// PowerShell with its profile's prompt wrapped. Unknown POSIX shells fall back
+// to an unmodified login shell.
 func PanelShellArgv() ([]string, error) {
 	if runtime.GOOS == "windows" {
 		ps, err := windowsPowerShell()
 		if err != nil {
 			return nil, err
 		}
-		return []string{ps, "-NoLogo"}, nil
+		return []string{ps, "-NoLogo", "-NoExit", "-Command", panelPowerShellHook}, nil
 	}
-	return []string{loginShell(runtime.GOOS, os.Getenv), "-l"}, nil
+	return []string{"/bin/sh", "-c", panelPosixShellScript(ShellEscape(loginShell(runtime.GOOS, os.Getenv)))}, nil
 }
 
 func posixPanelArgv(cmd provider.Command, find func(string) (Executable, error)) ([]string, error) {
@@ -60,7 +62,7 @@ const powerShellExitStatus = "; $ok = $?; if ($LASTEXITCODE) { exit $LASTEXITCOD
 // runs: it enters dir when there is one and it exists, then becomes the
 // user's login shell.
 func PanelShellScript(dir string) string {
-	script := `exec "${SHELL:-/bin/sh}" -l` + "\n"
+	script := panelPosixShellScript(`"${SHELL:-/bin/sh}"`)
 	if dir != "" {
 		script = "cd -- " + ShellEscape(dir) + " 2>/dev/null\n" + script
 	}

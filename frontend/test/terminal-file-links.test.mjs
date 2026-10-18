@@ -77,7 +77,14 @@ function mockTerminal(rows, cols = 80) {
       },
     };
   });
+  const markers = [];
+  let cursor = 0;
   const terminal = {
+    registerMarker() {
+      const marker = { line: cursor, isDisposed: false, dispose() { this.isDisposed = true; } };
+      markers.push(marker);
+      return marker;
+    },
     element: { title: 'original title' },
     buffer: { active: { getLine: (y) => lines[y] } },
     parser: { registerOscHandler(id, handler) {
@@ -92,18 +99,58 @@ function mockTerminal(rows, cols = 80) {
     },
   };
   return {
-    terminal, disposed,
+    terminal, disposed, markers,
+    cursor: (row) => { cursor = row; },
     osc: (value) => osc(value),
     links(row = 1) { let result; provider.provideLinks(row, (links) => { result = links; }); return result; },
   };
 }
 const click = (keys = {}) => ({ metaKey: false, ctrlKey: false, preventDefault() {}, ...keys });
 
+test('scrollback links retain the directory in effect when their output was printed', () => {
+  const mock = mockTerminal(Array.from({ length: 6 }, () => ({ text: 'docs/file.md' })));
+  const opened = [];
+  const installed = installTerminalFileLinks(mock.terminal, { isMac: false, cwd: '/start', onOpen: (...args) => opened.push(args) });
+  mock.cursor(1);
+  mock.osc('file:///first');
+  const oldLink = mock.links(2)[0];
+  mock.cursor(3);
+  mock.osc('file:///second');
+  oldLink.activate(click({ ctrlKey: true }));
+  mock.links(1)[0].activate(click({ ctrlKey: true }));
+  mock.links(5)[0].activate(click({ ctrlKey: true }));
+  assert.deepEqual(opened, [['docs/file.md', '/first'], ['docs/file.md', '/start'], ['docs/file.md', '/second']]);
+  // Scrollback trimming disposes old markers; the preceding cwd becomes baseline.
+  mock.markers[0].dispose();
+  mock.markers[1].line = 1;
+  mock.links(1)[0].activate(click({ ctrlKey: true }));
+  assert.deepEqual(opened.at(-1), ['docs/file.md', '/first']);
+  installed.dispose();
+  assert.ok(mock.markers.every(m => m.isDisposed));
+});
+
+test('directory markers avoid duplicate prompts and follow buffer reflow', () => {
+  const mock = mockTerminal(Array.from({ length: 5 }, () => ({ text: 'Makefile' })));
+  const opened = [];
+  installTerminalFileLinks(mock.terminal, { isMac: true, cwd: '/start', onOpen: (...args) => opened.push(args) });
+  mock.osc('file:///first');
+  mock.cursor(1);
+  mock.osc('file:///first');
+  assert.equal(mock.markers.length, 1);
+  mock.cursor(2);
+  mock.osc('file:///second');
+  mock.markers[1].line = 4;
+  mock.links(4)[0].activate(click({ metaKey: true }));
+  mock.links(5)[0].activate(click({ metaKey: true }));
+  assert.deepEqual(opened, [['Makefile', '/first'], ['Makefile', '/second']]);
+});
+
 test('provider gates activation, uses live cwd with fallback, and does no work on hover', () => {
   for (const isMac of [true, false]) {
     const mock = mockTerminal([{ text: 'docs/file.md' }]);
     const opened = [];
-    const installed = installTerminalFileLinks(mock.terminal, { isMac, cwd: '/fallback', onOpen: (...args) => opened.push(args) });
+    const directories = [];
+    const installed = installTerminalFileLinks(mock.terminal, { isMac, cwd: '/fallback', onCwd: cwd => directories.push(cwd), onOpen: (...args) => opened.push(args) });
     const [link] = mock.links();
     assert.equal(link.decorations, undefined, 'retain xterm default underline');
     link.hover();
@@ -119,6 +166,7 @@ test('provider gates activation, uses live cwd with fallback, and does no work o
     mock.osc('https://bad-cwd');
     link.activate(event);
     assert.deepEqual(opened, [['docs/file.md', '/fallback'], ['docs/file.md', '/live cwd'], ['docs/file.md', '/live cwd']]);
+    assert.deepEqual(directories, ['/live cwd'], 'only valid cwd notifications update the tab');
     link.leave();
     assert.equal(mock.terminal.element.title, 'original title');
     link.hover();

@@ -35,7 +35,7 @@
   // The directory the tab started in, the tab itself shows the rest, and
   // the shortcut that selects it.
   function tabTitle(tab: (typeof terminals.tabs)[number], index: number): string {
-    const title = tab.dir || (tab.kind === 'shell' ? 'Home directory' : tab.label);
+    const title = tab.cwd || tab.dir || (tab.kind === 'shell' ? 'Home directory' : tab.label);
     return index < 9 ? `${title} (${isMac ? '⌘' : 'Alt+'}${index + 1})` : title;
   }
 

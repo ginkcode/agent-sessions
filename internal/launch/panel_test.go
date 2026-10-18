@@ -109,7 +109,7 @@ func TestPanelShellArgv(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(argv) != 2 || !filepath.IsAbs(argv[0]) || argv[1] != "-l" {
+	if len(argv) != 3 || argv[0] != "/bin/sh" || argv[1] != "-c" || !strings.Contains(argv[2], "__as_shell=") {
 		t.Fatalf("argv = %q", argv)
 	}
 }

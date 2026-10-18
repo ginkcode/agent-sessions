@@ -1,4 +1,4 @@
-import type { ILink, Terminal } from '@xterm/xterm';
+import type { ILink, IMarker, Terminal } from '@xterm/xterm';
 
 const MAX_TEXT = 8192;
 const MAX_ROWS = 32;
@@ -91,9 +91,27 @@ export function extractTerminalFileCandidates(text: string): TerminalFileCandida
 /** Install immediately after constructing xterm, before replaying any output. */
 export function installTerminalFileLinks(
   terminal: Terminal,
-  options: { isMac: boolean; cwd?: string; onOpen: (path: string, cwd: string | undefined) => void },
+  options: { isMac: boolean; cwd?: string; onCwd?: (cwd: string) => void; onOpen: (path: string, cwd: string | undefined) => void },
 ): { dispose(): void } {
   let cwd: string | undefined;
+  // xterm markers follow rows through scrollback trimming and terminal reflow.
+  // Keep a baseline for output preceding the first remaining directory marker.
+  let baseline = options.cwd;
+  const directories: { marker: IMarker; cwd: string }[] = [];
+  const pruneDirectories = () => {
+    while (directories.length && directories[0].marker.isDisposed) {
+      baseline = directories.shift()!.cwd;
+    }
+  };
+  const directoryAt = (line: number): string | undefined => {
+    pruneDirectories();
+    if (terminal.buffer.active.type === 'alternate') return cwd ?? options.cwd;
+    let result = baseline;
+    for (const entry of directories) {
+      if (!entry.marker.isDisposed && entry.marker.line <= line) result = entry.cwd;
+    }
+    return result;
+  };
   let disposed = false;
   let hovered: ILink | undefined;
   let titleElement: HTMLElement | undefined;
@@ -106,7 +124,21 @@ export function installTerminalFileLinks(
   };
   const osc = terminal.parser.registerOscHandler(7, (data) => {
     const parsed = parseOsc7Cwd(data);
-    if (parsed !== undefined) cwd = parsed;
+    if (parsed !== undefined) {
+      cwd = parsed;
+      options.onCwd?.(parsed);
+      pruneDirectories();
+      if (terminal.buffer.active.type !== 'alternate') {
+        const previous = directories.at(-1);
+        if (!previous || previous.cwd !== parsed) {
+          const marker = terminal.registerMarker(0);
+          if (marker) {
+            if (previous?.marker.line === marker.line) directories.pop()!.marker.dispose();
+            directories.push({ marker, cwd: parsed });
+          }
+        }
+      }
+    }
     return true;
   });
   const provider = terminal.registerLinkProvider({
@@ -154,7 +186,7 @@ export function installTerminalFileLinks(
           activate(event) {
             if (!disposed && (options.isMac ? event.metaKey : event.ctrlKey)) {
               event.preventDefault();
-              options.onOpen(candidate.path, cwd ?? options.cwd);
+              options.onOpen(candidate.path, directoryAt(start.y - 1));
             }
           },
           hover() {
@@ -182,6 +214,8 @@ export function installTerminalFileLinks(
       restoreTitle();
       provider.dispose();
       osc.dispose();
+      for (const entry of directories) entry.marker.dispose();
+      directories.length = 0;
     },
   };
 }

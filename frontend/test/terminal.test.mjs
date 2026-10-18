@@ -454,6 +454,21 @@ test('TerminalsStore bulk closing pauses at each running agent and Cancel stops 
   });
 });
 
+test('TerminalsStore tracks cwd independently for active and inactive tabs', async () => {
+  await withTerminals(async ({ store }) => {
+    const first = await store.newShell('/a');
+    const second = await store.newShell('/b');
+    store.setCwd(first.id, '/a/nested');
+    store.setCwd(second.id, '/other project');
+    assert.equal(store.tabs.find(t => t.id === first.id).cwd, '/a/nested');
+    assert.equal(store.tabs.find(t => t.id === second.id).cwd, '/other project');
+    assert.equal(store.tabs.find(t => t.id === first.id).dir, '/a');
+    assert.equal(store.active, second.id);
+    store.setCwd('missing-tab', '/ignored');
+    assert.equal(store.tabs.length, 2);
+  });
+});
+
 test('TerminalsStore selects a tab by its position while the panel shows', async () => {
   await withTerminals(async ({ store }) => {
     const first = await store.newShell('/a');

@@ -109,6 +109,7 @@
     const fileLinks = installTerminalFileLinks(t, {
       isMac,
       cwd: tab.dir,
+      onCwd: (cwd) => terminals.setCwd(tab.id, cwd),
       onOpen: (path, cwd) => { void opener.open(tab.host, path, cwd); },
     });
     const id = tab.id;

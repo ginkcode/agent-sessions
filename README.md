@@ -56,10 +56,14 @@ other machines over SSH or in WSL distributions.
   such as `Makefile` and paths in Git status output.
 - Files must be inside a project already known to the session catalog. Select
   and connect to the terminal's host before opening its files.
-- Relative paths use the current directory when the shell emits OSC 7 directory
-  notifications; otherwise they use the terminal's starting directory. After
-  `cd`, that fallback may be inaccurate. Links in older output also use the
-  latest reported directory. Absolute paths avoid this ambiguity.
+- Built-in bash, zsh, fish and PowerShell shells report their working directory
+  at each prompt, including after `cd`, without editing your shell configuration
+  files. The same POSIX integration applies to SSH and WSL shells.
+- Links in scrollback retain the directory associated with their output, so
+  changing directories does not redirect old links to the new project.
+  Unsupported shells fall back to their starting directory unless they emit
+  OSC 7 directory notifications themselves. Commands that change directories
+  and print paths before the next prompt can still require absolute paths.
 
 **Share**
 

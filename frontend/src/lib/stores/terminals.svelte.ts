@@ -51,6 +51,8 @@ export function decodeTerminalData(data: string): Uint8Array {
 }
 
 export interface PanelTab extends TerminalTab {
+  /** Latest shell-reported directory; dir remains the launch directory. */
+  cwd?: string;
   status: 'running' | 'exited';
   exitCode: number | null;
 }
@@ -406,6 +408,11 @@ export class TerminalsStore {
   }
 
   /** Records a view's size so the next tab starts at it. */
+  setCwd(id: string, cwd: string): void {
+    const tab = this.tabs.find((t) => t.id === id);
+    if (tab) tab.cwd = cwd;
+  }
+
   setSize(cols: number, rows: number): void {
     if (cols > 0 && rows > 0) this.size = { cols, rows };
   }
