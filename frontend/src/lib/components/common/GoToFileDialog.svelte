@@ -21,6 +21,7 @@
   import { directoryName } from '../../tree';
   import LoadingSpinner from './LoadingSpinner.svelte';
   import FileIcon from './FileIcon.svelte';
+  import MarkdownDoc from './MarkdownDoc.svelte';
   import ContextMenu, { type ContextMenuItem } from './ContextMenu.svelte';
   import { api } from '../../api';
   import { toast } from '../../stores/toast.svelte';
@@ -30,6 +31,7 @@
   // very long text.
   const HIGHLIGHT_LIMIT = 500_000;
 
+  let markdownPreview = $state(false);
   let presentation = $state(false);
   let presentationFontSize = $state(20);
 
@@ -51,6 +53,7 @@
   let matches = $derived(query.trim() ? searchFiles(paths, files.listing?.ignored, query) : []);
 
   let language = $derived(files.selected ? fileLanguage(files.selected) : null);
+  let showMarkdown = $derived(markdownPreview && language === 'markdown');
   let text = $derived(files.content?.text ?? '');
   // The highlighted file. Until highlight.js has loaded and run, the text
   // shows plain, so a file never waits on the highlighter.
@@ -205,7 +208,8 @@
   $effect(() => {
     const el = codeScroll;
     const path = files.selected;
-    if (el && path) el.scrollTop = scrollTops.get(path) ?? 0;
+    const mode = showMarkdown ? 'preview' : 'source';
+    if (el && path) el.scrollTop = scrollTops.get(`${path}:${mode}`) ?? 0;
   });
 
   function closeTab(e: MouseEvent, path: string) {
@@ -520,6 +524,10 @@
               </button>
               {#if files.content}<span class="viewer-size">{formatSize(files.content.size)}</span>{/if}
               {#if text && !files.loadingFile && language !== null}
+                {#if language === 'markdown'}
+                  <button type="button" class="copy-btn" class:on={showMarkdown} aria-pressed={showMarkdown} title={showMarkdown ? 'Show Markdown source' : 'Preview Markdown'} onclick={() => (markdownPreview = !markdownPreview)}>Preview</button>
+                {/if}
+                {#if !showMarkdown}
                 {#if hasChanges}
                   <button
                     type="button"
@@ -542,6 +550,7 @@
                 >
                   Wrap
                 </button>
+                {/if}
                 <button
                   type="button"
                   class="copy-btn"
@@ -596,9 +605,14 @@
                 class="code-scroll"
                 bind:this={codeScroll}
                 onscroll={(e) => {
-                  if (files.selected) scrollTops.set(files.selected, e.currentTarget.scrollTop);
+                  if (files.selected) scrollTops.set(`${files.selected}:${showMarkdown ? 'preview' : 'source'}`, e.currentTarget.scrollTop);
                 }}
               >
+                {#if showMarkdown}
+                  <div class="markdown-preview" style:--markdown-font-size={presentation ? `${presentationFontSize}px` : '14px'}>
+                    <MarkdownDoc source={text} />
+                  </div>
+                {:else}
                 <div class="code source" class:wrap={files.wrap} class:diff={showDiff} style:font-size={presentation ? `${presentationFontSize}px` : undefined}>
                   {#if showDiff}
                     {#each rows as row, r (r)}
@@ -628,6 +642,7 @@
                     {/each}
                   {/if}
                 </div>
+                {/if}
               </div>
             {/if}
           {/if}
@@ -667,6 +682,12 @@
   .presentation .tab-bar,
   .presentation .dialog-header {
     display: none;
+  }
+
+  .markdown-preview {
+    padding: 20px 28px;
+    max-width: 1100px;
+    margin: 0 auto;
   }
 
   .presentation-btn {

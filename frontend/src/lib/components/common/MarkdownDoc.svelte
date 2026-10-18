@@ -27,7 +27,7 @@
 
 <style>
   .markdown-doc {
-    font-size: 13px;
+    font-size: var(--markdown-font-size, 13px);
     line-height: 1.55;
     color: var(--text-primary);
     word-break: break-word;
@@ -50,9 +50,9 @@
     color: var(--text-primary);
   }
 
-  :global(.markdown-doc h1) { font-size: 18px; }
-  :global(.markdown-doc h2) { font-size: 16px; }
-  :global(.markdown-doc h3) { font-size: 14px; }
+  :global(.markdown-doc h1) { font-size: 1.385em; }
+  :global(.markdown-doc h2) { font-size: 1.231em; }
+  :global(.markdown-doc h3) { font-size: 1.077em; }
 
   :global(.markdown-doc ul, .markdown-doc ol) {
     margin: 0.5em 0;
@@ -101,7 +101,7 @@
   :global(.markdown-doc table) {
     width: 100%;
     border-collapse: collapse;
-    font-size: 12px;
+    font-size: 0.923em;
   }
 
   :global(.markdown-doc th, .markdown-doc td) {
@@ -196,7 +196,7 @@
 
   :global(.markdown-doc code.hljs) {
     font-family: var(--font-mono);
-    font-size: 12px;
+    font-size: 0.923em;
     line-height: 1.45;
   }
 </style>
