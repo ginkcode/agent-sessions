@@ -6,11 +6,22 @@
 
   interface Props {
     source: string;
+    onFileLink?: (href: string) => void;
   }
 
-  let { source }: Props = $props();
+  let { source, onFileLink }: Props = $props();
 
-  let renderedHtml = $derived(renderMarkdown(source));
+  let renderedHtml = $derived(renderMarkdown(source, Boolean(onFileLink)));
+
+  function handleClick(e: MouseEvent) {
+    const anchor = e.target instanceof Element ? e.target.closest<HTMLAnchorElement>('a[data-file-link]') : null;
+    if (anchor && onFileLink) {
+      e.preventDefault();
+      onFileLink(anchor.dataset.fileLink!);
+      return;
+    }
+    handleCopyCodeClick(e);
+  }
   let container = $state<HTMLDivElement>();
 
   $effect(() => {
@@ -21,7 +32,7 @@
 
 <!-- svelte-ignore a11y_click_events_have_key_events -->
 <!-- svelte-ignore a11y_no_static_element_interactions -->
-<div class="markdown-doc" bind:this={container} onclick={handleCopyCodeClick}>
+<div class="markdown-doc" bind:this={container} onclick={handleClick}>
   {@html renderedHtml}
 </div>
 

@@ -25,7 +25,7 @@
   import ContextMenu, { type ContextMenuItem } from './ContextMenu.svelte';
   import { api } from '../../api';
   import { toast } from '../../stores/toast.svelte';
-  import { absoluteFilePath } from '../../fileActions';
+  import { absoluteFilePath, markdownFileTarget } from '../../fileActions';
 
   // Files larger than this are shown without highlighting, which is slow on
   // very long text.
@@ -192,6 +192,18 @@
     if (missing.length) files.setExpanded(new Set([...files.expanded, ...missing]));
     // A deleted file has nothing on disk to read.
     files.openFile(path, { keep, read: fileStatus(path) !== 'D' });
+  }
+
+  function followFileLink(href: string) {
+    if (!files.selected) return;
+    const target = markdownFileTarget(files.selected, href);
+    if (!target) {
+      toast.show({ title: 'Cannot open this link', body: 'The link must point to a file inside this project.', tone: 'error' });
+      return;
+    }
+    // Keep the referring document so the reader can return to it via its tab.
+    files.keepTab(files.selected);
+    pick(target, true);
   }
 
   function toggle(dir: string) {
@@ -610,7 +622,7 @@
               >
                 {#if showMarkdown}
                   <div class="markdown-preview" style:--markdown-font-size={presentation ? `${presentationFontSize}px` : '14px'}>
-                    <MarkdownDoc source={text} />
+                    <MarkdownDoc source={text} onFileLink={followFileLink} />
                   </div>
                 {:else}
                 <div class="code source" class:wrap={files.wrap} class:diff={showDiff} style:font-size={presentation ? `${presentationFontSize}px` : undefined}>

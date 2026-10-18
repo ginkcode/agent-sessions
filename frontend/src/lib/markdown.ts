@@ -51,7 +51,7 @@ function renderEmphasis(text: string): string {
   return out;
 }
 
-function renderInline(text: string): string {
+function renderInline(text: string, fileLinks = false): string {
   // First escape raw HTML
   let out = escapeHtml(text);
 
@@ -65,6 +65,11 @@ function renderInline(text: string): string {
 
   // Links: [label](url)
   out = out.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_match, label, url) => {
+    // Relative links are inert metadata, handled only by the project viewer.
+    // Never turn schemes, protocol-relative URLs or absolute paths into files.
+    if (fileLinks && !/^[a-z][a-z\d+.-]*:|^[\\/]|[\u0000-\u0020]/i.test(url)) {
+      return stash(`<a href="#" data-file-link="${url}">${renderEmphasis(label)}</a>`);
+    }
     const safeUrl = sanitizeHref(url);
     return stash(`<a href="${safeUrl}" target="_blank" rel="noopener noreferrer">${renderEmphasis(label)}</a>`);
   });
@@ -134,7 +139,7 @@ function mermaidBlock(rawCode: string): string {
   );
 }
 
-export function renderMarkdown(source: string): string {
+export function renderMarkdown(source: string, fileLinks = false): string {
   if (!source) return '';
 
   const lines = source.split(/\r?\n/);
@@ -187,7 +192,7 @@ export function renderMarkdown(source: string): string {
     const headingMatch = line.match(/^(#{1,6})\s+(.*)$/);
     if (headingMatch) {
       const level = headingMatch[1].length;
-      const content = renderInline(headingMatch[2]);
+      const content = renderInline(headingMatch[2], fileLinks);
       out.push(`<h${level}>${content}</h${level}>`);
       i++;
       continue;
@@ -200,7 +205,7 @@ export function renderMarkdown(source: string): string {
         quoteLines.push(lines[i].replace(/^>\s?/, ''));
         i++;
       }
-      const quoteContent = renderMarkdown(quoteLines.join('\n'));
+      const quoteContent = renderMarkdown(quoteLines.join('\n'), fileLinks);
       out.push(`<blockquote>${quoteContent}</blockquote>`);
       continue;
     }
@@ -210,7 +215,7 @@ export function renderMarkdown(source: string): string {
       const listItems: string[] = [];
       while (i < len && /^\s*[*+-]\s+/.test(lines[i])) {
         const itemText = lines[i].replace(/^\s*[*+-]\s+/, '');
-        listItems.push(`<li>${renderInline(itemText)}</li>`);
+        listItems.push(`<li>${renderInline(itemText, fileLinks)}</li>`);
         i++;
       }
       out.push(`<ul>${listItems.join('')}</ul>`);
@@ -222,7 +227,7 @@ export function renderMarkdown(source: string): string {
       const listItems: string[] = [];
       while (i < len && /^\s*\d+\.\s+/.test(lines[i])) {
         const itemText = lines[i].replace(/^\s*\d+\.\s+/, '');
-        listItems.push(`<li>${renderInline(itemText)}</li>`);
+        listItems.push(`<li>${renderInline(itemText, fileLinks)}</li>`);
         i++;
       }
       out.push(`<ol>${listItems.join('')}</ol>`);
@@ -242,14 +247,14 @@ export function renderMarkdown(source: string): string {
 
       let tableHtml = '<div class="table-container"><table><thead><tr>';
       for (const h of headerCells) {
-        tableHtml += `<th>${renderInline(h)}</th>`;
+        tableHtml += `<th>${renderInline(h, fileLinks)}</th>`;
       }
       tableHtml += '</tr></thead><tbody>';
       for (const row of rows) {
         tableHtml += '<tr>';
         for (let colIdx = 0; colIdx < headerCells.length; colIdx++) {
           const val = row[colIdx] || '';
-          tableHtml += `<td>${renderInline(val)}</td>`;
+          tableHtml += `<td>${renderInline(val, fileLinks)}</td>`;
         }
         tableHtml += '</tr>';
       }
@@ -284,7 +289,7 @@ export function renderMarkdown(source: string): string {
       i++;
     }
 
-    const pText = pLines.map((l) => renderInline(l)).join('<br />');
+    const pText = pLines.map((l) => renderInline(l, fileLinks)).join('<br />');
     out.push(`<p>${pText}</p>`);
   }
 

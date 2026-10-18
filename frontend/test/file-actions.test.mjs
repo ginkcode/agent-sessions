@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { absoluteFilePath } from '../src/lib/fileActions.ts';
+import { absoluteFilePath, markdownFileTarget } from '../src/lib/fileActions.ts';
 import { createAPI } from '../src/lib/api.ts';
 
 test('absolute file paths use the host directory style, not the UI platform', () => {
@@ -35,5 +35,14 @@ test('file action API passes the right-click target to native bindings', async (
   } finally {
     if (previous === undefined) delete globalThis.window;
     else globalThis.window = previous;
+  }
+});
+
+test('Markdown file links resolve relative to the document and stay in the project', () => {
+  assert.equal(markdownFileTarget('course/README.md', 'week-01.md'), 'course/week-01.md');
+  assert.equal(markdownFileTarget('course/README.md', '../guide.md#intro'), 'guide.md');
+  assert.equal(markdownFileTarget('course/README.md', './notes%20one.md'), 'course/notes one.md');
+  for (const href of ['../../outside.md', '%2e%2e/%2e%2e/outside.md', '/etc/passwd', 'file:///etc/passwd', 'javascript:alert', '//host/file', '%5csecret', '%00bad', '%ZZ']) {
+    assert.equal(markdownFileTarget('course/README.md', href), null, href);
   }
 });

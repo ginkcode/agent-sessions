@@ -702,7 +702,7 @@ export class MockBackendAPI {
       };
     }
     if (/\.(md|markdown|mdx)$/i.test(path)) {
-      const text = '# Project overview\n\nMarkdown preview with **formatted text**, lists and diagrams.\n\n- Browse project files\n- Preview Markdown\n\n```mermaid\nflowchart LR\n  Files --> Preview\n  Preview --> Presentation\n```\n';
+      const text = '# Project overview\n\nMarkdown preview with **formatted text**, lists and diagrams.\n\n- Browse project files\n- Preview Markdown\n\n[Open package.json](frontend/package.json)\n\n```mermaid\nflowchart LR\n  Files --> Preview\n  Preview --> Presentation\n```\n';
       return { path, size: text.length, text };
     }
     const text = path.endsWith('.go')

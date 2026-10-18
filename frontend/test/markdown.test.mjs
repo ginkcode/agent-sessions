@@ -240,3 +240,11 @@ test('handleCopyCodeClick copies code from delegated click and ignores other tar
     }
   }
 });
+
+test('project Markdown optionally exposes relative links as inert file metadata', () => {
+  assert.match(renderMarkdown('[Next](lesson.md)', true), /data-file-link="lesson.md"/);
+  assert.doesNotMatch(renderMarkdown('[Next](lesson.md)'), /data-file-link/);
+  assert.match(renderMarkdown('[Next](notes%20one.md#intro)', true), /data-file-link="notes%20one.md#intro"/);
+  assert.doesNotMatch(renderMarkdown('[Unsafe](javascript:alert) [Outside](\/etc/passwd)', true), /data-file-link/);
+  assert.match(renderMarkdown('[Web](https:\/\/example.com)', true), /href="https:\/\/example.com"/);
+});
