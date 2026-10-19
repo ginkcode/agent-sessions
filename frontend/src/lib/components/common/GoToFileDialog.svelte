@@ -250,6 +250,7 @@
   const PAINT_MARGIN = 30;
   const PAINT_LIMIT = 2000;
   const findShortcut = isMac ? '⌘F' : 'Ctrl+F';
+  const closeShortcut = isMac ? '⌘W' : 'Ctrl+W';
   let findOpen = $state(false);
   let findQuery = $state('');
   let findCase = $state(false);
@@ -324,8 +325,9 @@
     lastMatch = null;
   }
 
-  function isFindShortcut(e: KeyboardEvent): boolean {
-    return (isMac ? e.metaKey && !e.ctrlKey : e.ctrlKey && !e.metaKey) && !e.altKey && !e.shiftKey && e.code === 'KeyF';
+  /** Cmd plus the key on macOS, Ctrl plus it elsewhere: Find and Close. */
+  function isCommandKey(e: KeyboardEvent, code: string): boolean {
+    return (isMac ? e.metaKey && !e.ctrlKey : e.ctrlKey && !e.metaKey) && !e.altKey && !e.shiftKey && e.code === code;
   }
 
   function handleFindKey(e: KeyboardEvent) {
@@ -541,9 +543,13 @@
       if (findActive) closeFind();
       else if (presentation) presentation = false;
       else close();
-    } else if (sourceShown && isFindShortcut(e)) {
+    } else if (sourceShown && isCommandKey(e, 'KeyF')) {
       e.preventDefault();
       openFind();
+    } else if (files.open && isCommandKey(e, 'KeyW')) {
+      // As in editors: closes the file shown, not the app.
+      e.preventDefault();
+      if (files.selected) files.closeTab(files.selected);
     } else if (files.open && isWrapShortcut(e)) {
       e.preventDefault();
       files.toggleWrap();
@@ -694,7 +700,7 @@
                     type="button"
                     class="tab-close"
                     aria-label="Close {splitPath(tab.path).name}"
-                    title="Close"
+                    title="Close ({closeShortcut})"
                     onclick={(e) => closeTab(e, tab.path)}>×</button
                   >
                 </div>
@@ -1557,12 +1563,14 @@
      wraps, so the numbers stack in one gutter column that sticks as the
      lines scroll sideways; each row is one line high so the two columns
      stay aligned. WebKitGTK scrolled at half speed with a sticky number on
-     every line, and stalls on a subgrid of thousands of rows. */
+     every line, and stalls on a subgrid of thousands of rows. The gutter
+     runs the full height of the view, past a short file's last line. */
   .code {
     display: grid;
     grid-template-columns: max-content minmax(0, 1fr);
     align-content: start;
     min-width: max-content;
+    min-height: 100%;
     padding: 8px 0;
     font-family: var(--font-mono);
     font-size: 0.78rem;
@@ -1572,12 +1580,44 @@
   }
 
   .code.wrap {
+    position: relative;
+    isolation: isolate;
     min-width: 0;
+  }
+
+  /* Wrapped, the numbers are grid items row by row; this paints their
+     column top to bottom, behind them. */
+  .code.wrap::before {
+    content: '';
+    position: absolute;
+    grid-column: 1;
+    inset: 0;
+    z-index: -1;
+    background-color: var(--bg-secondary);
+    border-right: 1px solid var(--border-color);
+  }
+
+  /* Unwrapped, the one row of gutter and lines stretches to the full
+     height, the padding moved inside so the gutter covers it too. */
+  .code:not(.wrap) {
+    align-content: stretch;
+    padding: 0;
+  }
+
+  .gutter,
+  .lines {
+    padding: 8px 0;
   }
 
   .gutter {
     position: sticky;
     left: 0;
+    background-color: var(--bg-secondary);
+    border-right: 1px solid var(--border-color);
+  }
+
+  .gutter .ln {
+    border-right: none;
   }
 
   .gutter .ln,
