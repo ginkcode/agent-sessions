@@ -39,8 +39,10 @@
     value={appState.filter.path || ''}
     oninput={handleInput}
     aria-label="Filter by directory"
-    spellcheck="false"
     autocomplete="off"
+    autocorrect="off"
+    autocapitalize="off"
+    spellcheck="false"
   />
 </div>
 

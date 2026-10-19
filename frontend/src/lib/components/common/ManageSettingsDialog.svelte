@@ -134,7 +134,7 @@
               <form class="fields" onsubmit={(e) => { e.preventDefault(); void saveTranslation(); }}>
                 <label class="field">
                   <span>Base URL</span>
-                  <input class="text-input" type="url" bind:value={baseURL} placeholder="https://api.openai.com/v1" autocomplete="off" spellcheck="false" />
+                  <input class="text-input" type="url" bind:value={baseURL} placeholder="https://api.openai.com/v1" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" />
                 </label>
                 <div class="field">
                   <span id="translate-key-label">API key</span>
@@ -147,6 +147,7 @@
                         aria-labelledby="translate-key-label"
                         placeholder={replacingKey ? 'New API key' : 'sk-…'}
                         autocomplete="off"
+                        autocorrect="off"
                         autocapitalize="off"
                         spellcheck="false"
                       />
@@ -173,11 +174,11 @@
                 </div>
                 <label class="field">
                   <span>Model</span>
-                  <input class="text-input" type="text" bind:value={model} placeholder="gpt-4o-mini" autocomplete="off" spellcheck="false" />
+                  <input class="text-input" type="text" bind:value={model} placeholder="gpt-4o-mini" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" />
                 </label>
                 <label class="field">
                   <span>Language</span>
-                  <input class="text-input" type="text" bind:value={language} placeholder="Vietnamese" autocomplete="off" />
+                  <input class="text-input" type="text" bind:value={language} placeholder="Vietnamese" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" />
                 </label>
                 <div class="actions">
                   <button

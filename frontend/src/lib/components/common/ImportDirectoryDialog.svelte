@@ -90,8 +90,10 @@
             type="text"
             class="text-input"
             placeholder="/path/to/project"
-            spellcheck="false"
             autocomplete="off"
+            autocorrect="off"
+            autocapitalize="off"
+            spellcheck="false"
             onkeydown={(e) => {
               if (e.key === 'Enter') {
                 e.preventDefault();

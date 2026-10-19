@@ -415,6 +415,8 @@
             aria-controls="goto-file-results"
             aria-activedescendant={matches.length > 0 ? `goto-file-${activeIndex}` : undefined}
             autocomplete="off"
+            autocorrect="off"
+            autocapitalize="off"
             spellcheck="false"
           />
 

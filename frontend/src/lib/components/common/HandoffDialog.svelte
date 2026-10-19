@@ -140,6 +140,10 @@
             placeholder={handoff.session.cwd}
             value={handoff.cwd}
             oninput={(e) => handoff.setCWD(e.currentTarget.value)}
+            autocomplete="off"
+            autocorrect="off"
+            autocapitalize="off"
+            spellcheck="false"
           />
         </div>
 

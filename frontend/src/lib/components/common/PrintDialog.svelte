@@ -91,14 +91,17 @@
             type="text"
             class="text-input"
             placeholder="No title"
-            spellcheck="false"
             autocomplete="off"
+            autocorrect="off"
+            autocapitalize="off"
+            spellcheck="false"
           />
         </label>
         <div class="panes">
           <label class="pane">
             <span class="field-label">Content (Markdown)</span>
-            <textarea bind:value={markdown} class="editor" spellcheck="false"></textarea>
+            <!-- Svelte's types leave autocorrect off textarea; WebKit reads it there too. -->
+            <textarea bind:value={markdown} class="editor" autocomplete="off" {...{ autocorrect: 'off' }} autocapitalize="off" spellcheck="false"></textarea>
           </label>
           <div class="pane">
             <span class="field-label">Preview</span>

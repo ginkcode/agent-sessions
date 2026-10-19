@@ -126,6 +126,8 @@
           aria-controls="global-search-results"
           aria-activedescendant={search.activeIndex >= 0 ? resultID(search.activeIndex) : undefined}
           autocomplete="off"
+          autocorrect="off"
+          autocapitalize="off"
           spellcheck="false"
         />
         {#if search.loading}

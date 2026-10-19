@@ -107,6 +107,10 @@
                 class="env-input"
                 placeholder="Default"
                 bind:value={envMap[item.key]}
+                autocomplete="off"
+                autocorrect="off"
+                autocapitalize="off"
+                spellcheck="false"
               />
             </div>
           {/each}
@@ -122,6 +126,10 @@
                     type="text"
                     class="env-input"
                     bind:value={envMap[key]}
+                    autocomplete="off"
+                    autocorrect="off"
+                    autocapitalize="off"
+                    spellcheck="false"
                   />
                   <button
                     type="button"
@@ -145,12 +153,20 @@
               class="env-input"
               placeholder="VARIABLE_NAME"
               bind:value={customKey}
+              autocomplete="off"
+              autocorrect="off"
+              autocapitalize="off"
+              spellcheck="false"
             />
             <input
               type="text"
               class="env-input"
               placeholder="Value"
               bind:value={customVal}
+              autocomplete="off"
+              autocorrect="off"
+              autocapitalize="off"
+              spellcheck="false"
             />
             <button
               type="button"

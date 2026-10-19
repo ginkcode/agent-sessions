@@ -110,7 +110,7 @@
           <form onsubmit={(e) => { e.preventDefault(); void save(connected && !editing); }}>
             <h3>{editing ? 'Edit forwarding rule' : 'New forwarding rule'}</h3>
             <div class="fields">
-              <label>Remote hostname<input bind:this={firstInput} bind:value={remoteHost} placeholder="localhost" required spellcheck="false" /></label>
+              <label>Remote hostname<input bind:this={firstInput} bind:value={remoteHost} placeholder="localhost" required autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" /></label>
               <label>Remote port<input type="number" min="1" max="65535" required bind:value={remotePort} oninput={(e) => { if (!localEdited) localPort = e.currentTarget.valueAsNumber; }} placeholder="3000" /></label>
               <label>Local port<input type="number" min="1" max="65535" required bind:value={localPort} oninput={() => (localEdited = true)} placeholder="3000" /></label>
             </div>

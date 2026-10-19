@@ -131,6 +131,10 @@
         value={appState.filter.query || ''}
         oninput={handleSearchInput}
         aria-label="Search sessions"
+        autocomplete="off"
+        autocorrect="off"
+        autocapitalize="off"
+        spellcheck="false"
       />
     </div>
 

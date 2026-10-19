@@ -246,6 +246,10 @@
           class="manual-input"
           placeholder="Connect to SSH alias…"
           aria-label="Connect to SSH alias"
+          autocomplete="off"
+          autocorrect="off"
+          autocapitalize="off"
+          spellcheck="false"
           bind:value={manualHost}
           bind:this={manualInput}
         />
