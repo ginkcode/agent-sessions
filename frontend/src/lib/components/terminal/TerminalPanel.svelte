@@ -240,9 +240,13 @@
     font-size: 0.72rem;
   }
 
-  /* A long session name gives way first, so the host stays readable. */
+  /* A long session name gives way first, so the host stays readable; the
+     host shortens only once a crowded tab has no room left for the name. */
+  .tab-label {
+    flex-shrink: 1000;
+  }
+
   .tab-host {
-    flex-shrink: 0;
     max-width: 12ch;
   }
 
