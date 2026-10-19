@@ -427,8 +427,10 @@ func (s *session) wait() {
 	<-s.readerDone
 	s.flush()
 	s.m.remove(s.tab.ID)
-	close(s.exited)
+	// Report the exit before signalling it, so CloseAll returns only once
+	// every terminal's exit has been reported.
 	s.m.emit.Emit(ExitEvent, ExitPayload{ID: s.tab.ID, Code: code})
+	close(s.exited)
 }
 
 func exitCode(state *os.ProcessState, err error) int {

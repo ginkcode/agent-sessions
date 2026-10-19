@@ -17,14 +17,14 @@ type terminalLogFont struct {
 }
 
 // Windows callback trampolines cannot be freed; reuse one across calls.
-var terminalFontCallback = windows.NewCallback(func(font, metric, fontType, data uintptr) uintptr {
-	lf := (*terminalLogFont)(unsafe.Pointer(font))
+// The callback takes typed pointers, which NewCallback allows, rather than
+// converting uintptr arguments back to pointers (go vet's unsafeptr check).
+var terminalFontCallback = windows.NewCallback(func(lf *terminalLogFont, metric, fontType uintptr, names *[]string) uintptr {
 	// LOGFONT's FIXED_PITCH bit (unlike TEXTMETRIC's inverted bit).
 	if lf.PitchAndFamily&1 != 0 {
 		name := windows.UTF16ToString(lf.FaceName[:])
 		// @ families are vertical-writing aliases, not terminal faces.
 		if len(name) > 0 && name[0] != '@' {
-			names := (*[]string)(unsafe.Pointer(data))
 			*names = append(*names, name)
 		}
 	}
