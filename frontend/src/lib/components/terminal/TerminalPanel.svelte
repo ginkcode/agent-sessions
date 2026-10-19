@@ -36,7 +36,9 @@
   // The directory the tab started in, the tab itself shows the rest, and
   // the shortcut that selects it.
   function tabTitle(tab: (typeof terminals.tabs)[number], index: number): string {
-    const title = tab.cwd || tab.dir || (tab.kind === 'shell' ? 'Home directory' : tab.label);
+    const where = tab.cwd || tab.dir || (tab.kind === 'shell' ? 'Home directory' : tab.label);
+    // The tab may shorten the host's name, so the tooltip gives it in full.
+    const title = tab.host ? `${where} on ${hostLabel(tab.host)}` : where;
     return index < 9 ? `${title} (${isMac ? '⌘' : 'Alt+'}${index + 1})` : title;
   }
 
@@ -236,6 +238,12 @@
   .tab-exit {
     color: var(--text-muted);
     font-size: 0.72rem;
+  }
+
+  /* A long session name gives way first, so the host stays readable. */
+  .tab-host {
+    flex-shrink: 0;
+    max-width: 12ch;
   }
 
   .status-dot {
