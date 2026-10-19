@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -31,13 +32,24 @@ func TestPanelPowerShellPromptCwd(t *testing.T) {
 	if len(matches) != 2 {
 		t.Fatalf("OSC7 output %q", b)
 	}
+	want, err := os.Stat(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
 	for _, match := range matches {
 		u, err := url.Parse(string(match[1]))
 		if err != nil {
 			t.Fatal(err)
 		}
-		if got := strings.TrimPrefix(u.Path, "/"); got != strings.TrimPrefix(filepath.ToSlash(dir), "/") {
-			t.Fatalf("path %q, want %q", u.Path, dir)
+		got := u.Path
+		if runtime.GOOS == "windows" {
+			got = strings.TrimPrefix(got, "/") // file:///C:/... has a path of /C:/...
+		}
+		// Compare folders, not spellings: TEMP may use 8.3 short names
+		// (RUNNER~1) where PowerShell reports the long ones.
+		fi, err := os.Stat(filepath.FromSlash(got))
+		if err != nil || !os.SameFile(fi, want) {
+			t.Fatalf("path %q, want %q (%v)", u.Path, dir, err)
 		}
 	}
 	if strings.Count(string(b), "EXISTING_PROMPT") != 2 {
