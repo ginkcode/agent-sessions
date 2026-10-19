@@ -124,6 +124,7 @@ func runGit(ctx context.Context, root string, args ...string) ([]byte, bool) {
 	defer cancel()
 	argv := append([]string{"-C", root, "--literal-pathspecs", "-c", "core.quotepath=off"}, args...)
 	cmd := exec.CommandContext(ctx, git, argv...) //nolint:gosec
+	hideConsole(cmd)
 	var stdout bytes.Buffer
 	cmd.Stdout = &stdout
 	if cmd.Run() != nil {
