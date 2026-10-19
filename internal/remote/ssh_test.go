@@ -195,9 +195,55 @@ func TestControlDir_ShortEnoughForSockets(t *testing.T) {
 	if want := fmt.Sprintf("/tmp/as-ssh-%d", os.Getuid()); dir != want {
 		t.Fatalf("dir = %q, want %q", dir, want)
 	}
-	// What the ssh master binds first: "<dir>/cm-<40 hex>.<16 chars>" + NUL.
-	if n := len(dir+"/cm-") + 40 + 17 + 1; n > 104 {
+	// What the ssh master binds first: "<dir>/cm-<tag>-<40 hex>.<16 chars>" + NUL.
+	path, err := DefaultControlPath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := len(strings.TrimSuffix(path, "%C")) + 40 + 17 + 1; n > 104 {
 		t.Fatalf("socket path would be %d bytes, over macOS's 104", n)
+	}
+}
+
+// Each app process gets its own ControlMaster sockets, so one window
+// closing its connection never drops another window's session.
+func TestDefaultControlPath_PerProcess(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows ssh has no ControlMaster sockets")
+	}
+	path, err := DefaultControlPath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	again, err := DefaultControlPath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if path != again {
+		t.Fatalf("path changed within a process: %q, then %q", path, again)
+	}
+	tag := processTag()
+	if len(tag) != processTagLen {
+		t.Fatalf("tag %q, want %d characters", tag, processTagLen)
+	}
+	if want := "cm-" + tag + "-%C"; filepath.Base(path) != want {
+		t.Fatalf("socket name = %q, want %q", filepath.Base(path), want)
+	}
+
+	// Another process names its sockets differently.
+	if os.Getenv("AS_CONTROL_PATH_CHILD") == "1" {
+		fmt.Println(path)
+		return
+	}
+	cmd := exec.Command(os.Args[0], "-test.run=^TestDefaultControlPath_PerProcess$")
+	cmd.Env = append(os.Environ(), "AS_CONTROL_PATH_CHILD=1")
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	other, _, _ := strings.Cut(string(out), "\n")
+	if other == "" || other == path {
+		t.Fatalf("child process path = %q, parent %q", other, path)
 	}
 }
 

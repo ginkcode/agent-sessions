@@ -66,6 +66,11 @@ export interface BackendAPI {
   saveImage(req: SaveImageRequest): Promise<string>;
   /** Opens the print dialog; print styles pick what is printed. */
   printWindow(): Promise<void>;
+  /**
+   * Opens another window of the app, with its own connection. Absent where
+   * the app has one window only (the browser mock).
+   */
+  newWindow?(): Promise<void>;
   openResumeInTerminal(ref: SessionRef): Promise<void>;
   openHandoffInTerminal(req: HandoffRequest): Promise<void>;
   openBundleHandoffInTerminal(req: BundleHandoffRequest): Promise<void>;
@@ -161,6 +166,7 @@ interface WailsAppBinding {
   Translate(text: string): Promise<string>;
   SaveImage(req: SaveImageRequest): Promise<string>;
   PrintWindow(): Promise<void>;
+  NewWindow(): Promise<void>;
   OpenResumeInTerminal(ref: SessionRef): Promise<void>;
   OpenHandoffInTerminal(req: HandoffRequest): Promise<void>;
   OpenBundleHandoffInTerminal(req: BundleHandoffRequest): Promise<void>;
@@ -381,6 +387,14 @@ class WailsBackendAPI implements BackendAPI {
   async printWindow(): Promise<void> {
     try {
       return await this.binding.PrintWindow();
+    } catch (e) {
+      throw normalizeError(e);
+    }
+  }
+
+  async newWindow(): Promise<void> {
+    try {
+      return await this.binding.NewWindow();
     } catch (e) {
       throw normalizeError(e);
     }
@@ -899,6 +913,8 @@ const UNGUARDED = new Set<string>([
   // Images are saved, and pages printed, on this computer too.
   'saveImage',
   'printWindow',
+  // A new window is another app on this computer.
+  'newWindow',
   'listPortForwards',
   'savePortForward',
   'startPortForward',

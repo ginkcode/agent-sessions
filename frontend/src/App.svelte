@@ -44,7 +44,13 @@
   import { formatVersion } from './lib/format';
   import { themeButtonTitle } from './lib/theme';
   import { hostLabel } from './lib/hosts';
-  import { isNewShellShortcut, isPanelToggle, terminalTabShortcut } from './lib/terminal';
+  import {
+    isNewShellShortcut,
+    isNewWindowShortcut,
+    isPanelToggle,
+    newWindowShortcutLabel,
+    terminalTabShortcut,
+  } from './lib/terminal';
   import { isMac } from './main';
 
   let isWails = $state(false);
@@ -55,6 +61,18 @@
   let stale = $derived(link.stale || link.locked);
   // A new shell starts in the shown session's directory.
   let shellCwd = $derived(appState.selectedSessionMeta?.cwd ?? '');
+  // Only the desktop app opens more windows, each with its own connection.
+  let canOpenWindow = $derived(isWails && typeof api.newWindow === 'function');
+
+  function openNewWindow() {
+    api.newWindow?.().catch((err: unknown) =>
+      toast.show({
+        title: "Couldn't open a new window",
+        body: err instanceof Error ? err.message : String(err),
+        tone: 'error',
+      }),
+    );
+  }
 
   $effect(() => {
     const host = connectionStore.host;
@@ -116,6 +134,12 @@
         if (!launcher.info.panel || hasOpenModal()) return;
         event.preventDefault();
         if (!event.repeat) void terminals.newShell(shellCwd);
+        return;
+      }
+      // Cmd+N on macOS, Ctrl+Shift+N elsewhere: another window of the app.
+      if (canOpenWindow && isNewWindowShortcut(event, isMac)) {
+        event.preventDefault();
+        if (!event.repeat) openNewWindow();
         return;
       }
       // Cmd+1–9 on macOS, Alt+1–9 elsewhere: selects a terminal tab.
@@ -227,6 +251,31 @@
             <path d="m21 21-4.35-4.35" />
           </svg>
         </button>
+        {#if canOpenWindow}
+          <button
+            type="button"
+            class="icon-button new-window"
+            title={`New window (${newWindowShortcutLabel(isMac)}). Each window connects to its own host`}
+            aria-label="New window"
+            onclick={openNewWindow}
+          >
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <rect x="3" y="5" width="14" height="14" rx="2" />
+              <path d="M7 5V3h14v14h-2" />
+              <path d="M10 9v6M7 12h6" />
+            </svg>
+          </button>
+        {/if}
         <button
           type="button"
           class="icon-button settings-toggle"

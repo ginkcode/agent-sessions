@@ -91,7 +91,7 @@ func (a *App) ensureConn() {
 		path, err := a.localConfigPath()
 		p := newPortForwards(filepath.Join(filepath.Dir(path), "port-forwards.json"))
 		if err != nil {
-			p.loadErr = err
+			p.pathErr, p.loadErr = err, err
 		}
 		a.conn.mu.Lock()
 		p.sync(a.conn.state, a.conn.opts)

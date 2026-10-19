@@ -62,6 +62,25 @@ export function isNewShellShortcut(
   return /^[a-z]$/i.test(e.key) ? e.key.toLowerCase() === 't' : e.code === 'KeyT';
 }
 
+/**
+ * Whether a key opens a new app window: Cmd+N on macOS, Ctrl+Shift+N
+ * elsewhere (Ctrl+N alone is left to the terminal, where it is readline's
+ * next-history).
+ */
+export function isNewWindowShortcut(
+  e: Pick<KeyboardEvent, 'key' | 'code' | 'ctrlKey' | 'metaKey' | 'altKey' | 'shiftKey'>,
+  mac: boolean,
+): boolean {
+  const chord = mac ? e.metaKey && !e.ctrlKey && !e.shiftKey : e.ctrlKey && e.shiftKey && !e.metaKey;
+  if (!chord || e.altKey) return false;
+  return /^[a-z]$/i.test(e.key) ? e.key.toLowerCase() === 'n' : e.code === 'KeyN';
+}
+
+/** The New window shortcut as the platform writes it. */
+export function newWindowShortcutLabel(mac: boolean): string {
+  return mac ? '⌘N' : 'Ctrl+Shift+N';
+}
+
 /** The New shell shortcut as the platform writes it. */
 export function newShellShortcutLabel(mac: boolean): string {
   return mac ? '⌘T' : 'Ctrl+Shift+T';
@@ -92,7 +111,9 @@ export function terminalKeyAction(
   mac: boolean,
 ): 'copy' | 'paste' | 'app' | null {
   if (e.type !== 'keydown') return null;
-  if (isPanelToggle(e) || isNewShellShortcut(e, mac) || isFullscreenShortcut(e, mac)) return 'app';
+  if (isPanelToggle(e) || isNewShellShortcut(e, mac) || isNewWindowShortcut(e, mac) || isFullscreenShortcut(e, mac)) {
+    return 'app';
+  }
   if (e.key === ',' && (mac ? e.metaKey && !e.ctrlKey : e.ctrlKey && !e.metaKey) && !e.altKey) return 'app';
   const key = e.key.toLowerCase();
   const chord = mac ? e.metaKey && !e.ctrlKey && !e.shiftKey : e.ctrlKey && e.shiftKey && !e.metaKey;

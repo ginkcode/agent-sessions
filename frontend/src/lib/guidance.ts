@@ -104,6 +104,32 @@ export function copyFailed(what: string, err: unknown): ToastMessage {
   };
 }
 
+/**
+ * Part of the error the backend returns when the host chosen is open in
+ * another window of the app (ErrHostInOtherWindow). A host is open in one
+ * window at most; that window is brought to the front instead.
+ */
+export const HOST_IN_OTHER_WINDOW = 'is open in another window';
+
+/**
+ * The toast for a host open in another window, or null when err is any
+ * other connect error.
+ */
+export function hostInOtherWindow(host: string, err: unknown): ToastMessage | null {
+  const message = err instanceof Error ? err.message : String(err ?? '');
+  const at = message.indexOf(HOST_IN_OTHER_WINDOW);
+  if (at < 0) return null;
+  const label = hostLabel(host);
+  // The backend appends why the window could not be raised, if it could not.
+  const why = message.slice(at + HOST_IN_OTHER_WINDOW.length).replace(/^:\s*/, '').trim();
+  return {
+    title: `${label} is open in another window`,
+    body: why
+      ? `Switch to that window to use ${label}. ${why[0].toUpperCase()}${why.slice(1)}.`
+      : `That window was brought to the front. A host is open in one window at a time.`,
+  };
+}
+
 /** The error the backend reports when a live session to the host dropped. */
 export const CONNECTION_LOST = 'connection lost';
 

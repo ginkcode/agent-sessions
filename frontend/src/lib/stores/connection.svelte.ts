@@ -5,6 +5,8 @@ import {
 } from '../api';
 import { targetKey } from '../tree';
 import { hostLabel } from '../hosts';
+import { hostInOtherWindow } from '../guidance';
+import { toast } from './toast.svelte';
 import type {
   AskpassPrompt,
   ConnectionPhase,
@@ -152,6 +154,13 @@ export class ConnectionStore {
       }
       await api.connect(alias);
     } catch (err: any) {
+      // The host is open in another window, which was brought to the
+      // front; this window stays where it was.
+      const elsewhere = hostInOtherWindow(alias, err);
+      if (elsewhere) {
+        toast.show(elsewhere);
+        return;
+      }
       this.error = err?.message || 'Failed to connect';
     }
   }

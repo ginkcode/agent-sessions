@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/ginkcode/agent-sessions/internal/configfile"
 	"github.com/ginkcode/agent-sessions/internal/remote"
 )
 
@@ -34,9 +35,17 @@ type PortForwardSnapshot struct {
 	Rules []PortForwardRule `json:"rules"`
 }
 type forwardRun struct{ cancel context.CancelFunc }
+
+// portForwards holds the saved rules and this process's running forwards.
+// Several app windows (processes) share the rules file: each reads it
+// again before use, and changes it under the config lock from its current
+// contents, so one window's edits never overwrite another's.
 type portForwards struct {
-	mu         sync.Mutex
-	path       string
+	mu   sync.Mutex
+	path string
+	// pathErr means the rules file has no usable location; it is never
+	// read or written.
+	pathErr    error
 	loadErr    error
 	saved      map[string][]PortForwardRequest
 	states     map[string]PortForwardRule
@@ -49,16 +58,62 @@ type portForwards struct {
 
 func newPortForwards(path string) *portForwards {
 	p := &portForwards{path: path, saved: map[string][]PortForwardRequest{}, states: map[string]PortForwardRule{}, runs: map[string]*forwardRun{}}
-	data, err := os.ReadFile(path)
-	if err == nil {
-		p.loadErr = json.Unmarshal(data, &p.saved)
-		if p.saved == nil {
-			p.saved = map[string][]PortForwardRequest{}
-		}
-	} else if !errors.Is(err, os.ErrNotExist) {
-		p.loadErr = err
-	}
+	p.loadLocked()
 	return p
+}
+
+// loadLocked reads the rules file again, picking up changes made by other
+// windows. A file that cannot be read keeps the last rules and sets loadErr,
+// which blocks writes so they never overwrite rules this window did not see.
+func (p *portForwards) loadLocked() {
+	if p.pathErr != nil {
+		p.loadErr = p.pathErr
+		return
+	}
+	data, err := os.ReadFile(p.path)
+	switch {
+	case errors.Is(err, os.ErrNotExist):
+		p.saved, p.loadErr = map[string][]PortForwardRequest{}, nil
+		return
+	case err != nil:
+		p.loadErr = err
+		return
+	}
+	saved := map[string][]PortForwardRequest{}
+	if err := json.Unmarshal(data, &saved); err != nil {
+		p.loadErr = err
+		return
+	}
+	if saved == nil {
+		saved = map[string][]PortForwardRequest{}
+	}
+	p.saved, p.loadErr = saved, nil
+}
+
+// updateLocked changes the rules file under the config lock: it reads the
+// file as it is now, lets edit change a copy of every host's rules and
+// writes the result.
+func (p *portForwards) updateLocked(edit func(saved map[string][]PortForwardRequest) error) error {
+	if p.pathErr != nil {
+		return fmt.Errorf("read port forwards: %w", p.pathErr)
+	}
+	lock, err := configfile.Lock(p.path)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = lock.Unlock() }()
+	p.loadLocked()
+	if p.loadErr != nil {
+		return fmt.Errorf("read port forwards: %w", p.loadErr)
+	}
+	saved := make(map[string][]PortForwardRequest, len(p.saved))
+	for host, rs := range p.saved {
+		saved[host] = append([]PortForwardRequest{}, rs...)
+	}
+	if err := edit(saved); err != nil {
+		return err
+	}
+	return p.persistLocked(saved)
 }
 
 // sync is called with connection.mu held, serializing lifecycle changes with
@@ -86,6 +141,8 @@ func (p *portForwards) sync(st ConnectionState, opts remote.SSHOptions) {
 	}
 	p.host, p.connected, p.generation, p.opts = host, connected, st.Generation, opts
 	if connected {
+		// Another window may have changed the rules since they were read.
+		p.loadLocked()
 		for _, rule := range p.saved[host] {
 			if rule.AutoStart {
 				p.startLocked(rule)
@@ -230,6 +287,7 @@ func (a *App) withForwards(fn func(*portForwards) error) (PortForwardSnapshot, e
 	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	p.loadLocked()
 	if p.loadErr != nil {
 		return p.snapshotLocked(), fmt.Errorf("read port forwards: %w", p.loadErr)
 	}
@@ -247,35 +305,34 @@ func (a *App) SavePortForward(rule PortForwardRequest) (PortForwardSnapshot, err
 		if err := remote.ValidateForwardTarget(rule.RemoteHost, rule.RemotePort, rule.LocalPort); err != nil {
 			return err
 		}
-		rules := append([]PortForwardRequest{}, p.saved[p.host]...)
-		idx := -1
-		for i, r := range rules {
-			if r.ID == rule.ID {
-				idx = i
+		err := p.updateLocked(func(saved map[string][]PortForwardRequest) error {
+			rules := saved[p.host]
+			idx := -1
+			for i, r := range rules {
+				if r.ID == rule.ID {
+					idx = i
+				}
+				if r.ID != rule.ID && r.LocalPort == rule.LocalPort {
+					return fmt.Errorf("local port already used by another rule")
+				}
 			}
-			if r.ID != rule.ID && r.LocalPort == rule.LocalPort {
-				return fmt.Errorf("local port already used by another rule")
+			if rule.ID == "" {
+				var id [16]byte
+				if _, err := rand.Read(id[:]); err != nil {
+					return err
+				}
+				rule.ID = hex.EncodeToString(id[:])
+				rules = append(rules, rule)
+			} else {
+				if idx < 0 {
+					return fmt.Errorf("port forward not found")
+				}
+				rules[idx] = rule
 			}
-		}
-		if rule.ID == "" {
-			var id [16]byte
-			if _, err := rand.Read(id[:]); err != nil {
-				return err
-			}
-			rule.ID = hex.EncodeToString(id[:])
-			rules = append(rules, rule)
-		} else {
-			if idx < 0 {
-				return fmt.Errorf("port forward not found")
-			}
-			rules[idx] = rule
-		}
-		saved := make(map[string][]PortForwardRequest, len(p.saved))
-		for host, rs := range p.saved {
-			saved[host] = rs
-		}
-		saved[p.host] = rules
-		if err := p.persistLocked(saved); err != nil {
+			saved[p.host] = rules
+			return nil
+		})
+		if err != nil {
 			return err
 		}
 		if run := p.runs[rule.ID]; run != nil {
@@ -317,24 +374,23 @@ func (a *App) StopPortForward(id string) (PortForwardSnapshot, error) {
 }
 func (a *App) RemovePortForward(id string) (PortForwardSnapshot, error) {
 	return a.withForwards(func(p *portForwards) error {
-		rules := []PortForwardRequest{}
-		found := false
-		for _, rule := range p.saved[p.host] {
-			if rule.ID == id {
-				found = true
-			} else {
-				rules = append(rules, rule)
+		err := p.updateLocked(func(saved map[string][]PortForwardRequest) error {
+			rules := []PortForwardRequest{}
+			found := false
+			for _, rule := range saved[p.host] {
+				if rule.ID == id {
+					found = true
+				} else {
+					rules = append(rules, rule)
+				}
 			}
-		}
-		if !found {
-			return fmt.Errorf("port forward not found")
-		}
-		saved := make(map[string][]PortForwardRequest, len(p.saved))
-		for host, rs := range p.saved {
-			saved[host] = rs
-		}
-		saved[p.host] = rules
-		if err := p.persistLocked(saved); err != nil {
+			if !found {
+				return fmt.Errorf("port forward not found")
+			}
+			saved[p.host] = rules
+			return nil
+		})
+		if err != nil {
 			return err
 		}
 		if run := p.runs[id]; run != nil {

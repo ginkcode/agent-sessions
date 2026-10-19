@@ -110,6 +110,9 @@ type connection struct {
 	// master; its master is then left to ControlPersist.
 	busy     func(host string) bool
 	forwards *portForwards
+	// claims keeps each host open in one window at most; nil (tests, no
+	// cache dir) lets every window open any host.
+	claims *hostClaims
 }
 
 // masterStopper closes the shared ssh connection (ControlMaster) for a host
@@ -294,13 +297,34 @@ func (c *connection) setPhase(gen uint64, phase, host, errMsg string, caps rpc.C
 // active backend until the remote handshake finishes; coming from another
 // host, calls fail as disconnected meanwhile. A newer Connect or Disconnect
 // cancels this one.
+//
+// A host open in another window is not opened again: that window is brought
+// to the front, this one stays as it is and the error wraps
+// ErrHostInOtherWindow.
 func (c *connection) Connect(ctx context.Context, alias string) error {
 	if err := remote.ValidateHost(alias); err != nil {
 		return err
 	}
 	c.mu.Lock()
+	claims := c.claims
+	c.mu.Unlock()
+	if claims != nil {
+		// Only another window holding the host stops this connect. If the
+		// claim cannot be made at all (an unwritable cache dir), connecting
+		// works as it did before windows shared hosts.
+		var inUse *hostInUseError
+		if err := claims.claim(alias); errors.As(err, &inUse) {
+			inUse.focusErr = claims.focusOwner(alias)
+			return err
+		}
+	}
+	c.mu.Lock()
 	if c.stopped {
+		held := c.wantHost == alias
 		c.mu.Unlock()
+		if claims != nil && !held {
+			claims.release(alias)
+		}
 		return errors.New("app is shut down")
 	}
 	prevHost := c.wantHost
@@ -322,6 +346,9 @@ func (c *connection) Connect(ctx context.Context, alias string) error {
 	// one host cannot have the new master closed under them.
 	if prevHost != "" && prevHost != alias {
 		c.releaseHost(prevHost, opts)
+		if claims != nil {
+			claims.release(prevHost)
+		}
 	}
 	c.emit()
 
@@ -449,9 +476,13 @@ func (c *connection) Disconnect() {
 	c.closeLocked()
 	c.gen++
 	c.state = ConnectionState{Phase: ConnLocal, Generation: c.gen}
+	claims := c.claims
 	c.mu.Unlock()
 	if prevHost != "" {
 		c.releaseHost(prevHost, opts)
+		if claims != nil {
+			claims.release(prevHost)
+		}
 	}
 	c.emit()
 }
@@ -484,13 +515,24 @@ func (c *connection) Shutdown() {
 	c.closeLocked()
 	broker := c.askpass
 	c.askpass = nil
+	claims := c.claims
 	c.mu.Unlock()
 	if prevHost != "" {
 		c.releaseHost(prevHost, opts)
 	}
+	if claims != nil {
+		claims.close()
+	}
 	if broker != nil {
 		_ = broker.Close()
 	}
+}
+
+// setClaims makes this connection share hosts with the app's other windows.
+func (c *connection) setClaims(h *hostClaims) {
+	c.mu.Lock()
+	c.claims = h
+	c.mu.Unlock()
 }
 
 func (c *connection) closeLocked() {

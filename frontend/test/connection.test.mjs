@@ -344,6 +344,8 @@ async function loadConnectionStore() {
     ],
     ["'../tree'", lib('../tree.ts')],
     ["'../hosts'", lib('../hosts.ts')],
+    ["'../guidance'", lib('../guidance.ts')],
+    store('toast', 'toast'),
     store('appState', 'appState'),
     store('manage', 'manage'),
     store('search', 'search'),
@@ -430,6 +432,40 @@ test('ConnectionStore lists WSL distributions and SSH hosts independently', asyn
   });
 });
 
+test('ConnectionStore points to the window that has the host open', async () => {
+  const { ConnectionStore } = await loadConnectionStore();
+  const shown = [];
+  const fixture = (err) => ({
+    api: { connect: async () => { throw err; } },
+    link: {},
+    toast: { show: (message) => shown.push(message) },
+  });
+
+  globalThis.__storeFixture = fixture('box is open in another window');
+  try {
+    const store = new ConnectionStore();
+    await store.connect('box', {});
+    assert.equal(store.error, undefined, 'this window stays as it was');
+    assert.equal(store.phase, 'local');
+    assert.equal(shown.length, 1);
+    assert.equal(shown[0].title, 'box is open in another window');
+  } finally {
+    delete globalThis.__storeFixture;
+  }
+
+  // Any other failure is the connection's error, not a toast.
+  shown.length = 0;
+  globalThis.__storeFixture = fixture(new Error('invalid host alias'));
+  try {
+    const store = new ConnectionStore();
+    await store.connect('box', {});
+    assert.equal(store.error, 'invalid host alias');
+    assert.equal(shown.length, 0);
+  } finally {
+    delete globalThis.__storeFixture;
+  }
+});
+
 test('ConnectionStore shows a WSL host by its distribution label', async () => {
   const { ConnectionStore } = await loadConnectionStore();
   const store = new ConnectionStore();
@@ -512,4 +548,28 @@ test('HostSelector leaves out the WSL section when there are no distributions', 
   const failedText = textOf(await renderHostSelector(failed));
   assert.match(failedText, /WSL 🐧 Ubuntu Default distribution ⚙ SSH Hosts ↻ ssh config unreadable Go/);
   assert.doesNotMatch(failedText, /No SSH config hosts found/);
+});
+
+test('hostInOtherWindow explains a host open in another window', async () => {
+  const { hostInOtherWindow } = await import('../src/lib/guidance.ts');
+  assert.equal(hostInOtherWindow('box', new Error('probe handshake: exit status 255')), null);
+
+  const raised = hostInOtherWindow('box', new Error('box is open in another window'));
+  assert.equal(raised.title, 'box is open in another window');
+  assert.match(raised.body, /^That window was brought to the front\./);
+  assert.equal(raised.tone, undefined);
+
+  // Wails rejects with the error's text as a string.
+  const failed = hostInOtherWindow(
+    'box',
+    'box is open in another window: could not bring it to the front: connection refused',
+  );
+  assert.equal(failed.title, 'box is open in another window');
+  assert.equal(
+    failed.body,
+    'Switch to that window to use box. Could not bring it to the front: connection refused.',
+  );
+
+  const wsl = hostInOtherWindow('wsl:Ubuntu', new Error('wsl:Ubuntu is open in another window'));
+  assert.doesNotMatch(wsl.title, /^wsl:/);
 });

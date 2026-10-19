@@ -6,7 +6,9 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"sync"
@@ -26,6 +28,7 @@ import (
 	"github.com/ginkcode/agent-sessions/internal/term"
 	"github.com/ginkcode/agent-sessions/internal/translate"
 	"github.com/ginkcode/agent-sessions/internal/version"
+	wruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 // App is the desktop application service exposed to the Wails frontend.
@@ -188,6 +191,9 @@ func (a *App) OnStartup(ctx context.Context) {
 		a.terminals = term.NewManager(wailsEmitter)
 	}
 	a.conn.setBusy(a.terminals.Running)
+	if dir := a.claimsDir(); dir != "" {
+		a.conn.setClaims(newHostClaims(dir, func() { raiseWindow(ctx) }))
+	}
 	a.events = newCatalogBus(ctx)
 
 	a.localEngine = engine.NewEngine(
@@ -207,6 +213,69 @@ func (a *App) OnStartup(ctx context.Context) {
 	a.refresher = a.localEngine.Refresher()
 	if a.localEngine.Events() != nil {
 		a.events = a.localEngine.Events()
+	}
+}
+
+// newWindowCommand starts another copy of this app; tests replace it.
+var newWindowCommand = func() (*exec.Cmd, error) {
+	exe, err := os.Executable()
+	if err != nil {
+		return nil, fmt.Errorf("find the app: %w", err)
+	}
+	return exec.Command(exe), nil
+}
+
+// NewWindow opens another window of the app. Each window is its own
+// process with its own connection, so windows can show different hosts;
+// a host is open in one window at a time (see hostClaims). On macOS this
+// also works where opening the app again would only focus this window.
+func (a *App) NewWindow() error {
+	cmd, err := newWindowCommand()
+	if err != nil {
+		return err
+	}
+	// The new window must not inherit this one's askpass session.
+	env := make([]string, 0, len(os.Environ()))
+	for _, kv := range os.Environ() {
+		if !strings.HasPrefix(kv, "AGENT_SESSIONS_ASKPASS_") {
+			env = append(env, kv)
+		}
+	}
+	cmd.Env = env
+	if err := startDetached(cmd); err != nil {
+		return fmt.Errorf("open a new window: %w", err)
+	}
+	return nil
+}
+
+// claimsDir holds the claims that keep each host open in one window at
+// most; empty without a cache dir.
+func (a *App) claimsDir() string {
+	dir := a.cacheDirOverride
+	if dir == "" {
+		dir = a.roots.Cache
+	}
+	if dir == "" {
+		return ""
+	}
+	return filepath.Join(dir, "windows")
+}
+
+// raiseWindow brings this app window to the front, restoring it when
+// minimized. Each platform needs a different call: on Linux only
+// WindowUnminimise presents the window, and on Windows it would also
+// restore a maximized window to its normal size.
+func raiseWindow(ctx context.Context) {
+	switch runtime.GOOS {
+	case "linux":
+		wruntime.WindowUnminimise(ctx)
+	case "darwin":
+		if wruntime.WindowIsMinimised(ctx) {
+			wruntime.WindowUnminimise(ctx)
+		}
+		wruntime.WindowShow(ctx)
+	default:
+		wruntime.WindowShow(ctx)
 	}
 }
 

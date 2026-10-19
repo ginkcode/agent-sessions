@@ -149,9 +149,49 @@ func TestPortForwardCorruptPersistenceNotOverwritten(t *testing.T) {
 		t.Fatal("ignored corrupt persistence")
 	}
 }
+
+// Two windows share the rules file: edits made in one are seen by the
+// other, and neither overwrites the other's rules.
+func TestPortForwardEditsFromTwoWindows(t *testing.T) {
+	a := forwardApp(t)
+	b := forwardApp(t)
+	b.conn.forwards = newPortForwards(a.conn.forwards.path)
+	b.conn.forwards.sync(b.conn.state, b.conn.opts)
+
+	if _, err := a.SavePortForward(PortForwardRequest{RemoteHost: "localhost", RemotePort: 80, LocalPort: 18080}); err != nil {
+		t.Fatal(err)
+	}
+	// b read the file before a's rule existed.
+	s, err := b.SavePortForward(PortForwardRequest{RemoteHost: "localhost", RemotePort: 90, LocalPort: 18090})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(s.Rules) != 2 {
+		t.Fatalf("b sees %d rules, want both windows' rules: %+v", len(s.Rules), s.Rules)
+	}
+	if _, err := b.SavePortForward(PortForwardRequest{RemoteHost: "localhost", RemotePort: 91, LocalPort: 18080}); err == nil {
+		t.Fatal("b reused a's local port")
+	}
+	s, err = a.ListPortForwards()
+	if err != nil || len(s.Rules) != 2 {
+		t.Fatalf("a sees %+v, %v", s.Rules, err)
+	}
+	if _, err := a.RemovePortForward(s.Rules[1].ID); err != nil {
+		t.Fatalf("a removes b's rule: %v", err)
+	}
+	if got := newPortForwards(a.conn.forwards.path).saved["server"]; len(got) != 1 || got[0].LocalPort != 18080 {
+		t.Fatalf("saved %+v", got)
+	}
+}
+
 func TestPortForwardAutoStart(t *testing.T) {
 	p := newPortForwards(filepath.Join(t.TempDir(), "rules.json"))
-	p.saved["server"] = []PortForwardRequest{{ID: "auto", RemoteHost: "localhost", RemotePort: 80, LocalPort: 8080, AutoStart: true}, {ID: "manual", RemoteHost: "localhost", RemotePort: 90, LocalPort: 8090}}
+	p.mu.Lock()
+	err := p.persistLocked(map[string][]PortForwardRequest{"server": {{ID: "auto", RemoteHost: "localhost", RemotePort: 80, LocalPort: 8080, AutoStart: true}, {ID: "manual", RemoteHost: "localhost", RemotePort: 90, LocalPort: 8090}}})
+	p.mu.Unlock()
+	if err != nil {
+		t.Fatal(err)
+	}
 	p.sync(ConnectionState{Phase: ConnConnected, Host: "server", Generation: 1}, remote.SSHOptions{Binary: "/nonexistent/ssh"})
 	p.mu.Lock()
 	if p.runs["auto"] == nil || p.runs["manual"] != nil {

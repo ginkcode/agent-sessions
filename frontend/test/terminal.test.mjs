@@ -11,7 +11,9 @@ import {
   terminalKeyAction,
   terminalTabShortcut,
   isNewShellShortcut,
+  isNewWindowShortcut,
   newShellShortcutLabel,
+  newWindowShortcutLabel,
   terminalOptions,
   terminalTheme,
 } from '../src/lib/terminal.ts';
@@ -639,4 +641,23 @@ test('MockBackendAPI runs fake panel terminals on every host', async () => {
 
   assert.equal((await mock.setTerminalOpen('external')).open, 'external');
   await assert.rejects(mock.setTerminalOpen('tmux'), /unknown terminal mode/);
+});
+
+test('new window: Cmd+N on macOS, Ctrl+Shift+N elsewhere, kept from the terminal', () => {
+  const key = (k, mods = {}) => ({ type: 'keydown', key: k, code: '', ctrlKey: false, metaKey: false, altKey: false, shiftKey: false, ...mods });
+  assert.ok(isNewWindowShortcut(key('n', { metaKey: true }), true));
+  assert.ok(!isNewWindowShortcut(key('n', { metaKey: true, shiftKey: true }), true));
+  assert.ok(!isNewWindowShortcut(key('n', { ctrlKey: true }), true));
+  assert.ok(isNewWindowShortcut(key('N', { ctrlKey: true, shiftKey: true }), false));
+  // Ctrl+N alone is the shell's next-history.
+  assert.ok(!isNewWindowShortcut(key('n', { ctrlKey: true }), false));
+  assert.equal(terminalKeyAction(key('n', { ctrlKey: true }), false), null);
+  assert.ok(!isNewWindowShortcut(key('N', { ctrlKey: true, shiftKey: true, altKey: true }), false));
+  // Layouts without Latin letters use the key in N's place.
+  assert.ok(isNewWindowShortcut({ ...key('т', { ctrlKey: true, shiftKey: true }), code: 'KeyN' }, false));
+  assert.ok(!isNewWindowShortcut({ ...key('t', { ctrlKey: true, shiftKey: true }), code: 'KeyN' }, false));
+  assert.equal(terminalKeyAction(key('N', { ctrlKey: true, shiftKey: true }), false), 'app');
+  assert.equal(terminalKeyAction(key('n', { metaKey: true }), true), 'app');
+  assert.equal(newWindowShortcutLabel(true), '⌘N');
+  assert.equal(newWindowShortcutLabel(false), 'Ctrl+Shift+N');
 });

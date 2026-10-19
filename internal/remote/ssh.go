@@ -2,12 +2,15 @@ package remote
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -40,9 +43,25 @@ const LoginShell = "$SHELL"
 
 // maxControlDirLen keeps ControlPath sockets bindable. sun_path holds 104
 // bytes on macOS (108 on Linux) including the NUL, and the ssh master first
-// binds "<ControlPath>.<16 random chars>" with ControlPath "<dir>/cm-%C"
-// (%C is 40 hex chars).
-const maxControlDirLen = 104 - 1 - len("/cm-") - 40 - len(".0123456789abcdef")
+// binds "<ControlPath>.<16 random chars>" with ControlPath
+// "<dir>/cm-<process>-%C" (%C is 40 hex chars).
+const maxControlDirLen = 104 - 1 - len("/cm-") - processTagLen - len("-") - 40 - len(".0123456789abcdef")
+
+// processTagLen is the length of processTag in hex characters.
+const processTagLen = 8
+
+// processTag names this process's ControlMaster sockets. Each app process,
+// such as each of several open windows, gets its own masters: closing one
+// window's connection then never drops another window's session or
+// terminals on the same host.
+var processTag = sync.OnceValue(func() string {
+	b := make([]byte, processTagLen/2)
+	if _, err := rand.Read(b); err != nil {
+		// Fall back to the pid: unique among running processes.
+		return fmt.Sprintf("%0*x", processTagLen, uint32(os.Getpid()))
+	}
+	return hex.EncodeToString(b)
+})
 
 // ControlDir returns a private 0700 directory for ControlMaster sockets:
 // $XDG_RUNTIME_DIR/agent-sessions, else as-ssh-<uid> in the temp dir, else
@@ -70,14 +89,16 @@ func ControlDir() (string, error) {
 	return base, nil
 }
 
-// DefaultControlPath returns the standard %C socket path in the control directory.
+// DefaultControlPath returns this process's %C socket path in the control
+// directory. Other processes, including other windows of the app, use
+// their own sockets (see processTag).
 func DefaultControlPath() (string, error) {
 	dir, err := ControlDir()
 	if err != nil {
 		return "", err
 	}
 	// OpenSSH replaces %C with a 40-character SHA1 hash of (%l%h%p%r).
-	return filepath.Join(dir, "cm-%C"), nil
+	return filepath.Join(dir, "cm-"+processTag()+"-%C"), nil
 }
 
 // BuildSSHArgs builds safe, argv-only arguments for the ssh client.
