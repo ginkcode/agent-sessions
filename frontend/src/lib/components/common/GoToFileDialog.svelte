@@ -14,6 +14,7 @@
     folderStatus,
     lineMarks,
     withDeleted,
+    type DiffRow,
     type FileTreeNode,
   } from '../../files';
   import type { GitStatus } from '../../types';
@@ -79,7 +80,11 @@
   // The diff view shows when it is on and the file has changes to show.
   let hasChanges = $derived(Boolean(changes?.length));
   let showDiff = $derived(files.diff && hasChanges);
-  let rows = $derived(showDiff ? diffRows(changes, plainLines.length) : []);
+  let rows: DiffRow[] = $derived(
+    showDiff
+      ? diffRows(changes, plainLines.length)
+      : Array.from({ length: htmlLines?.length ?? plainLines.length }, (_, index) => ({ kind: 'line', index, mark: marks[index] }))
+  );
   const MARK_LABELS = {
     added: 'Added line',
     modified: 'Changed line',
@@ -640,32 +645,41 @@
                   </div>
                 {:else}
                 <div class="code source" class:wrap={files.wrap} class:diff={showDiff} style:font-size={presentation ? `${presentationFontSize}px` : undefined}>
-                  {#if showDiff}
-                    {#each rows as row, r (r)}
-                      {#if row.kind === 'removed'}
-                        <span aria-hidden="true" class="ln sign">−</span>
-                        <span class="line removed">{row.text}</span>
-                      {:else}
-                        <span aria-hidden="true" class="ln" class:sign={row.mark}>{row.mark ? '+' : row.index + 1}</span>
-                        {#if htmlLines}
-                          <!-- highlight.js escapes the file's text -->
-                          <span class="line" class:added={row.mark}>{@html htmlLines[row.index]}</span>
-                        {:else}
-                          <span class="line" class:added={row.mark}>{plainLines[row.index]}</span>
-                        {/if}
-                      {/if}
-                    {/each}
-                  {:else if htmlLines}
-                    {#each htmlLines as line, i (i)}
-                      <span aria-hidden="true" class="ln mark-{marks[i] ?? 'none'}" title={marks[i] && MARK_LABELS[marks[i]]}>{i + 1}</span>
+                  {#snippet lineNumber(row: DiffRow)}
+                    {#if row.kind === 'removed'}
+                      <span aria-hidden="true" class="ln sign removed">−</span>
+                    {:else if showDiff}
+                      <span aria-hidden="true" class="ln" class:sign={row.mark} class:added={row.mark}>{row.mark ? '+' : row.index + 1}</span>
+                    {:else}
+                      <span aria-hidden="true" class="ln mark-{row.mark ?? 'none'}" title={row.mark && MARK_LABELS[row.mark]}>{row.index + 1}</span>
+                    {/if}
+                  {/snippet}
+                  {#snippet lineText(row: DiffRow)}
+                    {#if row.kind === 'removed'}
+                      <span class="line removed">{row.text}</span>
+                    {:else if htmlLines}
                       <!-- highlight.js escapes the file's text -->
-                      <span class="line">{@html line}</span>
+                      <span class="line" class:added={showDiff && row.mark}>{@html htmlLines[row.index]}</span>
+                    {:else}
+                      <span class="line" class:added={showDiff && row.mark}>{plainLines[row.index]}</span>
+                    {/if}
+                  {/snippet}
+                  {#if files.wrap}
+                    {#each rows as row, r (r)}
+                      {@render lineNumber(row)}
+                      {@render lineText(row)}
                     {/each}
                   {:else}
-                    {#each plainLines as line, i (i)}
-                      <span aria-hidden="true" class="ln mark-{marks[i] ?? 'none'}" title={marks[i] && MARK_LABELS[marks[i]]}>{i + 1}</span>
-                      <span class="line">{line}</span>
-                    {/each}
+                    <div class="gutter">
+                      {#each rows as row, r (r)}
+                        {@render lineNumber(row)}
+                      {/each}
+                    </div>
+                    <div class="lines">
+                      {#each rows as row, r (r)}
+                        {@render lineText(row)}
+                      {/each}
+                    </div>
                   {/if}
                 </div>
                 {/if}
@@ -962,11 +976,12 @@
     color: var(--text-secondary);
     font-weight: 600;
   }
-  .code.diff .ln:has(+ .line.removed) {
-    background-color: rgba(248, 81, 73, 0.22);
+  /* Tints over the gutter's color, so lines scrolled under it stay hidden. */
+  .ln.removed {
+    background-image: linear-gradient(rgba(248, 81, 73, 0.22), rgba(248, 81, 73, 0.22));
   }
-  .code.diff .ln:has(+ .line.added) {
-    background-color: rgba(46, 160, 67, 0.22);
+  .ln.added {
+    background-image: linear-gradient(rgba(46, 160, 67, 0.22), rgba(46, 160, 67, 0.22));
   }
 
   /* Files .gitignore leaves out, found by search: dimmed, as VS Code does. */
@@ -1211,8 +1226,12 @@
     overflow: auto;
   }
 
-  /* Line numbers and lines side by side, one grid row per line, so a
-     wrapped line keeps its number at its first row. */
+  /* Line numbers and lines side by side. Wrapped, one grid row per line, so
+     a wrapped line keeps its number at its first row. Unwrapped, nothing
+     wraps, so the numbers stack in one gutter column that sticks as the
+     lines scroll sideways; each row is one line high so the two columns
+     stay aligned. WebKitGTK scrolled at half speed with a sticky number on
+     every line, and stalls on a subgrid of thousands of rows. */
   .code {
     display: grid;
     grid-template-columns: max-content minmax(0, 1fr);
@@ -1230,9 +1249,18 @@
     min-width: 0;
   }
 
-  .ln {
+  .gutter {
     position: sticky;
     left: 0;
+  }
+
+  .gutter .ln,
+  .lines .line {
+    display: block;
+    height: 1.5em;
+  }
+
+  .ln {
     padding: 0 10px 0 14px;
     text-align: right;
     color: var(--text-muted);
