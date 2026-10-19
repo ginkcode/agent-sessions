@@ -208,7 +208,7 @@ export class HandoffStore {
     this.launching = true;
     try {
       if (launcher.openMode === 'panel') {
-        if (!(await terminals.runHandoff(req, this.session.cwd))) return;
+        if (!(await terminals.runHandoff(req, this.session.cwd, this.session.title || this.session.firstPrompt))) return;
       } else {
         await api.openHandoffInTerminal(req);
         toast.show(openedGuidance('launch', this.target));

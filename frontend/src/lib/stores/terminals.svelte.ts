@@ -51,6 +51,8 @@ export function decodeTerminalData(data: string): Uint8Array {
 }
 
 export interface PanelTab extends TerminalTab {
+  /** The agent an agent tab runs, shown as its icon. */
+  agent?: AgentID;
   /** Latest shell-reported directory; dir remains the launch directory. */
   cwd?: string;
   status: 'running' | 'exited';
@@ -67,6 +69,20 @@ export interface TerminalSink {
 
 function agentName(agent: AgentID | string): string {
   return ALL_AGENTS.find((a) => a.id === agent)?.label ?? 'Agent';
+}
+
+/** The longest tab label, in characters; longer names end in an ellipsis. */
+export const TAB_LABEL_MAX = 40;
+
+/**
+ * The label of an agent tab: the session's name on one line, shortened to
+ * TAB_LABEL_MAX characters, or the agent's name when the session has none.
+ */
+export function agentTabLabel(name: string | undefined, agent: AgentID | string): string {
+  const line = (name ?? '').replace(/\s+/g, ' ').trim();
+  if (!line) return agentName(agent);
+  const chars = Array.from(line);
+  return chars.length > TAB_LABEL_MAX ? `${chars.slice(0, TAB_LABEL_MAX - 1).join('').trimEnd()}…` : line;
 }
 
 /**
@@ -145,19 +161,28 @@ export class TerminalsStore {
 
   /**
    * Resumes a session in a new tab, on the host the session belongs to.
-   * dir is the session's directory, shown where the backend cannot tell.
+   * dir is the session's directory, shown where the backend cannot tell;
+   * name is the session's, which labels the tab.
    */
-  runResume(ref: SessionRef, dir = ''): Promise<PanelTab | null> {
-    return this.start((size) => api.panelResume(ref, size), agentName(ref.agent), dir);
+  runResume(ref: SessionRef, dir = '', name = ''): Promise<PanelTab | null> {
+    return this.start((size) => api.panelResume(ref, size), agentTabLabel(name, ref.agent), dir, ref.agent);
   }
 
-  /** Writes the handoff files and starts the target agent in a new tab. */
-  runHandoff(req: HandoffRequest, dir = ''): Promise<PanelTab | null> {
-    return this.start((size) => api.panelHandoff(req, size), agentName(req.target), req.cwd || dir);
+  /**
+   * Writes the handoff files and starts the target agent in a new tab,
+   * labelled with the name of the session handed off.
+   */
+  runHandoff(req: HandoffRequest, dir = '', name = ''): Promise<PanelTab | null> {
+    return this.start((size) => api.panelHandoff(req, size), agentTabLabel(name, req.target), req.cwd || dir, req.target);
   }
 
-  runBundleHandoff(req: BundleHandoffRequest, dir = ''): Promise<PanelTab | null> {
-    return this.start((size) => api.panelBundleHandoff(req, size), agentName(req.target), req.cwd || dir);
+  runBundleHandoff(req: BundleHandoffRequest, dir = '', name = ''): Promise<PanelTab | null> {
+    return this.start(
+      (size) => api.panelBundleHandoff(req, size),
+      agentTabLabel(name, req.target),
+      req.cwd || dir,
+      req.target,
+    );
   }
 
   /** Opens a plain shell on the selected host; failures are shown as a toast. */
@@ -178,6 +203,7 @@ export class TerminalsStore {
     launch: (size: TerminalSize) => Promise<TerminalTab>,
     label: string,
     dir: string,
+    agent?: AgentID,
   ): Promise<PanelTab | null> {
     this.starting++;
     let started: TerminalTab;
@@ -194,6 +220,7 @@ export class TerminalsStore {
     }
     this.starting--;
     const tab: PanelTab = { ...started, label, dir: started.dir || dir, status: 'running', exitCode: null };
+    if (agent) tab.agent = agent;
     const code = this.exits.get(tab.id);
     if (code !== undefined) {
       this.exits.delete(tab.id);

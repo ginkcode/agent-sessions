@@ -7,6 +7,7 @@
   import { isMac } from '../../../main';
   import { newShellShortcutLabel } from '../../terminal';
   import ContextMenu from '../common/ContextMenu.svelte';
+  import AgentIcon from '../common/AgentIcon.svelte';
   import { TAB_CLOSE_ACTIONS, tabsToClose } from '../../tabActions';
 
   let tabContext = $state<{ id: string; x: number; y: number } | null>(null);
@@ -73,6 +74,9 @@
               class:failed={tab.status === 'exited' && tab.exitCode !== 0}
               aria-hidden="true"
             ></span>
+            {#if tab.agent}
+              <AgentIcon agent={tab.agent} size={12} />
+            {/if}
             <span class="tab-label">{tab.label}</span>
             {#if tab.host}
               <span class="tab-host">{hostLabel(tab.host)}</span>

@@ -387,7 +387,8 @@
     resumeOpening = true;
     try {
       if (where === 'panel') {
-        await terminals.runResume(appState.selectedSessionRef, appState.selectedSessionMeta?.cwd);
+        const meta = appState.selectedSessionMeta;
+        await terminals.runResume(appState.selectedSessionRef, meta?.cwd, meta?.title || meta?.firstPrompt);
       } else {
         await api.openResumeInTerminal(appState.selectedSessionRef);
         toast.show(openedGuidance('resume'));

@@ -426,7 +426,7 @@ export class ImporterStore {
     this.launching = true;
     try {
       if (launcher.openMode === 'panel') {
-        if (!(await terminals.runBundleHandoff(req, this.bundle.source.cwd))) return;
+        if (!(await terminals.runBundleHandoff(req, this.bundle.source.cwd, this.bundle.source.title))) return;
       } else {
         await api.openBundleHandoffInTerminal(req);
         toast.show(openedGuidance('launch', this.target));

@@ -359,6 +359,29 @@ test('TerminalsStore buffers output until the view attaches, then streams it', a
   });
 });
 
+test('agentTabLabel names a tab after the session, shortened with an ellipsis', async () => {
+  const { agentTabLabel, TAB_LABEL_MAX } = await loadTerminalsStore();
+  assert.equal(agentTabLabel('Fix  the\nbuild ', 'codex'), 'Fix the build');
+  assert.equal(agentTabLabel('', 'claude-code'), 'Claude Code');
+  assert.equal(agentTabLabel(undefined, 'unknown'), 'Agent');
+  const long = agentTabLabel('word '.repeat(20) + '🙂', 'codex');
+  assert.equal(Array.from(long).length <= TAB_LABEL_MAX, true);
+  assert.match(long, /^word word .*\S…$/);
+  assert.equal(agentTabLabel('é'.repeat(TAB_LABEL_MAX), 'codex'), 'é'.repeat(TAB_LABEL_MAX));
+});
+
+test('TerminalsStore labels Resume and Continue tabs with the session and its agent', async () => {
+  await withTerminals(async ({ store, mock }) => {
+    const [meta] = await mock.listSessions('', {}, { field: 'updatedAt', dir: 'desc' });
+    const resumed = await store.runResume(meta.ref, meta.cwd, 'Refactor the parser');
+    assert.deepEqual([resumed.label, resumed.agent], ['Refactor the parser', meta.ref.agent]);
+    const handed = await store.runHandoff({ ref: meta.ref, target: 'codex' }, meta.cwd, 'Refactor the parser');
+    assert.deepEqual([handed.label, handed.agent], ['Refactor the parser', 'codex']);
+    const shell = await store.newShell();
+    assert.deepEqual([shell.label, shell.agent], ['Shell', undefined]);
+  });
+});
+
 test('TerminalsStore closes a tab when its process exits, keeping a quick failure readable', async () => {
   const realNow = Date.now;
   let now = 1_000_000;
