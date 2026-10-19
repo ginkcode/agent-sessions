@@ -1,9 +1,11 @@
 <script lang="ts">
+  import { onDestroy, tick, untrack } from 'svelte';
   import { files } from '../../stores/files.svelte';
   import { link } from '../../stores/link.svelte';
   import { hostLabel } from '../../hosts';
   import { highlightFile, splitHighlightedLines, splitLines } from '../../codeHighlight';
   import { copyToClipboard } from '../../portable';
+  import { findCount, findInLines, firstMatchFrom, textRange, type FindMatch, type FindResult } from '../../fileFind';
   import {
     STATUS_LABELS,
     buildFileTree,
@@ -41,6 +43,8 @@
   // Files larger than this are shown without highlighting, which is slow on
   // very long text.
   const HIGHLIGHT_LIMIT = 500_000;
+
+  const isMac = typeof navigator !== 'undefined' && /Mac/i.test(navigator.platform);
 
   let markdownPreview = $state(false);
   let presentation = $state(false);
@@ -238,6 +242,168 @@
     if (el && path) el.scrollTop = scrollTops.get(`${path}:${mode}`) ?? 0;
   });
 
+  // Find in the file (⌘F, Ctrl+F), in the source view. The CSS Custom
+  // Highlight API paints the matches without touching the lines' DOM, and
+  // only those near the screen, so a common letter in a long file stays
+  // cheap. Without it, finding still scrolls to each match.
+  const canPaint = typeof CSS !== 'undefined' && 'highlights' in CSS && typeof Highlight !== 'undefined';
+  const PAINT_MARGIN = 30;
+  const PAINT_LIMIT = 2000;
+  const findShortcut = isMac ? '⌘F' : 'Ctrl+F';
+  let findOpen = $state(false);
+  let findQuery = $state('');
+  let findCase = $state(false);
+  let findCurrent = $state(-1);
+  let findInput: HTMLInputElement | undefined = $state();
+  let codeEl: HTMLElement | undefined = $state();
+  let sourceShown = $derived(
+    files.open && !showMarkdown && !files.loadingFile && !files.fileError && Boolean(text) && fileStatus(files.selected ?? '') !== 'D'
+  );
+  let findActive = $derived(findOpen && sourceShown);
+  let rowTexts = $derived(rows.map((row) => (row.kind === 'removed' ? row.text : (plainLines[row.index] ?? ''))));
+  let found: FindResult = $derived(findActive ? findInLines(rowTexts, findQuery, findCase) : { matches: [], capped: false });
+
+  // One .line per row, gathered again whenever the rows render anew.
+  let lineEls: HTMLElement[] = [];
+  $effect(() => {
+    void rows;
+    void htmlLines;
+    void files.wrap;
+    void presentationFontSize;
+    lineEls = findActive && codeEl ? [...codeEl.querySelectorAll<HTMLElement>('.line')] : [];
+    schedulePaint();
+  });
+
+  // A new search goes to the first match from the one shown before, or from
+  // the top of the screen in a file just opened.
+  let lastMatch: FindMatch | null = null;
+  let lastRows: DiffRow[] | null = null;
+  $effect(() => {
+    const { matches } = found;
+    untrack(() => {
+      const from = rows === lastRows && lastMatch ? lastMatch : { row: rowAt(codeScroll?.getBoundingClientRect().top ?? 0), start: 0 };
+      lastRows = rows;
+      if (matches.length === 0) {
+        findCurrent = -1;
+        lastMatch = null;
+        schedulePaint();
+        return;
+      }
+      const i = firstMatchFrom(matches, from.row, from.start);
+      goToMatch(i < matches.length ? i : 0);
+    });
+  });
+
+  function goToMatch(i: number) {
+    const match = found.matches[i];
+    findCurrent = i;
+    lastMatch = match;
+    reveal(match);
+    schedulePaint();
+  }
+
+  function stepMatch(delta: number) {
+    const total = found.matches.length;
+    if (total > 0) goToMatch(findCurrent < 0 ? 0 : (findCurrent + delta + total) % total);
+  }
+
+  function openFind() {
+    // Text picked in the file is what to find, as in editors.
+    const selection = window.getSelection();
+    const picked = selection?.toString() ?? '';
+    if (picked && !picked.includes('\n') && selection?.anchorNode && codeScroll?.contains(selection.anchorNode)) findQuery = picked;
+    findOpen = true;
+    void tick().then(() => {
+      findInput?.focus();
+      findInput?.select();
+    });
+  }
+
+  function closeFind() {
+    findOpen = false;
+    lastMatch = null;
+  }
+
+  function isFindShortcut(e: KeyboardEvent): boolean {
+    return (isMac ? e.metaKey && !e.ctrlKey : e.ctrlKey && !e.metaKey) && !e.altKey && !e.shiftKey && e.code === 'KeyF';
+  }
+
+  function handleFindKey(e: KeyboardEvent) {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      stepMatch(e.shiftKey ? -1 : 1);
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      closeFind();
+    }
+  }
+
+  // The first row whose bottom is below y on the screen.
+  function rowAt(y: number): number {
+    let lo = 0;
+    let hi = lineEls.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (lineEls[mid].getBoundingClientRect().bottom <= y) lo = mid + 1;
+      else hi = mid;
+    }
+    return lo;
+  }
+
+  function matchRange(match: FindMatch): Range | null {
+    const el = lineEls[match.row];
+    return el ? textRange(el, match.start, match.end) : null;
+  }
+
+  // Scrolls a match into view: to the middle when it is above or below the
+  // screen, and sideways clear of the line numbers.
+  function reveal(match: FindMatch) {
+    const scroller = codeScroll;
+    const range = matchRange(match);
+    if (!scroller || !range) return;
+    const box = scroller.getBoundingClientRect();
+    const r = range.getBoundingClientRect();
+    if (r.top < box.top || r.bottom > box.top + scroller.clientHeight) {
+      scroller.scrollTop += r.top - box.top - (scroller.clientHeight - r.height) / 2;
+    }
+    const left = box.left + (files.wrap ? 0 : (codeEl?.querySelector('.gutter')?.getBoundingClientRect().width ?? 0));
+    const right = box.left + scroller.clientWidth;
+    if (r.left < left || r.right > right) scroller.scrollLeft += r.left - left - (right - left) / 3;
+  }
+
+  let paintFrame = 0;
+  function schedulePaint() {
+    if (canPaint && !paintFrame) paintFrame = requestAnimationFrame(paint);
+  }
+
+  function paint() {
+    paintFrame = 0;
+    const others = new Highlight();
+    const current = new Highlight();
+    const { matches } = found;
+    if (findActive && matches.length > 0 && codeScroll && lineEls.length > 0) {
+      const box = codeScroll.getBoundingClientRect();
+      const first = Math.max(0, rowAt(box.top) - PAINT_MARGIN);
+      const last = rowAt(box.bottom) + PAINT_MARGIN;
+      for (let i = firstMatchFrom(matches, first), n = 0; i < matches.length && matches[i].row <= last && n < PAINT_LIMIT; i++, n++) {
+        const range = i === findCurrent ? null : matchRange(matches[i]);
+        if (range) others.add(range);
+      }
+      const range = findCurrent >= 0 ? matchRange(matches[findCurrent]) : null;
+      if (range) current.add(range);
+    }
+    CSS.highlights.set('file-find', others);
+    CSS.highlights.set('file-find-current', current);
+  }
+
+  onDestroy(() => {
+    cancelAnimationFrame(paintFrame);
+    if (canPaint) {
+      CSS.highlights.delete('file-find');
+      CSS.highlights.delete('file-find-current');
+    }
+  });
+
   function closeTab(e: MouseEvent, path: string) {
     e.stopPropagation();
     files.closeTab(path);
@@ -303,7 +469,6 @@
 
   // Alt+Z (Option+Z), as in VS Code. Read by key position, since Option+Z
   // types Ω on a Mac.
-  const isMac = typeof navigator !== 'undefined' && /Mac/i.test(navigator.platform);
   const wrapShortcut = isMac ? '⌥Z' : 'Alt+Z';
   function isWrapShortcut(e: KeyboardEvent): boolean {
     return e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey && e.code === 'KeyZ' && !e.repeat;
@@ -373,8 +538,12 @@
     if (files.open && e.key === 'Escape' && !e.defaultPrevented) {
       e.preventDefault();
       e.stopPropagation();
-      if (presentation) presentation = false;
+      if (findActive) closeFind();
+      else if (presentation) presentation = false;
       else close();
+    } else if (sourceShown && isFindShortcut(e)) {
+      e.preventDefault();
+      openFind();
     } else if (files.open && isWrapShortcut(e)) {
       e.preventDefault();
       files.toggleWrap();
@@ -578,6 +747,16 @@
                 <button
                   type="button"
                   class="copy-btn"
+                  class:on={findActive}
+                  aria-pressed={findActive}
+                  title="Find in the file ({findShortcut})"
+                  onclick={() => (findActive ? closeFind() : openFind())}
+                >
+                  Find
+                </button>
+                <button
+                  type="button"
+                  class="copy-btn"
                   class:on={files.wrap}
                   aria-pressed={files.wrap}
                   title="{files.wrap ? 'Stop wrapping' : 'Wrap'} long lines ({wrapShortcut})"
@@ -634,11 +813,57 @@
             {:else if files.content && !text}
               <div class="state center">This file is empty.</div>
             {:else if files.content}
+              <div class="code-area">
+              {#if findActive}
+                <div class="find-bar" role="search">
+                  <input
+                    bind:this={findInput}
+                    class="find-input"
+                    type="text"
+                    placeholder="Find"
+                    aria-label="Find in the file"
+                    value={findQuery}
+                    oninput={(e) => (findQuery = e.currentTarget.value)}
+                    onkeydown={handleFindKey}
+                    autocomplete="off"
+                    autocorrect="off"
+                    autocapitalize="off"
+                    spellcheck="false"
+                  />
+                  <button
+                    type="button"
+                    class="find-btn case"
+                    class:on={findCase}
+                    aria-pressed={findCase}
+                    aria-label="Match case"
+                    title="Match case"
+                    onclick={() => {
+                      findCase = !findCase;
+                      findInput?.focus();
+                    }}>Aa</button
+                  >
+                  <span class="find-count" class:none={findQuery && found.matches.length === 0} aria-live="polite">
+                    {findQuery ? findCount(found, findCurrent) : ''}
+                  </span>
+                  <button type="button" class="find-btn" aria-label="Previous match" title="Previous match (Shift+Enter)" disabled={found.matches.length === 0} onclick={() => stepMatch(-1)}>
+                    <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+                      <path d="M8 13V3M3.5 7.5 8 3l4.5 4.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+                    </svg>
+                  </button>
+                  <button type="button" class="find-btn" aria-label="Next match" title="Next match (Enter)" disabled={found.matches.length === 0} onclick={() => stepMatch(1)}>
+                    <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+                      <path d="M8 3v10M3.5 8.5 8 13l4.5-4.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+                    </svg>
+                  </button>
+                  <button type="button" class="find-btn" aria-label="Close find" title="Close (Escape)" onclick={closeFind}>×</button>
+                </div>
+              {/if}
               <div
                 class="code-scroll"
                 bind:this={codeScroll}
                 onscroll={(e) => {
                   if (files.selected) scrollTops.set(`${files.selected}:${showMarkdown ? 'preview' : 'source'}`, e.currentTarget.scrollTop);
+                  if (findActive) schedulePaint();
                 }}
               >
                 {#if showMarkdown}
@@ -646,7 +871,7 @@
                     <MarkdownDoc source={text} onFileLink={followFileLink} />
                   </div>
                 {:else}
-                <div class="code source" class:wrap={files.wrap} class:diff={showDiff} style:font-size={presentation ? `${presentationFontSize}px` : undefined}>
+                <div class="code source" bind:this={codeEl} class:wrap={files.wrap} class:diff={showDiff} style:font-size={presentation ? `${presentationFontSize}px` : undefined}>
                   {#snippet lineNumber(row: DiffRow)}
                     {#if row.kind === 'removed'}
                       <span aria-hidden="true" class="ln sign removed">−</span>
@@ -685,6 +910,7 @@
                   {/if}
                 </div>
                 {/if}
+              </div>
               </div>
             {/if}
           {/if}
@@ -1222,10 +1448,108 @@
     border-color: #ef4444;
   }
 
+  .code-area {
+    position: relative;
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
   .code-scroll {
     flex: 1;
     min-height: 0;
     overflow: auto;
+  }
+
+  /* Over the code's top right corner, as in editors. */
+  .find-bar {
+    position: absolute;
+    top: 6px;
+    right: 18px;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    padding: 4px;
+    font-family: var(--font-sans);
+    font-size: 0.75rem;
+    background-color: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18);
+  }
+
+  .find-input {
+    width: 200px;
+    padding: 3px 8px;
+    font-family: var(--font-mono);
+    font-size: 0.78rem;
+    background-color: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    color: var(--text-primary);
+  }
+
+  .find-input:focus {
+    outline: none;
+    border-color: var(--accent-color, #3b82f6);
+  }
+
+  .find-count {
+    /* Room for "999 of 999", so the input stays put while stepping. */
+    min-width: 84px;
+    padding: 0 6px;
+    color: var(--text-secondary);
+    font-variant-numeric: tabular-nums;
+    text-align: center;
+    white-space: nowrap;
+  }
+
+  .find-count.none {
+    color: #ef4444;
+  }
+
+  .find-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 24px;
+    height: 24px;
+    padding: 0 4px;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    color: var(--text-secondary);
+    cursor: pointer;
+  }
+
+  .find-btn:hover:not(:disabled) {
+    background-color: var(--hover-bg);
+    color: var(--text-primary);
+  }
+
+  .find-btn:disabled {
+    opacity: 0.4;
+    cursor: default;
+  }
+
+  .find-btn.case {
+    font-weight: 600;
+  }
+
+  .find-btn.on {
+    color: var(--accent-color);
+    border-color: var(--accent-color);
+    background-color: var(--active-bg);
+  }
+
+  /* Matches as editors mark them: every one, and stronger the current one. */
+  :global(::highlight(file-find)) {
+    background-color: rgba(234, 179, 8, 0.3);
+  }
+
+  :global(::highlight(file-find-current)) {
+    background-color: rgba(249, 115, 22, 0.55);
   }
 
   /* Line numbers and lines side by side. Wrapped, one grid row per line, so
