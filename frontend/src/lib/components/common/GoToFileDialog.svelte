@@ -877,7 +877,7 @@
                     <MarkdownDoc source={text} onFileLink={followFileLink} />
                   </div>
                 {:else}
-                <div class="code source" bind:this={codeEl} class:wrap={files.wrap} class:diff={showDiff} style:font-size={presentation ? `${presentationFontSize}px` : undefined}>
+                <div class="code source" bind:this={codeEl} class:wrap={files.wrap} class:diff={showDiff} style:font-size={presentation ? `${presentationFontSize}px` : undefined} style:--digits={String(htmlLines?.length ?? plainLines.length).length}>
                   {#snippet lineNumber(row: DiffRow)}
                     {#if row.kind === 'removed'}
                       <span aria-hidden="true" class="ln sign removed">−</span>
@@ -1579,22 +1579,20 @@
     tab-size: 4;
   }
 
+  /* Wrapped, the numbers are grid items row by row, so nothing spans the
+     column below the last one. It gets a width from the digits of the
+     last number, its padding and border, and the view paints that strip
+     top to bottom. */
   .code.wrap {
-    position: relative;
-    isolation: isolate;
+    --gutter: calc(var(--digits, 1) * 1ch + 25px);
+    grid-template-columns: var(--gutter) minmax(0, 1fr);
     min-width: 0;
-  }
-
-  /* Wrapped, the numbers are grid items row by row; this paints their
-     column top to bottom, behind them. */
-  .code.wrap::before {
-    content: '';
-    position: absolute;
-    grid-column: 1;
-    inset: 0;
-    z-index: -1;
-    background-color: var(--bg-secondary);
-    border-right: 1px solid var(--border-color);
+    background-image: linear-gradient(
+      to right,
+      var(--bg-secondary) calc(var(--gutter) - 1px),
+      var(--border-color) 0 var(--gutter),
+      transparent 0
+    );
   }
 
   /* Unwrapped, the one row of gutter and lines stretches to the full
