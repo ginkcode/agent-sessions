@@ -1,10 +1,13 @@
-import { Compartment, EditorState, type Extension } from '@codemirror/state';
+import { Compartment, EditorState, StateField, type Extension } from '@codemirror/state';
 import { EditorView, drawSelection, highlightActiveLine, keymap, lineNumbers } from '@codemirror/view';
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands';
-import { HighlightStyle, indentOnInput, syntaxHighlighting } from '@codemirror/language';
-import { tags as t } from '@lezer/highlight';
+import { LanguageDescription, indentOnInput } from '@codemirror/language';
+import { Decoration, type DecorationSet } from '@codemirror/view';
+import { loadFileHighlighter } from './codeHighlight';
+import type { HLJSApi } from 'highlight.js';
 import { keyHandled } from './fullscreen';
 import type { FilePosition } from './filePosition';
+import { fileLanguage } from './files';
 import { closeSearchPanel, openSearchPanel, search, searchKeymap, searchPanelOpen } from '@codemirror/search';
 
 export interface FileEditorOptions {
@@ -34,6 +37,7 @@ const owners = new WeakMap<EditorView, FileEditorOptions>();
 const wrapping = new Compartment();
 const editing = new Compartment();
 const language = new Compartment();
+const coloring = new Compartment();
 const editable = (disabled = false): Extension => [
   EditorView.editable.of(!disabled),
   EditorState.readOnly.of(disabled),
@@ -67,38 +71,43 @@ const theme = EditorView.theme({
   '.cm-textfield, .cm-button': { background: 'var(--bg-primary)', color: 'var(--text-primary)', border: '1px solid var(--border-color)' },
 });
 
-// Token classes the viewer's highlight.js output uses, so both get the same
-// colours from SourceView's stylesheet (scoped to .file-source).
-const highlight = HighlightStyle.define([
-  { tag: [t.keyword, t.modifier, t.self, t.operatorKeyword], class: 'hljs-keyword' },
-  { tag: [t.bool, t.null, t.atom], class: 'hljs-literal' },
-  { tag: [t.string, t.special(t.string), t.character, t.attributeValue, t.docString], class: 'hljs-string' },
-  { tag: t.regexp, class: 'hljs-regexp' },
-  { tag: [t.number, t.color, t.unit], class: 'hljs-number' },
-  { tag: t.comment, class: 'hljs-comment' },
-  { tag: [t.function(t.definition(t.variableName)), t.function(t.definition(t.propertyName))], class: 'hljs-title function_' },
-  { tag: [t.definition(t.className), t.definition(t.typeName)], class: 'hljs-title class_' },
-  { tag: [t.typeName, t.className], class: 'hljs-type' },
-  { tag: t.attributeName, class: 'hljs-attr' },
-  { tag: [t.propertyName, t.definition(t.propertyName)], class: 'hljs-property' },
-  { tag: t.tagName, class: 'hljs-name' },
-  { tag: [t.meta, t.documentMeta, t.processingInstruction], class: 'hljs-meta' },
-  { tag: t.heading, class: 'hljs-section' },
-  { tag: t.list, class: 'hljs-bullet' },
-  { tag: t.quote, class: 'hljs-quote' },
-  { tag: t.monospace, class: 'hljs-code' },
-  { tag: t.emphasis, class: 'hljs-emphasis' },
-  { tag: t.strong, class: 'hljs-strong' },
-]);
+// Use exactly the viewer's tokenizer, not a best-effort mapping of Lezer
+// tags: the two parsers disagree on properties, builtins, parameters, etc.
+// Language extensions below still provide indentation and editing support.
+function fileHighlight(hljs: HLJSApi, path: string): Extension {
+  const language = fileLanguage(path);
+  const lang = language && hljs.getLanguage(language) ? language : 'plaintext';
+  function decorate(state: EditorState): DecorationSet {
+    const html = hljs.highlight(state.doc.toString(), { language: lang, ignoreIllegals: true }).value;
+    const marks = [];
+    const open: { from: number; class: string }[] = [];
+    let offset = 0;
+    // highlight.js emits only escaped text and span tags. Count decoded UTF-16
+    // units so entities and non-ASCII text retain the document's exact offsets.
+    for (const token of html.matchAll(/<span class="([^"]*)">|<\/span>|&(?:#\d+|#x[\da-f]+|\w+);|[^<&]+/gi)) {
+      if (token[1] !== undefined) open.push({ from: offset, class: token[1] });
+      else if (token[0] === '</span>') {
+        const mark = open.pop();
+        if (mark && mark.from < offset) marks.push(Decoration.mark({ class: mark.class }).range(mark.from, offset));
+      } else offset += token[0].startsWith('&') ? 1 : token[0].length;
+    }
+    return Decoration.set(marks, true);
+  }
+  return StateField.define<DecorationSet>({
+    create: decorate,
+    update: (value, transaction) => transaction.docChanged ? decorate(transaction.state) : value,
+    provide: field => EditorView.decorations.from(field),
+  });
+}
 
 function freshState(options: FileEditorOptions): EditorState {
   return EditorState.create({
     doc: options.text,
     extensions: [
       lineNumbers(), history(), drawSelection(), highlightActiveLine(), indentOnInput(),
-      syntaxHighlighting(highlight), search(), theme,
+      search(), theme,
       wrapping.of(options.wrap ? EditorView.lineWrapping : []),
-      editing.of(editable(options.disabled)), language.of([]),
+      editing.of(editable(options.disabled)), language.of([]), coloring.of([]),
       keymap.of([indentWithTab, ...defaultKeymap, ...historyKeymap, ...searchKeymap]),
       EditorView.updateListener.of(update => {
         if (update.docChanged) owners.get(update.view)?.onchange(update.state.doc.toString());
@@ -130,22 +139,19 @@ function handleKey(view: EditorView, event: KeyboardEvent): boolean {
   return consumed;
 }
 
+// Picks the editor's language by file name from @codemirror/language-data,
+// which loads each language only when a file needs it. Svelte is not in that
+// list, so it has its own package. Names the list does not know (.zshrc,
+// Brewfile) fall back to the viewer's highlight.js language, looked up by name.
 async function loadLanguage(path: string): Promise<Extension> {
-  const ext = path.split('.').pop()?.toLowerCase();
-  switch (ext) {
-    case 'js': case 'mjs': case 'cjs': case 'jsx': case 'ts': case 'mts': case 'cts': case 'tsx': {
-      const { javascript } = await import('@codemirror/lang-javascript');
-      return javascript({ typescript: ['ts', 'mts', 'cts', 'tsx'].includes(ext), jsx: ext === 'jsx' || ext === 'tsx' });
-    }
-    case 'json': return (await import('@codemirror/lang-json')).json();
-    case 'html': case 'htm': return (await import('@codemirror/lang-html')).html();
-    case 'css': return (await import('@codemirror/lang-css')).css();
-    case 'md': case 'markdown': return (await import('@codemirror/lang-markdown')).markdown();
-    case 'py': case 'pyw': return (await import('@codemirror/lang-python')).python();
-    case 'go': return (await import('@codemirror/lang-go')).go();
-    case 'yml': case 'yaml': return (await import('@codemirror/lang-yaml')).yaml();
-    default: return [];
-  }
+  const name = path.slice(path.lastIndexOf('/') + 1);
+  if (/\.svelte$/i.test(name)) return (await import('@replit/codemirror-lang-svelte')).svelte();
+  const { languages } = await import('@codemirror/language-data');
+  const hljsName = fileLanguage(path);
+  const description =
+    LanguageDescription.matchFilename(languages, name) ??
+    (hljsName ? LanguageDescription.matchLanguageName(languages, hljsName, false) : null);
+  return description ? await description.load() : [];
 }
 
 export function createFileEditor(parent: HTMLElement, initial: FileEditorOptions) {
@@ -170,7 +176,13 @@ export function createFileEditor(parent: HTMLElement, initial: FileEditorOptions
   }
   function setLanguage() {
     const request = ++languageRequest;
-    void loadLanguage(options.path).catch((): Extension => []).then(extension => {
+    const path = options.path;
+    void loadFileHighlighter().then(hljs => {
+      if (!destroyed && request === languageRequest) {
+        view.dispatch({ effects: coloring.reconfigure(fileHighlight(hljs, path)) });
+      }
+    }).catch(() => { /* Keep plain text if the lazy highlighter cannot load. */ });
+    void loadLanguage(path).catch((): Extension => []).then(extension => {
       if (!destroyed && request === languageRequest) view.dispatch({ effects: language.reconfigure(extension) });
     });
   }

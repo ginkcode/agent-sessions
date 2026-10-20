@@ -42,6 +42,7 @@ class FakeDom {
 class FakeEditorView {
   static scrollIntoView = EditorView.scrollIntoView;
   static theme = EditorView.theme;
+  static decorations = EditorView.decorations;
   static lineWrapping = EditorView.lineWrapping;
   static editable = EditorView.editable;
   static updateListener = EditorView.updateListener;
@@ -102,6 +103,9 @@ async function loadEditorModule() {
   // (including the lazily imported languages) to the same files the test uses.
   source = source.replace(/'(@(?:codemirror|lezer)\/[a-z-]+)'/g, (_, name) => JSON.stringify(import.meta.resolve(name)));
   source = source.replace("'./fullscreen'", JSON.stringify(new URL('fullscreen.ts', EDITOR_URL).href));
+  source = source.replace("'./files'", JSON.stringify(new URL('files.ts', EDITOR_URL).href));
+  source = source.replace("'./codeHighlight'", JSON.stringify(new URL('codeHighlight.ts', EDITOR_URL).href));
+  source = source.replace("'@replit/codemirror-lang-svelte'", JSON.stringify(import.meta.resolve('@replit/codemirror-lang-svelte')));
   const js = ts.transpileModule(source, {
     fileName: fileURLToPath(EDITOR_URL),
     compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext },
@@ -174,10 +178,10 @@ async function settle(predicate, message = 'condition never became true', timeou
   }
 }
 
-// Language loading dispatches exactly once per request, after an async import.
+// Language support and syntax coloring load independently after async imports.
 async function languageOf(view, path) {
   const start = view.dispatches;
-  await settle(() => view.dispatches > start || view.state.facet(language) !== null, `language for ${path} never loaded`);
+  await settle(() => view.state.facet(language) !== null, `language for ${path} never loaded`);
   return view.state.facet(language);
 }
 
@@ -260,6 +264,38 @@ test('languages load lazily by extension, case-insensitively, with JS/TS/JSX dia
     const start = view.dispatches;
     await settle(() => view.dispatches > start);
     assert.equal(view.state.facet(language), null, `${path}: plain text`);
+    editor.destroy();
+  }
+});
+
+test('editor uses viewer tokens for builtins, properties, entities and live edits', async () => {
+  const { highlightFile } = await import('../src/lib/codeHighlight.ts');
+  for (const [path, lang, text] of [
+    ['a.ts', 'typescript', 'const x = console.log("<&😀");'],
+    ['a.py', 'python', 'print("<&😀") # comment'],
+    ['a.json', 'json', '{"key": "<&😀", "n": true}'],
+    ['a.css', 'css', '.item { color: red; }'],
+  ]) {
+    const { editor, view } = mount({ path, text });
+    const ranges = () => view.state.facet(EditorView.decorations).filter(x => typeof x !== 'function');
+    await settle(() => ranges().length > 0);
+    for (const suffix of ['', '\n']) {
+      if (suffix) type(view, suffix);
+      const doc = view.state.doc.toString();
+      const actual = Array.from({ length: doc.length }, () => []);
+      for (const set of ranges()) set.between(0, doc.length, (from, to, mark) => {
+        for (let i = from; i < to; i++) actual[i].push(mark.spec.class);
+      });
+      const html = await highlightFile(doc, lang);
+      const expected = [];
+      const stack = [];
+      for (const token of html.matchAll(/<span class="([^"]*)">|<\/span>|&[^;]+;|[^<&]+/g)) {
+        if (token[1] !== undefined) stack.push(token[1]);
+        else if (token[0] === '</span>') stack.pop();
+        else for (let i = 0; i < (token[0].startsWith('&') ? 1 : token[0].length); i++) expected.push([...stack].sort());
+      }
+      assert.deepEqual(actual.map(classes => classes.sort()), expected, path);
+    }
     editor.destroy();
   }
 });

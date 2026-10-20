@@ -80,11 +80,13 @@ test('splitHighlightedLines keeps every line complete HTML', () => {
     '<span class="hljs-comment">two <span class="hljs-doctag">@x</span></span>',
     '<span class="hljs-comment"><span class="hljs-doctag">y</span> three</span>',
     '<span class="hljs-comment">*/</span> b',
+    '',
   ]);
   assert.deepEqual(splitHighlightedLines('x\n\ny'), ['x', '', 'y']);
   assert.deepEqual(splitHighlightedLines(''), ['']);
-  assert.deepEqual(splitLines('a\nb\n'), ['a', 'b']);
-  assert.deepEqual(splitLines('a\n\n'), ['a', '']);
+  assert.deepEqual(splitLines('a\nb\n'), ['a', 'b', '']);
+  assert.deepEqual(splitLines('a\n\n'), ['a', '', '']);
+  assert.deepEqual(splitHighlightedLines('a\n\n'), ['a', '', '']);
   assert.deepEqual(splitLines(''), ['']);
 });
 
