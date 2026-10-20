@@ -605,7 +605,7 @@
         title={anchoredToBottom ? 'Release anchor to scroll freely' : 'Keep the latest message in view, even when scrolling'}
         onclick={toggleBottomAnchor}
       >
-        <span aria-hidden="true">⚓</span>
+        <span class="anchor-icon" aria-hidden="true"></span>
       </button>
     {:else if showScrollBottomBtn || jumpingToBottom}
       <button
@@ -780,6 +780,14 @@
     background-color: var(--bg-secondary);
     color: var(--text-secondary);
     border: 1px solid var(--border-color);
+  }
+
+  .anchor-icon {
+    width: 20px;
+    height: 20px;
+    background-color: currentColor;
+    -webkit-mask: url('../../../../assets/anchor.svg') center / contain no-repeat;
+    mask: url('../../../../assets/anchor.svg') center / contain no-repeat;
   }
 
   .bottom-anchor.anchored {
