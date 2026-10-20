@@ -7,7 +7,7 @@ import {
   visibleTranscriptParts,
   withTranslation,
 } from '../src/lib/transcript.ts';
-import { printBlocks, printMarkdown, printTitle } from '../src/lib/print.ts';
+import { printBlocks, printFile, printMarkdown, printMessage, printTitle, setPrintEditor } from '../src/lib/print.ts';
 import { MockBackendAPI } from '../src/lib/mock/mockApi.ts';
 import { fixtureStore, loadServerModule } from './helpers.mjs';
 
@@ -192,6 +192,27 @@ test('a translation replaces the text parts where the first was', () => {
     [{ kind: 'text', text: 'xin chào' }, file],
   );
   assert.deepEqual(withTranslation([file], 'xin chào'), [{ kind: 'text', text: 'xin chào' }, file]);
+});
+
+test('Markdown files use the shared print editor without a session and preserve their source', () => {
+  const jobs = [];
+  setPrintEditor((job) => jobs.push(job));
+  try {
+    const markdown = '  # Notes\r\n\r\n```js\r\nconst x = 1;\r\n```\r\n';
+    printFile('docs/notes.md', markdown);
+    printFile('docs\\notes.markdown', markdown);
+    assert.deepEqual(jobs, [
+      { title: 'notes.md', markdown },
+      { title: 'notes.markdown', markdown },
+    ]);
+    const message = { sessionRef: { id: 'session' }, title: 'Session', parts: [{ kind: 'text', text: 'Hello' }] };
+    printMessage(message);
+    assert.equal(jobs[2], message);
+  } finally {
+    setPrintEditor(null);
+  }
+  printFile('notes.md', '# No editor mounted');
+  assert.equal(jobs.length, 3);
 });
 
 test('the print title is the edited title without unsafe file name characters', () => {

@@ -19,6 +19,7 @@ const viewer = await loadServerComponent(VIEWER_URL, [
   ["import { highlightFile, splitHighlightedLines, splitLines } from '../../../codeHighlight';",
     "const highlightFile = async () => ''; const splitHighlightedLines = (h) => h.split('\\n'); const splitLines = (t) => t.split('\\n');"],
   ["import { copyToClipboard } from '../../../portable';", 'const copyToClipboard = async () => true;'],
+  ["'../../../print'", lib('../../../print.ts')],
   ["'../../../fileFind'", lib('../../../fileFind.ts')],
   ["'../../../files'", lib('../../../files.ts')],
   ["import { toast } from '../../../stores/toast.svelte';", fixtureStore('toast')],
@@ -53,6 +54,23 @@ const viewer = await loadServerComponent(VIEWER_URL, [
     openFind() {}, closeFind() {}, stepMatch() {}, handleFindKey() {}, schedulePaint() {},
   });`],
 ]);
+
+test('print is offered only for readable Markdown outside editing', async () => {
+  const label = 'aria-label="Print / Save as PDF"';
+  assert.ok((await render({ files: { content: content('notes.md', '# Notes') } })).includes(label));
+  for (const files of [
+    { content: content('main.ts', 'const x = 1;') },
+    { content: content('notes.md', '# Notes'), loadingFile: true },
+    { content: content('notes.md', '# Notes'), fileError: 'Could not read' },
+    { content: content('notes.md', '# Notes', { binary: true }) },
+    { content: content('notes.md', '# Notes', { tooLarge: true }) },
+    { content: content('notes.md', '') },
+    editingFiles('notes.md', '# Notes', '# Draft'),
+    { content: content('notes.md', '# Notes'), listing: { status: { 'notes.md': 'D' } } },
+  ]) {
+    assert.ok(!(await render({ files })).includes(label));
+  }
+});
 
 function content(path, text, extra = {}) {
   return {
@@ -138,7 +156,7 @@ test('an eligible empty file offers Edit beside the empty state', async () => {
 test('an eligible text file offers Edit alongside the read-only viewer tools', async () => {
   const html = await render({ files: { content: content('src/main.ts', 'const a = 1;\n') } });
   assert.deepEqual(button(html, 'Edit'), { text: 'Edit', disabled: false });
-  assert.ok(button(html, 'Find') && button(html, 'Wrap') && button(html, 'Copy'));
+  assert.ok(button(html, 'Find') && button(html, 'Wrap') && button(html, 'Copy the file content'));
   assert.match(html, /data-source-view/);
 });
 
@@ -280,14 +298,14 @@ test('editing hides preview, Git diff, find, copy and presentation controls', as
 
   // Baseline: the same Markdown file, viewing, does show every read-only tool.
   const viewing = await render({ files: files(false) }, { presentation: true });
-  for (const text of ['Preview', 'Git diff', 'Find', 'Copy', 'Edit']) assert.ok(button(viewing, text), `viewing: ${text}`);
+  for (const text of ['Preview', 'Git diff', 'Find', 'Copy the file content', 'Edit']) assert.ok(button(viewing, text), `viewing: ${text}`);
   assert.match(viewing, /aria-label="Exit presentation mode"/);
   assert.match(viewing, /aria-label="Increase presentation font size"/);
   assert.match(viewing, /data-source-view data-show-diff="true"/);
 
   const editing = await render({ files: files(true) }, { presentation: true });
   const texts = buttonTexts(editing);
-  for (const text of ['Preview', 'Git diff', 'Find', 'Copy', 'Edit']) assert.ok(!texts.includes(text), `editing: ${text}`);
+  for (const text of ['Preview', 'Git diff', 'Find', 'Copy the file content', 'Edit']) assert.ok(!texts.includes(text), `editing: ${text}`);
   assert.doesNotMatch(editing, /presentation mode|presentation font size/i);
   assert.doesNotMatch(editing, /data-source-view|data-markdown-doc/);
   assert.doesNotMatch(editing, /role="search"/);

@@ -1,5 +1,5 @@
 /**
- * Prints one message, or saves it as a PDF from the print dialog. The message
+ * Prints a message or Markdown file, or saves it as a PDF. The content
  * opens in an editor first, where its title and Markdown can be changed. The
  * editor and the print sheet live in App.svelte and register themselves here,
  * like the viewer.
@@ -7,18 +7,25 @@
 import type { FileRef, Part, SessionRef } from './types';
 import { isImageFile } from './images';
 
-export interface PrintJob {
+export type PrintJob = {
   sessionRef: SessionRef;
   /** The title offered in the editor: the session's. */
   title: string;
   /** What Chat level shows of the message, translated when it is shown so. */
   parts: Part[];
-}
+} | {
+  /** A standalone Markdown file needs no session or message attachments. */
+  sessionRef?: never;
+  title: string;
+  markdown: string;
+};
 
 /** What is printed: the edited title and Markdown, and the message's images. */
 export interface PrintDocument {
-  sessionRef: SessionRef;
+  sessionRef: SessionRef | null;
   title: string;
+  /** File names label the PDF but aren't added as headings to its content. */
+  showTitle?: boolean;
   markdown: string;
   /** Images placed in the Markdown as ![name](attachment:N), N from 1. */
   attachments: FileRef[];
@@ -39,6 +46,11 @@ export function setPrinter(fn: ((doc: PrintDocument) => void) | null): void {
 
 export function printMessage(job: PrintJob): void {
   editor?.(job);
+}
+
+export function printFile(path: string, markdown: string): void {
+  const name = path.split(/[\\/]/).pop() || path;
+  editor?.({ title: name, markdown });
 }
 
 export function printDocument(doc: PrintDocument): void {

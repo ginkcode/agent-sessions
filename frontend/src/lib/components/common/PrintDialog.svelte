@@ -15,6 +15,8 @@
   let open = $state(false);
   let sessionRef = $state<SessionRef | null>(null);
   let title = $state('');
+  let showTitle = $state(true);
+  let contentInput = $state<HTMLTextAreaElement>();
   let markdown = $state('');
   let attachments: FileRef[] = [];
   let images = $state<Record<number, LoadedImage | string>>({});
@@ -26,17 +28,18 @@
   onMount(() => {
     setPrintEditor((job) => {
       const id = ++generation;
-      const content = printMarkdown(job.parts);
+      const content = 'parts' in job ? printMarkdown(job.parts) : { markdown: job.markdown, attachments: [] };
       returnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-      sessionRef = job.sessionRef;
+      sessionRef = job.sessionRef ?? null;
       title = job.title;
+      showTitle = 'parts' in job;
       markdown = content.markdown;
       preview = content.markdown;
       attachments = content.attachments;
       images = {};
       open = true;
-      void tick().then(() => titleInput?.select());
-      void loadAttachments(job.sessionRef, content.attachments).then((loaded) => {
+      void tick().then(() => showTitle ? titleInput?.select() : contentInput?.focus());
+      void loadAttachments(job.sessionRef ?? null, content.attachments).then((loaded) => {
         if (id === generation) images = loaded;
       });
     });
@@ -59,14 +62,15 @@
   }
 
   function print(): void {
-    if (!sessionRef || !markdown.trim()) return;
-    printDocument({ sessionRef, title: title.trim(), markdown, attachments });
+    if (!markdown.trim()) return;
+    printDocument({ sessionRef, title: title.trim(), showTitle, markdown, attachments });
     void close();
   }
 
   function onKeydown(e: KeyboardEvent): void {
+    // Keep shortcuts from reaching the file viewer underneath this dialog.
+    e.stopPropagation();
     if (e.key === 'Escape') {
-      e.stopPropagation();
       void close();
     } else if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
       e.preventDefault();
@@ -83,6 +87,7 @@
         <h2 id="print-dialog-title">Print / Save as PDF</h2>
       </header>
       <div class="dialog-body">
+        {#if showTitle}
         <label class="field">
           <span class="field-label">Title</span>
           <input
@@ -97,16 +102,17 @@
             spellcheck="false"
           />
         </label>
+        {/if}
         <div class="panes">
           <label class="pane">
             <span class="field-label">Content (Markdown)</span>
             <!-- Svelte's types leave autocorrect off textarea; WebKit reads it there too. -->
-            <textarea bind:value={markdown} class="editor" autocomplete="off" {...{ autocorrect: 'off' }} autocapitalize="off" spellcheck="false"></textarea>
+            <textarea bind:this={contentInput} bind:value={markdown} class="editor" autocomplete="off" {...{ autocorrect: 'off' }} autocapitalize="off" spellcheck="false"></textarea>
           </label>
           <div class="pane">
             <span class="field-label">Preview</span>
             <div class="preview">
-              <PrintPage {title} markdown={preview} {images} shade={theme.resolved} idPrefix="print-preview" />
+              <PrintPage title={showTitle ? title : ''} markdown={preview} {images} shade={theme.resolved} idPrefix="print-preview" />
             </div>
           </div>
         </div>
@@ -137,7 +143,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    z-index: 1010;
+    z-index: 1011;
     padding: 16px;
   }
 

@@ -5,9 +5,10 @@
 
   /** A document's images by attachment number, or why each couldn't be loaded. */
   export async function loadAttachments(
-    sessionRef: SessionRef,
+    sessionRef: SessionRef | null,
     files: FileRef[]
   ): Promise<Record<number, LoadedImage | string>> {
+    if (!sessionRef) return {};
     const loaded = await Promise.all(
       files.map((file) => loadImage(sessionRef, file).catch((err: unknown) => (err instanceof Error ? err.message : String(err))))
     );
@@ -87,7 +88,7 @@
 <div class="print-sheet" bind:this={sheet}>
   {#if doc}
     {#key doc}
-      <PrintPage bind:this={page} title={doc.title} markdown={doc.markdown} {images} shade="light" idPrefix="print-diagram" />
+      <PrintPage bind:this={page} title={doc.showTitle === false ? '' : doc.title} markdown={doc.markdown} {images} shade="light" idPrefix="print-diagram" />
     {/key}
   {/if}
 </div>

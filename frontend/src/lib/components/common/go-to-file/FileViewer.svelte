@@ -3,6 +3,7 @@
   import { files } from '../../../stores/files.svelte';
   import { highlightFile, splitHighlightedLines, splitLines } from '../../../codeHighlight';
   import { copyToClipboard } from '../../../portable';
+  import { printFile } from '../../../print';
   import { findCount } from '../../../fileFind';
   import { diffRows, fileChanges, fileLanguage, filePreview, isImageFile, lineMarks, type DiffRow } from '../../../files';
   import type { GitStatus } from '../../../types';
@@ -449,6 +450,17 @@
           {@const kindLabel = previewKind === 'svg' ? 'SVG' : 'Markdown'}
           <button type="button" class="copy-btn" class:on={showPreview} aria-pressed={showPreview} title={showPreview ? `Show ${kindLabel} source` : `Preview ${kindLabel}`} onclick={() => (previewOn = !previewOn)}>Preview</button>
         {/if}
+        {#if previewKind === 'markdown' && contentShown && textContent}
+          <button
+            type="button"
+            class="copy-btn icon-btn"
+            aria-label="Print / Save as PDF"
+            title="Print / Save as PDF"
+            onclick={() => files.selected && printFile(files.selected, text)}
+          >
+            <span class="btn-icon icon-print" aria-hidden="true"></span>
+          </button>
+        {/if}
         {#if !showPreview}
         {#if hasChanges}
           <button
@@ -493,14 +505,14 @@
         {/if}
         <button
           type="button"
-          class="copy-btn"
+          class="copy-btn icon-btn"
           class:copied={copyState === 'copied'}
           class:failed={copyState === 'failed'}
-          title="Copy the file content"
+          title={copyState === 'idle' ? 'Copy the file content' : COPY_LABELS[copyState]}
           aria-label={copyState === 'idle' ? 'Copy the file content' : COPY_LABELS[copyState]}
           onclick={copyContent}
         >
-          {COPY_LABELS[copyState]}
+          <span class="btn-icon" class:icon-copy={copyState !== 'copied'} class:icon-copied={copyState === 'copied'} aria-hidden="true"></span>
         </button>
       {:else if showImage}
         {@render zoomControls()}
@@ -749,6 +761,21 @@
   .icon-find {
     -webkit-mask: url('../../../../../assets/find.svg') center / contain no-repeat;
     mask: url('../../../../../assets/find.svg') center / contain no-repeat;
+  }
+
+  .icon-copy {
+    -webkit-mask: url('../../../../../assets/copy.svg') center / contain no-repeat;
+    mask: url('../../../../../assets/copy.svg') center / contain no-repeat;
+  }
+
+  .icon-copied {
+    -webkit-mask: url('../../../../../assets/copied.svg') center / contain no-repeat;
+    mask: url('../../../../../assets/copied.svg') center / contain no-repeat;
+  }
+
+  .icon-print {
+    -webkit-mask: url('../../../../../assets/print.svg') center / contain no-repeat;
+    mask: url('../../../../../assets/print.svg') center / contain no-repeat;
   }
 
   .icon-wrap {
