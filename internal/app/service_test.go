@@ -395,7 +395,7 @@ func TestGetMessages_PagingAndLRU(t *testing.T) {
 	}
 
 	// Invalid pagination bounds
-	if _, err := svc.GetMessages(ctx, ref, -1, 10); err == nil {
+	if _, err := svc.GetMessages(ctx, ref, -2, 10); err == nil {
 		t.Error("expected error for negative offset")
 	}
 	if _, err := svc.GetMessages(ctx, ref, 0, 0); err == nil {

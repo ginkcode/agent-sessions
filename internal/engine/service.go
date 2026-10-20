@@ -176,8 +176,9 @@ func (s *Service) GetSessionMeta(ref model.SessionRef) (model.SessionMeta, error
 }
 
 // GetMessages returns one page of a session transcript.
+// An offset of -1 requests the latest limit messages, with their actual offset.
 func (s *Service) GetMessages(ctx context.Context, ref model.SessionRef, offset int, limit int) (MessagesPage, error) {
-	if offset < 0 || limit <= 0 {
+	if offset < -1 || limit <= 0 {
 		return MessagesPage{}, fmt.Errorf("invalid page offset=%d limit=%d", offset, limit)
 	}
 	all, err := s.loadTranscript(ctx, ref)
@@ -185,6 +186,9 @@ func (s *Service) GetMessages(ctx context.Context, ref model.SessionRef, offset 
 		return MessagesPage{}, err
 	}
 	total := len(all.Messages)
+	if offset == -1 {
+		offset = max(0, total-limit)
+	}
 	start := min(offset, total)
 	end := min(start+limit, total)
 	page := make([]model.Message, end-start)

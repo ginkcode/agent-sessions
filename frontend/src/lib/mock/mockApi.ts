@@ -339,7 +339,9 @@ export class MockBackendAPI {
       },
     ];
 
+    if (offset < -1 || limit <= 0) throw new Error(`Invalid page offset=${offset} limit=${limit}`);
     const totalCount = list.length;
+    if (offset === -1) offset = Math.max(0, totalCount - limit);
     const start = Math.min(offset, totalCount);
     const end = Math.min(start + limit, totalCount);
     return {

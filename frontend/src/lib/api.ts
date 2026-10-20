@@ -52,6 +52,7 @@ export interface BackendAPI {
   listSessions(groupKey: string, filter?: FilterOpts, sort?: SortOpts): Promise<SessionMeta[]>;
   agentCounts(filter?: FilterOpts): Promise<Record<string, number>>;
   getSessionMeta(ref: SessionRef): Promise<SessionMeta>;
+  /** Offset -1 requests the latest page; the response contains its actual offset. */
   getMessages(ref: SessionRef, offset: number, limit: number): Promise<MessagesPage>;
   search(query: string, filter?: SearchFilter): Promise<SearchHit[]>;
   indexProgress(): Promise<FTSProgress>;

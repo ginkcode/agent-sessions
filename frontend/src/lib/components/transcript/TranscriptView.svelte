@@ -23,8 +23,6 @@
   import DeleteConfirmDialog from '../common/DeleteConfirmDialog.svelte';
 
   const PAGE_SIZE = 50;
-  // Larger pages when jumping to the end, to cut round-trips on long sessions.
-  const JUMP_PAGE_SIZE = 500;
   const SHOW_BOTTOM_BTN_PX = 400;
   // How near the end the view must be to follow new messages.
   const FOLLOW_SLACK_PX = 40;
@@ -42,6 +40,9 @@
   // Once the view reaches the end of the transcript, it stays there as
   // messages arrive, until the user scrolls up.
   let following = false;
+  // Explicit anchoring survives wheel/trackpad input until toggled off.
+  let anchoredToBottom = $state(false);
+  let nearBottom = $state(false);
   let lastScrollTop = 0;
   let showScrollBottomBtn = $state(false);
   let jumpingToBottom = $state(false);
@@ -58,14 +59,8 @@
   let clearHighlight: (() => void) | null = null;
   let highlightTimer: ReturnType<typeof setTimeout> | null = null;
 
-  let currentRefKey = $derived(
-    appState.selectedSessionRef
-      ? `${appState.selectedSessionRef.agent}:${appState.selectedSessionRef.id}`
-      : null
-  );
-
-  // A search jump owns its initial page load. Normal selection still starts at
-  // zero; guarding by jump id prevents the selection effect racing that load.
+  // A search jump owns its initial page load. Normal selection opens the latest
+  // page; guarding by jump id prevents the selection effect racing that load.
   let lastRef: SessionRef | null = null;
   $effect(() => {
     const ref = appState.selectedSessionRef;
@@ -121,14 +116,24 @@
     pageOffset = 0;
     hasMore = false;
     following = false;
+    anchoredToBottom = false;
+    nearBottom = false;
 
     try {
-      const page = await api.getMessages(ref, 0, PAGE_SIZE);
+      const page = await api.getMessages(ref, -1, PAGE_SIZE);
       // Ensure we are still looking at the same session and request.
       if (generation === loadGeneration && refsMatch(appState.selectedSessionRef, ref)) {
         messages = page.messages || [];
         pageOffset = page.offset;
         hasMore = page.hasMore;
+        following = true;
+        isLoading = false;
+        await tick();
+        if (generation === loadGeneration && containerEl) {
+          containerEl.scrollTop = containerEl.scrollHeight;
+          lastScrollTop = containerEl.scrollTop;
+          nearBottom = atEnd(containerEl);
+        }
       }
     } catch (err: any) {
       if (generation === loadGeneration && refsMatch(appState.selectedSessionRef, ref)) {
@@ -151,10 +156,23 @@
     // Supersedes in-flight page loads, which would splice into the old list.
     const generation = ++loadGeneration;
     try {
-      const page = await api.getMessages(ref, pageOffset, Math.max(messages.length, PAGE_SIZE));
+      // Following uses a bounded recent window, even after a large update.
+      // Reading history keeps its existing offset and visible position instead.
+      const latest = anchoredToBottom || following;
+      const page = await api.getMessages(ref, latest ? -1 : pageOffset, Math.max(messages.length, PAGE_SIZE));
       if (generation !== loadGeneration || !refsMatch(appState.selectedSessionRef, ref)) return;
+      // The user may have scrolled into history while this request was in flight.
+      if (latest && !anchoredToBottom && !following) {
+        void reloadMessages(ref);
+        return;
+      }
       messages = page.messages || [];
+      pageOffset = page.offset;
       hasMore = page.hasMore;
+      await tick();
+      if (generation === loadGeneration && containerEl && (anchoredToBottom || following)) {
+        containerEl.scrollTop = containerEl.scrollHeight;
+      }
     } catch (err) {
       if (isStaleReply(err)) return;
       console.error('Failed to reload transcript:', err);
@@ -174,6 +192,8 @@
     pageOffset = offset;
     hasMore = false;
     following = false;
+    anchoredToBottom = false;
+    nearBottom = false;
 
     try {
       // Only the page around the target is requested; header metadata is
@@ -239,7 +259,8 @@
   // visible content anchored while rows are prepended above it.
   async function loadEarlierMessages(): Promise<void> {
     const ref = appState.selectedSessionRef;
-    if (!ref || pageOffset <= 0 || isLoadingEarlier) return;
+    if (!ref || pageOffset <= 0 || isLoadingEarlier || anchoredToBottom) return;
+    following = false;
     const generation = loadGeneration;
     const start = Math.max(0, pageOffset - PAGE_SIZE);
     isLoadingEarlier = true;
@@ -250,7 +271,10 @@
       messages = [...(page.messages || []), ...messages];
       pageOffset = start;
       await tick();
-      if (containerEl) containerEl.scrollTop = containerEl.scrollHeight - before;
+      if (generation === loadGeneration && containerEl) {
+        containerEl.scrollTop = containerEl.scrollHeight - before;
+        lastScrollTop = containerEl.scrollTop;
+      }
     } catch (err) {
       console.error('Failed to load earlier messages:', err);
     } finally {
@@ -294,12 +318,18 @@
 
   function handleScroll(e: Event) {
     const el = e.currentTarget as HTMLElement;
+    const scrollingUp = el.scrollTop < lastScrollTop;
+    if (anchoredToBottom) el.scrollTop = el.scrollHeight;
     const scrollBottom = distanceFromBottom(el);
+    nearBottom = atEnd(el);
     showScrollBottomBtn = scrollBottom > SHOW_BOTTOM_BTN_PX;
-    if (atEnd(el)) following = true;
+    if (anchoredToBottom || nearBottom) following = true;
     else if (el.scrollTop < lastScrollTop && scrollBottom > FOLLOW_SLACK_PX) following = false;
     lastScrollTop = el.scrollTop;
 
+    if (scrollingUp && el.scrollTop < 250 && pageOffset > 0 && !isLoading) {
+      void loadEarlierMessages();
+    }
     if (scrollBottom < 250 && hasMore && !isLoadingMore && !isLoading) {
       loadMoreMessages();
     }
@@ -316,7 +346,9 @@
     void containerEl;
     void tick().then(() => {
       if (!containerEl) return;
+      if (anchoredToBottom) containerEl.scrollTop = containerEl.scrollHeight;
       const remaining = distanceFromBottom(containerEl);
+      nearBottom = atEnd(containerEl);
       showScrollBottomBtn = remaining > SHOW_BOTTOM_BTN_PX;
       // A transcript that fits has no scroll to reach its end with.
       if (atEnd(containerEl)) following = true;
@@ -334,32 +366,52 @@
     if (!el || !list) return;
     lastScrollTop = el.scrollTop;
     const observer = new ResizeObserver(() => {
-      if (following) el.scrollTop = el.scrollHeight;
+      if (anchoredToBottom || following) el.scrollTop = el.scrollHeight;
+      nearBottom = atEnd(el);
+      showScrollBottomBtn = distanceFromBottom(el) > SHOW_BOTTOM_BTN_PX;
     });
     observer.observe(el);
     observer.observe(list);
     return () => observer.disconnect();
   });
 
-  // Load the remaining pages first so "Bottom" reaches the real end of the
-  // transcript rather than the end of what happens to be loaded.
+  // Jump directly to a recent page instead of downloading all intervening history.
   async function scrollToBottom() {
-    if (jumpingToBottom) return;
+    const ref = appState.selectedSessionRef;
+    if (jumpingToBottom || !ref) return;
     jumpingToBottom = true;
-    const key = currentRefKey;
+    const generation = ++loadGeneration;
     try {
-      while (hasMore && currentRefKey === key) {
-        const before = messages.length;
-        await loadMoreMessages(JUMP_PAGE_SIZE);
-        if (messages.length === before) break;
-      }
+      if (pendingLoad) await pendingLoad;
+      const page = await api.getMessages(ref, -1, PAGE_SIZE);
+      if (generation !== loadGeneration || !refsMatch(appState.selectedSessionRef, ref)) return;
+      clearJumpHighlight();
+      activeJump = null;
+      messages = page.messages || [];
+      pageOffset = page.offset;
+      hasMore = page.hasMore;
+      following = true;
       await tick();
-      if (containerEl && currentRefKey === key) {
-        following = !hasMore;
-        containerEl.scrollTo({ top: containerEl.scrollHeight, behavior: 'smooth' });
+      if (containerEl && generation === loadGeneration) {
+        containerEl.scrollTop = containerEl.scrollHeight;
+        lastScrollTop = containerEl.scrollTop;
+        nearBottom = atEnd(containerEl);
+      }
+    } catch (err) {
+      if (generation === loadGeneration && !isStaleReply(err)) {
+        toast.show({ title: 'Could not load latest messages', body: 'Please try again.', tone: 'error' });
       }
     } finally {
       jumpingToBottom = false;
+    }
+  }
+
+  function toggleBottomAnchor(): void {
+    anchoredToBottom = !anchoredToBottom;
+    // Unlocking preserves normal follow behavior until the user scrolls up.
+    following = true;
+    if (anchoredToBottom && containerEl) {
+      containerEl.scrollTop = containerEl.scrollHeight;
     }
   }
 
@@ -519,7 +571,18 @@
     </div>
 
     <!-- Outside the scroll area so it stays pinned to the pane corner. -->
-    {#if showScrollBottomBtn || jumpingToBottom}
+    {#if messages.length > 0 && (nearBottom || anchoredToBottom)}
+      <button
+        type="button"
+        class="scroll-bottom-pill bottom-anchor"
+        class:anchored={anchoredToBottom}
+        aria-pressed={anchoredToBottom}
+        title={anchoredToBottom ? 'Release anchor to scroll freely' : 'Keep the latest message in view, even when scrolling'}
+        onclick={toggleBottomAnchor}
+      >
+        {anchoredToBottom ? '⚓ Anchored to latest' : '⚓ Anchor to latest'}
+      </button>
+    {:else if showScrollBottomBtn || jumpingToBottom}
       <button
         type="button"
         class="scroll-bottom-pill"
@@ -679,6 +742,23 @@
     cursor: pointer;
     transition: transform 0.15s ease, opacity 0.15s ease;
     z-index: 10;
+  }
+
+  .bottom-anchor {
+    background-color: var(--bg-secondary);
+    color: var(--text-secondary);
+    border: 1px solid var(--border-color);
+  }
+
+  .bottom-anchor.anchored {
+    background-color: var(--accent-color);
+    color: white;
+    border-color: transparent;
+  }
+
+  .scroll-bottom-pill:focus-visible {
+    outline: 2px solid var(--accent-color);
+    outline-offset: 3px;
   }
 
   .scroll-bottom-pill:disabled {

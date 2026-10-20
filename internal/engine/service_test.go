@@ -395,11 +395,38 @@ func TestGetMessages_PagingAndLRU(t *testing.T) {
 	}
 
 	// Invalid pagination bounds
-	if _, err := svc.GetMessages(ctx, ref, -1, 10); err == nil {
+	if _, err := svc.GetMessages(ctx, ref, -2, 10); err == nil {
 		t.Error("expected error for negative offset")
 	}
 	if _, err := svc.GetMessages(ctx, ref, 0, 0); err == nil {
 		t.Error("expected error for zero limit")
+	}
+}
+
+func TestGetMessages_LatestPage(t *testing.T) {
+	svc, _ := setupTestService(t)
+	ref := model.SessionRef{Agent: model.AgentClaude, ID: "s1"}
+	for _, tc := range []struct {
+		limit, offset, count int
+	}{{2, 1, 2}, {50, 0, 3}, {1, 2, 1}} {
+		page, err := svc.GetMessages(t.Context(), ref, -1, tc.limit)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if page.Offset != tc.offset || len(page.Messages) != tc.count || page.HasMore || page.TotalCount != 3 {
+			t.Fatalf("latest limit %d = %+v", tc.limit, page)
+		}
+		want, err := svc.GetMessages(t.Context(), ref, tc.offset, tc.limit)
+		if err != nil || page.Messages[0].ID != want.Messages[0].ID {
+			t.Fatalf("latest page doesn't match explicit offset: %v", err)
+		}
+	}
+	// Empty transcripts still return a valid zero-offset page.
+	svc2, fake2 := setupTestService(t)
+	fake2.Transcripts["s1"].Messages = nil
+	page, err := svc2.GetMessages(t.Context(), ref, -1, 50)
+	if err != nil || page.Offset != 0 || len(page.Messages) != 0 || page.HasMore {
+		t.Fatalf("empty latest page = %+v, %v", page, err)
 	}
 }
 
