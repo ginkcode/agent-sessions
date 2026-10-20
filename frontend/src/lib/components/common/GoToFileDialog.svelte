@@ -5,7 +5,8 @@
   import { hostLabel } from '../../hosts';
   import { highlightFile, splitHighlightedLines, splitLines } from '../../codeHighlight';
   import { copyToClipboard } from '../../portable';
-  import { findCount, findInLines, firstMatchFrom, textRange, type FindMatch, type FindResult } from '../../fileFind';
+  import { findCount, findInLines, firstMatchFrom, textRange, type FindMatch, type FindResult, textNodesRange } from '../../fileFind';
+  import { previewText, type PreviewText } from '../../previewFind';
   import {
     STATUS_LABELS,
     buildFileTree,
@@ -242,7 +243,7 @@
     if (el && path) el.scrollTop = scrollTops.get(`${path}:${mode}`) ?? 0;
   });
 
-  // Find in the file (⌘F, Ctrl+F), in the source view. The CSS Custom
+  // Find in the file (⌘F, Ctrl+F), in source or rendered Markdown. The CSS Custom
   // Highlight API paints the matches without touching the lines' DOM, and
   // only those near the screen, so a common letter in a long file stays
   // cheap. Without it, finding still scrolls to each match.
@@ -257,11 +258,26 @@
   let findCurrent = $state(-1);
   let findInput: HTMLInputElement | undefined = $state();
   let codeEl: HTMLElement | undefined = $state();
-  let sourceShown = $derived(
-    files.open && !showMarkdown && !files.loadingFile && !files.fileError && Boolean(text) && fileStatus(files.selected ?? '') !== 'D'
+  let contentShown = $derived(
+    files.open && !files.loadingFile && !files.fileError && Boolean(text) && fileStatus(files.selected ?? '') !== 'D'
   );
-  let findActive = $derived(findOpen && sourceShown);
-  let rowTexts = $derived(rows.map((row) => (row.kind === 'removed' ? row.text : (plainLines[row.index] ?? ''))));
+  let findActive = $derived(findOpen && contentShown);
+  let previewEl: HTMLElement | undefined = $state();
+  let previewRows: PreviewText[] = $state.raw([]);
+  $effect(() => {
+    const el = previewEl;
+    if (!findActive || !showMarkdown || !el) {
+      previewRows = [];
+      return;
+    }
+    const update = () => { previewRows = previewText(el); };
+    update();
+    // Markdown and asynchronous diagrams can replace their rendered text.
+    const observer = new MutationObserver(update);
+    observer.observe(el, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['class', 'style', 'hidden'] });
+    return () => observer.disconnect();
+  });
+  let rowTexts = $derived(showMarkdown ? previewRows.map((row) => row.text) : rows.map((row) => (row.kind === 'removed' ? row.text : (plainLines[row.index] ?? ''))));
   let found: FindResult = $derived(findActive ? findInLines(rowTexts, findQuery, findCase) : { matches: [], capped: false });
 
   // One .line per row, gathered again whenever the rows render anew.
@@ -278,12 +294,12 @@
   // A new search goes to the first match from the one shown before, or from
   // the top of the screen in a file just opened.
   let lastMatch: FindMatch | null = null;
-  let lastRows: DiffRow[] | null = null;
+  let lastRows: string[] | null = null;
   $effect(() => {
     const { matches } = found;
     untrack(() => {
-      const from = rows === lastRows && lastMatch ? lastMatch : { row: rowAt(codeScroll?.getBoundingClientRect().top ?? 0), start: 0 };
-      lastRows = rows;
+      const from = rowTexts === lastRows && lastMatch ? lastMatch : { row: rowAt(codeScroll?.getBoundingClientRect().top ?? 0), start: 0 };
+      lastRows = rowTexts;
       if (matches.length === 0) {
         findCurrent = -1;
         lastMatch = null;
@@ -342,6 +358,10 @@
 
   // The first row whose bottom is below y on the screen.
   function rowAt(y: number): number {
+    if (showMarkdown) {
+      const index = previewRows.findIndex((row) => row.element.getBoundingClientRect().bottom > y);
+      return index < 0 ? previewRows.length : index;
+    }
     let lo = 0;
     let hi = lineEls.length;
     while (lo < hi) {
@@ -353,6 +373,10 @@
   }
 
   function matchRange(match: FindMatch): Range | null {
+    if (showMarkdown) {
+      const row = previewRows[match.row];
+      return row ? textNodesRange(row.nodes, match.start, match.end) : null;
+    }
     const el = lineEls[match.row];
     return el ? textRange(el, match.start, match.end) : null;
   }
@@ -368,7 +392,7 @@
     if (r.top < box.top || r.bottom > box.top + scroller.clientHeight) {
       scroller.scrollTop += r.top - box.top - (scroller.clientHeight - r.height) / 2;
     }
-    const left = box.left + (files.wrap ? 0 : (codeEl?.querySelector('.gutter')?.getBoundingClientRect().width ?? 0));
+    const left = box.left + (showMarkdown || files.wrap ? 0 : (codeEl?.querySelector('.gutter')?.getBoundingClientRect().width ?? 0));
     const right = box.left + scroller.clientWidth;
     if (r.left < left || r.right > right) scroller.scrollLeft += r.left - left - (right - left) / 3;
   }
@@ -383,7 +407,7 @@
     const others = new Highlight();
     const current = new Highlight();
     const { matches } = found;
-    if (findActive && matches.length > 0 && codeScroll && lineEls.length > 0) {
+    if (findActive && matches.length > 0 && codeScroll && (showMarkdown ? previewRows.length > 0 : lineEls.length > 0)) {
       const box = codeScroll.getBoundingClientRect();
       const first = Math.max(0, rowAt(box.top) - PAINT_MARGIN);
       const last = rowAt(box.bottom) + PAINT_MARGIN;
@@ -543,7 +567,7 @@
       if (findActive) closeFind();
       else if (presentation) presentation = false;
       else close();
-    } else if (sourceShown && isCommandKey(e, 'KeyF')) {
+    } else if (contentShown && isCommandKey(e, 'KeyF')) {
       e.preventDefault();
       openFind();
     } else if (files.open && isCommandKey(e, 'KeyW')) {
@@ -750,6 +774,7 @@
                     Git diff
                   </button>
                 {/if}
+                {/if}
                 <button
                   type="button"
                   class="copy-btn"
@@ -760,6 +785,7 @@
                 >
                   Find
                 </button>
+                {#if !showMarkdown}
                 <button
                   type="button"
                   class="copy-btn"
@@ -873,7 +899,7 @@
                 }}
               >
                 {#if showMarkdown}
-                  <div class="markdown-preview" style:--markdown-font-size={presentation ? `${presentationFontSize}px` : '14px'}>
+                  <div class="markdown-preview" bind:this={previewEl} style:--markdown-font-size={presentation ? `${presentationFontSize}px` : '14px'}>
                     <MarkdownDoc source={text} onFileLink={followFileLink} />
                   </div>
                 {:else}

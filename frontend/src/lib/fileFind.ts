@@ -57,10 +57,17 @@ export function firstMatchFrom(matches: FindMatch[], row: number, column = 0): n
  */
 export function textRange(el: Element, start: number, end: number): Range | null {
   const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+  const nodes: Node[] = [];
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) nodes.push(node);
+  return textNodesRange(nodes, start, end);
+}
+
+/** A range over rendered text, including matches spanning inline formatting. */
+export function textNodesRange(nodes: Node[], start: number, end: number): Range | null {
   const range = document.createRange();
   let pos = 0;
   let started = false;
-  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+  for (const node of nodes) {
     const length = node.nodeValue?.length ?? 0;
     if (!started && start < pos + length) {
       range.setStart(node, start - pos);
