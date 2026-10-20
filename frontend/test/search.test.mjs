@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { MockBackendAPI, highlightedSnippet } from '../src/lib/mock/mockApi.ts';
 import {
   LatestRequestGate,
+  hasOpenModal,
   jumpOffset,
   progressIncomplete,
   safeSnippetHTML,
@@ -19,6 +20,27 @@ import {
 } from '../src/lib/catalog.ts';
 import { subscribeCatalogChanged, subscribeIndexProgress, subscribeMouseNavigate } from '../src/lib/api.ts';
 import { WINDOWS_DIRS } from './helpers.mjs';
+
+test('only open modals block global shortcuts, not dialogs kept mounted under a hidden backdrop', () => {
+  const dialog = (hidden) => ({
+    closest(selector) {
+      assert.equal(selector, '[hidden]');
+      return hidden ? {} : null;
+    },
+  });
+  const root = (...dialogs) => ({
+    querySelectorAll(selector) {
+      assert.equal(selector, '[role="dialog"][aria-modal="true"]');
+      return dialogs;
+    },
+  });
+
+  assert.equal(hasOpenModal(root()), false);
+  assert.equal(hasOpenModal(root(dialog(true))), false, 'closed Go to File must not block Ctrl+`');
+  assert.equal(hasOpenModal(root(dialog(false))), true);
+  assert.equal(hasOpenModal(root(dialog(true), dialog(false))), true, 'another open modal still blocks shortcuts');
+  assert.equal(hasOpenModal(root(dialog(true), dialog(true))), false);
+});
 
 test('MockBackendAPI listGroups emits node kinds', async () => {
   const backend = new MockBackendAPI();
