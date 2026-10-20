@@ -581,32 +581,39 @@
       <div class="code-area">
       {#if find.findActive}
         <div class="find-bar" role="search">
-          <input
-            bind:this={find.findInput}
-            class="find-input"
-            type="text"
-            placeholder="Find"
-            aria-label="Find in the file"
-            value={find.findQuery}
-            oninput={(e) => (find.findQuery = e.currentTarget.value)}
-            onkeydown={find.handleFindKey}
-            autocomplete="off"
-            autocorrect="off"
-            autocapitalize="off"
-            spellcheck="false"
-          />
-          <button
-            type="button"
-            class="find-btn case"
-            class:on={find.findCase}
-            aria-pressed={find.findCase}
-            aria-label="Match case"
-            title="Match case"
-            onclick={() => {
-              find.findCase = !find.findCase;
-              find.findInput?.focus();
-            }}>Aa</button
-          >
+          <!-- One field: the case toggle sits inside the input's frame. -->
+          <div class="find-field">
+            <svg class="find-glass" viewBox="0 0 16 16" width="13" height="13" aria-hidden="true">
+              <circle cx="7" cy="7" r="4.5" fill="none" stroke="currentColor" stroke-width="1.5" />
+              <path d="M10.5 10.5 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+            </svg>
+            <input
+              bind:this={find.findInput}
+              class="find-input"
+              type="text"
+              placeholder="Find"
+              aria-label="Find in the file"
+              value={find.findQuery}
+              oninput={(e) => (find.findQuery = e.currentTarget.value)}
+              onkeydown={find.handleFindKey}
+              autocomplete="off"
+              autocorrect="off"
+              autocapitalize="off"
+              spellcheck="false"
+            />
+            <button
+              type="button"
+              class="find-btn case"
+              class:on={find.findCase}
+              aria-pressed={find.findCase}
+              aria-label="Match case"
+              title="Match case"
+              onclick={() => {
+                find.findCase = !find.findCase;
+                find.findInput?.focus();
+              }}>Aa</button
+            >
+          </div>
           <span class="find-count" class:none={find.findQuery && find.found.matches.length === 0} aria-live="polite">
             {find.findQuery ? findCount(find.found, find.findCurrent) : ''}
           </span>
@@ -620,7 +627,11 @@
               <path d="M8 3v10M3.5 8.5 8 13l4.5-4.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
             </svg>
           </button>
-          <button type="button" class="find-btn" aria-label="Close find" title="Close (Escape)" onclick={find.closeFind}>×</button>
+          <button type="button" class="find-btn" aria-label="Close find" title="Close (Escape)" onclick={find.closeFind}>
+            <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true">
+              <path d="M4 4l8 8M12 4l-8 8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+            </svg>
+          </button>
         </div>
       {/if}
       <div
@@ -699,13 +710,13 @@
     font-size: 0.75rem;
     font-variant-numeric: tabular-nums;
     text-align: center;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     color: var(--text-secondary);
     cursor: pointer;
   }
 
   .zoom-level:hover {
-    background-color: var(--hover-bg);
+    background-color: var(--bg-tertiary);
     color: var(--text-primary);
   }
 
@@ -716,13 +727,17 @@
     justify-content: center;
   }
 
-  .icon-btn {
-    padding: 3px 8px;
+  /* Doubled so it outranks .copy-btn's padding, which comes later. */
+  .copy-btn.presentation-btn,
+  .copy-btn.icon-btn {
+    width: 26px;
+    padding: 0;
   }
 
   .btn-icon {
-    width: 14px;
-    height: 14px;
+    flex-shrink: 0;
+    width: 15px;
+    height: 15px;
     background-color: currentColor;
   }
 
@@ -802,38 +817,50 @@
     flex-shrink: 0;
   }
 
+  /* Borderless toolbar buttons, matching the session header's actions. */
   .copy-btn {
     flex-shrink: 0;
-    padding: 2px 10px;
+    height: 24px;
+    padding: 0 9px;
     font-family: var(--font-sans);
     font-size: 0.75rem;
-    border: 1px solid var(--border-color);
-    border-radius: 4px;
+    font-weight: 500;
+    line-height: 1;
+    border-radius: var(--radius-sm);
     color: var(--text-secondary);
     cursor: pointer;
+    transition: background-color 0.15s ease, color 0.15s ease;
   }
 
-  .copy-btn:hover {
-    background-color: var(--hover-bg);
+  .copy-btn:hover:not(:disabled) {
+    background-color: var(--bg-tertiary);
     color: var(--text-primary);
   }
 
-  .copy-btn.on {
+  .copy-btn:focus-visible {
+    outline: 2px solid var(--accent-color);
+    outline-offset: 1px;
+  }
+
+  .copy-btn.on,
+  .copy-btn.on:hover:not(:disabled) {
     color: var(--accent-color);
-    border-color: var(--accent-color);
     background-color: var(--active-bg);
   }
 
   .copy-btn:disabled {
-    opacity: 0.45;
+    opacity: 0.4;
     cursor: default;
-    background-color: transparent;
-    color: var(--text-secondary);
   }
 
-  .copy-btn.primary:not(:disabled) {
-    color: var(--accent-color);
-    border-color: var(--accent-color);
+  .copy-btn.primary {
+    background-color: var(--accent-color);
+    color: #fff;
+  }
+
+  .copy-btn.primary:hover:not(:disabled) {
+    background-color: var(--accent-hover);
+    color: #fff;
   }
 
   .edit-status,
@@ -864,13 +891,13 @@
   }
 
   .copy-btn.copied {
-    color: #22c55e;
-    border-color: #22c55e;
+    color: var(--status-live);
+    background-color: color-mix(in srgb, var(--status-live) 14%, transparent);
   }
 
   .copy-btn.failed {
-    color: #ef4444;
-    border-color: #ef4444;
+    color: var(--danger);
+    background-color: color-mix(in srgb, var(--danger) 12%, transparent);
   }
 
   .code-area {
@@ -896,61 +923,89 @@
     display: flex;
     align-items: center;
     gap: 2px;
-    padding: 4px;
+    padding: 5px;
     font-family: var(--font-sans);
     font-size: 0.75rem;
     background-color: var(--bg-primary);
     border: 1px solid var(--border-color);
-    border-radius: 6px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18);
+    border-radius: var(--radius-md);
+    box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12), 0 1px 3px rgba(15, 23, 42, 0.08);
+  }
+
+  /* The input, its icon and the case toggle share one rounded field, ringed
+     on focus like the session search. */
+  .find-field {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    height: 26px;
+    padding: 0 2px 0 8px;
+    background-color: var(--bg-secondary);
+    border-radius: var(--radius-sm);
+    transition: box-shadow 0.15s ease, background-color 0.15s ease;
+  }
+
+  .find-field:focus-within {
+    background-color: var(--bg-primary);
+    box-shadow: 0 0 0 1px var(--accent-color), 0 0 0 3px var(--active-bg);
+  }
+
+  .find-glass {
+    flex-shrink: 0;
+    color: var(--text-muted);
   }
 
   .find-input {
-    width: 200px;
-    padding: 3px 8px;
+    width: 180px;
+    padding: 0;
     font-family: var(--font-mono);
     font-size: 0.78rem;
-    background-color: var(--bg-secondary);
-    border: 1px solid var(--border-color);
-    border-radius: 4px;
+    border: none;
+    outline: none;
+    background: transparent;
     color: var(--text-primary);
   }
 
-  .find-input:focus {
-    outline: none;
-    border-color: var(--accent-color, #3b82f6);
+  .find-input::placeholder {
+    color: var(--text-muted);
   }
 
   .find-count {
     /* Room for "999 of 999", so the input stays put while stepping. */
-    min-width: 84px;
-    padding: 0 6px;
-    color: var(--text-secondary);
+    min-width: 76px;
+    padding: 0 4px;
+    color: var(--text-muted);
     font-variant-numeric: tabular-nums;
     text-align: center;
     white-space: nowrap;
   }
 
   .find-count.none {
-    color: #ef4444;
+    color: var(--danger);
   }
 
   .find-btn {
     display: inline-flex;
     align-items: center;
     justify-content: center;
+    flex-shrink: 0;
     min-width: 24px;
     height: 24px;
     padding: 0 4px;
-    border: 1px solid transparent;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     color: var(--text-secondary);
     cursor: pointer;
+    transition: background-color 0.15s ease, color 0.15s ease;
   }
 
   .find-btn:hover:not(:disabled) {
-    background-color: var(--hover-bg);
+    background-color: var(--bg-tertiary);
     color: var(--text-primary);
+  }
+
+  .find-btn:focus-visible {
+    outline: 2px solid var(--accent-color);
+    outline-offset: 1px;
   }
 
   .find-btn:disabled {
@@ -959,12 +1014,16 @@
   }
 
   .find-btn.case {
+    min-width: 22px;
+    height: 20px;
+    font-size: 0.7rem;
     font-weight: 600;
+    color: var(--text-muted);
   }
 
-  .find-btn.on {
+  .find-btn.on,
+  .find-btn.on:hover:not(:disabled) {
     color: var(--accent-color);
-    border-color: var(--accent-color);
     background-color: var(--active-bg);
   }
 

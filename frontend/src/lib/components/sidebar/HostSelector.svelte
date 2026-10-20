@@ -241,6 +241,9 @@
       <div class="menu-divider"></div>
 
       <form class="manual-connect-form" onsubmit={handleManualConnect}>
+        <svg class="manual-icon" viewBox="0 0 16 16" width="13" height="13" aria-hidden="true">
+          <path d="M3 5l3 3-3 3M8 11h5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+        </svg>
         <input
           type="text"
           class="manual-input"
@@ -503,10 +506,27 @@
     font-style: italic;
   }
 
+  /* One rounded field: icon, input and Go button, ringed on focus. */
   .manual-connect-form {
     display: flex;
-    gap: 4px;
-    padding: 4px 8px;
+    align-items: center;
+    gap: 6px;
+    height: 30px;
+    margin: 4px 8px;
+    padding: 0 3px 0 9px;
+    background: var(--bg-secondary);
+    border-radius: var(--radius-sm);
+    transition: box-shadow 0.15s ease, background-color 0.15s ease;
+  }
+
+  .manual-connect-form:focus-within {
+    background: var(--bg-primary);
+    box-shadow: 0 0 0 1px var(--accent-color), 0 0 0 3px var(--active-bg);
+  }
+
+  .manual-icon {
+    flex-shrink: 0;
+    color: var(--text-muted);
   }
 
   .manual-input {
@@ -515,32 +535,43 @@
     flex: 1;
     min-width: 0;
     width: 0;
-    padding: 4px 8px;
-    font-size: 0.74rem;
-    background: var(--bg-secondary);
+    padding: 0;
+    font-size: 0.75rem;
+    background: transparent;
     color: var(--text-primary);
-    border: 1px solid var(--border-color);
-    border-radius: 4px;
+    border: none;
     outline: none;
   }
 
-  .manual-input:focus {
-    border-color: var(--accent-color);
+  .manual-input::placeholder {
+    color: var(--text-muted);
   }
 
   .manual-btn {
     flex-shrink: 0;
-    padding: 4px 8px;
-    font-size: 0.74rem;
+    height: 24px;
+    padding: 0 10px;
+    font-size: 0.72rem;
+    font-weight: 600;
     background: var(--accent-color);
     color: white;
     border: none;
-    border-radius: 4px;
+    border-radius: 5px;
     cursor: pointer;
+    transition: background-color 0.15s ease, opacity 0.15s ease;
+  }
+
+  .manual-btn:hover:not(:disabled) {
+    background: var(--accent-hover);
+  }
+
+  .manual-btn:focus-visible {
+    outline: 2px solid var(--accent-color);
+    outline-offset: 1px;
   }
 
   .manual-btn:disabled {
-    opacity: 0.5;
+    opacity: 0.4;
     cursor: not-allowed;
   }
 
