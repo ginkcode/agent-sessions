@@ -183,12 +183,12 @@
       if (!hasOpenModal()) go(direction);
     });
     window.addEventListener('keydown', onKeydown);
-    window.addEventListener('keydown', preventDesktopEscapeFullscreen);
+    window.addEventListener('keydown', preventDesktopEscapeFullscreen, true);
     window.addEventListener('mousedown', onMouseButton);
     window.addEventListener('mouseup', onMouseButton);
     return () => {
       unsubscribeMouseNavigate();
-      window.removeEventListener('keydown', preventDesktopEscapeFullscreen);
+      window.removeEventListener('keydown', preventDesktopEscapeFullscreen, true);
       window.removeEventListener('keydown', onKeydown);
       window.removeEventListener('mousedown', onMouseButton);
       window.removeEventListener('mouseup', onMouseButton);

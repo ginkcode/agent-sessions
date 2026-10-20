@@ -9,6 +9,7 @@ export function isFullscreenShortcut(
 }
 
 // WebKit can consume Escape before NSWindow.cancelOperation is reached.
+// Run in the capture phase so dialogs stopping propagation cannot bypass this.
 // Cancel its default action, but do not stop propagation: dialogs and xterm
 // must still receive Escape. Browser fullscreen deliberately keeps its exit key.
 export function preventDesktopEscapeFullscreen(e: Pick<KeyboardEvent, 'key' | 'preventDefault'>): void {

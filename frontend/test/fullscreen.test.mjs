@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { isFullscreenShortcut, toggleFullscreen, preventDesktopEscapeFullscreen } from '../src/lib/fullscreen.ts';
 import { terminalKeyAction } from '../src/lib/terminal.ts';
 
@@ -59,6 +60,12 @@ test('fullscreen falls back to browser APIs and recovers from failures', async (
     if (oldDocument === undefined) delete globalThis.document;
     else globalThis.document = oldDocument;
   }
+});
+
+test('desktop Escape safeguard uses capture so dialogs cannot bypass it by stopping propagation', () => {
+  const app = readFileSync(new URL('../src/App.svelte', import.meta.url), 'utf8');
+  assert.match(app, /window\.addEventListener\('keydown', preventDesktopEscapeFullscreen, true\)/);
+  assert.match(app, /window\.removeEventListener\('keydown', preventDesktopEscapeFullscreen, true\)/);
 });
 
 test('desktop Escape cancels WebKit fullscreen exit without swallowing the key', () => {
