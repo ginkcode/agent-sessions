@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { isFullscreenShortcut, toggleFullscreen, preventDesktopEscapeFullscreen } from '../src/lib/fullscreen.ts';
+import { isFullscreenShortcut, toggleFullscreen, preventDesktopEscapeFullscreen, keyHandled } from '../src/lib/fullscreen.ts';
 import { terminalKeyAction } from '../src/lib/terminal.ts';
 
 const key = { type: 'keydown', key: 'F', code: 'KeyF', metaKey: true, shiftKey: true, ctrlKey: false, altKey: false };
@@ -81,6 +81,38 @@ test('desktop Escape cancels WebKit fullscreen exit without swallowing the key',
     assert.equal(cancelled, 1);
     preventDesktopEscapeFullscreen({ ...escape, key: 'Enter' });
     assert.equal(cancelled, 1);
+  } finally {
+    if (previous === undefined) delete globalThis.window;
+    else globalThis.window = previous;
+  }
+});
+
+test('the desktop Escape safeguard does not make Escape look already handled', () => {
+  const previous = globalThis.window;
+  // A minimal event whose defaultPrevented reflects preventDefault calls.
+  const event = (key = 'Escape') => {
+    const e = { key, defaultPrevented: false };
+    e.preventDefault = function () { this.defaultPrevented = true; };
+    return e;
+  };
+  try {
+    globalThis.window = { go: { app: { App: {} } } };
+    const fresh = event();
+    preventDesktopEscapeFullscreen(fresh);
+    assert.equal(fresh.defaultPrevented, true, 'WebKit fullscreen exit is still cancelled');
+    assert.equal(keyHandled(fresh), false, 'dialogs must still close on an unused Escape');
+
+    const used = event();
+    preventDesktopEscapeFullscreen(used);
+    used.preventDefault(); // e.g. a find bar or menu consuming Escape
+    assert.equal(keyHandled(used), true);
+
+    globalThis.window = {};
+    const browser = event();
+    preventDesktopEscapeFullscreen(browser);
+    assert.equal(keyHandled(browser), false);
+    browser.preventDefault();
+    assert.equal(keyHandled(browser), true);
   } finally {
     if (previous === undefined) delete globalThis.window;
     else globalThis.window = previous;

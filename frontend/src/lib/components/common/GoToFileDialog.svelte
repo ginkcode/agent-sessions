@@ -14,6 +14,7 @@
   import { onMount } from 'svelte';
   import FilePrompt from './go-to-file/FilePrompt.svelte';
   import { fileActions } from '../../stores/fileActions.svelte';
+  import { keyHandled } from '../../fullscreen';
 
   onMount(() => {
     const off = api.onEvent('files:close-request', (id: number) => {
@@ -150,7 +151,7 @@
     return;
   }
   if (viewer?.handleKey(e)) return;
-  if (e.key === 'Escape' && !e.defaultPrevented) {
+  if (e.key === 'Escape' && !keyHandled(e)) {
     e.preventDefault();
     e.stopPropagation();
     if (presentation) presentation = false;

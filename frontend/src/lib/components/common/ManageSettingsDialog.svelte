@@ -5,6 +5,7 @@
   import { terminals } from '../../stores/terminals.svelte';
   import { translateSettings } from '../../stores/translate.svelte';
   import { formatBytes } from '../../format';
+  import { keyHandled } from '../../fullscreen';
   import { terminalOptions } from '../../terminal';
   import { preferences } from '../../stores/preferences.svelte';
   import { isTranscriptMode, transcriptModes } from '../../transcript';
@@ -59,7 +60,7 @@
   }
 
   function handleWindowKeydown(e: KeyboardEvent) {
-    if (!manage.settingsDialogOpen || e.key !== 'Escape' || e.defaultPrevented) return;
+    if (!manage.settingsDialogOpen || e.key !== 'Escape' || keyHandled(e)) return;
     e.preventDefault();
     close();
   }

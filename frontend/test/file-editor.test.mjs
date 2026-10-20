@@ -94,6 +94,7 @@ async function loadEditorModule() {
   // data: modules cannot resolve bare specifiers; pin every CodeMirror package
   // (including the lazily imported languages) to the same files the test uses.
   source = source.replace(/'(@codemirror\/[a-z-]+)'/g, (_, name) => JSON.stringify(import.meta.resolve(name)));
+  source = source.replace("'./fullscreen'", JSON.stringify(new URL('fullscreen.ts', EDITOR_URL).href));
   const js = ts.transpileModule(source, {
     fileName: fileURLToPath(EDITOR_URL),
     compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext },

@@ -31,6 +31,7 @@ async function renderSettingsDialog(
     const lib = (rel) => JSON.stringify(new URL(rel, SETTINGS_DIALOG_URL).href);
     settingsDialogModule = await loadServerComponent(SETTINGS_DIALOG_URL, [
       ["'../../format'", lib('../../format.ts')],
+      ["'../../fullscreen'", lib('../../fullscreen.ts')],
       ["'../../terminal'", lib('../../terminal.ts')],
       ["'../../transcript'", lib('../../transcript.ts')],
       ["'../../date'", lib('../../date.ts')],

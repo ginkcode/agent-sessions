@@ -21,6 +21,7 @@ const dialog = await loadServerComponent(new URL('../GoToFileDialog.svelte', bas
   ["import FilePrompt from './go-to-file/FilePrompt.svelte';", 'const FilePrompt = () => {};'],
   ["import { fileActions } from '../../stores/fileActions.svelte';", 'const fileActions = {};'],
   ["'svelte'", JSON.stringify(import.meta.resolve('svelte'))],
+  ["'../../fullscreen'", lib('../../../fullscreen.ts')],
 ]);
 
 const [picker, tabs, source] = await Promise.all([

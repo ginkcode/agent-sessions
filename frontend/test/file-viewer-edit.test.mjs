@@ -30,6 +30,7 @@ const viewer = await loadServerComponent(VIEWER_URL, [
   ["import { connectionStore } from '../../../stores/connection.svelte';", fixtureStore('connectionStore')],
   ["import { fileActions } from '../../../stores/fileActions.svelte';", fixtureStore('fileActions')],
   ["'../../../fileEditing'", lib('../../../fileEditing.ts')],
+  ["'../../../fullscreen'", lib('../../../fullscreen.ts')],
   ["import LoadingSpinner from '../LoadingSpinner.svelte';", `const LoadingSpinner = ${stub('data-spinner', '')};`],
   ["import MarkdownDoc from '../MarkdownDoc.svelte';", `const MarkdownDoc = ${stub('data-markdown-doc', '')};`],
   ["import SourceView from './SourceView.svelte';",

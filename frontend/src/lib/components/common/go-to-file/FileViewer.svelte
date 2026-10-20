@@ -20,6 +20,7 @@
   import MarkdownDoc from '../MarkdownDoc.svelte';
   import SourceView from './SourceView.svelte';
   import FileEditor from './FileEditor.svelte';
+  import { keyHandled } from '../../../fullscreen';
   import { createImagePreview } from './imagePreview.svelte';
   import { createFileFind } from './fileFind.svelte';
 
@@ -318,7 +319,7 @@
       return false;
     }
     if (e.key === 'Escape') {
-      if (e.defaultPrevented || !find.findActive) return false;
+      if (keyHandled(e) || !find.findActive) return false;
       e.preventDefault();
       e.stopPropagation();
       find.closeFind();

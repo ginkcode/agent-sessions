@@ -13,7 +13,27 @@ export function isFullscreenShortcut(
 // Cancel its default action, but do not stop propagation: dialogs and xterm
 // must still receive Escape. Browser fullscreen deliberately keeps its exit key.
 export function preventDesktopEscapeFullscreen(e: Pick<KeyboardEvent, 'key' | 'preventDefault'>): void {
-  if (e.key === 'Escape' && window.go?.app?.App) e.preventDefault();
+  if (e.key !== 'Escape' || !window.go?.app?.App) return;
+  const native = e.preventDefault;
+  native.call(e);
+  safeguarded.add(e);
+  // defaultPrevented is now always true, so record whether a later handler
+  // (a find bar, menu, editor search…) really used the key.
+  e.preventDefault = function () {
+    used.add(e);
+    native.call(e);
+  };
+}
+
+const safeguarded = new WeakSet<object>();
+const used = new WeakSet<object>();
+
+/**
+ * Whether an earlier handler already used this key. Use instead of
+ * `defaultPrevented`, which the desktop Escape safeguard always sets.
+ */
+export function keyHandled(e: Pick<KeyboardEvent, 'defaultPrevented'>): boolean {
+  return used.has(e) || (e.defaultPrevented && !safeguarded.has(e));
 }
 
 let toggling = false;

@@ -2,6 +2,7 @@ import { Compartment, EditorState, type Extension } from '@codemirror/state';
 import { EditorView, drawSelection, highlightActiveLine, keymap, lineNumbers } from '@codemirror/view';
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands';
 import { defaultHighlightStyle, indentOnInput, syntaxHighlighting } from '@codemirror/language';
+import { keyHandled } from './fullscreen';
 import { closeSearchPanel, openSearchPanel, search, searchKeymap, searchPanelOpen } from '@codemirror/search';
 
 export interface FileEditorOptions {
@@ -65,7 +66,7 @@ function freshState(options: FileEditorOptions): EditorState {
 
 function handleKey(view: EditorView, event: KeyboardEvent): boolean {
   // A parent window handler can see an already-consumed event.
-  if (event.defaultPrevented) return true;
+  if (keyHandled(event)) return true;
   const mod = /Mac|iPhone|iPad/.test(navigator.platform) ? event.metaKey : event.ctrlKey;
   const key = event.key.toLowerCase();
   let consumed = false;
