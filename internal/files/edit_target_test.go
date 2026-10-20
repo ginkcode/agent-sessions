@@ -165,7 +165,9 @@ func TestEditTargetClose(t *testing.T) {
 	if err := target.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := file.Stat(); !errors.Is(err, os.ErrClosed) {
+	// Closing again reports ErrClosed on every platform; Stat on a closed file
+	// does not on Windows, where it fails with an invalid-handle error.
+	if err := file.Close(); !errors.Is(err, os.ErrClosed) {
 		t.Errorf("file still open: %v", err)
 	}
 	if _, err := parent.Lstat("file"); !errors.Is(err, os.ErrClosed) {

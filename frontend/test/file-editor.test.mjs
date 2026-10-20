@@ -142,12 +142,14 @@ function mount(overrides = {}) {
   return { editor, view: views[views.length - 1], options, calls };
 }
 
-async function settle(predicate, message = 'condition never became true') {
-  for (let i = 0; i < 500; i++) {
-    if (predicate()) return;
+// Bounded by time, not turns: the first import of a language package takes
+// well over 500 event-loop turns on a slow CI runner.
+async function settle(predicate, message = 'condition never became true', timeoutMs = 10_000) {
+  const deadline = Date.now() + timeoutMs;
+  while (!predicate()) {
+    if (Date.now() > deadline) assert.fail(message);
     await new Promise((resolve) => setImmediate(resolve));
   }
-  assert.fail(message);
 }
 
 // Language loading dispatches exactly once per request, after an async import.
