@@ -285,6 +285,57 @@ export interface FileContent {
   image?: string;
   data?: string;
   changes?: LineChange[];
+  /**
+   * Opaque revision of the exact bytes returned in text, for a later
+   * revision-checked save. Absent without text, and from older servers.
+   */
+  revision?: string;
+  /** Edit eligibility and text format; absent without text, and from older servers. */
+  edit?: FileEditInfo;
+}
+
+/** Why a text file cannot be edited. Unknown future reasons may appear. */
+export type FileEditReason =
+  | 'too_large'
+  | 'unsupported_newlines'
+  | 'not_checked'
+  | 'protected'
+  | 'linked'
+  | 'read_only'
+  | 'unsupported'
+  | (string & {});
+
+/**
+ * An editor snapshot to save. text has LF line breaks and no leading BOM;
+ * the host restores the file's own BOM and line endings.
+ */
+export interface FileSaveRequest {
+  path: string;
+  text: string;
+  /** The revision the text was edited from; a changed file conflicts. */
+  expectedRevision: string;
+}
+
+/**
+ * A saved file's new content, or a conflict: the file changed since it was
+ * read and nothing was written.
+ */
+export type FileSaveResult =
+  | { status: 'saved'; content: FileContent; observedRevision?: undefined }
+  | { status: 'conflict'; content?: undefined; observedRevision?: string };
+
+/**
+ * Whether a text file may be edited, and the format a save must keep. Text
+ * in FileContent is the file's bytes unchanged, BOM and CRs included.
+ */
+export interface FileEditInfo {
+  /** Always sent; only an explicit true allows editing. */
+  eligible: boolean;
+  reason?: FileEditReason;
+  /** The file's line endings; absent when they are mixed or bare CR. */
+  newline?: 'lf' | 'crlf' | 'none';
+  /** The file starts with a UTF-8 byte order mark. */
+  bom?: boolean;
 }
 
 export interface Warning {
@@ -567,6 +618,8 @@ export type ConnectionPhase =
   | 'reconnecting';
 
 export interface HostCapabilities {
+  /** Absent on older servers; editing requires an explicit true. */
+  saveFile?: boolean;
   trash: boolean;
   manage: boolean;
   export: boolean;

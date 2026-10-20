@@ -35,6 +35,7 @@ type Backend interface {
 	// Files of a session directory, for the read-only file viewer
 	ListFiles(ctx context.Context, dir string) (files.Listing, error)
 	ReadFile(ctx context.Context, dir, path string) (files.Content, error)
+	SaveFile(ctx context.Context, dir string, req files.SaveRequest) (files.SaveResult, error)
 	ResolveFile(ctx context.Context, dir, path string) (string, error)
 	ResolveTerminalFile(ctx context.Context, dir, path string) (files.TerminalFile, error)
 	PrepareFileDownload(ctx context.Context, dir, path, token string) (files.Download, error)

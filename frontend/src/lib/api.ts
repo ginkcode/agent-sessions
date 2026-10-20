@@ -12,6 +12,8 @@ import type {
   Diagnostics,
   FileListing,
   FileContent,
+  FileSaveRequest,
+  FileSaveResult,
   ManageSettings,
   DeletePreview,
   DeleteResult,
@@ -103,6 +105,11 @@ export interface BackendAPI {
   listFiles(dir: string): Promise<FileListing>;
   /** Reads one file, path relative to dir, on the selected host. */
   readFile(dir: string, path: string): Promise<FileContent>;
+  /**
+   * Saves an edited file on the selected host if it still has
+   * req.expectedRevision; otherwise reports a conflict and writes nothing.
+   */
+  saveFile(dir: string, req: FileSaveRequest): Promise<FileSaveResult>;
   revealFile(dir: string, path: string): Promise<void>;
   copyFile(dir: string, path: string): Promise<void>;
   downloadFile(dir: string, path: string): Promise<string>;
@@ -191,6 +198,7 @@ interface WailsAppBinding {
   ResolveTerminalFile(dir: string, path: string): Promise<TerminalFileTarget>;
   ListFiles(dir: string): Promise<FileListing>;
   ReadFile(dir: string, path: string): Promise<FileContent>;
+  SaveFile(dir: string, req: FileSaveRequest): Promise<FileSaveResult>;
   RevealFile(dir: string, path: string): Promise<void>;
   CopyFile(dir: string, path: string): Promise<void>;
   DownloadFile(dir: string, path: string): Promise<string>;
@@ -544,6 +552,14 @@ class WailsBackendAPI implements BackendAPI {
   async readFile(dir: string, path: string): Promise<FileContent> {
     try {
       return await this.binding.ReadFile(dir, path);
+    } catch (e) {
+      throw normalizeError(e);
+    }
+  }
+
+  async saveFile(dir: string, req: FileSaveRequest): Promise<FileSaveResult> {
+    try {
+      return await this.binding.SaveFile(dir, req);
     } catch (e) {
       throw normalizeError(e);
     }

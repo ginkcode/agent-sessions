@@ -101,6 +101,13 @@ type Content struct {
 	// Changes are the lines that differ from the last commit, for a text
 	// file in a git work tree.
 	Changes []LineChange `json:"changes,omitempty"`
+	// Revision identifies the exact bytes of a text file returned in Text
+	// (see revisionOf), so a later save can tell whether the file changed.
+	// It is empty when Text is not returned.
+	Revision string `json:"revision,omitempty"`
+	// Edit tells whether a text file may be edited and the format a save
+	// must keep. It is nil when Text is not returned.
+	Edit *EditInfo `json:"edit,omitempty"`
 }
 
 // skipDirs are left out of a listing made without git: dependencies, build
@@ -417,6 +424,8 @@ func Read(ctx context.Context, root, rel string) (Content, error) {
 		return out, nil
 	}
 	out.Text = string(data)
+	out.Revision = revisionOf(data)
+	out.Edit = textEditInfo(data)
 	out.Changes = gitChanges(ctx, root, out.Path)
 	return out, nil
 }

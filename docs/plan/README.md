@@ -13,6 +13,7 @@ later milestones build on the contracts defined in M0.
 | [M6.md](M6.md) | Portable bundles (export, import, opt-in restore) and cross-agent handoff; bundle manifest v1 contract |
 | [M7.md](M7.md) | Remote over SSH: headless server via system SSH, browse, search, manage remote sessions |
 | [M8.md](M8.md) | Windows support: local-first port (paths, Recycle Bin, PowerShell, packaging); remote over SSH later |
+| [file-editing.md](file-editing.md) | Go to File editing: FE-01…FE-14 task checklist, safe local/remote saves, drafts, conflicts, and lifecycle guards |
 
 Reference: [../formats.md](../formats.md) holds the verified on-disk formats of each tool.
 

@@ -394,6 +394,17 @@ func (c *Client) ReadFile(ctx context.Context, dir, path string) (files.Content,
 	return out, err
 }
 
+// SaveFile saves an edited file on the remote host. A server without the
+// SaveFile capability refuses it rather than leaving the method unknown.
+func (c *Client) SaveFile(ctx context.Context, dir string, req files.SaveRequest) (files.SaveResult, error) {
+	if !c.caps.SaveFile {
+		return files.SaveResult{}, fmt.Errorf("%w: this host's agent-sessions cannot save files; update it", engine.ErrUnsupportedAction)
+	}
+	var out files.SaveResult
+	err := c.call(ctx, "saveFile", SaveFileParams{Dir: dir, Request: req}, &out)
+	return out, err
+}
+
 func (c *Client) Diagnostics(ctx context.Context) (provider.Diagnostics, error) {
 	var out provider.Diagnostics
 	err := c.call(ctx, "diagnostics", nil, &out)

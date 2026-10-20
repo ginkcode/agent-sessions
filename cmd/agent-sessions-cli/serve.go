@@ -87,11 +87,12 @@ func serveCmd(ctx context.Context, args []string, resolveRoots func() (paths.Roo
 		}
 		eng = e
 		return e, rpc.Capabilities{
-			Trash:  e.TrashSupported(),
-			Manage: true,
-			Export: true,
-			Import: true,
-			Search: true,
+			Trash:    e.TrashSupported(),
+			Manage:   true,
+			Export:   true,
+			Import:   true,
+			Search:   true,
+			SaveFile: true,
 		}, roots, nil
 	})
 	server.Store(srv)

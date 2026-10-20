@@ -458,7 +458,34 @@ func (e *Engine) ListFiles(ctx context.Context, dir string) (files.Listing, erro
 
 // ReadFile reads one file of a session directory.
 func (e *Engine) ReadFile(ctx context.Context, dir, path string) (files.Content, error) {
-	return e.svc.ReadFile(ctx, dir, path)
+	return e.svc.ReadFile(ctx, dir, path, e.editPolicy())
+}
+
+// SaveFile saves an edited file of a session directory.
+func (e *Engine) SaveFile(ctx context.Context, dir string, req files.SaveRequest) (files.SaveResult, error) {
+	return e.svc.SaveFile(ctx, dir, req, e.editPolicy())
+}
+
+// editPolicy protects the agents' data stores and this app's own
+// directories from the file editor, wherever a session directory is.
+func (e *Engine) editPolicy() files.EditPolicy {
+	// Configured roots and the defaults both: a partly configured engine
+	// must still protect the usual stores.
+	defaults, _ := paths.Default()
+	var p files.EditPolicy
+	seen := map[string]bool{}
+	for _, roots := range []paths.Roots{e.roots, defaults} {
+		for _, r := range []string{roots.Claude, roots.Codex, roots.OpenCodeData, roots.Cache, roots.Config, roots.Data} {
+			if r != "" && filepath.IsAbs(r) && !seen[r] {
+				seen[r] = true
+				p.ProtectedRoots = append(p.ProtectedRoots, r)
+			}
+		}
+	}
+	if r := e.cacheDirOverride; r != "" && filepath.IsAbs(r) && !seen[r] {
+		p.ProtectedRoots = append(p.ProtectedRoots, r)
+	}
+	return p
 }
 
 // Diagnostics returns aggregated scanner health.

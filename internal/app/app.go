@@ -413,6 +413,12 @@ func (a *App) ReadFile(dir, path string) (files.Content, error) {
 	return a.activeBackend().ReadFile(a.appCtx(), dir, path)
 }
 
+// SaveFile saves a file edited in the file viewer on the selected host, if
+// it still has the revision it was edited from.
+func (a *App) SaveFile(dir string, req files.SaveRequest) (files.SaveResult, error) {
+	return a.activeBackend().SaveFile(a.appCtx(), dir, req)
+}
+
 // Diagnostics returns aggregated scanner health across providers.
 func (a *App) Diagnostics() (provider.Diagnostics, error) {
 	return a.activeBackend().Diagnostics(a.appCtx())

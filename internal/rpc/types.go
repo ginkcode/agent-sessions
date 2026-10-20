@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 
 	"github.com/ginkcode/agent-sessions/internal/engine"
+	"github.com/ginkcode/agent-sessions/internal/files"
 	"github.com/ginkcode/agent-sessions/internal/index"
 	"github.com/ginkcode/agent-sessions/internal/model"
 	"github.com/ginkcode/agent-sessions/internal/paths"
@@ -56,6 +57,9 @@ type Capabilities struct {
 	Export bool `json:"export"`
 	Import bool `json:"import"`
 	Search bool `json:"search"`
+	// SaveFile: the file viewer may save edited files. Older servers leave
+	// it false, and their files stay read-only.
+	SaveFile bool `json:"saveFile,omitempty"`
 }
 
 // InitializeRequest is the first handshake message sent from client to server.
@@ -137,6 +141,11 @@ type ListFilesParams struct {
 type ReadFileParams struct {
 	Dir  string `json:"dir"`
 	Path string `json:"path"`
+}
+
+type SaveFileParams struct {
+	Dir     string            `json:"dir"`
+	Request files.SaveRequest `json:"request"`
 }
 
 type SetManageEnabledParams struct {

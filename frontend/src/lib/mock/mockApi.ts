@@ -10,6 +10,8 @@ import type {
   BlobResponse,
   FileListing,
   FileContent,
+  FileSaveRequest,
+  FileSaveResult,
   Diagnostics,
   ManageSettings,
   DeletePreview,
@@ -47,6 +49,11 @@ import type {
 import { mockSessions, mockMessages, mockBlobs, mockDiagnostics } from './fixtures.js';
 import { refKey } from '../manage.js';
 import { wslDistro } from '../hosts.js';
+
+async function mockFileRevision(text: string): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
+  return 'sha256:' + Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, '0')).join('');
+}
 
 function searchNeedle(query: string): string {
   const words = query
@@ -700,7 +707,39 @@ export class MockBackendAPI {
     };
   }
 
+  private fileDrafts = new Map<string, FileContent>();
+
   async readFile(dir: string, path: string): Promise<FileContent> {
+    const key = JSON.stringify([this.connState.host ?? '', dir, path]);
+    const saved = this.fileDrafts.get(key);
+    if (saved) return structuredClone(saved);
+    const content = await this.readMockFile(dir, path);
+    if (!content.binary && !content.tooLarge) {
+      content.revision = await mockFileRevision(content.text ?? '');
+      content.edit = { eligible: true, newline: 'lf' };
+    }
+    return content;
+  }
+
+  async saveFile(dir: string, req: FileSaveRequest): Promise<FileSaveResult> {
+    const current = await this.readFile(dir, req.path);
+    if (!current.edit?.eligible) throw new Error('This file cannot be edited.');
+    if (current.revision !== req.expectedRevision) {
+      return { status: 'conflict', observedRevision: current.revision };
+    }
+    if (/[\r\0]/.test(req.text)) throw new Error('Unsupported edit text.');
+    const bytes = new TextEncoder().encode(req.text);
+    if (bytes.length > 500_000) throw new Error('Edit text is too large.');
+    const content: FileContent = {
+      path: req.path, size: bytes.length, text: req.text,
+      revision: await mockFileRevision(req.text),
+      edit: { eligible: true, newline: req.text.includes('\n') ? 'lf' : 'none' },
+    };
+    this.fileDrafts.set(JSON.stringify([this.connState.host ?? '', dir, req.path]), content);
+    return { status: 'saved', content: structuredClone(content) };
+  }
+
+  private async readMockFile(dir: string, path: string): Promise<FileContent> {
     if (path.endsWith('.png')) {
       // A 2x2 checker.
       const data = 'iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAFElEQVR4nGP4z8DwHwyBDAYGBgYAPmgF+zAx4yAAAAAASUVORK5CYII=';
@@ -1196,6 +1235,7 @@ export class MockBackendAPI {
     if (!succeed) return;
 
     const caps: HostCapabilities = {
+      saveFile: true,
       trash: alias !== 'prod-server',
       manage: true,
       export: true,

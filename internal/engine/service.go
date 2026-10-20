@@ -575,10 +575,24 @@ func (s *Service) ListFiles(ctx context.Context, dir string) (files.Listing, err
 	return files.List(ctx, dir)
 }
 
-// ReadFile reads one file of a session directory for the file viewer.
-func (s *Service) ReadFile(ctx context.Context, dir, rel string) (files.Content, error) {
+// ReadFile reads one file of a session directory for the file viewer. A
+// text file's edit eligibility is checked against policy.
+func (s *Service) ReadFile(ctx context.Context, dir, rel string, policy files.EditPolicy) (files.Content, error) {
 	if !s.knownDirectory(dir) {
 		return files.Content{}, fmt.Errorf("%w: %s", ErrUnknownDirectory, dir)
 	}
-	return files.Read(ctx, dir, rel)
+	c, err := files.Read(ctx, dir, rel)
+	if err == nil {
+		files.CheckEdit(policy, dir, rel, c.Edit)
+	}
+	return c, err
+}
+
+// SaveFile saves an edited file of a session directory, if it still has the
+// revision it was edited from.
+func (s *Service) SaveFile(ctx context.Context, dir string, req files.SaveRequest, policy files.EditPolicy) (files.SaveResult, error) {
+	if !s.knownDirectory(dir) {
+		return files.SaveResult{}, fmt.Errorf("%w: %s", ErrUnknownDirectory, dir)
+	}
+	return files.Save(ctx, policy, dir, req)
 }
