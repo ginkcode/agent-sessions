@@ -102,12 +102,21 @@ function editingFiles(path, baseline, draft, { status = {}, edit = {}, contentEx
   };
 }
 
+// Icon buttons have no text, so name each button by its text or aria-label.
+function namedButtons(html) {
+  const labels = [...html.matchAll(/<button\b([^>]*)>/g)].map(([, attrs]) => attrs.match(/\saria-label="([^"]*)"/)?.[1]);
+  return renderedButtons(html).map((b, i) => ({
+    text: b.text.replace(/<[^>]*>/g, '').trim() || unescapeHTML(labels[i] ?? ''),
+    disabled: b.disabled,
+  }));
+}
+
 function button(html, text) {
-  return renderedButtons(html).find((b) => b.text === text);
+  return namedButtons(html).find((b) => b.text === text);
 }
 
 function buttonTexts(html) {
-  return renderedButtons(html).map((b) => b.text);
+  return namedButtons(html).map((b) => b.text);
 }
 
 function editorProps(html) {

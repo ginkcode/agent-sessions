@@ -406,13 +406,14 @@
         {/if}
         <button
           type="button"
-          class="copy-btn"
+          class="copy-btn icon-btn"
           class:on={files.wrap}
           aria-pressed={files.wrap}
+          aria-label="Wrap"
           title="{files.wrap ? 'Stop wrapping' : 'Wrap'} long lines ({wrapShortcut})"
           onclick={() => files.toggleWrap()}
         >
-          Wrap
+          <span class="btn-icon icon-wrap" aria-hidden="true"></span>
         </button>
         <button
           type="button"
@@ -429,12 +430,13 @@
         {#if canSaveHost && canEditContent(files.content)}
           <button
             type="button"
-            class="copy-btn"
-            title={blocked ?? 'Edit this file'}
+            class="copy-btn icon-btn"
+            aria-label={starting ? 'Opening…' : 'Edit'}
+            title={blocked ?? (starting ? 'Opening…' : 'Edit this file')}
             disabled={!canEdit}
             onclick={startEdit}
           >
-            {starting ? 'Opening…' : 'Edit'}
+            <span class="btn-icon icon-edit" aria-hidden="true"></span>
           </button>
         {:else if readOnlyReason}
           <span class="read-only" title={readOnlyReason}>{readOnlyReason}</span>
@@ -466,25 +468,27 @@
         {:else}
         <button
           type="button"
-          class="copy-btn"
+          class="copy-btn icon-btn"
           class:on={find.findActive}
           aria-pressed={find.findActive}
+          aria-label="Find"
           title="Find in the file ({findShortcut})"
           onclick={() => (find.findActive ? find.closeFind() : find.openFind())}
         >
-          Find
+          <span class="btn-icon icon-find" aria-hidden="true"></span>
         </button>
         {/if}
         {#if !showPreview}
         <button
           type="button"
-          class="copy-btn"
+          class="copy-btn icon-btn"
           class:on={files.wrap}
           aria-pressed={files.wrap}
+          aria-label="Wrap"
           title="{files.wrap ? 'Stop wrapping' : 'Wrap'} long lines ({wrapShortcut})"
           onclick={() => files.toggleWrap()}
         >
-          Wrap
+          <span class="btn-icon icon-wrap" aria-hidden="true"></span>
         </button>
         {/if}
         <button
@@ -705,10 +709,36 @@
     color: var(--text-primary);
   }
 
-  .presentation-btn {
+  .presentation-btn,
+  .icon-btn {
     display: inline-flex;
     align-items: center;
     justify-content: center;
+  }
+
+  .icon-btn {
+    padding: 3px 8px;
+  }
+
+  .btn-icon {
+    width: 14px;
+    height: 14px;
+    background-color: currentColor;
+  }
+
+  .icon-edit {
+    -webkit-mask: url('../../../../../assets/edit.svg') center / contain no-repeat;
+    mask: url('../../../../../assets/edit.svg') center / contain no-repeat;
+  }
+
+  .icon-find {
+    -webkit-mask: url('../../../../../assets/find.svg') center / contain no-repeat;
+    mask: url('../../../../../assets/find.svg') center / contain no-repeat;
+  }
+
+  .icon-wrap {
+    -webkit-mask: url('../../../../../assets/wrap.svg') center / contain no-repeat;
+    mask: url('../../../../../assets/wrap.svg') center / contain no-repeat;
   }
 
   .font-size {
