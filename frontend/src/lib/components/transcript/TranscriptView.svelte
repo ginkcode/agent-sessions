@@ -26,6 +26,8 @@
   const SHOW_BOTTOM_BTN_PX = 400;
   // How near the end the view must be to follow new messages.
   const FOLLOW_SLACK_PX = 40;
+  // Scroll room needed before automatic history filling stops.
+  const FILL_SCROLL_PX = 300;
 
   let messages = $state<Message[]>([]);
   let isLoading = $state(false);
@@ -54,6 +56,7 @@
   // a meta target is only force-shown while it is the navigation target.
   let activeJump = $state<MessageJump | null>(null);
   let isLoadingEarlier = $state(false);
+  let fillFailed = false;
   let handledJumpID = 0;
   let loadGeneration = 0;
   let clearHighlight: (() => void) | null = null;
@@ -118,6 +121,7 @@
     following = false;
     anchoredToBottom = false;
     nearBottom = false;
+    fillFailed = false;
 
     try {
       const page = await api.getMessages(ref, -1, PAGE_SIZE);
@@ -194,6 +198,7 @@
     following = false;
     anchoredToBottom = false;
     nearBottom = false;
+    fillFailed = false;
 
     try {
       // Only the page around the target is requested; header metadata is
@@ -257,10 +262,12 @@
 
   // A jump starts mid-transcript; earlier pages load on demand, keeping the
   // visible content anchored while rows are prepended above it.
-  async function loadEarlierMessages(): Promise<void> {
+  // `fill` loads history only to cover a short view, keeping the bottom
+  // follow state; user scrolling stops following.
+  async function loadEarlierMessages(fill = false): Promise<void> {
     const ref = appState.selectedSessionRef;
-    if (!ref || pageOffset <= 0 || isLoadingEarlier || anchoredToBottom) return;
-    following = false;
+    if (!ref || pageOffset <= 0 || isLoadingEarlier || (anchoredToBottom && !fill)) return;
+    if (!fill) following = false;
     const generation = loadGeneration;
     const start = Math.max(0, pageOffset - PAGE_SIZE);
     isLoadingEarlier = true;
@@ -272,14 +279,29 @@
       pageOffset = start;
       await tick();
       if (generation === loadGeneration && containerEl) {
-        containerEl.scrollTop = containerEl.scrollHeight - before;
+        containerEl.scrollTop = following || anchoredToBottom
+          ? containerEl.scrollHeight
+          : containerEl.scrollHeight - before;
         lastScrollTop = containerEl.scrollTop;
       }
     } catch (err) {
+      // Stops automatic filling; the Load earlier button remains a retry.
+      if (fill) fillFailed = true;
       console.error('Failed to load earlier messages:', err);
     } finally {
       isLoadingEarlier = false;
     }
+    if (fill) void tick().then(fillViewport);
+  }
+
+  // In Chat mode a recent page can be mostly tool activity that renders
+  // nothing, leaving no scrollbar to request history with. Load earlier
+  // pages until the view can scroll or the transcript start is reached.
+  function fillViewport(): void {
+    const el = containerEl;
+    if (!el || isLoading || isLoadingEarlier || fillFailed || pageOffset <= 0) return;
+    if (el.scrollHeight - el.clientHeight > FILL_SCROLL_PX) return;
+    void loadEarlierMessages(true);
   }
 
   // Returns the in-flight load when one is running so callers can await it.
@@ -355,6 +377,7 @@
       if (remaining < 250 && hasMore && !isLoadingMore && !isLoading) {
         void loadMoreMessages();
       }
+      fillViewport();
     });
   });
 
@@ -387,6 +410,7 @@
       if (generation !== loadGeneration || !refsMatch(appState.selectedSessionRef, ref)) return;
       clearJumpHighlight();
       activeJump = null;
+      fillFailed = false;
       messages = page.messages || [];
       pageOffset = page.offset;
       hasMore = page.hasMore;
@@ -531,7 +555,7 @@
         {:else}
           {#if pageOffset > 0}
             <div class="load-earlier-bar">
-              <button type="button" disabled={isLoadingEarlier} onclick={loadEarlierMessages}>
+              <button type="button" disabled={isLoadingEarlier} onclick={() => loadEarlierMessages()}>
                 {isLoadingEarlier ? 'Loading earlier messages…' : `Load earlier messages (${pageOffset} before)`}
               </button>
             </div>
