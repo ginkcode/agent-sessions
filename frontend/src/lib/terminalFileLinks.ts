@@ -58,7 +58,7 @@ export function extractTerminalFileCandidates(text: string): TerminalFileCandida
 
   // Git's human and porcelain status formats give us stronger evidence than prose.
   // The rest of the row is one path, so unquoted spaces are meaningful here.
-  const status = /^(?:\s*(?:modified|new file|deleted|renamed|copied|both modified|both added|both deleted|added by us|added by them|deleted by us|deleted by them):\s+|(?=[ MADRCU?!]{0,1}[MADRCU?!])[ MADRCU?!]{2} )(.+?)\s*$/.exec(text);
+  const status = /^(?:\s*(?:modified|new file|deleted|renamed|copied|both modified|both added|both deleted|added by us|added to them?):\s+|(?=[ MADRCU?!]{0,1}[MADRCU?!])(?=[ MADRCU?!]{2}\s)[ MADRCU?!]{2}\s+)(.+?)\s*$/.exec(text);
   if (status) {
     let raw = status[1];
     let start = text.trimEnd().length - raw.length;
