@@ -28,7 +28,7 @@
   };
 </script>
 
-<div class="code source" bind:this={codeEl} class:wrap={files.wrap} class:diff={showDiff} style:font-size={presentation ? `${presentationFontSize}px` : undefined} style:--digits={String(htmlLines?.length ?? plainLines.length).length}>
+<div class="code source file-source" bind:this={codeEl} class:wrap={files.wrap} class:diff={showDiff} style:font-size={presentation ? `${presentationFontSize}px` : undefined} style:--digits={String(htmlLines?.length ?? plainLines.length).length}>
   {#snippet lineNumber(row: DiffRow)}
     {#if row.kind === 'removed'}
       <span aria-hidden="true" class="ln sign removed">−</span>
@@ -195,139 +195,140 @@
     overflow-wrap: anywhere;
   }
 
-  /* highlight.js tokens, GitHub colors. Scoped to the viewer so the
-     transcript's code blocks keep their own look. */
-  .source :global(.hljs-keyword),
-  .source :global(.hljs-doctag),
-  .source :global(.hljs-meta .hljs-keyword),
-  .source :global(.hljs-template-tag),
-  .source :global(.hljs-template-variable),
-  .source :global(.hljs-type),
-  .source :global(.hljs-variable.language_) {
+  /* highlight.js tokens, GitHub colors. Scoped to file sources (this view
+     and the editor, which emits the same classes) so the transcript's code
+     blocks keep their own look. */
+  :global(.file-source) :global(.hljs-keyword),
+  :global(.file-source) :global(.hljs-doctag),
+  :global(.file-source) :global(.hljs-meta .hljs-keyword),
+  :global(.file-source) :global(.hljs-template-tag),
+  :global(.file-source) :global(.hljs-template-variable),
+  :global(.file-source) :global(.hljs-type),
+  :global(.file-source) :global(.hljs-variable.language_) {
     color: #cf222e;
   }
-  .source :global(.hljs-title),
-  .source :global(.hljs-title.class_),
-  .source :global(.hljs-title.function_) {
+  :global(.file-source) :global(.hljs-title),
+  :global(.file-source) :global(.hljs-title.class_),
+  :global(.file-source) :global(.hljs-title.function_) {
     color: #8250df;
   }
-  .source :global(.hljs-attr),
-  .source :global(.hljs-attribute),
-  .source :global(.hljs-literal),
-  .source :global(.hljs-meta),
-  .source :global(.hljs-number),
-  .source :global(.hljs-operator),
-  .source :global(.hljs-variable),
-  .source :global(.hljs-selector-attr),
-  .source :global(.hljs-selector-class),
-  .source :global(.hljs-selector-id),
-  .source :global(.hljs-property) {
+  :global(.file-source) :global(.hljs-attr),
+  :global(.file-source) :global(.hljs-attribute),
+  :global(.file-source) :global(.hljs-literal),
+  :global(.file-source) :global(.hljs-meta),
+  :global(.file-source) :global(.hljs-number),
+  :global(.file-source) :global(.hljs-operator),
+  :global(.file-source) :global(.hljs-variable),
+  :global(.file-source) :global(.hljs-selector-attr),
+  :global(.file-source) :global(.hljs-selector-class),
+  :global(.file-source) :global(.hljs-selector-id),
+  :global(.file-source) :global(.hljs-property) {
     color: #0550ae;
   }
-  .source :global(.hljs-regexp),
-  .source :global(.hljs-string),
-  .source :global(.hljs-meta .hljs-string) {
+  :global(.file-source) :global(.hljs-regexp),
+  :global(.file-source) :global(.hljs-string),
+  :global(.file-source) :global(.hljs-meta .hljs-string) {
     color: #0a3069;
   }
-  .source :global(.hljs-built_in),
-  .source :global(.hljs-symbol),
-  .source :global(.hljs-params) {
+  :global(.file-source) :global(.hljs-built_in),
+  :global(.file-source) :global(.hljs-symbol),
+  :global(.file-source) :global(.hljs-params) {
     color: #953800;
   }
-  .source :global(.hljs-comment),
-  .source :global(.hljs-code),
-  .source :global(.hljs-formula) {
+  :global(.file-source) :global(.hljs-comment),
+  :global(.file-source) :global(.hljs-code),
+  :global(.file-source) :global(.hljs-formula) {
     color: #6e7781;
     font-style: italic;
   }
-  .source :global(.hljs-name),
-  .source :global(.hljs-quote),
-  .source :global(.hljs-selector-tag),
-  .source :global(.hljs-selector-pseudo),
-  .source :global(.hljs-tag) {
+  :global(.file-source) :global(.hljs-name),
+  :global(.file-source) :global(.hljs-quote),
+  :global(.file-source) :global(.hljs-selector-tag),
+  :global(.file-source) :global(.hljs-selector-pseudo),
+  :global(.file-source) :global(.hljs-tag) {
     color: #116329;
   }
-  .source :global(.hljs-subst) {
+  :global(.file-source) :global(.hljs-subst) {
     color: inherit;
   }
-  .source :global(.hljs-section) {
+  :global(.file-source) :global(.hljs-section) {
     color: #0550ae;
     font-weight: bold;
   }
-  .source :global(.hljs-bullet) {
+  :global(.file-source) :global(.hljs-bullet) {
     color: #953800;
   }
-  .source :global(.hljs-emphasis) {
+  :global(.file-source) :global(.hljs-emphasis) {
     font-style: italic;
   }
-  .source :global(.hljs-strong) {
+  :global(.file-source) :global(.hljs-strong) {
     font-weight: bold;
   }
-  .source :global(.hljs-addition) {
+  :global(.file-source) :global(.hljs-addition) {
     color: #116329;
     background-color: #dafbe1;
   }
-  .source :global(.hljs-deletion) {
+  :global(.file-source) :global(.hljs-deletion) {
     color: #82071e;
     background-color: #ffebe9;
   }
 
-  :global([data-theme='dark']) .source :global(.hljs-keyword),
-  :global([data-theme='dark']) .source :global(.hljs-doctag),
-  :global([data-theme='dark']) .source :global(.hljs-meta .hljs-keyword),
-  :global([data-theme='dark']) .source :global(.hljs-template-tag),
-  :global([data-theme='dark']) .source :global(.hljs-template-variable),
-  :global([data-theme='dark']) .source :global(.hljs-type),
-  :global([data-theme='dark']) .source :global(.hljs-variable.language_) {
+  :global([data-theme='dark']) :global(.file-source) :global(.hljs-keyword),
+  :global([data-theme='dark']) :global(.file-source) :global(.hljs-doctag),
+  :global([data-theme='dark']) :global(.file-source) :global(.hljs-meta .hljs-keyword),
+  :global([data-theme='dark']) :global(.file-source) :global(.hljs-template-tag),
+  :global([data-theme='dark']) :global(.file-source) :global(.hljs-template-variable),
+  :global([data-theme='dark']) :global(.file-source) :global(.hljs-type),
+  :global([data-theme='dark']) :global(.file-source) :global(.hljs-variable.language_) {
     color: #ff7b72;
   }
-  :global([data-theme='dark']) .source :global(.hljs-title),
-  :global([data-theme='dark']) .source :global(.hljs-title.class_),
-  :global([data-theme='dark']) .source :global(.hljs-title.function_) {
+  :global([data-theme='dark']) :global(.file-source) :global(.hljs-title),
+  :global([data-theme='dark']) :global(.file-source) :global(.hljs-title.class_),
+  :global([data-theme='dark']) :global(.file-source) :global(.hljs-title.function_) {
     color: #d2a8ff;
   }
-  :global([data-theme='dark']) .source :global(.hljs-attr),
-  :global([data-theme='dark']) .source :global(.hljs-attribute),
-  :global([data-theme='dark']) .source :global(.hljs-literal),
-  :global([data-theme='dark']) .source :global(.hljs-meta),
-  :global([data-theme='dark']) .source :global(.hljs-number),
-  :global([data-theme='dark']) .source :global(.hljs-operator),
-  :global([data-theme='dark']) .source :global(.hljs-variable),
-  :global([data-theme='dark']) .source :global(.hljs-selector-attr),
-  :global([data-theme='dark']) .source :global(.hljs-selector-class),
-  :global([data-theme='dark']) .source :global(.hljs-selector-id),
-  :global([data-theme='dark']) .source :global(.hljs-property),
-  :global([data-theme='dark']) .source :global(.hljs-section) {
+  :global([data-theme='dark']) :global(.file-source) :global(.hljs-attr),
+  :global([data-theme='dark']) :global(.file-source) :global(.hljs-attribute),
+  :global([data-theme='dark']) :global(.file-source) :global(.hljs-literal),
+  :global([data-theme='dark']) :global(.file-source) :global(.hljs-meta),
+  :global([data-theme='dark']) :global(.file-source) :global(.hljs-number),
+  :global([data-theme='dark']) :global(.file-source) :global(.hljs-operator),
+  :global([data-theme='dark']) :global(.file-source) :global(.hljs-variable),
+  :global([data-theme='dark']) :global(.file-source) :global(.hljs-selector-attr),
+  :global([data-theme='dark']) :global(.file-source) :global(.hljs-selector-class),
+  :global([data-theme='dark']) :global(.file-source) :global(.hljs-selector-id),
+  :global([data-theme='dark']) :global(.file-source) :global(.hljs-property),
+  :global([data-theme='dark']) :global(.file-source) :global(.hljs-section) {
     color: #79c0ff;
   }
-  :global([data-theme='dark']) .source :global(.hljs-regexp),
-  :global([data-theme='dark']) .source :global(.hljs-string),
-  :global([data-theme='dark']) .source :global(.hljs-meta .hljs-string) {
+  :global([data-theme='dark']) :global(.file-source) :global(.hljs-regexp),
+  :global([data-theme='dark']) :global(.file-source) :global(.hljs-string),
+  :global([data-theme='dark']) :global(.file-source) :global(.hljs-meta .hljs-string) {
     color: #a5d6ff;
   }
-  :global([data-theme='dark']) .source :global(.hljs-built_in),
-  :global([data-theme='dark']) .source :global(.hljs-symbol),
-  :global([data-theme='dark']) .source :global(.hljs-params),
-  :global([data-theme='dark']) .source :global(.hljs-bullet) {
+  :global([data-theme='dark']) :global(.file-source) :global(.hljs-built_in),
+  :global([data-theme='dark']) :global(.file-source) :global(.hljs-symbol),
+  :global([data-theme='dark']) :global(.file-source) :global(.hljs-params),
+  :global([data-theme='dark']) :global(.file-source) :global(.hljs-bullet) {
     color: #ffa657;
   }
-  :global([data-theme='dark']) .source :global(.hljs-comment),
-  :global([data-theme='dark']) .source :global(.hljs-code),
-  :global([data-theme='dark']) .source :global(.hljs-formula) {
+  :global([data-theme='dark']) :global(.file-source) :global(.hljs-comment),
+  :global([data-theme='dark']) :global(.file-source) :global(.hljs-code),
+  :global([data-theme='dark']) :global(.file-source) :global(.hljs-formula) {
     color: #8b949e;
   }
-  :global([data-theme='dark']) .source :global(.hljs-name),
-  :global([data-theme='dark']) .source :global(.hljs-quote),
-  :global([data-theme='dark']) .source :global(.hljs-selector-tag),
-  :global([data-theme='dark']) .source :global(.hljs-selector-pseudo),
-  :global([data-theme='dark']) .source :global(.hljs-tag) {
+  :global([data-theme='dark']) :global(.file-source) :global(.hljs-name),
+  :global([data-theme='dark']) :global(.file-source) :global(.hljs-quote),
+  :global([data-theme='dark']) :global(.file-source) :global(.hljs-selector-tag),
+  :global([data-theme='dark']) :global(.file-source) :global(.hljs-selector-pseudo),
+  :global([data-theme='dark']) :global(.file-source) :global(.hljs-tag) {
     color: #7ee787;
   }
-  :global([data-theme='dark']) .source :global(.hljs-addition) {
+  :global([data-theme='dark']) :global(.file-source) :global(.hljs-addition) {
     color: #aff5b4;
     background-color: #033a16;
   }
-  :global([data-theme='dark']) .source :global(.hljs-deletion) {
+  :global([data-theme='dark']) :global(.file-source) :global(.hljs-deletion) {
     color: #ffdcd7;
     background-color: #67060c;
   }

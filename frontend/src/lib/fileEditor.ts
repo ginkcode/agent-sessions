@@ -1,7 +1,8 @@
 import { Compartment, EditorState, type Extension } from '@codemirror/state';
 import { EditorView, drawSelection, highlightActiveLine, keymap, lineNumbers } from '@codemirror/view';
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands';
-import { defaultHighlightStyle, indentOnInput, syntaxHighlighting } from '@codemirror/language';
+import { HighlightStyle, indentOnInput, syntaxHighlighting } from '@codemirror/language';
+import { tags as t } from '@lezer/highlight';
 import { keyHandled } from './fullscreen';
 import { closeSearchPanel, openSearchPanel, search, searchKeymap, searchPanelOpen } from '@codemirror/search';
 
@@ -35,25 +36,54 @@ const editable = (disabled = false): Extension => [
   EditorState.readOnly.of(disabled),
 ];
 
+// Matches the viewer's SourceView (font, line height, gutter and line
+// padding), so switching between viewing and editing does not move the text.
 const theme = EditorView.theme({
   '&': { height: '100%', color: 'var(--text-primary)', backgroundColor: 'var(--bg-primary)', fontSize: '0.78rem' },
   '&.cm-focused': { outline: 'none' },
-  '.cm-scroller': { overflow: 'auto', fontFamily: 'var(--font-mono)', lineHeight: '1.5' },
+  '.cm-scroller': { overflow: 'auto', fontFamily: 'var(--font-mono)', lineHeight: '1.5', tabSize: '4' },
   '.cm-content': { padding: '8px 0', caretColor: 'var(--text-primary)' },
+  '.cm-line': { padding: '0 14px' },
   '.cm-cursor, .cm-dropCursor': { borderLeftColor: 'var(--text-primary)' },
-  '.cm-gutters': { backgroundColor: 'var(--bg-secondary)', color: 'var(--text-muted)', borderRight: '1px solid var(--border-color)' },
+  '.cm-gutters': { backgroundColor: 'var(--bg-secondary)', color: 'var(--text-muted)', border: 'none', borderRight: '1px solid var(--border-color)' },
+  '.cm-gutter': { paddingTop: '0', paddingBottom: '0' },
+  '.cm-lineNumbers .cm-gutterElement': { padding: '0 10px 0 14px', minWidth: '0' },
   '.cm-activeLine, .cm-activeLineGutter': { backgroundColor: 'var(--bg-secondary)' },
   '&.cm-focused .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection': { backgroundColor: 'var(--bg-tertiary)' },
   '.cm-panels': { backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)' },
   '.cm-textfield, .cm-button': { background: 'var(--bg-primary)', color: 'var(--text-primary)', border: '1px solid var(--border-color)' },
 });
 
+// Token classes the viewer's highlight.js output uses, so both get the same
+// colours from SourceView's stylesheet (scoped to .file-source).
+const highlight = HighlightStyle.define([
+  { tag: [t.keyword, t.modifier, t.self, t.operatorKeyword], class: 'hljs-keyword' },
+  { tag: [t.bool, t.null, t.atom], class: 'hljs-literal' },
+  { tag: [t.string, t.special(t.string), t.character, t.attributeValue, t.docString], class: 'hljs-string' },
+  { tag: t.regexp, class: 'hljs-regexp' },
+  { tag: [t.number, t.color, t.unit], class: 'hljs-number' },
+  { tag: t.comment, class: 'hljs-comment' },
+  { tag: [t.function(t.definition(t.variableName)), t.function(t.definition(t.propertyName))], class: 'hljs-title function_' },
+  { tag: [t.definition(t.className), t.definition(t.typeName)], class: 'hljs-title class_' },
+  { tag: [t.typeName, t.className], class: 'hljs-type' },
+  { tag: t.attributeName, class: 'hljs-attr' },
+  { tag: [t.propertyName, t.definition(t.propertyName)], class: 'hljs-property' },
+  { tag: t.tagName, class: 'hljs-name' },
+  { tag: [t.meta, t.documentMeta, t.processingInstruction], class: 'hljs-meta' },
+  { tag: t.heading, class: 'hljs-section' },
+  { tag: t.list, class: 'hljs-bullet' },
+  { tag: t.quote, class: 'hljs-quote' },
+  { tag: t.monospace, class: 'hljs-code' },
+  { tag: t.emphasis, class: 'hljs-emphasis' },
+  { tag: t.strong, class: 'hljs-strong' },
+]);
+
 function freshState(options: FileEditorOptions): EditorState {
   return EditorState.create({
     doc: options.text,
     extensions: [
       lineNumbers(), history(), drawSelection(), highlightActiveLine(), indentOnInput(),
-      syntaxHighlighting(defaultHighlightStyle, { fallback: true }), search(), theme,
+      syntaxHighlighting(highlight), search(), theme,
       wrapping.of(options.wrap ? EditorView.lineWrapping : []),
       editing.of(editable(options.disabled)), language.of([]),
       keymap.of([indentWithTab, ...defaultKeymap, ...historyKeymap, ...searchKeymap]),

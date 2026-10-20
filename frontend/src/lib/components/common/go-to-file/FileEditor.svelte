@@ -41,7 +41,8 @@
   export function handleKey(event: KeyboardEvent): boolean { return editor?.handleKey(event) ?? false; }
 </script>
 
-<div class="file-editor" bind:this={host}></div>
+<!-- file-source: the viewer's token colours (see SourceView). -->
+<div class="file-editor file-source" bind:this={host}></div>
 {#if error}
   <div class="editor-error" role="alert">{error}</div>
 {/if}
