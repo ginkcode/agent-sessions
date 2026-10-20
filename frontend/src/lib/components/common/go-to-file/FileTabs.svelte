@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { files } from '../../../stores/files.svelte';
+  import { files, tabHasUnsaved } from '../../../stores/files.svelte';
+  import { fileActions } from '../../../stores/fileActions.svelte';
   import { TAB_CLOSE_ACTIONS, tabsToClose } from '../../../tabActions';
   import FileIcon from '../FileIcon.svelte';
   import ContextMenu from '../ContextMenu.svelte';
@@ -13,7 +14,7 @@
     const { path } = tabContext;
     return TAB_CLOSE_ACTIONS.map(({ action, label }) => {
       const targets = tabsToClose(files.tabs.map((t) => t.path), path, action);
-      return { label, disabled: targets.length === 0, onSelect: () => targets.forEach((p) => files.closeTab(p)) };
+      return { label, disabled: targets.length === 0, onSelect: () => void fileActions.closeTabs(targets) };
     });
   });
 
@@ -35,7 +36,7 @@
 
   function closeTab(e: MouseEvent, path: string) {
     e.stopPropagation();
-    files.closeTab(path);
+    void fileActions.closeTabs([path]);
   }
 </script>
 
@@ -72,6 +73,7 @@
       >
         <FileIcon path={tab.path} />
         <span class="tab-name git-{st ?? 'none'}">{splitPath(tab.path).name}</span>
+        {#if tabHasUnsaved(tab)}<span aria-label="Unsaved changes" title="Unsaved changes">●</span>{/if}
         <button
           type="button"
           class="tab-close"

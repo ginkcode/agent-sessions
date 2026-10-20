@@ -68,6 +68,7 @@ type App struct {
 	wailsEvents       engine.Emitter
 	conn              *connection
 	transportOverride remote.ArtifactTransport
+	fileClose         fileCloseGuard
 }
 
 // NewApp creates a new App service instance with default providers.

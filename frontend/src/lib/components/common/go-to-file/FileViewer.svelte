@@ -8,9 +8,18 @@
   import type { GitStatus } from '../../../types';
   import { toast } from '../../../stores/toast.svelte';
   import { markdownFileTarget } from '../../../fileActions';
+  import { api } from '../../../api';
+  import { epoch } from '../../../link';
+  import { errorText } from '../../../manage';
+  import { link } from '../../../stores/link.svelte';
+  import { connectionStore } from '../../../stores/connection.svelte';
+  import { fileActions } from '../../../stores/fileActions.svelte';
+  import { canEditContent } from '../../../fileEditing';
+  import type { FileContent, FileEditReason } from '../../../types';
   import LoadingSpinner from '../LoadingSpinner.svelte';
   import MarkdownDoc from '../MarkdownDoc.svelte';
   import SourceView from './SourceView.svelte';
+  import FileEditor from './FileEditor.svelte';
   import { createImagePreview } from './imagePreview.svelte';
   import { createFileFind } from './fileFind.svelte';
 
@@ -35,10 +44,105 @@
 
   let previewOn = $state(false);
 
+  // Editing. A tab in edit mode shows the editor in place of every viewer
+  // state, so a draft stays reachable even when the listing says deleted.
+  let activeTab = $derived(files.activeTab);
+  let edit = $derived(activeTab?.edit);
+  let editing = $derived(Boolean(edit?.editing));
+  let editor: FileEditor | undefined = $state();
+  let starting = $state(false);
+  let frozen = $derived(fileActions.busy || fileActions.quitting);
+  let canSaveHost = $derived(connectionStore.capabilities.saveFile === true);
+  let blocked = $derived(link.blockedReason);
+  // Text the viewer can show as text; only then does a read-only reason matter.
+  let textContent = $derived(isTextContent(files.content));
+  let canEdit = $derived(
+    !editing && !starting && !frozen && canSaveHost && !blocked
+      && !files.loadingFile && !files.fileError && canEditContent(files.content)
+  );
+  let readOnlyReason = $derived(
+    editing || !textContent ? ''
+      : files.content?.edit?.eligible === false ? readOnlyText(files.content.edit.reason)
+      : !canSaveHost && files.content?.edit?.eligible ? 'Read-only: this host cannot save files'
+      : ''
+  );
+  let canSave = $derived(
+    Boolean(edit?.editing && edit.dirty) && !edit?.saving && !edit?.uncertain && !frozen && canSaveHost && !blocked
+  );
+
+  function isTextContent(content: FileContent | null): boolean {
+    return !!content && typeof content.text === 'string' && !content.binary && !content.tooLarge && !content.image;
+  }
+
+  function readOnlyText(reason: FileEditReason | undefined): string {
+    switch (reason) {
+      case 'too_large': return 'Read-only: too large to edit';
+      case 'unsupported_newlines': return 'Read-only: mixed line endings';
+      case 'not_checked': return 'Read-only: editing not available';
+      case 'protected': return 'Read-only: protected file';
+      case 'linked': return 'Read-only: linked file';
+      case 'read_only': return 'Read-only file';
+      default: return 'Read-only';
+    }
+  }
+
+  async function startEdit() {
+    const tab = files.activeTab;
+    if (!tab || !canEdit) return;
+    const dir = files.dir;
+    const host = link.dataHost;
+    const started = epoch();
+    starting = true;
+    try {
+      // The native close guard must be armed before an editable document exists.
+      if (!(await api.enableFileEditing())) {
+        toast.show({ title: 'Cannot edit now', body: 'The window is closing.', tone: 'error' });
+        return;
+      }
+      if (files.activeTab !== tab || files.dir !== dir || link.dataHost !== host || epoch() !== started) return;
+      if (fileActions.busy || fileActions.quitting) return;
+      previewOn = false;
+      presentation = false;
+      find.closeFind();
+      if (!files.startEditing(tab.path)) {
+        toast.show({ title: 'Cannot edit this file', body: link.blockedReason ?? 'This file cannot be edited.', tone: 'error' });
+      }
+    } catch (err) {
+      toast.show({ title: 'Cannot edit this file', body: errorText(err, 'Could not start editing.'), tone: 'error' });
+    } finally {
+      starting = false;
+    }
+  }
+
+  function save() {
+    const tab = files.activeTab;
+    if (tab?.edit && canSave) void fileActions.save(tab);
+  }
+
+  function resolveConflict() {
+    const tab = files.activeTab;
+    if (tab?.edit?.conflict && !frozen && !tab.edit.saving) void fileActions.resolveConflict(tab);
+  }
+
+  function discard() {
+    const tab = files.activeTab;
+    if (tab?.edit) void fileActions.discard(tab);
+  }
+
+  function done() {
+    const tab = files.activeTab;
+    if (tab?.edit) void fileActions.done(tab);
+  }
+
+  // Presentation is read-only.
+  $effect(() => {
+    if (editing && presentation) presentation = false;
+  });
+
   let language = $derived(files.selected ? fileLanguage(files.selected) : null);
   let previewKind = $derived(files.selected ? filePreview(files.selected) : null);
-  let showMarkdown = $derived(previewOn && previewKind === 'markdown');
-  let showSvg = $derived(previewOn && previewKind === 'svg');
+  let showMarkdown = $derived(previewOn && !editing && previewKind === 'markdown');
+  let showSvg = $derived(previewOn && !editing && previewKind === 'svg');
   // Rendered rather than source: the source-only tools hide.
   let showPreview = $derived(showMarkdown || showSvg);
   let text = $derived(files.content?.text ?? '');
@@ -74,7 +178,8 @@
   let marks = $derived(lineMarks(changes, plainLines.length));
   // The diff view shows when it is on and the file has changes to show.
   let hasChanges = $derived(Boolean(changes?.length));
-  let showDiff = $derived(files.diff && hasChanges);
+  // Git markers describe the saved file, so the diff never shows over a draft.
+  let showDiff = $derived(files.diff && hasChanges && !editing);
   let rows: DiffRow[] = $derived(
     showDiff
       ? diffRows(changes, plainLines.length)
@@ -132,8 +237,9 @@
   });
 
   const findShortcut = isMac ? '⌘F' : 'Ctrl+F';
+  const saveShortcut = isMac ? '⌘S' : 'Ctrl+S';
   let contentShown = $derived(
-    files.open && !files.loadingFile && !files.fileError && Boolean(text) && fileStatus(files.selected ?? '') !== 'D'
+    files.open && !editing && !files.loadingFile && !files.fileError && Boolean(text) && fileStatus(files.selected ?? '') !== 'D'
   );
   const find = createFileFind({
     getScroller: () => codeScroll,
@@ -199,6 +305,18 @@
 
   /** Called by the parent only while the file dialog is open. */
   export function handleKey(e: KeyboardEvent): boolean {
+    if (editing) {
+      // Editor shortcuts (save, its own find, closing its search) come first;
+      // the viewer's find never opens over the editor. An unconsumed Escape
+      // falls through to the dialog, which keeps the draft in memory.
+      if (editor?.handleKey(e)) return true;
+      if (isWrapShortcut(e)) {
+        e.preventDefault();
+        files.toggleWrap();
+        return true;
+      }
+      return false;
+    }
     if (e.key === 'Escape') {
       if (e.defaultPrevented || !find.findActive) return false;
       e.preventDefault();
@@ -279,7 +397,51 @@
         {/if}
       </button>
       {#if files.content}<span class="viewer-size">{formatSize(files.content.size)}</span>{/if}
-      {#if text && !files.loadingFile}
+      {#if editing && edit}
+        {#if edit.saving}
+          <span class="edit-status" aria-live="polite">Saving…</span>
+        {:else if edit.dirty}
+          <span class="edit-status" aria-live="polite">Unsaved</span>
+        {/if}
+        <button
+          type="button"
+          class="copy-btn"
+          class:on={files.wrap}
+          aria-pressed={files.wrap}
+          title="{files.wrap ? 'Stop wrapping' : 'Wrap'} long lines ({wrapShortcut})"
+          onclick={() => files.toggleWrap()}
+        >
+          Wrap
+        </button>
+        <button
+          type="button"
+          class="copy-btn primary"
+          title={blocked ?? (canSaveHost ? `Save (${saveShortcut})` : 'This host cannot save files.')}
+          disabled={!canSave}
+          onclick={save}
+        >
+          Save
+        </button>
+        <button type="button" class="copy-btn" title="Discard changes and reload from disk" disabled={frozen || edit.saving} onclick={discard}>Discard</button>
+        <button type="button" class="copy-btn" title="Stop editing" disabled={frozen || edit.saving} onclick={done}>Done</button>
+      {:else if files.content && !files.loadingFile && !files.fileError}
+        {#if canSaveHost && canEditContent(files.content)}
+          <button
+            type="button"
+            class="copy-btn"
+            title={blocked ?? 'Edit this file'}
+            disabled={!canEdit}
+            onclick={startEdit}
+          >
+            {starting ? 'Opening…' : 'Edit'}
+          </button>
+        {:else if readOnlyReason}
+          <span class="read-only" title={readOnlyReason}>{readOnlyReason}</span>
+        {/if}
+      {/if}
+      {#if editing}
+        <!-- Read-only tools hide while editing. -->
+      {:else if text && !files.loadingFile}
         {#if previewKind}
           {@const kindLabel = previewKind === 'svg' ? 'SVG' : 'Markdown'}
           <button type="button" class="copy-btn" class:on={showPreview} aria-pressed={showPreview} title={showPreview ? `Show ${kindLabel} source` : `Preview ${kindLabel}`} onclick={() => (previewOn = !previewOn)}>Preview</button>
@@ -338,6 +500,9 @@
       {:else if showImage}
         {@render zoomControls()}
       {/if}
+      {#if editing}
+        <!-- Presentation is read-only. -->
+      {:else}
       {#if presentation}
         <button type="button" class="copy-btn" aria-label="Decrease presentation font size" title="Decrease font size" disabled={presentationFontSize <= 12} onclick={() => (presentationFontSize -= 2)}>−</button>
         <span class="font-size" aria-live="polite">{presentationFontSize}px</span>
@@ -360,8 +525,36 @@
           {/if}
         </svg>
       </button>
+      {/if}
     </div>
-    {#if fileStatus(files.selected) === 'D'}
+    {#if editing && edit && activeTab}
+      {#if edit.saveError}
+        <div class="edit-error" role="alert">
+          <span>{edit.saveError}</span>
+          {#if edit.conflict}
+            <button type="button" class="copy-btn" title="Choose how to resolve the conflict" disabled={frozen || edit.saving || Boolean(blocked) || !canSaveHost} onclick={resolveConflict}>Resolve…</button>
+          {/if}
+          {#if edit.conflict || edit.uncertain}
+            <button type="button" class="copy-btn" title="Discard changes and reload from disk" disabled={frozen || edit.saving} onclick={discard}>Reload</button>
+          {/if}
+        </div>
+      {/if}
+      <div class="code-area">
+        <FileEditor
+          bind:this={editor}
+          id={activeTab}
+          text={edit.draft}
+          path={activeTab.path}
+          version={edit.version}
+          wrap={files.wrap}
+          disabled={frozen}
+          onchange={(next) => {
+            if (!fileActions.busy && !fileActions.quitting) files.updateDraft(activeTab, next);
+          }}
+          onsave={save}
+        />
+      </div>
+    {:else if fileStatus(files.selected) === 'D'}
       <div class="state center">This file was deleted since the last commit.</div>
     {:else if files.loadingFile}
       <div class="state center"><LoadingSpinner size={16} label="Loading file…" /></div>
@@ -598,6 +791,45 @@
     color: var(--accent-color);
     border-color: var(--accent-color);
     background-color: var(--active-bg);
+  }
+
+  .copy-btn:disabled {
+    opacity: 0.45;
+    cursor: default;
+    background-color: transparent;
+    color: var(--text-secondary);
+  }
+
+  .copy-btn.primary:not(:disabled) {
+    color: var(--accent-color);
+    border-color: var(--accent-color);
+  }
+
+  .edit-status,
+  .read-only {
+    flex-shrink: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-family: var(--font-sans);
+    font-size: 0.75rem;
+    color: var(--text-muted);
+  }
+
+  .edit-error {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 14px;
+    font-size: 0.78rem;
+    color: #ef4444;
+    border-bottom: 1px solid var(--border-color);
+  }
+
+  .edit-error span {
+    flex: 1;
+    min-width: 0;
   }
 
   .copy-btn.copied {

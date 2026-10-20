@@ -64,8 +64,9 @@ func run() {
 				_ = application.FocusNextWindow(forward)
 			})
 		},
-		OnShutdown: application.OnShutdown,
-		Bind:       []interface{}{application},
+		OnShutdown:    application.OnShutdown,
+		OnBeforeClose: application.OnBeforeClose,
+		Bind:          []interface{}{application},
 		// Set Mac explicitly: Wails leaves the native zoom/fullscreen button
 		// disabled when Mac options are nil. Escape belongs to in-app dialogs,
 		// not to the window's fullscreen state.

@@ -88,7 +88,7 @@ type LineChange struct {
 type Content struct {
 	Path string `json:"path"`
 	Size int64  `json:"size"`
-	Text string `json:"text,omitempty"`
+	Text string `json:"text"`
 	// Binary is set when the file is not UTF-8 text; Text is then empty.
 	Binary bool `json:"binary,omitempty"`
 	// TooLarge is set when the file exceeds MaxReadBytes (MaxImageBytes for

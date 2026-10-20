@@ -110,6 +110,9 @@ export interface BackendAPI {
    * req.expectedRevision; otherwise reports a conflict and writes nothing.
    */
   saveFile(dir: string, req: FileSaveRequest): Promise<FileSaveResult>;
+  /** Arm native close coordination before mounting any editable document. */
+  enableFileEditing(): Promise<boolean>;
+  completeFileClose(id: number, allow: boolean): Promise<void>;
   revealFile(dir: string, path: string): Promise<void>;
   copyFile(dir: string, path: string): Promise<void>;
   downloadFile(dir: string, path: string): Promise<string>;
@@ -199,6 +202,8 @@ interface WailsAppBinding {
   ListFiles(dir: string): Promise<FileListing>;
   ReadFile(dir: string, path: string): Promise<FileContent>;
   SaveFile(dir: string, req: FileSaveRequest): Promise<FileSaveResult>;
+  EnableFileEditing(): Promise<boolean>;
+  CompleteFileClose(id: number, allow: boolean): Promise<void>;
   RevealFile(dir: string, path: string): Promise<void>;
   CopyFile(dir: string, path: string): Promise<void>;
   DownloadFile(dir: string, path: string): Promise<string>;
@@ -565,6 +570,14 @@ class WailsBackendAPI implements BackendAPI {
     }
   }
 
+  async enableFileEditing(): Promise<boolean> {
+    try { return await this.binding.EnableFileEditing(); } catch (e) { throw normalizeError(e); }
+  }
+
+  async completeFileClose(id: number, allow: boolean): Promise<void> {
+    try { await this.binding.CompleteFileClose(id, allow); } catch (e) { throw normalizeError(e); }
+  }
+
   async revealFile(dir: string, path: string): Promise<void> {
     try {
       await this.binding.RevealFile(dir, path);
@@ -923,6 +936,8 @@ export function createAPI(): BackendAPI {
 // Connection control and events are not tied to the loaded data.
 const UNGUARDED = new Set<string>([
   'onEvent',
+  'enableFileEditing',
+  'completeFileClose',
   'onFileDrop',
   'openURL',
   'appVersion',

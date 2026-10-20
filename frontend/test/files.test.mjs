@@ -173,6 +173,8 @@ async function loadFilesStore() {
     ["'../manage'", lib('../manage.ts')],
     ["'../link'", lib('../link.ts')],
     ["'../files'", lib('../files.ts')],
+    ["'../fileEditing'", lib('../fileEditing.ts')],
+    ["import { link } from './link.svelte';", "const link = { dataHost: undefined, blockedReason: null };"],
   ]);
   return filesStoreModule;
 }

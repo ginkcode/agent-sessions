@@ -187,10 +187,48 @@ otherwise preserve the draft and require the normal revision/conflict flow.
   servers omit `saveFile`; the client refuses saves before transport. Tests cover
   actual RPC saved/conflict results, unknown directories, protected stores and
   remote/offline routing without local fallback.
-- CodeMirror dependencies are installed for FE-07, but **no editing controls,
-  editor component or draft state are enabled yet**. FE-06 onward remain pending.
-  In particular reconnect still resets cached tabs; do not expose Edit until the
-  draft/lifecycle/native-close safeguards are implemented.
+- Save backend committed on branch `editor` as `11ca1cd`.
+- FE-07 implementation added: lazy runtime/language imports, per-tab immutable
+  CodeMirror state/selection/scroll in a WeakMap, live wrapping/read-only state,
+  search and save keys, and safe async mount cleanup. No inactive editor DOM.
+- Native close backend added: editing must arm the guard before mounting; once
+  armed, every close is deferred to a frontend decision. One-shot request IDs
+  reject stale approvals; the callback never blocks the UI thread. Frontend must
+  freeze input throughout close approval. Unit tests cover cancellation, replay
+  and concurrent requests. Desktop-tag Go build/test passes on macOS; actual
+  native close interaction remains untested.
+- FE-06 draft state implemented and tested: immutable save snapshots, later
+  typing retained as dirty, read/refresh/reopen guards, hidden-directory saves,
+  host/epoch validation, and conservative refusal to reset/close unresolved drafts.
+  `fileEditing.ts` handles editor normalization and byte limits. Failed/stale
+  reloads preserve drafts and history; uncertain saves are never replayed.
+- A serialized accessible file-decision prompt and destructive-action coordinator
+  are implemented. Tab and bulk close paths use the coordinator; native request
+  subscription and browser unload guard are installed. The coordinator freezes
+  editor input via its busy state.
+- Lifecycle: `files.connectionChanged(host)` keeps editors, drafts and caches on
+  same-host reconnect, invalidating late reads and refreshing clean tabs and the
+  listing. Explicit host switches go through `fileActions.changeHost`, which
+  resolves drafts and stays busy until routing completes. Uncertain saves are
+  reconciled by reading only and comparing exact submitted bytes (captured
+  BOM/newline format); a match advances the baseline without touching later
+  typing, a mismatch becomes a conflict. Successful saves refresh only the
+  visible listing; a listing failure is not reported as a save failure.
+- Conflicts: Resolve… offers Reload (confirmed) or Overwrite (confirmed). The
+  overwrite retries against the observed revision via normal CAS and may
+  conflict again.
+- FE-08 viewer controls exposed: Edit (awaits `enableFileEditing()` to arm the
+  native close guard and revalidates tab/dir/host/epoch), Save / Cmd-Ctrl+S,
+  Discard, Done, dirty/saving status, read-only reasons, and conflict/uncertain
+  error bar. Preview, presentation, Git diff and viewer find hide while editing;
+  the editor renders ahead of deleted/empty/error states. Typing is frozen only
+  during coordinated prompts and quit, not during ordinary saves or disconnects.
+- Current validation: 296 frontend tests pass (drafts, coordinator, prompt,
+  editor, viewer controls); Svelte check has 0 errors and the existing tsconfig
+  warning; production build passes; full Go suite and desktop-tag tests pass.
+- Pending: native desktop interaction QA (editing, close/quit prompts, real
+  CodeMirror DOM focus/search/scroll), Linux/Windows filesystem behaviour, and
+  SSH/WSL disconnect-during-save scenarios.
 - Validation: full `go test ./...`; race tests for files/engine/RPC/app; repeated
   file-save race tests; Linux/Windows cross-platform vet; frontend's 239 tests;
   `npm run check` (0 errors, existing ignoreDeprecations warning). No native

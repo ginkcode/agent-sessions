@@ -707,6 +707,9 @@ export class MockBackendAPI {
     };
   }
 
+  async enableFileEditing(): Promise<boolean> { return true; }
+  async completeFileClose(_id: number, _allow: boolean): Promise<void> {}
+
   private fileDrafts = new Map<string, FileContent>();
 
   async readFile(dir: string, path: string): Promise<FileContent> {

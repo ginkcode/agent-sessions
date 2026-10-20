@@ -11,6 +11,20 @@
   import FilePicker from './go-to-file/FilePicker.svelte';
   import FileTabs from './go-to-file/FileTabs.svelte';
   import FileViewer from './go-to-file/FileViewer.svelte';
+  import { onMount } from 'svelte';
+  import FilePrompt from './go-to-file/FilePrompt.svelte';
+  import { fileActions } from '../../stores/fileActions.svelte';
+
+  onMount(() => {
+    const off = api.onEvent('files:close-request', (id: number) => {
+      if (Number.isSafeInteger(id) && id > 0) void fileActions.nativeClose(id);
+    });
+    const unload = (e: BeforeUnloadEvent) => {
+      if (files.hasUnsaved) { e.preventDefault(); e.returnValue = ''; }
+    };
+    window.addEventListener('beforeunload', unload);
+    return () => { off(); window.removeEventListener('beforeunload', unload); };
+  });
 
   let locked = $state(false);
   let presentation = $state(false);
@@ -107,6 +121,7 @@
   });
 
   function close() {
+    if (fileActions.busy || fileActions.quitting) return;
     presentation = false;
     fileTabs?.closeContext();
     context = null;
@@ -127,7 +142,7 @@
 </script>
 
 <svelte:window onkeydown={(e) => {
-  if (!files.open) return;
+  if (!files.open || fileActions.busy || fileActions.quitting) return;
   if (e.ctrlKey && e.shiftKey && !e.metaKey && !e.altKey && e.code === 'KeyL') {
     e.preventDefault();
     e.stopPropagation();
@@ -142,9 +157,11 @@
     else if (!locked) close();
   } else if (isCloseShortcut(e)) {
     e.preventDefault();
-    if (files.selected) files.closeTab(files.selected);
+    if (files.selected) void fileActions.closeTabs([files.selected]);
   }
 }} />
+
+<FilePrompt />
 
 <!-- Keep the viewer mounted so preview preferences and tab scroll positions survive closing. -->
 <div class="dialog-backdrop" hidden={!files.open} role="presentation">

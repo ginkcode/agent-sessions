@@ -18,6 +18,9 @@ const dialog = await loadServerComponent(new URL('../GoToFileDialog.svelte', bas
   ["import FilePicker from './go-to-file/FilePicker.svelte';", 'const FilePicker = () => {};'],
   ["import FileTabs from './go-to-file/FileTabs.svelte';", 'const FileTabs = () => {};'],
   ["import FileViewer from './go-to-file/FileViewer.svelte';", 'const FileViewer = () => {};'],
+  ["import FilePrompt from './go-to-file/FilePrompt.svelte';", 'const FilePrompt = () => {};'],
+  ["import { fileActions } from '../../stores/fileActions.svelte';", 'const fileActions = {};'],
+  ["'svelte'", JSON.stringify(import.meta.resolve('svelte'))],
 ]);
 
 const [picker, tabs, source] = await Promise.all([
@@ -28,7 +31,8 @@ const [picker, tabs, source] = await Promise.all([
     ["import LoadingSpinner from '../LoadingSpinner.svelte';", 'const LoadingSpinner = () => {};'],
   ]),
   loadServerComponent(new URL('FileTabs.svelte', base), [
-    store,
+    ["import { files, tabHasUnsaved } from '../../../stores/files.svelte';", `${fixtureStore('files')} const tabHasUnsaved = t => !!t.edit?.dirty;`],
+    ["import { fileActions } from '../../../stores/fileActions.svelte';", 'const fileActions = {};'],
     ["'../../../tabActions'", lib('../../../tabActions.ts')],
     ["import FileIcon from '../FileIcon.svelte';", 'const FileIcon = () => {};'],
     ["import ContextMenu from '../ContextMenu.svelte';", 'const ContextMenu = () => {};'],

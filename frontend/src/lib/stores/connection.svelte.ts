@@ -22,6 +22,7 @@ import { handoff } from './handoff.svelte';
 import { exporter } from './export.svelte';
 import { importer } from './importer.svelte';
 import { files } from './files.svelte';
+import { fileActions } from './fileActions.svelte';
 import { link } from './link.svelte';
 
 // Local always has every capability; the backend reports none for it.
@@ -150,11 +151,13 @@ export class ConnectionStore {
   async connect(alias: string, envOverrides?: Record<string, string>): Promise<void> {
     this.error = undefined;
     try {
-      const env = envOverrides ?? getSavedHostEnv(alias);
-      if (Object.keys(env).length > 0) {
-        await api.setHostEnv(env);
-      }
-      await api.connect(alias);
+      const connect = async () => {
+        const env = envOverrides ?? getSavedHostEnv(alias);
+        if (Object.keys(env).length > 0) await api.setHostEnv(env);
+        await api.connect(alias);
+      };
+      if (alias === link.dataHost) await connect();
+      else await fileActions.changeHost(connect);
     } catch (err: any) {
       // The host is open in another window, which was brought to the
       // front; this window stays where it was.
@@ -170,7 +173,7 @@ export class ConnectionStore {
   async disconnect(): Promise<void> {
     this.error = undefined;
     try {
-      await api.disconnect();
+      await fileActions.changeHost(() => api.disconnect());
     } catch (err: any) {
       this.error = err?.message || 'Failed to disconnect';
     }
@@ -240,7 +243,7 @@ export class ConnectionStore {
     handoff.reset();
     exporter.reset();
     importer.reset();
-    files.reset();
+    void files.connectionChanged(host);
     for (const cb of this.resetCallbacks) {
       try {
         cb(this.generation, host);

@@ -353,6 +353,7 @@ async function loadConnectionStore() {
     store('exporter', 'export'),
     store('importer', 'importer'),
     store('files', 'files'),
+    ["import { fileActions } from './fileActions.svelte';", 'const fileActions = { changeHost: async (action) => { await action(); return true; } };'],
     store('link', 'link'),
   ]);
   return connectionStoreModule;

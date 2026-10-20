@@ -154,6 +154,20 @@ func TestReadNoEditMetadataWithoutText(t *testing.T) {
 	}
 }
 
+func TestEmptyContentTextJSON(t *testing.T) {
+	data, err := json.Marshal(Content{Revision: sha(""), Edit: textEditInfo(nil)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var decoded map[string]any
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		t.Fatal(err)
+	}
+	if text, ok := decoded["text"]; !ok || text != "" {
+		t.Fatalf("empty text must survive the bridge: %s", data)
+	}
+}
+
 func TestContentEditJSON(t *testing.T) {
 	root := t.TempDir()
 	write(t, root, "a.txt", "\xEF\xBB\xBFa\r\n")
