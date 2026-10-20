@@ -48,8 +48,18 @@ const theme = EditorView.theme({
   '.cm-gutters': { backgroundColor: 'var(--bg-secondary)', color: 'var(--text-muted)', border: 'none', borderRight: '1px solid var(--border-color)' },
   '.cm-gutter': { paddingTop: '0', paddingBottom: '0' },
   '.cm-lineNumbers .cm-gutterElement': { padding: '0 10px 0 14px', minWidth: '0' },
-  '.cm-activeLine, .cm-activeLineGutter': { backgroundColor: 'var(--bg-secondary)' },
-  '&.cm-focused .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection': { backgroundColor: 'var(--bg-tertiary)' },
+  // The selection layer sits behind the lines, so the active line's tint must
+  // stay translucent or it hides a selection on the cursor's line.
+  '.cm-activeLine': { backgroundColor: 'var(--hover-bg)' },
+  '.cm-activeLineGutter': { backgroundColor: 'var(--bg-secondary)' },
+  // Selectors as specific as CodeMirror's base theme, which would otherwise
+  // paint its own (light-only) selection colours.
+  '& > .cm-scroller > .cm-selectionLayer .cm-selectionBackground, .cm-content ::selection': {
+    backgroundColor: 'color-mix(in srgb, var(--accent-color) 16%, transparent)',
+  },
+  '&.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground, &.cm-focused .cm-content ::selection': {
+    backgroundColor: 'color-mix(in srgb, var(--accent-color) 30%, transparent)',
+  },
   '.cm-panels': { backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)' },
   '.cm-textfield, .cm-button': { background: 'var(--bg-primary)', color: 'var(--text-primary)', border: '1px solid var(--border-color)' },
 });
