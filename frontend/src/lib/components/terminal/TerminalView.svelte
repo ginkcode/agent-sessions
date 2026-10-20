@@ -16,6 +16,7 @@
   import { onSplitterDragEnd, splitterDragging } from '../../splitterDrag';
   import { installTerminalFileLinks } from '../../terminalFileLinks';
   import { createTerminalFileOpener } from '../../terminalFileOpen';
+  import { installTerminalColorScheme } from '../../terminalColorScheme';
   import { files } from '../../stores/files.svelte';
   import { link } from '../../stores/link.svelte';
   import { epoch, isStaleReply } from '../../link';
@@ -31,6 +32,7 @@
   let host: HTMLDivElement;
   let term = $state<Terminal | null>(null);
   let fit: FitAddon | null = null;
+  let colorScheme: ReturnType<typeof installTerminalColorScheme> | null = null;
   // The size the process was last told, to send only changes.
   let sent = { cols: 0, rows: 0 };
   let sendTimer: ReturnType<typeof setTimeout> | undefined;
@@ -116,6 +118,8 @@
     const input = t.onData((data) => {
       if (tab.status === 'running') terminals.write(id, data);
     });
+    const scheme = installTerminalColorScheme(t, theme.resolved);
+    colorScheme = scheme;
     const detach = terminals.attach(id, {
       write: (data) => t.write(data, () => void api.terminalAck(id, data.length).catch(() => {})),
       exit: (code) => t.write(`\r\n\x1b[2m[Process exited with code ${code}]\x1b[0m\r\n`),
@@ -141,6 +145,8 @@
       observer.disconnect();
       offDragEnd();
       input.dispose();
+      scheme.dispose();
+      colorScheme = null;
       fileLinks.dispose();
       opener.dispose();
       detach();
@@ -210,7 +216,10 @@
 
   $effect(() => {
     const resolved = theme.resolved;
-    if (term) term.options.theme = terminalTheme(resolved, cssVar);
+    if (term) {
+      term.options.theme = terminalTheme(resolved, cssVar);
+      colorScheme?.update(resolved);
+    }
   });
 
   $effect(() => {
