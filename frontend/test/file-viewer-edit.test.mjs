@@ -103,7 +103,7 @@ function render({ files = {}, link = {}, connectionStore = {}, fileActions = {} 
     },
     link: { dataHost: undefined, blockedReason: null, ...link },
     connectionStore: { capabilities: { saveFile: true }, ...connectionStore },
-    fileActions: { busy: false, quitting: false, save() {}, discard() {}, done() {}, ...fileActions },
+    fileActions: { busy: false, quitting: false, save() {}, saveInPlace() {}, discard() {}, reload() {}, ...fileActions },
     toast: { show() {} },
     api: { enableFileEditing: async () => true },
   }, { presentation: false, presentationFontSize: 20, ...props });
@@ -149,7 +149,7 @@ test('an eligible empty file offers Edit beside the empty state', async () => {
   assert.match(html, /This file is empty\./);
   assert.deepEqual(button(html, 'Edit'), { text: 'Edit', disabled: false });
   assert.match(html, /title="Edit this file"/);
-  for (const text of ['Save', 'Discard', 'Done']) assert.equal(button(html, text), undefined, text);
+  for (const text of ['Save', 'Discard']) assert.equal(button(html, text), undefined, text);
   assert.equal(editorProps(html), null);
 });
 
@@ -237,14 +237,14 @@ test('no Edit appears while the file is loading or failed to load', async () => 
   assert.match(failed, /role="alert">Cannot read &lt;a\.txt>/);
 });
 
-test('editing shows the editor with the draft and Save, Discard and Done', async () => {
+test('editing shows the editor with the draft and Save and Discard, no Done', async () => {
   const html = await render({ files: editingFiles('src/main.ts', 'old\n', 'new <draft> & more\n', { wrap: true }) });
   assert.deepEqual(editorProps(html), {
     text: 'new <draft> & more\n', path: 'src/main.ts', version: '3', wrap: 'true', disabled: 'false',
   });
   assert.deepEqual(button(html, 'Save'), { text: 'Save', disabled: false });
   assert.deepEqual(button(html, 'Discard'), { text: 'Discard', disabled: false });
-  assert.deepEqual(button(html, 'Done'), { text: 'Done', disabled: false });
+  assert.equal(button(html, 'Done'), undefined);
   assert.ok(button(html, 'Wrap'), 'wrap stays available in the editor');
   assert.equal(button(html, 'Edit'), undefined);
   assert.match(html, />Unsaved<\/span>/);
@@ -255,7 +255,7 @@ test('an editing draft overrides the deleted listing state', async () => {
   const html = await render({ files: editingFiles('gone.txt', 'was here\n', 'kept draft\n', { status: { 'gone.txt': 'D' } }) });
   assert.doesNotMatch(html, /This file was deleted since the last commit\./);
   assert.equal(editorProps(html)?.text, 'kept draft\n');
-  for (const text of ['Save', 'Discard', 'Done']) assert.ok(button(html, text), text);
+  for (const text of ['Save', 'Discard']) assert.ok(button(html, text), text);
   // The same file, not editing, still shows the deleted state.
   const viewing = await render({
     files: { content: content('gone.txt', 'was here\n'), listing: { files: [], status: { 'gone.txt': 'D' } } },
@@ -268,14 +268,14 @@ test('an editing draft of an empty file replaces the empty state', async () => {
   const clean = await render({ files: editingFiles('empty.txt', '', '') });
   assert.doesNotMatch(clean, /This file is empty\./);
   assert.equal(editorProps(clean)?.text, '');
-  assert.deepEqual(button(clean, 'Save'), { text: 'Save', disabled: true }, 'nothing to save yet');
-  assert.ok(button(clean, 'Discard') && button(clean, 'Done'));
+  assert.deepEqual(button(clean, 'Save'), { text: 'Save', disabled: false }, 'Save also leaves edit mode');
+  assert.ok(button(clean, 'Discard'));
   assert.doesNotMatch(clean, />Unsaved</);
 
   const typed = await render({ files: editingFiles('empty.txt', '', 'first line') });
   assert.doesNotMatch(typed, /This file is empty\./);
   assert.equal(editorProps(typed)?.text, 'first line');
-  assert.deepEqual(button(typed, 'Save'), { text: 'Save', disabled: false });
+  assert.match(typed, />Unsaved<\/span>/);
 });
 
 test('an editing draft overrides loading and read-error states', async () => {
@@ -309,14 +309,15 @@ test('editing hides preview, Git diff, find, copy and presentation controls', as
   assert.doesNotMatch(editing, /presentation mode|presentation font size/i);
   assert.doesNotMatch(editing, /data-source-view|data-markdown-doc/);
   assert.doesNotMatch(editing, /role="search"/);
-  for (const text of ['Wrap', 'Save', 'Discard', 'Done']) assert.ok(texts.includes(text), `editing: ${text}`);
+  for (const text of ['Wrap', 'Save', 'Discard']) assert.ok(texts.includes(text), `editing: ${text}`);
+  assert.ok(!texts.includes('Done'));
 });
 
-test('saving disables Save, Discard and Done and announces the save', async () => {
+test('saving disables Save and Discard and announces the save', async () => {
   const html = await render({ files: editingFiles('a.txt', 'x\n', 'y\n', { edit: { saving: true } }) });
   assert.match(html, /aria-live="polite">Saving…<\/span>/);
   assert.doesNotMatch(html, />Unsaved</);
-  for (const text of ['Save', 'Discard', 'Done']) assert.deepEqual(button(html, text), { text, disabled: true }, text);
+  for (const text of ['Save', 'Discard']) assert.deepEqual(button(html, text), { text, disabled: true }, text);
 });
 
 test('Save is disabled for an uncertain save, a blocked link, a frozen coordinator or a host without saves', async () => {
@@ -331,11 +332,9 @@ test('Save is disabled for an uncertain save, a blocked link, a frozen coordinat
     assert.deepEqual(button(html, 'Save'), { text: 'Save', disabled: true }, label);
     assert.ok(editorProps(html), `${label}: the draft stays visible`);
   }
-  const blocked = await render(cases[1][0]);
-  assert.match(blocked, /title="Disconnected"/);
   const busy = await render(cases[2][0]);
   assert.equal(editorProps(busy)?.disabled, 'true');
-  for (const text of ['Discard', 'Done']) assert.equal(button(busy, text)?.disabled, true, `busy: ${text}`);
+  assert.equal(button(busy, 'Discard')?.disabled, true, 'busy: Discard');
 });
 
 test('a save conflict keeps the draft and offers Resolve and Reload', async () => {

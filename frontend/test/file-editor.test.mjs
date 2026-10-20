@@ -40,6 +40,7 @@ class FakeDom {
 }
 
 class FakeEditorView {
+  static scrollIntoView = EditorView.scrollIntoView;
   static theme = EditorView.theme;
   static lineWrapping = EditorView.lineWrapping;
   static editable = EditorView.editable;
@@ -52,7 +53,8 @@ class FakeEditorView {
     this.dom = new FakeDom();
     // CodeMirror commands call `dispatch` detached from the view.
     this.dispatch = this.dispatch.bind(this);
-    this.scrollDOM = { scrollTop: 0, scrollLeft: 0 };
+    this.scrollDOM = Object.assign(new FakeDom(), { scrollTop: 0, scrollLeft: 0 });
+    this.documentPadding = { top: 8, bottom: 8 };
     this.root = { activeElement: null };
     this.destroyed = false;
     this.focused = 0;
@@ -75,6 +77,11 @@ class FakeEditorView {
   setState(state) { this.state = state; }
   requestMeasure(measure) { this.measures.push(measure); }
   flushMeasures() { for (const m of this.measures.splice(0)) m.write(m.read(this), this); }
+  lineBlockAt(from) { return { from, top: (this.state.doc.lineAt(from).number - 1) * 20 }; }
+  lineBlockAtHeight(height) {
+    const number = Math.min(this.state.doc.lines, Math.floor(height / 20) + 1);
+    return this.lineBlockAt(this.state.doc.line(number).from);
+  }
   plugin() { return null; }
   focus() { this.focused++; }
   destroy() { this.destroyed = true; }
@@ -141,6 +148,21 @@ function mount(overrides = {}) {
   assert.equal(views.length, before + 1);
   return { editor, view: views[views.length - 1], options, calls };
 }
+
+test('viewer position overrides cached pixels and reports the current logical line', () => {
+  const positions = [];
+  const { editor, view } = mount({
+    text: Array.from({ length: 100 }, (_, i) => `line ${i + 1}`).join('\n'),
+    position: { line: 50, offset: -4, left: 30 },
+    onposition: position => positions.push(position),
+  });
+  view.flushMeasures();
+  assert.equal(view.scrollDOM.scrollTop, 49 * 20 + 8 + 4);
+  assert.equal(view.scrollDOM.scrollLeft, 30);
+  editor.destroy();
+  assert.deepEqual(positions.at(-1), { line: 50, offset: -4, left: 30 });
+  assert.equal(view.scrollDOM.listeners.length, 0);
+});
 
 // Bounded by time, not turns: the first import of a language package takes
 // well over 500 event-loop turns on a slow CI runner.
@@ -272,7 +294,10 @@ test('remount of the same tab/version/text restores state, undo history and scro
 
   const second = mount({ id, text: 'hello world', version: 3 });
   assert.equal(second.view.state.doc.toString(), 'hello world');
-  assert.deepEqual(second.view.scrollDOM, { scrollTop: 120, scrollLeft: 7 });
+  assert.deepEqual(
+    { scrollTop: second.view.scrollDOM.scrollTop, scrollLeft: second.view.scrollDOM.scrollLeft },
+    { scrollTop: 120, scrollLeft: 7 },
+  );
   // Layout can clobber the immediate assignment; the measure pass re-applies it.
   second.view.scrollDOM.scrollTop = 0;
   second.view.flushMeasures();

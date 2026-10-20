@@ -4,6 +4,7 @@ import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirro
 import { HighlightStyle, indentOnInput, syntaxHighlighting } from '@codemirror/language';
 import { tags as t } from '@lezer/highlight';
 import { keyHandled } from './fullscreen';
+import type { FilePosition } from './filePosition';
 import { closeSearchPanel, openSearchPanel, search, searchKeymap, searchPanelOpen } from '@codemirror/search';
 
 export interface FileEditorOptions {
@@ -13,6 +14,8 @@ export interface FileEditorOptions {
   version: number;
   wrap: boolean;
   disabled?: boolean;
+  position?: FilePosition;
+  onposition?: (position: FilePosition) => void;
   onchange: (text: string) => void;
   onsave: () => void;
 }
@@ -182,12 +185,41 @@ export function createFileEditor(parent: HTMLElement, initial: FileEditorOptions
       }
     } });
   }
+  function position(): FilePosition {
+    const top = view.scrollDOM.scrollTop;
+    const block = view.lineBlockAtHeight(Math.max(0, top - view.documentPadding.top));
+    return {
+      line: view.state.doc.lineAt(block.from).number,
+      offset: block.top + view.documentPadding.top - top,
+      left: view.scrollDOM.scrollLeft,
+    };
+  }
+  function restorePosition(target: FilePosition) {
+    const request = ++scrollRequest;
+    const line = view.state.doc.line(Math.max(1, Math.min(target.line, view.state.doc.lines)));
+    // Scroll to the logical line first so CodeMirror renders and measures it,
+    // including wrapped lines outside the initial virtual viewport.
+    view.dispatch({ effects: EditorView.scrollIntoView(line.from, { y: 'start', yMargin: 0 }) });
+    view.requestMeasure({
+      read: () => view.lineBlockAt(line.from).top + view.documentPadding.top - target.offset,
+      write(top) {
+        if (!destroyed && request === scrollRequest) {
+          view.scrollDOM.scrollTop = top;
+          view.scrollDOM.scrollLeft = target.left;
+        }
+      },
+    });
+  }
+  function reportPosition() { options.onposition?.(position()); }
+  view.scrollDOM.addEventListener('scroll', reportPosition);
   function remember() {
+    reportPosition();
     tabs.set(options.id, { state: view.state, version: options.version, top: view.scrollDOM.scrollTop, left: view.scrollDOM.scrollLeft });
   }
   configure();
   setLanguage();
-  if (reuse) restore(cached.top, cached.left);
+  if (options.position) restorePosition(options.position);
+  else if (reuse) restore(cached.top, cached.left);
 
   return {
     update(next: FileEditorOptions) {
@@ -202,7 +234,8 @@ export function createFileEditor(parent: HTMLElement, initial: FileEditorOptions
         const saved = changedTab ? tabs.get(options.id) : undefined;
         const valid = saved?.version === options.version && saved.state.doc.toString() === options.text;
         view.setState(valid ? saved.state : freshState(options));
-        restore(valid ? saved.top : 0, valid ? saved.left : 0);
+        if (options.position) restorePosition(options.position);
+        else restore(valid ? saved.top : 0, valid ? saved.left : 0);
       }
       configure();
       if (reset || changedPath) setLanguage();
@@ -218,6 +251,7 @@ export function createFileEditor(parent: HTMLElement, initial: FileEditorOptions
       languageRequest++;
       owners.delete(view);
       view.dom.removeEventListener('keydown', onKeyDown, true);
+      view.scrollDOM.removeEventListener('scroll', reportPosition);
       view.destroy();
     },
   };

@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { onDestroy, type Snippet } from 'svelte';
+  import { onDestroy, untrack, type Snippet } from 'svelte';
+  import type { FilePosition } from '../../../filePosition';
   import { files } from '../../../stores/files.svelte';
   import { highlightFile, splitHighlightedLines, splitLines } from '../../../codeHighlight';
   import { copyToClipboard } from '../../../portable';
@@ -68,8 +69,9 @@
       : !canSaveHost && files.content?.edit?.eligible ? 'Read-only: this host cannot save files'
       : ''
   );
+  // Save also finishes editing, so it stays available without changes.
   let canSave = $derived(
-    Boolean(edit?.editing && edit.dirty) && !edit?.saving && !edit?.uncertain && !frozen && canSaveHost && !blocked
+    Boolean(edit?.editing) && !edit?.saving && !edit?.uncertain && !frozen && canSaveHost && !blocked
   );
 
   function isTextContent(content: FileContent | null): boolean {
@@ -103,6 +105,7 @@
       }
       if (files.activeTab !== tab || files.dir !== dir || link.dataHost !== host || epoch() !== started) return;
       if (fileActions.busy || fileActions.quitting) return;
+      if (!showPreview && codeScroll) rememberSourcePosition(codeScroll);
       previewOn = false;
       presentation = false;
       find.closeFind();
@@ -116,9 +119,16 @@
     }
   }
 
+  // Save button: write the changes and return to the viewer.
   function save() {
     const tab = files.activeTab;
     if (tab?.edit && canSave) void fileActions.save(tab);
+  }
+
+  // Cmd/Ctrl+S: save without leaving the editor, for saving as you go.
+  function saveInPlace() {
+    const tab = files.activeTab;
+    if (tab?.edit?.dirty && canSave) void fileActions.saveInPlace(tab);
   }
 
   function resolveConflict() {
@@ -126,14 +136,16 @@
     if (tab?.edit?.conflict && !frozen && !tab.edit.saving) void fileActions.resolveConflict(tab);
   }
 
+  // Discard button: revert every change and return to the viewer.
   function discard() {
     const tab = files.activeTab;
     if (tab?.edit) void fileActions.discard(tab);
   }
 
-  function done() {
+  // Reload in the error bar: take the disk contents and keep editing.
+  function reload() {
     const tab = files.activeTab;
-    if (tab?.edit) void fileActions.done(tab);
+    if (tab?.edit) void fileActions.reload(tab);
   }
 
   // Presentation is read-only.
@@ -230,12 +242,44 @@
   // Each tab keeps its scroll position. A plain map: saving it on every
   // scroll must not rerun the effect that restores it.
   const scrollTops = new Map<string, number>();
+  // Share a logical source position across the viewer and the virtualized
+  // editor. Pixel scroll offsets alone drift with wrapping and diff rows.
+  const sourcePositions = new WeakMap<object, FilePosition>();
   let codeScroll: HTMLElement | undefined = $state();
+
+  function rememberSourcePosition(el: HTMLElement) {
+    const tab = files.activeTab;
+    if (!tab || !el.isConnected) return;
+    const top = el.getBoundingClientRect().top + el.clientTop;
+    const lines = el.querySelectorAll<HTMLElement>('[data-source-line]');
+    for (const line of lines) {
+      const rect = line.getBoundingClientRect();
+      if (rect.bottom <= top) continue;
+      sourcePositions.set(tab, {
+        line: Number(line.dataset.sourceLine),
+        offset: rect.top - top,
+        left: el.scrollLeft,
+      });
+      break;
+    }
+  }
+
   $effect(() => {
     const el = codeScroll;
+    const tab = activeTab;
     const path = files.selected;
     const mode = showPreview ? 'preview' : 'source';
-    if (el && path) el.scrollTop = scrollTops.get(`${path}:${mode}`) ?? 0;
+    if (!el || !path || editing) return;
+    untrack(() => {
+      const position = tab && mode === 'source' ? sourcePositions.get(tab) : undefined;
+      const line = position && el.querySelector<HTMLElement>(`[data-source-line="${position.line}"]`);
+      if (position && line) {
+        el.scrollTop += line.getBoundingClientRect().top - el.getBoundingClientRect().top - el.clientTop - position.offset;
+        el.scrollLeft = position.left;
+      } else {
+        el.scrollTop = scrollTops.get(`${path}:${mode}`) ?? 0;
+      }
+    });
   });
 
   const findShortcut = isMac ? '⌘F' : 'Ctrl+F';
@@ -416,17 +460,17 @@
         >
           <span class="btn-icon icon-wrap" aria-hidden="true"></span>
         </button>
+        <!-- Both buttons leave edit mode. -->
+        <button type="button" class="copy-btn" title="Revert all changes and stop editing" disabled={frozen || edit.saving} onclick={discard}>Discard</button>
         <button
           type="button"
           class="copy-btn primary"
-          title={blocked ?? (canSaveHost ? `Save (${saveShortcut})` : 'This host cannot save files.')}
+          title={blocked ?? (canSaveHost ? `Save changes and stop editing (${saveShortcut} saves and keeps editing)` : 'This host cannot save files.')}
           disabled={!canSave}
           onclick={save}
         >
           Save
         </button>
-        <button type="button" class="copy-btn" title="Discard changes and reload from disk" disabled={frozen || edit.saving} onclick={discard}>Discard</button>
-        <button type="button" class="copy-btn" title="Stop editing" disabled={frozen || edit.saving} onclick={done}>Done</button>
       {:else if files.content && !files.loadingFile && !files.fileError}
         {#if canSaveHost && canEditContent(files.content)}
           <button
@@ -552,7 +596,7 @@
             <button type="button" class="copy-btn" title="Choose how to resolve the conflict" disabled={frozen || edit.saving || Boolean(blocked) || !canSaveHost} onclick={resolveConflict}>Resolve…</button>
           {/if}
           {#if edit.conflict || edit.uncertain}
-            <button type="button" class="copy-btn" title="Discard changes and reload from disk" disabled={frozen || edit.saving} onclick={discard}>Reload</button>
+            <button type="button" class="copy-btn" title="Discard changes and reload from disk" disabled={frozen || edit.saving} onclick={reload}>Reload</button>
           {/if}
         </div>
       {/if}
@@ -565,10 +609,12 @@
           version={edit.version}
           wrap={files.wrap}
           disabled={frozen}
+          position={sourcePositions.get(activeTab)}
+          onposition={((tab) => (position: FilePosition) => sourcePositions.set(tab, position))(activeTab)}
           onchange={(next) => {
             if (!fileActions.busy && !fileActions.quitting) files.updateDraft(activeTab, next);
           }}
-          onsave={save}
+          onsave={saveInPlace}
         />
       </div>
     {:else if fileStatus(files.selected) === 'D'}
@@ -651,6 +697,7 @@
         bind:this={codeScroll}
         onscroll={(e) => {
           if (files.selected) scrollTops.set(`${files.selected}:${showPreview ? 'preview' : 'source'}`, e.currentTarget.scrollTop);
+          if (!showPreview) rememberSourcePosition(e.currentTarget);
           if (find.findActive) find.schedulePaint();
         }}
       >

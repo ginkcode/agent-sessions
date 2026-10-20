@@ -39,7 +39,7 @@ function tab(path, draft = 'draft', baseline = 'base') {
 
 // Fixtures record every call; prompts stay pending until the test answers.
 function setup(tabs) {
-  const calls = { closeTab: [], saveEdited: [], discardEdited: [], completeFileClose: [] };
+  const calls = { closeTab: [], saveEdited: [], discardEdited: [], stopEditing: [], completeFileClose: [] };
   const prompts = [];
   const fixture = globalThis.__actionsFixture = {
     calls,
@@ -54,6 +54,7 @@ function setup(tabs) {
       closeTab(path) { calls.closeTab.push(path); fixture.files.tabs = fixture.files.tabs.filter(t => t.path !== path); return true; },
       saveEdited: async (t, rev) => { calls.saveEdited.push([t.path, rev]); t.edit.baseline = t.edit.draft; return true; },
       discardEdited: async (t) => { calls.discardEdited.push(t.path); t.edit.draft = t.edit.baseline; return true; },
+      stopEditing(t, reread = false) { calls.stopEditing.push([t.path, reread]); t.edit = undefined; return true; },
     },
     filePrompt: {
       ask(title, message, choices) {
@@ -194,8 +195,9 @@ test('nativeClose: approval freezes for quit, cancel replies false, duplicates w
   assert.equal(actions.quitting, true);
   assert.equal(actions.busy, false);
   assert.equal(await actions.closeTabs(['a.txt']), false);
-  assert.equal(await actions.done(a), false);
   assert.equal(await actions.discard(a), false);
+  assert.equal(await actions.reload(a), false);
+  assert.equal(await actions.saveInPlace(a), false);
   assert.equal(await actions.save(a), false);
   assert.equal(await actions.changeHost(async () => assert.fail('routed while quitting')), false);
   await actions.nativeClose(4);
@@ -215,6 +217,86 @@ test('nativeClose reply failure unfreezes and reports refusal', async () => {
   assert.deepEqual(calls.completeFileClose, [[5, true], [5, false]]);
   assert.equal(actions.quitting, false);
   assert.equal(actions.busy, false);
+});
+
+test('Save writes the draft and leaves edit mode; a failed save keeps editing', async () => {
+  const a = tab('a.txt', 'A');
+  const { actions, fixture, calls, prompts } = setup([a]);
+  assert.equal(await actions.save(a), true);
+  assert.deepEqual(calls.saveEdited, [['a.txt', undefined]]);
+  assert.deepEqual(calls.stopEditing, [['a.txt', false]]);
+  assert.equal(a.edit, undefined);
+  assert.equal(prompts.length, 0);
+
+  // Nothing changed: Save just leaves edit mode, without writing.
+  const clean = tab('c.txt', 'same', 'same');
+  const second = setup([clean]);
+  assert.equal(await second.actions.save(clean), true);
+  assert.deepEqual(second.calls.saveEdited, []);
+  assert.equal(clean.edit, undefined);
+
+  // A failure, or typing while the save ran, keeps the draft in the editor.
+  const b = tab('b.txt', 'B');
+  const third = setup([b]);
+  third.fixture.files.saveEdited = async (t, rev) => { third.calls.saveEdited.push([t.path, rev]); return false; };
+  assert.equal(await third.actions.save(b), false);
+  assert.equal(b.edit.draft, 'B');
+  third.fixture.files.saveEdited = async (t) => { t.edit.baseline = 'other'; return true; };
+  assert.equal(await third.actions.save(b), false);
+  assert.deepEqual(third.calls.stopEditing, []);
+  assert.ok(b.edit);
+});
+
+test('saveInPlace writes the draft and stays in edit mode', async () => {
+  const a = tab('a.txt', 'A');
+  const { actions, calls } = setup([a]);
+  assert.equal(await actions.saveInPlace(a), true);
+  assert.deepEqual(calls.saveEdited, [['a.txt', undefined]]);
+  assert.deepEqual(calls.stopEditing, []);
+  assert.ok(a.edit?.editing);
+});
+
+test('Discard confirms, reverts every change and leaves edit mode', async () => {
+  const a = tab('a.txt', 'A');
+  const { actions, calls, prompts } = setup([a]);
+  const cancelled = actions.discard(a);
+  (await prompt(prompts, 1)).answer(null);
+  assert.equal(await cancelled, false);
+  assert.equal(a.edit.draft, 'A');
+
+  const discarding = actions.discard(a);
+  (await prompt(prompts, 2)).answer('discard');
+  assert.equal(await discarding, true);
+  assert.equal(a.edit, undefined);
+  assert.deepEqual(calls.stopEditing, [['a.txt', false]]);
+  assert.deepEqual(calls.saveEdited, []);
+  assert.deepEqual(calls.discardEdited, [], 'no disk read is needed to revert to the baseline');
+
+  // A clean editor leaves without asking.
+  const clean = tab('c.txt', 'same', 'same');
+  const second = setup([clean]);
+  assert.equal(await second.actions.discard(clean), true);
+  assert.equal(second.prompts.length, 0);
+
+  // After a conflict the disk differs from the baseline: read it again.
+  const conflicted = tab('x.txt', 'X');
+  conflicted.edit.conflict = { observedRevision: 'r2' };
+  const third = setup([conflicted]);
+  const leaving = third.actions.discard(conflicted);
+  (await prompt(third.prompts, 1)).answer('discard');
+  assert.equal(await leaving, true);
+  assert.deepEqual(third.calls.stopEditing, [['x.txt', true]]);
+});
+
+test('Reload replaces the draft from disk and keeps editing', async () => {
+  const a = tab('a.txt', 'A');
+  const { actions, calls, prompts } = setup([a]);
+  const reloading = actions.reload(a);
+  (await prompt(prompts, 1)).answer('discard');
+  assert.equal(await reloading, true);
+  assert.deepEqual(calls.discardEdited, ['a.txt']);
+  assert.deepEqual(calls.stopEditing, []);
+  assert.ok(a.edit);
 });
 
 test('conflict save needs two confirmations, passes the observed revision, and keeps a second conflict', async () => {

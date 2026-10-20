@@ -80,6 +80,34 @@ test('editing promotes preview, invalidates pending reads, retains clean history
   assert.equal(store.tabs[0], tab);
 });
 
+test('stopEditing drops the draft for the saved content and only rereads when asked', async () => {
+  const { store, fixture, tab } = await setup();
+  let reads = 0;
+  fixture.api.readFile = async () => { reads++; return content('disk\n', 'r9'); };
+  store.startEditing(tab.path);
+  store.updateDraft(tab, 'draft');
+  assert.equal(store.stopEditing(tab), true);
+  assert.equal(tab.edit, undefined);
+  assert.equal(tab.content.text, 'old\n', 'the viewer shows the saved baseline');
+  assert.equal(store.hasUnsaved, false);
+  await tick();
+  assert.equal(reads, 0);
+
+  store.startEditing(tab.path);
+  assert.equal(store.stopEditing(tab, true), true);
+  await tick();
+  assert.equal(reads, 1);
+  assert.equal(tab.content.text, 'disk\n');
+
+  // A save in flight cannot be dropped.
+  store.startEditing(tab.path);
+  store.updateDraft(tab, 'x');
+  fixture.api.saveFile = () => new Promise(() => {});
+  void store.saveEdited(tab);
+  assert.equal(store.stopEditing(tab), false);
+  assert.ok(tab.edit);
+});
+
 test('save snapshots remain attached to hidden/cached tab and later typing stays dirty', async () => {
   const { store, fixture, tab } = await setup();
   store.startEditing(tab.path);

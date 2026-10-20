@@ -43,9 +43,9 @@
       <span class="line removed">{row.text}</span>
     {:else if htmlLines}
       <!-- highlight.js escapes the file's text -->
-      <span class="line" class:added={showDiff && row.mark}>{@html htmlLines[row.index]}</span>
+      <span class="line" data-source-line={row.index + 1} class:added={showDiff && row.mark}>{@html htmlLines[row.index]}</span>
     {:else}
-      <span class="line" class:added={showDiff && row.mark}>{plainLines[row.index]}</span>
+      <span class="line" data-source-line={row.index + 1} class:added={showDiff && row.mark}>{plainLines[row.index]}</span>
     {/if}
   {/snippet}
   {#if files.wrap}

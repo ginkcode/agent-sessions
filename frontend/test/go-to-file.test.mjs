@@ -189,7 +189,7 @@ test('unwrapped source separates gutter and lines, renders highlighted HTML and 
   assert.match(html, /class="ln sign removed[^\"]*">−<\/span>/);
   assert.match(html, /class="ln[^\"]*\bsign\b[^\"]*\badded\b[^\"]*">\+<\/span>/);
   assert.match(html, /class="line removed[^\"]*">&lt;old> &amp; gone<\/span>/);
-  assert.match(html, /class="line[^\"]*\badded\b[^\"]*">(?:<!--[\s\S]*?-->)*<span class="hljs-keyword">const<\/span>/);
+  assert.match(html, /class="line[^\"]*\badded\b[^\"]*"[^>]*>(?:<!--[\s\S]*?-->)*<span class="hljs-keyword">const<\/span>/);
   assert.match(html, /class="ln[^\"]*">2<\/span>/);
 });
 

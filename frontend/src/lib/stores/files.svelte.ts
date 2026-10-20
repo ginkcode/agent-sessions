@@ -394,6 +394,18 @@ export class FilesStore {
     return true;
   }
 
+  /**
+   * Leave edit mode and drop the draft: the viewer shows the saved content.
+   * `reread` refreshes it from disk when the disk may differ from the baseline.
+   */
+  stopEditing(tab: FileTab, reread = false): boolean {
+    if (!tab.edit || tab.edit.saving) return false;
+    tab.edit = undefined;
+    tab.token = ++this.readSeq;
+    if (reread && this.tabs.includes(tab)) void this.read(tab.path);
+    return true;
+  }
+
   updateDraft(tabOrPath: FileTab | string, text: string): boolean {
     const tab = this.target(tabOrPath)?.tab;
     const edit = tab?.edit;

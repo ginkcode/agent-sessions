@@ -68,9 +68,11 @@ other machines over SSH or in WSL distributions.
 **Edit files**
 
 - In Go to File, press **Edit** on a text file to make small changes without
-  leaving the app. **Save** (Cmd+S / Ctrl+S) writes the file; there is no
-  autosave. **Discard** reloads the file from disk, and **Done** returns to the
-  viewer. Unsaved tabs show a dot.
+  leaving the app. **Save** writes the file and returns to the viewer;
+  **Discard** reverts all changes (after asking) and returns to the viewer.
+  Cmd+S / Ctrl+S saves and keeps editing. There is no autosave. Unsaved tabs
+  show a dot. A save that fails or conflicts with a change on disk keeps the
+  editor open and shows the error.
 - Drafts survive switching tabs or directories, hiding the dialog and
   reconnecting to the same host, including undo history. They live only in
   memory: closing a tab, switching hosts or quitting asks to Save, Discard or

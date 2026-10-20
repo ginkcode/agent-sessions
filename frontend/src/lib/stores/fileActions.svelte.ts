@@ -48,19 +48,24 @@ export class FileActions {
     } finally { this.busy = false; }
   }
 
-  async done(tab: FileTab): Promise<boolean> {
-    if (this.busy || this.quitting) return false;
+  /**
+   * Discard: confirm when there are changes, drop the draft and return to the
+   * viewer. After a conflict or an unknown save outcome the disk may differ
+   * from the baseline, so the file is read again.
+   */
+  async discard(tab: FileTab): Promise<boolean> {
+    if (this.busy || this.quitting || !tab.edit || tab.edit.saving) return false;
     this.busy = true;
     try {
-      const targets = files.draftTargets.filter(t => t.tab === tab);
-      if (!await this.resolve(targets, 'Finish editing?')) return false;
-      // Drop edit state after explicit disposal; viewer uses the saved baseline.
-      tab.edit = undefined;
-      return true;
+      if (tabHasUnsaved(tab) && await filePrompt.ask('Discard changes?', `Revert all changes to ${tab.path}?`,
+        [{ value: 'discard', label: 'Discard changes', danger: true }]) !== 'discard') return false;
+      if (tab.edit?.saving) return false;
+      return files.stopEditing(tab, Boolean(tab.edit?.uncertain || tab.edit?.conflict));
     } finally { this.busy = false; }
   }
 
-  async discard(tab: FileTab): Promise<boolean> {
+  /** Reload in the error bar: replace the draft with the disk contents, keep editing. */
+  async reload(tab: FileTab): Promise<boolean> {
     if (this.busy || this.quitting || tab.edit?.saving) return false;
     this.busy = true;
     try {
@@ -82,13 +87,30 @@ export class FileActions {
     } finally { this.busy = false; }
   }
 
-  async save(tab: FileTab): Promise<boolean> {
+  /** Cmd/Ctrl+S: write the draft and keep editing. */
+  async saveInPlace(tab: FileTab): Promise<boolean> {
     if (this.busy || this.quitting) return false;
     const saved = await files.saveEdited(tab);
     if (saved || !tab.edit?.conflict || this.busy || this.quitting) return saved;
     this.busy = true;
     try { return await this.conflict(tab); }
     finally { this.busy = false; }
+  }
+
+  /**
+   * Save writes the draft and returns to the viewer. A failed save, or typing
+   * while the save ran, keeps the editor open so nothing is lost.
+   */
+  async save(tab: FileTab): Promise<boolean> {
+    if (this.busy || this.quitting || !tab.edit || tab.edit.saving) return false;
+    let saved = !tabHasUnsaved(tab) || await files.saveEdited(tab);
+    if (!saved && tab.edit?.conflict && !this.busy && !this.quitting) {
+      this.busy = true;
+      try { saved = await this.conflict(tab); }
+      finally { this.busy = false; }
+    }
+    if (!saved || tabHasUnsaved(tab)) return false;
+    return files.stopEditing(tab);
   }
 
   /** Reopens the conflict decision without another doomed CAS attempt. */

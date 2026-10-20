@@ -17,10 +17,13 @@ First version includes:
 - Existing UTF-8 text files, including empty files, Markdown, and SVG source.
 - CodeMirror 6: syntax highlighting, line numbers, indentation, undo/redo,
   find, and word wrap. Lazy-load the editor and language support.
-- Explicit Save, Discard, and Done editing actions; Cmd+S / Ctrl+S.
+- Explicit Save and Discard actions (both leave edit mode); Cmd+S / Ctrl+S.
 - Dirty-tab indicators, retained drafts, and guarded destructive transitions.
 - Revision-checked saves and an explicit conflict-resolution flow.
 - Local, WSL, and SSH access; older remote servers remain read-only.
+
+Revised by user decision: there is no separate Done action. Save and Discard
+both leave edit mode; Cmd/Ctrl+S saves and keeps editing.
 
 Out of scope: new files, rename/delete, Save As, autosave, disk-backed draft
 recovery, merge editor, filesystem watching, LSP/autocomplete, formatting, and
@@ -55,10 +58,11 @@ forced termination can lose drafts. Do not log file bodies.
 |---|---|
 | Edit | Load the editor and promote a temporary preview tab to a kept tab. |
 | Switch tabs | Retain draft, undo history, cursor/selection, and scroll position. |
-| Save | Submit an explicit snapshot and stay in edit mode. |
+| Save (button) | Submit an explicit snapshot, then return to viewer. A failed or conflicted save, or typing during the save, keeps the editor open. |
+| Cmd/Ctrl+S | Submit an explicit snapshot and stay in edit mode. |
 | Type during save | Allow typing; edits after the submitted snapshot remain dirty. |
-| Discard | Confirm when dirty, reload from disk, and reset editor history. |
-| Done editing | Return to viewer; dirty files require Save / Discard / Cancel. |
+| Discard (button) | Confirm when dirty, drop the draft and return to viewer; reread from disk after a conflict or uncertain save. |
+| Reload (error bar) | Confirm when dirty, reload from disk, and reset editor history; stay in edit mode. |
 | Close a tab | Dirty files require Save / Discard / Cancel. |
 | Bulk-close tabs | Coordinate one flow; no overlapping prompts or unawaited saves. |
 | Refresh | Refresh the listing and clean tabs; never replace dirty drafts. |
@@ -72,7 +76,7 @@ Editor shortcuts take priority while editing. Cmd/Ctrl+F uses CodeMirror search;
 Alt+Z uses the existing wrap preference. Escape may close editor search but must
 not discard a draft. Preserve the dialog-lock behavior. Presentation mode and
 rendered previews remain read-only; leaving edit mode requires the same dirty
-check as Done editing.
+check as Discard.
 
 After save, update the saved baseline, size/revision, Git listing status, and
 saved-file diff. Do not refresh away drafts in other tabs. Git markers describe
