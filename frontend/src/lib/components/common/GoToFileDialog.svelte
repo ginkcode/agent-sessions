@@ -12,6 +12,7 @@
   import FileTabs from './go-to-file/FileTabs.svelte';
   import FileViewer from './go-to-file/FileViewer.svelte';
 
+  let locked = $state(false);
   let presentation = $state(false);
   let presentationFontSize = $state(20);
   let input: HTMLInputElement | undefined = $state();
@@ -127,12 +128,18 @@
 
 <svelte:window onkeydown={(e) => {
   if (!files.open) return;
+  if (e.ctrlKey && e.shiftKey && !e.metaKey && !e.altKey && e.code === 'KeyL') {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!e.repeat) locked = !locked;
+    return;
+  }
   if (viewer?.handleKey(e)) return;
   if (e.key === 'Escape' && !e.defaultPrevented) {
     e.preventDefault();
     e.stopPropagation();
     if (presentation) presentation = false;
-    else close();
+    else if (!locked) close();
   } else if (isCloseShortcut(e)) {
     e.preventDefault();
     if (files.selected) files.closeTab(files.selected);
@@ -147,6 +154,26 @@
   <div class="dialog" class:presentation role="dialog" aria-modal="true" aria-labelledby="goto-file-title">
     <header class="dialog-header">
       <h2 id="goto-file-title">Go to File</h2>
+      <button
+        type="button"
+        class="lock-button"
+        class:locked
+        aria-label="Lock dialog against Escape"
+        aria-pressed={locked}
+        aria-keyshortcuts="Control+Shift+L"
+        title={locked ? 'Unlock dialog (Ctrl+Shift+L; Escape can close it)' : 'Lock dialog (Ctrl+Shift+L; prevent Escape from closing it)'}
+        onclick={() => (locked = !locked)}
+      >
+        <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true">
+          <rect x="3.5" y="7" width="9" height="7" rx="1.5" />
+          {#if locked}
+            <path d="M5 7V4a3 3 0 0 1 6 0v3" />
+          {:else}
+            <path d="M5 7V4a3 3 0 0 1 6 0" />
+          {/if}
+          <path d="M8 10v1" />
+        </svg>
+      </button>
       <span class="root" title={files.dir}>{directoryName(files.dir ?? '')}</span>
       {#if link.dataHost}
         <span class="host-pill">{hostLabel(link.dataHost)}</span>
@@ -227,6 +254,28 @@
     border-radius: 10px;
     background: var(--bg-tertiary);
     color: var(--text-secondary);
+  }
+
+  .lock-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 28px;
+    height: 28px;
+    border-radius: 4px;
+    color: var(--text-secondary);
+    cursor: pointer;
+  }
+
+  .lock-button:hover {
+    background-color: var(--hover-bg);
+    color: var(--text-primary);
+  }
+
+  .lock-button.locked {
+    color: var(--accent-color);
+    background-color: var(--active-bg);
   }
 
   .close-button {

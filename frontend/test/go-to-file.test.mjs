@@ -5,6 +5,21 @@ import { fixtureStore, loadServerComponent, renderWithFixture } from './helpers.
 const base = new URL('../src/lib/components/common/go-to-file/', import.meta.url);
 const lib = (path) => JSON.stringify(new URL(path, base).href);
 const store = ["import { files } from '../../../stores/files.svelte';", fixtureStore('files')];
+const dialog = await loadServerComponent(new URL('../GoToFileDialog.svelte', base), [
+  ["import { files } from '../../stores/files.svelte';", fixtureStore('files')],
+  ["import { link } from '../../stores/link.svelte';", fixtureStore('link')],
+  ["import { hostLabel } from '../../hosts';", 'const hostLabel = (host) => host;'],
+  ["import { copyToClipboard } from '../../portable';", 'const copyToClipboard = async () => true;'],
+  ["import { directoryName } from '../../tree';", 'const directoryName = (dir) => dir;'],
+  ["import ContextMenu from './ContextMenu.svelte';", 'const ContextMenu = () => {};'],
+  ["import { api } from '../../api';", 'const api = {};'],
+  ["import { toast } from '../../stores/toast.svelte';", 'const toast = {};'],
+  ["import { absoluteFilePath } from '../../fileActions';", 'const absoluteFilePath = () => "";'],
+  ["import FilePicker from './go-to-file/FilePicker.svelte';", 'const FilePicker = () => {};'],
+  ["import FileTabs from './go-to-file/FileTabs.svelte';", 'const FileTabs = () => {};'],
+  ["import FileViewer from './go-to-file/FileViewer.svelte';", 'const FileViewer = () => {};'],
+]);
+
 const [picker, tabs, source] = await Promise.all([
   loadServerComponent(new URL('FilePicker.svelte', base), [
     store,
@@ -20,6 +35,15 @@ const [picker, tabs, source] = await Promise.all([
   ]),
   loadServerComponent(new URL('SourceView.svelte', base), [store]),
 ]);
+
+test('dialog offers an unlocked Escape lock toggle and a separate close button', async () => {
+  const html = await renderWithFixture(dialog, { files: { open: true, dir: '/project' }, link: {} });
+  assert.match(html, /aria-label="Lock dialog against Escape"/);
+  assert.match(html, /aria-pressed="false"/);
+  assert.match(html, /aria-keyshortcuts="Control\+Shift\+L"/);
+  assert.match(html, /Lock dialog \(Ctrl\+Shift\+L; prevent Escape from closing it\)/);
+  assert.match(html, /aria-label="Close"/);
+});
 
 function renderPicker(files = {}, props = {}) {
   return renderWithFixture(picker, { files: { expanded: new Set(), ...files } }, {
