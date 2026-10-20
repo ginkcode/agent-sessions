@@ -577,10 +577,11 @@
         class="scroll-bottom-pill bottom-anchor"
         class:anchored={anchoredToBottom}
         aria-pressed={anchoredToBottom}
+        aria-label={anchoredToBottom ? 'Release bottom anchor' : 'Anchor to latest message'}
         title={anchoredToBottom ? 'Release anchor to scroll freely' : 'Keep the latest message in view, even when scrolling'}
         onclick={toggleBottomAnchor}
       >
-        {anchoredToBottom ? '⚓ Anchored to latest' : '⚓ Anchor to latest'}
+        <span aria-hidden="true">⚓</span>
       </button>
     {:else if showScrollBottomBtn || jumpingToBottom}
       <button
@@ -745,6 +746,13 @@
   }
 
   .bottom-anchor {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 34px;
+    height: 34px;
+    padding: 0;
+    font-size: 1rem;
     background-color: var(--bg-secondary);
     color: var(--text-secondary);
     border: 1px solid var(--border-color);
