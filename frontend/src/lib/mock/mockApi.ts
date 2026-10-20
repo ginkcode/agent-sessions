@@ -701,7 +701,11 @@ export class MockBackendAPI {
   }
 
   async readFile(dir: string, path: string): Promise<FileContent> {
-    if (path.endsWith('.png')) return { path, size: 2048, binary: true };
+    if (path.endsWith('.png')) {
+      // A 2x2 checker.
+      const data = 'iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAFElEQVR4nGP4z8DwHwyBDAYGBgYAPmgF+zAx4yAAAAAASUVORK5CYII=';
+      return { path, size: 75, binary: true, image: 'image/png', data };
+    }
     if (path.endsWith('.svelte')) {
       const text = `<script lang="ts">\n  import { onMount } from 'svelte';\n  /* The count shown. */\n  let count = $state(0);\n  onMount(() => console.log('ready', 42, 'a long line that goes on and on to show how soft wrapping looks when the text is much wider than the viewer pane'));\n  /* a block\n     comment */\n</script>\n\n<button class="btn" onclick={() => count++}>Clicked {count}</button>\n\n<style>\n  .btn {\n    color: #3b82f6;\n    padding: 4px 8px;\n  }\n</style>\n`;
       return {

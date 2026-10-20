@@ -2,6 +2,7 @@ package files
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"os"
 	"os/exec"
@@ -81,6 +82,25 @@ func TestReadKinds(t *testing.T) {
 	}
 	if c, err := Read(context.Background(), root, "big.txt"); err != nil || !c.TooLarge || c.Text != "" {
 		t.Errorf("large read = %+v, %v", c, err)
+	}
+}
+
+func TestReadImages(t *testing.T) {
+	root := t.TempDir()
+	write(t, root, "logo.PNG", "\x89PNG\x00\x01")
+	write(t, root, "photo.jpg", strings.Repeat("x", MaxReadBytes+1))
+	write(t, root, "huge.gif", strings.Repeat("x", MaxImageBytes+1))
+
+	c, err := Read(context.Background(), root, "logo.PNG")
+	if err != nil || !c.Binary || c.Image != "image/png" || c.Data != base64.StdEncoding.EncodeToString([]byte("\x89PNG\x00\x01")) {
+		t.Errorf("png read = %+v, %v", c, err)
+	}
+	// Larger than a text file may be, but still shown.
+	if c, err := Read(context.Background(), root, "photo.jpg"); err != nil || c.TooLarge || c.Image != "image/jpeg" || c.Data == "" {
+		t.Errorf("jpeg read = image %q, tooLarge %v, %v", c.Image, c.TooLarge, err)
+	}
+	if c, err := Read(context.Background(), root, "huge.gif"); err != nil || !c.TooLarge || c.Data != "" {
+		t.Errorf("huge image read = tooLarge %v, data %d bytes, %v", c.TooLarge, len(c.Data), err)
 	}
 }
 

@@ -7,7 +7,9 @@ import {
   diffRows,
   fileChanges,
   fileLanguage,
+  filePreview,
   filterFiles,
+  isImageFile,
   folderStatus,
   lineMarks,
   matchScore,
@@ -46,6 +48,24 @@ test('fileLanguage supports source and text files only', () => {
   assert.equal(fileLanguage('assets/logo.png'), null);
   assert.equal(fileLanguage('app.exe'), null);
   assert.equal(fileLanguage('noext'), null);
+});
+
+test('filePreview offers a rendered view for Markdown and SVG files', () => {
+  assert.equal(filePreview('README.md'), 'markdown');
+  assert.equal(filePreview('docs/guide.MDX'), 'markdown');
+  assert.equal(filePreview('assets/logo.svg'), 'svg');
+  assert.equal(filePreview('assets/Logo.SVG'), 'svg');
+  assert.equal(filePreview('src/app.ts'), null);
+  assert.equal(filePreview('assets/logo.png'), null);
+});
+
+test('isImageFile knows the image types the backend sends as data', () => {
+  for (const path of ['a.png', 'b/c.JPG', 'd.jpeg', 'e.gif', 'f.webp', 'g.bmp', 'favicon.ico', 'h.avif']) {
+    assert.equal(isImageFile(path), true, path);
+  }
+  for (const path of ['logo.svg', 'notes.md', 'png', 'archive.png.zip', 'app.exe']) {
+    assert.equal(isImageFile(path), false, path);
+  }
 });
 
 test('parentFolders lists the folders above a file', () => {

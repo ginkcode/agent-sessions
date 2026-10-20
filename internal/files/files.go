@@ -5,6 +5,7 @@ package files
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
@@ -22,8 +23,22 @@ import (
 // MaxFiles caps a listing so a huge tree cannot flood the UI.
 const MaxFiles = 20000
 
-// MaxReadBytes is the largest file Read returns the contents of.
-const MaxReadBytes = 2 << 20
+// MaxReadBytes is the largest text file Read returns the contents of. The
+// viewer draws every line, so much larger files are slow to show; and JSON
+// can grow text up to 6 times (\u003c for <), which this keeps under the
+// RPC frame limit.
+const MaxReadBytes = 5 << 20
+
+// MaxImageBytes is the largest image Read returns, base64 encoded; it stays
+// well under the RPC frame limit once encoded.
+const MaxImageBytes = 20 << 20
+
+// imageTypes are the image files Read returns for display, by extension.
+// SVG is text and read as such.
+var imageTypes = map[string]string{
+	".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif",
+	".webp": "image/webp", ".bmp": "image/bmp", ".ico": "image/x-icon", ".avif": "image/avif",
+}
 
 // ErrOutsideRoot reports a path that leaves the project directory.
 var ErrOutsideRoot = errors.New("path is outside the directory")
@@ -76,8 +91,13 @@ type Content struct {
 	Text string `json:"text,omitempty"`
 	// Binary is set when the file is not UTF-8 text; Text is then empty.
 	Binary bool `json:"binary,omitempty"`
-	// TooLarge is set when the file exceeds MaxReadBytes; Text is then empty.
+	// TooLarge is set when the file exceeds MaxReadBytes (MaxImageBytes for
+	// an image); Text is then empty.
 	TooLarge bool `json:"tooLarge,omitempty"`
+	// Image is the MIME type of an image file (see imageTypes), and Data its
+	// bytes, base64 encoded. Binary is set too.
+	Image string `json:"image,omitempty"`
+	Data  string `json:"data,omitempty"`
 	// Changes are the lines that differ from the last commit, for a text
 	// file in a git work tree.
 	Changes []LineChange `json:"changes,omitempty"`
@@ -357,7 +377,8 @@ func Resolve(root, rel string) (string, error) {
 }
 
 // Read returns the contents of the file rel names under root, unless it is
-// binary or larger than MaxReadBytes.
+// binary or larger than MaxReadBytes. A common image type is returned as
+// base64 data instead, up to MaxImageBytes.
 func Read(ctx context.Context, root, rel string) (Content, error) {
 	full, err := Resolve(root, rel)
 	if err != nil {
@@ -376,6 +397,9 @@ func Read(ctx context.Context, root, rel string) (Content, error) {
 		return Content{}, fmt.Errorf("%s is not a regular file", rel)
 	}
 	out := Content{Path: filepath.ToSlash(filepath.Clean(filepath.FromSlash(rel))), Size: info.Size()}
+	if mime, ok := imageTypes[strings.ToLower(filepath.Ext(full))]; ok {
+		return readImage(f, out, mime)
+	}
 	if info.Size() > MaxReadBytes {
 		out.TooLarge = true
 		return out, nil
@@ -394,6 +418,27 @@ func Read(ctx context.Context, root, rel string) (Content, error) {
 	}
 	out.Text = string(data)
 	out.Changes = gitChanges(ctx, root, out.Path)
+	return out, nil
+}
+
+// readImage returns an image file's bytes, base64 encoded, unless it is
+// larger than MaxImageBytes.
+func readImage(f *os.File, out Content, mime string) (Content, error) {
+	out.Binary = true
+	if out.Size > MaxImageBytes {
+		out.TooLarge = true
+		return out, nil
+	}
+	data, err := io.ReadAll(io.LimitReader(f, MaxImageBytes+1))
+	if err != nil {
+		return Content{}, err
+	}
+	if len(data) > MaxImageBytes {
+		out.TooLarge = true
+		return out, nil
+	}
+	out.Image = mime
+	out.Data = base64.StdEncoding.EncodeToString(data)
 	return out, nil
 }
 

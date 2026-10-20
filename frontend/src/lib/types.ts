@@ -281,6 +281,9 @@ export interface FileContent {
   text?: string;
   binary?: boolean;
   tooLarge?: boolean;
+  /** The MIME type of a common image file; data holds it base64 encoded. */
+  image?: string;
+  data?: string;
   changes?: LineChange[];
 }
 

@@ -13,6 +13,8 @@
     diffRows,
     fileChanges,
     fileLanguage,
+    filePreview,
+    isImageFile,
     searchFiles,
     folderStatus,
     lineMarks,
@@ -47,7 +49,7 @@
 
   const isMac = typeof navigator !== 'undefined' && /Mac/i.test(navigator.platform);
 
-  let markdownPreview = $state(false);
+  let previewOn = $state(false);
   let presentation = $state(false);
   let presentationFontSize = $state(20);
 
@@ -69,8 +71,155 @@
   let matches = $derived(query.trim() ? searchFiles(paths, files.listing?.ignored, query) : []);
 
   let language = $derived(files.selected ? fileLanguage(files.selected) : null);
-  let showMarkdown = $derived(markdownPreview && language === 'markdown');
+  let previewKind = $derived(files.selected ? filePreview(files.selected) : null);
+  let showMarkdown = $derived(previewOn && previewKind === 'markdown');
+  let showSvg = $derived(previewOn && previewKind === 'svg');
+  // Rendered rather than source: the source-only tools hide.
+  let showPreview = $derived(showMarkdown || showSvg);
   let text = $derived(files.content?.text ?? '');
+  // Drawn as an image, so scripts in the SVG never run.
+  let svgSrc = $derived(showSvg && text ? `data:image/svg+xml;charset=utf-8,${encodeURIComponent(text)}` : '');
+  // A PNG, JPEG and the like, which the backend sends as data.
+  let rasterSrc = $derived(
+    files.content?.image && files.content.data && files.selected && isImageFile(files.selected)
+      ? `data:${files.content.image};base64,${files.content.data}`
+      : ''
+  );
+  let imageSrc = $derived(svgSrc || rasterSrc);
+  let showImage = $derived(Boolean(imageSrc) && !files.loadingFile && fileStatus(files.selected ?? '') !== 'D');
+
+  // Image zoom, as in the media viewer: it opens fitted to the view, and zooms
+  // with the buttons, + / - / 0, or Ctrl/Cmd + wheel (a trackpad pinch), and
+  // drags around when larger than the view.
+  const MIN_ZOOM = 0.1;
+  const MAX_ZOOM = 16;
+  const ZOOM_STEP = 1.25;
+  const IMAGE_PADDING = 20;
+  let imgZoom = $state(1);
+  // Fitted images follow the view's size until zoomed.
+  let imgFitted = $state(true);
+  let imgEl: HTMLImageElement | undefined = $state();
+  let imgNatural = { width: 0, height: 0 };
+  let imgDrag: { x: number; y: number; left: number; top: number; id: number } | null = null;
+  let imgDragging = $state(false);
+
+  // The image could not be decoded: a corrupt file, or a format this
+  // webview lacks.
+  let imgFailed = $state(false);
+
+  // Each image opens fitted.
+  $effect(() => {
+    void imageSrc;
+    imgFitted = true;
+    imgFailed = false;
+  });
+
+  // An SVG without width and height has no natural size of its own; its
+  // viewBox gives one.
+  function imageSize(img: HTMLImageElement): { width: number; height: number } {
+    if (img.naturalWidth > 0 && img.naturalHeight > 0) return { width: img.naturalWidth, height: img.naturalHeight };
+    if (!svgSrc) return { width: 300, height: 150 };
+    const box = new DOMParser().parseFromString(text, 'image/svg+xml').documentElement.getAttribute('viewBox');
+    const [, , w, h] = (box ?? '').split(/[\s,]+/).map(Number);
+    return w > 0 && h > 0 ? { width: w, height: h } : { width: 300, height: 150 };
+  }
+
+  function onImageLoad(e: Event) {
+    imgNatural = imageSize(e.currentTarget as HTMLImageElement);
+    if (imgFitted) fitImage();
+    else applyImageSize();
+  }
+
+  function applyImageSize() {
+    if (!imgEl || !imgNatural.width) return;
+    imgEl.style.width = `${imgNatural.width * imgZoom}px`;
+    imgEl.style.height = `${imgNatural.height * imgZoom}px`;
+  }
+
+  function fitImage() {
+    const view = codeScroll;
+    if (!view || !imgNatural.width) return;
+    const width = view.clientWidth - 2 * IMAGE_PADDING;
+    const height = view.clientHeight - 2 * IMAGE_PADDING;
+    // A photo or icon smaller than the view shows at its own size, not
+    // blown up and blurred; an SVG scales cleanly, so grows to fill it.
+    const most = svgSrc ? MAX_ZOOM : 1;
+    imgZoom = Math.min(most, Math.max(MIN_ZOOM, Math.min(width / imgNatural.width, height / imgNatural.height)));
+    imgFitted = true;
+    applyImageSize();
+  }
+
+  // Keeps the point at (x, y) in the view still, the centre by default.
+  function zoomImage(next: number, x?: number, y?: number) {
+    const view = codeScroll;
+    if (!view || !imgNatural.width) return;
+    const ax = x ?? view.clientWidth / 2;
+    const ay = y ?? view.clientHeight / 2;
+    const px = (view.scrollLeft + ax) / imgZoom;
+    const py = (view.scrollTop + ay) / imgZoom;
+    imgZoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, next));
+    imgFitted = false;
+    applyImageSize();
+    view.scrollLeft = px * imgZoom - ax;
+    view.scrollTop = py * imgZoom - ay;
+  }
+
+  // Refits as the view resizes, and zooms on Ctrl/Cmd + wheel at the
+  // pointer; that listener can't be passive.
+  $effect(() => {
+    const view = codeScroll;
+    if (!view || !showImage) return;
+    const observer = new ResizeObserver(() => {
+      if (imgFitted) fitImage();
+    });
+    observer.observe(view);
+    const onWheel = (e: WheelEvent) => {
+      if (!e.ctrlKey && !e.metaKey) return;
+      e.preventDefault();
+      const rect = view.getBoundingClientRect();
+      zoomImage(imgZoom * Math.exp(-e.deltaY * 0.002), e.clientX - rect.left, e.clientY - rect.top);
+    };
+    view.addEventListener('wheel', onWheel, { passive: false });
+    return () => {
+      observer.disconnect();
+      view.removeEventListener('wheel', onWheel);
+    };
+  });
+
+  function onImagePointerDown(e: PointerEvent) {
+    const view = codeScroll;
+    if (e.button !== 0 || !view) return;
+    e.preventDefault();
+    imgDrag = { x: e.clientX, y: e.clientY, left: view.scrollLeft, top: view.scrollTop, id: e.pointerId };
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    imgDragging = true;
+  }
+
+  function onImagePointerMove(e: PointerEvent) {
+    const view = codeScroll;
+    if (!imgDrag || !view || e.pointerId !== imgDrag.id) return;
+    view.scrollLeft = imgDrag.left - (e.clientX - imgDrag.x);
+    view.scrollTop = imgDrag.top - (e.clientY - imgDrag.y);
+  }
+
+  function onImagePointerUp(e: PointerEvent) {
+    if (!imgDrag || e.pointerId !== imgDrag.id) return;
+    imgDrag = null;
+    imgDragging = false;
+  }
+
+  /** Plain + / - / 0 zoom the image, unless typing in a field. */
+  function handleImageZoomKey(e: KeyboardEvent): boolean {
+    if (!showImage || e.ctrlKey || e.metaKey || e.altKey) return false;
+    const target = e.target as HTMLElement | null;
+    if (target && (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName))) return false;
+    if (e.key === '+' || e.key === '=') zoomImage(imgZoom * ZOOM_STEP);
+    else if (e.key === '-') zoomImage(imgZoom / ZOOM_STEP);
+    else if (e.key === '0') fitImage();
+    else return false;
+    e.preventDefault();
+    return true;
+  }
   // The highlighted file. Until highlight.js has loaded and run, the text
   // shows plain, so a file never waits on the highlighter.
   let html = $state<string | null>(null);
@@ -239,7 +388,7 @@
   $effect(() => {
     const el = codeScroll;
     const path = files.selected;
-    const mode = showMarkdown ? 'preview' : 'source';
+    const mode = showPreview ? 'preview' : 'source';
     if (el && path) el.scrollTop = scrollTops.get(`${path}:${mode}`) ?? 0;
   });
 
@@ -261,7 +410,8 @@
   let contentShown = $derived(
     files.open && !files.loadingFile && !files.fileError && Boolean(text) && fileStatus(files.selected ?? '') !== 'D'
   );
-  let findActive = $derived(findOpen && contentShown);
+  // A previewed SVG is an image, with no text to find.
+  let findActive = $derived(findOpen && contentShown && !showSvg);
   let previewEl: HTMLElement | undefined = $state();
   let previewRows: PreviewText[] = $state.raw([]);
   $effect(() => {
@@ -512,6 +662,31 @@
   }
 </script>
 
+{#snippet zoomControls()}
+  <button type="button" class="copy-btn" aria-label="Zoom out" title="Zoom out (-)" disabled={imgZoom <= MIN_ZOOM} onclick={() => zoomImage(imgZoom / ZOOM_STEP)}>−</button>
+  <button type="button" class="zoom-level" title="Actual size" aria-label="Zoom {Math.round(imgZoom * 100)}%, show at actual size" onclick={() => zoomImage(1)}>{Math.round(imgZoom * 100)}%</button>
+  <button type="button" class="copy-btn" aria-label="Zoom in" title="Zoom in (+)" disabled={imgZoom >= MAX_ZOOM} onclick={() => zoomImage(imgZoom * ZOOM_STEP)}>+</button>
+  <button type="button" class="copy-btn" class:on={imgFitted} aria-pressed={imgFitted} title="Fit to view (0)" onclick={fitImage}>Fit</button>
+{/snippet}
+
+{#snippet imageView()}
+  <div
+    class="image-preview"
+    class:dragging={imgDragging}
+    role="presentation"
+    onpointerdown={onImagePointerDown}
+    onpointermove={onImagePointerMove}
+    onpointerup={onImagePointerUp}
+    onpointercancel={onImagePointerUp}
+  >
+    {#if imgFailed}
+      <div class="state center">This image can't be shown.</div>
+    {:else}
+      <img bind:this={imgEl} src={imageSrc} alt={splitPath(files.selected ?? '').name} draggable="false" onload={onImageLoad} onerror={() => (imgFailed = true)} />
+    {/if}
+  </div>
+{/snippet}
+
 {#snippet treeRows(nodes: FileTreeNode[], depth: number)}
   {#each nodes as node (node.path)}
     {#if node.children}
@@ -567,7 +742,7 @@
       if (findActive) closeFind();
       else if (presentation) presentation = false;
       else close();
-    } else if (contentShown && isCommandKey(e, 'KeyF')) {
+    } else if (contentShown && !showSvg && isCommandKey(e, 'KeyF')) {
       e.preventDefault();
       openFind();
     } else if (files.open && isCommandKey(e, 'KeyW')) {
@@ -577,6 +752,8 @@
     } else if (files.open && isWrapShortcut(e)) {
       e.preventDefault();
       files.toggleWrap();
+    } else if (files.open && showImage) {
+      handleImageZoomKey(e);
     }
   }}
 />
@@ -758,10 +935,11 @@
               </button>
               {#if files.content}<span class="viewer-size">{formatSize(files.content.size)}</span>{/if}
               {#if text && !files.loadingFile}
-                {#if language === 'markdown'}
-                  <button type="button" class="copy-btn" class:on={showMarkdown} aria-pressed={showMarkdown} title={showMarkdown ? 'Show Markdown source' : 'Preview Markdown'} onclick={() => (markdownPreview = !markdownPreview)}>Preview</button>
+                {#if previewKind}
+                  {@const kindLabel = previewKind === 'svg' ? 'SVG' : 'Markdown'}
+                  <button type="button" class="copy-btn" class:on={showPreview} aria-pressed={showPreview} title={showPreview ? `Show ${kindLabel} source` : `Preview ${kindLabel}`} onclick={() => (previewOn = !previewOn)}>Preview</button>
                 {/if}
-                {#if !showMarkdown}
+                {#if !showPreview}
                 {#if hasChanges}
                   <button
                     type="button"
@@ -775,6 +953,9 @@
                   </button>
                 {/if}
                 {/if}
+                {#if showSvg}
+                  {@render zoomControls()}
+                {:else}
                 <button
                   type="button"
                   class="copy-btn"
@@ -785,7 +966,8 @@
                 >
                   Find
                 </button>
-                {#if !showMarkdown}
+                {/if}
+                {#if !showPreview}
                 <button
                   type="button"
                   class="copy-btn"
@@ -808,6 +990,8 @@
                 >
                   {COPY_LABELS[copyState]}
                 </button>
+              {:else if showImage}
+                {@render zoomControls()}
               {/if}
               {#if presentation}
                 <button type="button" class="copy-btn" aria-label="Decrease presentation font size" title="Decrease font size" disabled={presentationFontSize <= 12} onclick={() => (presentationFontSize -= 2)}>−</button>
@@ -838,10 +1022,16 @@
               <div class="state center"><LoadingSpinner size={16} label="Loading file…" /></div>
             {:else if files.fileError}
               <div class="state center error" role="alert">{files.fileError}</div>
-            {:else if files.content?.binary}
-              <div class="state center">This is a binary file, so it can't be shown.</div>
+            {:else if rasterSrc}
+              <div class="code-area">
+                <div class="code-scroll" bind:this={codeScroll}>
+                  {@render imageView()}
+                </div>
+              </div>
             {:else if files.content?.tooLarge}
               <div class="state center">This file is too large to show ({formatSize(files.content.size)}).</div>
+            {:else if files.content?.binary}
+              <div class="state center">This is a binary file, so it can't be shown.</div>
             {:else if files.content && !text}
               <div class="state center">This file is empty.</div>
             {:else if files.content}
@@ -894,7 +1084,7 @@
                 class="code-scroll"
                 bind:this={codeScroll}
                 onscroll={(e) => {
-                  if (files.selected) scrollTops.set(`${files.selected}:${showMarkdown ? 'preview' : 'source'}`, e.currentTarget.scrollTop);
+                  if (files.selected) scrollTops.set(`${files.selected}:${showPreview ? 'preview' : 'source'}`, e.currentTarget.scrollTop);
                   if (findActive) schedulePaint();
                 }}
               >
@@ -902,6 +1092,8 @@
                   <div class="markdown-preview" bind:this={previewEl} style:--markdown-font-size={presentation ? `${presentationFontSize}px` : '14px'}>
                     <MarkdownDoc source={text} onFileLink={followFileLink} />
                   </div>
+                {:else if showSvg}
+                  {@render imageView()}
                 {:else}
                 <div class="code source" bind:this={codeEl} class:wrap={files.wrap} class:diff={showDiff} style:font-size={presentation ? `${presentationFontSize}px` : undefined} style:--digits={String(htmlLines?.length ?? plainLines.length).length}>
                   {#snippet lineNumber(row: DiffRow)}
@@ -992,6 +1184,58 @@
 
   .presentation .markdown-preview {
     max-width: 1600px;
+  }
+
+  /* Centred on a checkerboard, so transparent parts show as transparent. */
+  /* Grows with the zoomed image so the view scrolls; the image's auto
+     margins centre it without clipping its top and left when larger. */
+  .image-preview {
+    display: flex;
+    width: max-content;
+    min-width: 100%;
+    min-height: 100%;
+    padding: 20px;
+    box-sizing: border-box;
+    cursor: grab;
+    user-select: none;
+    background-color: var(--bg-primary);
+    background-image:
+      linear-gradient(45deg, var(--bg-tertiary) 25%, transparent 25%),
+      linear-gradient(-45deg, var(--bg-tertiary) 25%, transparent 25%),
+      linear-gradient(45deg, transparent 75%, var(--bg-tertiary) 75%),
+      linear-gradient(-45deg, transparent 75%, var(--bg-tertiary) 75%);
+    background-size: 16px 16px;
+    background-position: 0 0, 0 8px, 8px -8px, -8px 0;
+  }
+
+  .image-preview.dragging {
+    cursor: grabbing;
+  }
+
+  /* Sized by the zoom once loaded. */
+  .image-preview img {
+    display: block;
+    flex-shrink: 0;
+    margin: auto;
+    max-width: none;
+  }
+
+  .zoom-level {
+    flex-shrink: 0;
+    min-width: 44px;
+    padding: 2px 4px;
+    font-family: var(--font-sans);
+    font-size: 0.75rem;
+    font-variant-numeric: tabular-nums;
+    text-align: center;
+    border-radius: 4px;
+    color: var(--text-secondary);
+    cursor: pointer;
+  }
+
+  .zoom-level:hover {
+    background-color: var(--hover-bg);
+    color: var(--text-primary);
   }
 
   .presentation-btn {

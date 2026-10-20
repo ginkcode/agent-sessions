@@ -149,6 +149,25 @@ export function fileLanguage(path: string): string | null {
   return null;
 }
 
+/** How the viewer can preview a file rendered, or null when it can't. */
+export type FilePreview = 'markdown' | 'svg';
+
+export function filePreview(path: string): FilePreview | null {
+  if (fileLanguage(path) === 'markdown') return 'markdown';
+  if (/\.svg$/i.test(path)) return 'svg';
+  return null;
+}
+
+// The image files the backend sends as data (internal/files imageTypes).
+const IMAGE_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'ico', 'avif']);
+
+/** Whether the viewer shows the file as an image (SVG aside, which is text). */
+export function isImageFile(path: string): boolean {
+  const name = path.slice(path.lastIndexOf('/') + 1).toLowerCase();
+  const dot = name.lastIndexOf('.');
+  return dot >= 0 && IMAGE_EXTENSIONS.has(name.slice(dot + 1));
+}
+
 /** The folders holding path, outermost first: a/b/c.ts gives a, a/b. */
 export function parentFolders(path: string): string[] {
   const parts = path.split('/');
