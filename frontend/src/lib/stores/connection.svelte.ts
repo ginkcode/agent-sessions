@@ -4,7 +4,7 @@ import {
   subscribeAskpassPrompt,
 } from '../api';
 import { targetKey } from '../tree';
-import { hostLabel } from '../hosts';
+import { hostLabel, setWindowTitle, windowTitle } from '../hosts';
 import { hostInOtherWindow } from '../guidance';
 import { toast } from './toast.svelte';
 import type {
@@ -51,6 +51,7 @@ export class ConnectionStore {
   private unsubscribeState: (() => void) | null = null;
   private unsubscribeAskpass: (() => void) | null = null;
   private initialized = false;
+  private title = '';
   private resetCallbacks = new Set<(generation: number, host?: string) => void>();
 
   get isRemote(): boolean {
@@ -203,6 +204,7 @@ export class ConnectionStore {
       this.capabilities = state.capabilities;
     }
     this.appVersion = state.appVersion;
+    this.updateTitle();
 
     if (!triggerResets) {
       link.seed(state.phase, state.host);
@@ -213,6 +215,15 @@ export class ConnectionStore {
     if (link.update(state.phase, state.host)) {
       this.resetStores(link.dataHost);
     }
+  }
+
+  // The title names the selected host, even while it connects or is down,
+  // so each window says which connection it belongs to.
+  private updateTitle(): void {
+    const title = windowTitle(this.host);
+    if (title === this.title) return;
+    this.title = title;
+    setWindowTitle(title);
   }
 
   /** The loaded data is from a host that is not serving it right now. */

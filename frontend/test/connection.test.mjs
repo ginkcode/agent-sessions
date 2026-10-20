@@ -432,6 +432,37 @@ test('ConnectionStore lists WSL distributions and SSH hosts independently', asyn
   });
 });
 
+test('ConnectionStore names the selected connection in the window title', async () => {
+  const { ConnectionStore } = await loadConnectionStore();
+  const titles = [];
+  const hadWindow = 'window' in globalThis;
+  const hadDocument = 'document' in globalThis;
+  globalThis.window = { runtime: { WindowSetTitle: (t) => titles.push(t) } };
+  globalThis.document = { title: '' };
+  globalThis.__storeFixture = { api: {}, link: { seed() {}, update: () => false } };
+  try {
+    const store = new ConnectionStore();
+    store.applyState({ phase: 'local', generation: 0 }, false);
+    assert.equal(document.title, 'Local — Agent Sessions');
+    store.applyState({ phase: 'connecting', host: 'plgl', generation: 1 });
+    store.applyState({ phase: 'connected', host: 'plgl', generation: 1 });
+    store.applyState({ phase: 'reconnecting', host: 'plgl', generation: 1 });
+    store.applyState({ phase: 'connecting', host: 'wsl:Ubuntu', generation: 2 });
+    store.applyState({ phase: 'local', generation: 3 });
+    assert.deepEqual(titles, [
+      'Local — Agent Sessions',
+      'plgl — Agent Sessions',
+      'Ubuntu (WSL) — Agent Sessions',
+      'Local — Agent Sessions',
+    ], 'the title changes only when the selected connection does');
+    assert.equal(document.title, 'Local — Agent Sessions');
+  } finally {
+    delete globalThis.__storeFixture;
+    if (!hadWindow) delete globalThis.window;
+    if (!hadDocument) delete globalThis.document;
+  }
+});
+
 test('ConnectionStore points to the window that has the host open', async () => {
   const { ConnectionStore } = await loadConnectionStore();
   const shown = [];

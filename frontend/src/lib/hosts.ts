@@ -13,6 +13,28 @@ export function hostLabel(host: string): string {
   return distro ? `${distro} (WSL)` : host;
 }
 
+const APP_TITLE = 'Agent Sessions';
+
+/**
+ * The window title for a window on host, or on this computer when host is
+ * empty. The connection comes first so windows stay apart in a taskbar or
+ * window switcher that cuts titles short.
+ */
+export function windowTitle(host: string | undefined): string {
+  return `${host ? hostLabel(host) : 'Local'} — ${APP_TITLE}`;
+}
+
+/** Shows title on the desktop window and, in a browser, on the page. */
+export function setWindowTitle(title: string): void {
+  if (typeof document !== 'undefined') document.title = title;
+  if (typeof window === 'undefined') return;
+  try {
+    (window as any).runtime?.WindowSetTitle?.(title);
+  } catch {
+    // The title is cosmetic; a missing runtime changes nothing else.
+  }
+}
+
 /** The command that opens an interactive shell on host from this computer. */
 export function shellCommand(host: string): string {
   const distro = wslDistro(host);

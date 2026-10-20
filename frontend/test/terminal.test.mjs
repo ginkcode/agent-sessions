@@ -17,7 +17,7 @@ import {
   terminalOptions,
   terminalTheme,
 } from '../src/lib/terminal.ts';
-import { hostLabel, shellCommand, wslDistro } from '../src/lib/hosts.ts';
+import { hostLabel, shellCommand, windowTitle, wslDistro } from '../src/lib/hosts.ts';
 import { StaleReplyError } from '../src/lib/link.ts';
 import { ALL_AGENTS } from '../src/lib/portable.ts';
 import { fixtureStore, loadServerModule } from './helpers.mjs';
@@ -83,6 +83,11 @@ test('host helpers name WSL distributions and the shell that opens them', () => 
   assert.equal(hostLabel('wsl:Ubuntu-22.04'), 'Ubuntu-22.04 (WSL)');
   assert.equal(hostLabel('plgl'), 'plgl');
   assert.equal(hostLabel('wsl-box'), 'wsl-box');
+
+  assert.equal(windowTitle(undefined), 'Local — Agent Sessions');
+  assert.equal(windowTitle(''), 'Local — Agent Sessions');
+  assert.equal(windowTitle('plgl'), 'plgl — Agent Sessions');
+  assert.equal(windowTitle('wsl:Ubuntu'), 'Ubuntu (WSL) — Agent Sessions');
 
   assert.equal(shellCommand('wsl:Ubuntu'), 'wsl -d Ubuntu');
   assert.equal(shellCommand('wsl:Ubuntu-22.04'), 'wsl -d Ubuntu-22.04');
