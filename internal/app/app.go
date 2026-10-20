@@ -192,7 +192,11 @@ func (a *App) OnStartup(ctx context.Context) {
 	}
 	a.conn.setBusy(a.terminals.Running)
 	if dir := a.claimsDir(); dir != "" {
-		a.conn.setClaims(newHostClaims(dir, func() { raiseWindow(ctx) }))
+		claims := newHostClaims(dir, func() { raiseWindow(ctx) })
+		a.conn.setClaims(claims)
+		// Without a place in the ring this window is just skipped by the
+		// window shortcut; everything else works.
+		_ = claims.joinRing()
 	}
 	a.events = newCatalogBus(ctx)
 
@@ -244,6 +248,25 @@ func (a *App) NewWindow() error {
 	cmd.Env = env
 	if err := startDetached(cmd); err != nil {
 		return fmt.Errorf("open a new window: %w", err)
+	}
+	return nil
+}
+
+// FocusNextWindow brings the app's next open window to the front, or the
+// previous one when forward is false, in the order they were opened. With
+// one window open it does nothing.
+func (a *App) FocusNextWindow(forward bool) error {
+	var claims *hostClaims
+	if a.conn != nil {
+		a.conn.mu.Lock()
+		claims = a.conn.claims
+		a.conn.mu.Unlock()
+	}
+	if claims == nil {
+		return nil
+	}
+	if err := claims.focusNextWindow(forward); err != nil {
+		return fmt.Errorf("switch window: %w", err)
 	}
 	return nil
 }

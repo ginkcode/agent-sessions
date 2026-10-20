@@ -50,6 +50,7 @@
     isPanelToggle,
     newWindowShortcutLabel,
     terminalTabShortcut,
+    windowCycleShortcut,
   } from './lib/terminal';
   import { isMac } from './main';
 
@@ -140,6 +141,14 @@
       if (canOpenWindow && isNewWindowShortcut(event, isMac)) {
         event.preventDefault();
         if (!event.repeat) openNewWindow();
+        return;
+      }
+      // Alt+` on Windows and Linux: the app's next window (Alt+Shift+`, the
+      // previous). Cmd+` on macOS is handled natively.
+      const cycle = canOpenWindow ? windowCycleShortcut(event, isMac) : null;
+      if (cycle) {
+        event.preventDefault();
+        if (!event.repeat) void api.focusNextWindow?.(cycle === 'next').catch(() => {});
         return;
       }
       // Cmd+1–9 on macOS, Alt+1–9 elsewhere: selects a terminal tab.

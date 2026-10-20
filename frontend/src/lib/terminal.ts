@@ -76,6 +76,21 @@ export function isNewWindowShortcut(
   return /^[a-z]$/i.test(e.key) ? e.key.toLowerCase() === 'n' : e.code === 'KeyN';
 }
 
+/**
+ * Which way a key moves between the app's windows: Alt+` for the next,
+ * Alt+Shift+` for the previous, on Windows and Linux. The key's position is
+ * read, so layouts that type another character there work too. On macOS,
+ * Cmd+` is taken natively before the page sees it, so this is always null.
+ */
+export function windowCycleShortcut(
+  e: Pick<KeyboardEvent, 'key' | 'code' | 'ctrlKey' | 'metaKey' | 'altKey' | 'shiftKey'>,
+  mac: boolean,
+): 'next' | 'previous' | null {
+  if (mac || !e.altKey || e.ctrlKey || e.metaKey) return null;
+  if (e.code !== 'Backquote' && e.key !== '`' && e.key !== '~') return null;
+  return e.shiftKey ? 'previous' : 'next';
+}
+
 /** The New window shortcut as the platform writes it. */
 export function newWindowShortcutLabel(mac: boolean): string {
   return mac ? '⌘N' : 'Ctrl+Shift+N';
@@ -111,7 +126,13 @@ export function terminalKeyAction(
   mac: boolean,
 ): 'copy' | 'paste' | 'app' | null {
   if (e.type !== 'keydown') return null;
-  if (isPanelToggle(e) || isNewShellShortcut(e, mac) || isNewWindowShortcut(e, mac) || isFullscreenShortcut(e, mac)) {
+  if (
+    isPanelToggle(e) ||
+    isNewShellShortcut(e, mac) ||
+    isNewWindowShortcut(e, mac) ||
+    windowCycleShortcut(e, mac) ||
+    isFullscreenShortcut(e, mac)
+  ) {
     return 'app';
   }
   if (e.key === ',' && (mac ? e.metaKey && !e.ctrlKey : e.ctrlKey && !e.metaKey) && !e.altKey) return 'app';

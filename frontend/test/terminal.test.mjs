@@ -12,6 +12,7 @@ import {
   terminalTabShortcut,
   isNewShellShortcut,
   isNewWindowShortcut,
+  windowCycleShortcut,
   newShellShortcutLabel,
   newWindowShortcutLabel,
   terminalOptions,
@@ -688,4 +689,23 @@ test('new window: Cmd+N on macOS, Ctrl+Shift+N elsewhere, kept from the terminal
   assert.equal(terminalKeyAction(key('n', { metaKey: true }), true), 'app');
   assert.equal(newWindowShortcutLabel(true), '⌘N');
   assert.equal(newWindowShortcutLabel(false), 'Ctrl+Shift+N');
+});
+
+test('window cycling: Alt+` on Windows and Linux, kept from the terminal', () => {
+  const key = (k, code, mods = {}) => ({ type: 'keydown', key: k, code, ctrlKey: false, metaKey: false, altKey: false, shiftKey: false, ...mods });
+  assert.equal(windowCycleShortcut(key('`', 'Backquote', { altKey: true }), false), 'next');
+  assert.equal(windowCycleShortcut(key('~', 'Backquote', { altKey: true, shiftKey: true }), false), 'previous');
+  // Other layouts type something else on that key.
+  assert.equal(windowCycleShortcut(key('ё', 'Backquote', { altKey: true }), false), 'next');
+  // Ctrl+` is the terminal panel, and a plain ` is typed.
+  assert.equal(windowCycleShortcut(key('`', 'Backquote', { ctrlKey: true }), false), null);
+  assert.equal(windowCycleShortcut(key('`', 'Backquote', { ctrlKey: true, altKey: true }), false), null);
+  assert.equal(windowCycleShortcut(key('`', 'Backquote'), false), null);
+  assert.equal(windowCycleShortcut(key('1', 'Digit1', { altKey: true }), false), null);
+  // macOS handles Cmd+` natively; Option+` types there.
+  assert.equal(windowCycleShortcut(key('`', 'Backquote', { altKey: true }), true), null);
+  assert.equal(windowCycleShortcut(key('`', 'Backquote', { metaKey: true }), true), null);
+  assert.equal(terminalKeyAction(key('`', 'Backquote', { altKey: true }), false), 'app');
+  assert.equal(terminalKeyAction(key('~', 'Backquote', { altKey: true, shiftKey: true }), false), 'app');
+  assert.equal(terminalKeyAction(key('`', 'Backquote', { altKey: true }), true), null);
 });

@@ -72,6 +72,11 @@ export interface BackendAPI {
    * the app has one window only (the browser mock).
    */
   newWindow?(): Promise<void>;
+  /**
+   * Brings the app's next window to the front, or the previous one when
+   * forward is false. Absent where the app has one window only.
+   */
+  focusNextWindow?(forward: boolean): Promise<void>;
   openResumeInTerminal(ref: SessionRef): Promise<void>;
   openHandoffInTerminal(req: HandoffRequest): Promise<void>;
   openBundleHandoffInTerminal(req: BundleHandoffRequest): Promise<void>;
@@ -168,6 +173,7 @@ interface WailsAppBinding {
   SaveImage(req: SaveImageRequest): Promise<string>;
   PrintWindow(): Promise<void>;
   NewWindow(): Promise<void>;
+  FocusNextWindow?(forward: boolean): Promise<void>;
   OpenResumeInTerminal(ref: SessionRef): Promise<void>;
   OpenHandoffInTerminal(req: HandoffRequest): Promise<void>;
   OpenBundleHandoffInTerminal(req: BundleHandoffRequest): Promise<void>;
@@ -396,6 +402,16 @@ class WailsBackendAPI implements BackendAPI {
   async newWindow(): Promise<void> {
     try {
       return await this.binding.NewWindow();
+    } catch (e) {
+      throw normalizeError(e);
+    }
+  }
+
+  async focusNextWindow(forward: boolean): Promise<void> {
+    try {
+      // Older backends lack the binding: nothing to switch to.
+      if (!this.binding.FocusNextWindow) return;
+      return await this.binding.FocusNextWindow(forward);
     } catch (e) {
       throw normalizeError(e);
     }
@@ -916,6 +932,7 @@ const UNGUARDED = new Set<string>([
   'printWindow',
   // A new window is another app on this computer.
   'newWindow',
+  'focusNextWindow',
   'listPortForwards',
   'savePortForward',
   'startPortForward',

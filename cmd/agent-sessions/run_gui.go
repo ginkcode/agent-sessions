@@ -60,6 +60,9 @@ func run() {
 			disableFontHinting()
 			hookMouseNavigation(ctx)
 			application.OnStartup(ctx)
+			hookWindowCycling(func(forward bool) {
+				_ = application.FocusNextWindow(forward)
+			})
 		},
 		OnShutdown: application.OnShutdown,
 		Bind:       []interface{}{application},

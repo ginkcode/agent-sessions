@@ -68,6 +68,10 @@ type hostClaims struct {
 	held  map[string]*filelock.Lock
 	ln    net.Listener
 	token string
+	// ringLock and ringID are this window's place in the window ring
+	// (window_ring.go); nil until it joins.
+	ringLock *filelock.Lock
+	ringID   string
 }
 
 func newHostClaims(dir string, focus func()) *hostClaims {
@@ -141,6 +145,7 @@ func (h *hostClaims) close() {
 	for host := range h.held {
 		h.releaseLocked(host)
 	}
+	h.leaveRingLocked()
 	if h.ln != nil {
 		_ = h.ln.Close()
 		h.ln = nil
@@ -160,6 +165,11 @@ func (h *hostClaims) focusOwner(host string) error {
 	if info.Port <= 0 || info.Token == "" {
 		return errors.New("incomplete host claim")
 	}
+	return h.focusVia(info)
+}
+
+// focusVia asks the window listening at info to come to the front.
+func (h *hostClaims) focusVia(info claimInfo) error {
 	// This window is in front, so it may hand the foreground on (Windows).
 	allowForegroundHandoff()
 	conn, err := net.DialTimeout("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(info.Port)), focusTimeout)
