@@ -575,6 +575,14 @@ func (s *Service) ListFiles(ctx context.Context, dir string) (files.Listing, err
 	return files.List(ctx, dir)
 }
 
+// BlameFile authorizes and blames one saved line in a session directory.
+func (s *Service) BlameFile(ctx context.Context, dir, rel string, line int) (files.BlameLine, error) {
+	if !s.knownDirectory(dir) {
+		return files.BlameLine{}, fmt.Errorf("%w: %s", ErrUnknownDirectory, dir)
+	}
+	return files.BlameFile(ctx, dir, rel, line)
+}
+
 // ReadFile reads one file of a session directory for the file viewer. A
 // text file's edit eligibility is checked against policy.
 func (s *Service) ReadFile(ctx context.Context, dir, rel string, policy files.EditPolicy) (files.Content, error) {

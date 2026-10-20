@@ -40,6 +40,7 @@ import type {
   RestoreReport,
   ConnectionState,
   HostCapabilities,
+  BlameLine,
   HostEntry,
   WSLEntry,
   TerminalOpenMode,
@@ -53,6 +54,23 @@ import { wslDistro } from '../hosts.js';
 async function mockFileRevision(text: string): Promise<string> {
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
   return 'sha256:' + Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+/** A small deterministic 32-bit hash (FNV-1a). */
+function mockHash(text: string): number {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < text.length; i++) {
+    h ^= text.charCodeAt(i);
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return h;
+}
+
+/** A deterministic 40-hex fake commit hash for seed. */
+function mockCommit(seed: string): string {
+  let out = '';
+  for (let i = 0; out.length < 40; i++) out += mockHash(`${seed}:${i}`).toString(16).padStart(8, '0');
+  return out.slice(0, 40);
 }
 
 function searchNeedle(query: string): string {
@@ -742,6 +760,41 @@ export class MockBackendAPI {
     return { status: 'saved', content: structuredClone(content) };
   }
 
+  async blameFile(dir: string, path: string, line: number): Promise<BlameLine> {
+    if (!Number.isInteger(line) || line < 1) throw new Error(`Invalid line number ${line}.`);
+    const content = await this.readFile(dir, path);
+    if (content.binary || content.tooLarge || content.text === undefined) {
+      throw new Error('Blame is not available for this file.');
+    }
+    const text = content.text;
+    const lines = text === '' ? 0 : text.replace(/\n$/, '').split('\n').length;
+    if (line > lines) throw new Error(`Line ${line} is past the end of ${path}.`);
+    const listing = await this.listFiles(dir);
+    const drafted = this.fileDrafts.has(JSON.stringify([this.connState.host ?? '', dir, path]));
+    const changed = (content.changes ?? []).some(
+      (c) => c.kind !== 'deleted' && line >= c.start && line < c.start + c.count
+    );
+    if (drafted || listing.status?.[path] === 'U' || changed) {
+      return {
+        line, commit: '0'.repeat(40), author: 'Not Committed Yet',
+        authorTime: Math.floor(Date.now() / 1000), summary: '', uncommitted: true,
+      };
+    }
+    // Lines fall into blocks of three, each from its own fake commit.
+    const block = Math.floor((line - 1) / 3);
+    const pick = mockHash(`${path}#${block}`);
+    const authors = ['Ada Lovelace', 'Grace Hopper', 'Linus Torvalds'];
+    const summaries = ['Add initial implementation', 'Fix edge case in parsing', 'Refactor for readability'];
+    return {
+      line,
+      commit: mockCommit(`${path}#${block}`),
+      author: authors[pick % authors.length],
+      authorTime: 1_760_000_000 - block * 86_400 - (pick % 3600),
+      summary: summaries[pick % summaries.length],
+      uncommitted: false,
+    };
+  }
+
   private async readMockFile(dir: string, path: string): Promise<FileContent> {
     if (path.endsWith('.png')) {
       // A 2x2 checker.
@@ -1239,6 +1292,7 @@ export class MockBackendAPI {
 
     const caps: HostCapabilities = {
       saveFile: true,
+      blame: true,
       trash: alias !== 'prod-server',
       manage: true,
       export: true,

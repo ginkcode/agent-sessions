@@ -60,6 +60,8 @@ type Capabilities struct {
 	// SaveFile: the file viewer may save edited files. Older servers leave
 	// it false, and their files stay read-only.
 	SaveFile bool `json:"saveFile,omitempty"`
+	// Blame supports on-demand blame for one saved working-tree line.
+	Blame bool `json:"blame,omitempty"`
 }
 
 // InitializeRequest is the first handshake message sent from client to server.
@@ -141,6 +143,12 @@ type ListFilesParams struct {
 type ReadFileParams struct {
 	Dir  string `json:"dir"`
 	Path string `json:"path"`
+}
+
+type BlameFileParams struct {
+	Dir  string `json:"dir"`
+	Path string `json:"path"`
+	Line int    `json:"line"`
 }
 
 type SaveFileParams struct {

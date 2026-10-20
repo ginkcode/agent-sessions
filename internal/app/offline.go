@@ -72,6 +72,10 @@ func (b offlineBackend) ReadFile(context.Context, string, string) (files.Content
 	return files.Content{}, b.err()
 }
 
+func (b offlineBackend) BlameFile(context.Context, string, string, int) (files.BlameLine, error) {
+	return files.BlameLine{}, b.err()
+}
+
 func (b offlineBackend) SaveFile(context.Context, string, files.SaveRequest) (files.SaveResult, error) {
 	return files.SaveResult{}, b.err()
 }

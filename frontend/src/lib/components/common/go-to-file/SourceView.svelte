@@ -1,6 +1,7 @@
 <script lang="ts">
   import { files } from '../../../stores/files.svelte';
   import type { DiffRow } from '../../../files';
+  import { includesFileLine, type FileLineSelection } from '../../../fileSelection';
 
   let {
     rows,
@@ -10,6 +11,8 @@
     presentation,
     presentationFontSize,
     codeEl = $bindable<HTMLElement | undefined>(),
+    selection,
+    onselectline,
   }: {
     rows: DiffRow[];
     htmlLines: string[] | null;
@@ -18,7 +21,26 @@
     presentation: boolean;
     presentationFontSize: number;
     codeEl?: HTMLElement;
+    selection?: FileLineSelection;
+    onselectline?: (line: number, extend: boolean) => void;
   } = $props();
+
+  // Delegate text clicks without turning code into buttons or interfering
+  // with native drag-to-select. Gutter buttons remain keyboard accessible.
+  function lineClicks(node: HTMLElement) {
+    let startX = 0;
+    let startY = 0;
+    function down(event: PointerEvent) { startX = event.clientX; startY = event.clientY; }
+    function click(event: MouseEvent) {
+      if (event.button !== 0 || Math.abs(event.clientX - startX) > 4 || Math.abs(event.clientY - startY) > 4) return;
+      if (node.ownerDocument.getSelection()?.isCollapsed === false) return;
+      const line = event.target instanceof Element ? event.target.closest<HTMLElement>('[data-source-line]') : null;
+      if (line && node.contains(line)) onselectline?.(Number(line.dataset.sourceLine), event.shiftKey);
+    }
+    node.addEventListener('pointerdown', down);
+    node.addEventListener('click', click);
+    return { destroy() { node.removeEventListener('pointerdown', down); node.removeEventListener('click', click); } };
+  }
 
   const MARK_LABELS = {
     added: 'Added line',
@@ -28,14 +50,18 @@
   };
 </script>
 
-<div class="code source file-source" bind:this={codeEl} class:wrap={files.wrap} class:diff={showDiff} style:font-size={presentation ? `${presentationFontSize}px` : undefined} style:--digits={String(htmlLines?.length ?? plainLines.length).length}>
+<div class="code source file-source" use:lineClicks bind:this={codeEl} class:wrap={files.wrap} class:diff={showDiff} style:font-size={presentation ? `${presentationFontSize}px` : undefined} style:--digits={String(htmlLines?.length ?? plainLines.length).length}>
   {#snippet lineNumber(row: DiffRow)}
     {#if row.kind === 'removed'}
       <span aria-hidden="true" class="ln sign removed">−</span>
-    {:else if showDiff}
-      <span aria-hidden="true" class="ln" class:sign={row.mark} class:added={row.mark}>{row.mark ? '+' : row.index + 1}</span>
     {:else}
-      <span aria-hidden="true" class="ln mark-{row.mark ?? 'none'}" title={row.mark && MARK_LABELS[row.mark]}>{row.index + 1}</span>
+      <button type="button" class="ln line-select mark-{showDiff ? 'none' : row.mark ?? 'none'}"
+        class:sign={showDiff && row.mark} class:added={showDiff && row.mark}
+        class:selected={includesFileLine(selection, row.index + 1)}
+        aria-label={`Select line ${row.index + 1}`} aria-pressed={includesFileLine(selection, row.index + 1)}
+        title={`${row.mark ? MARK_LABELS[row.mark] + ' · ' : ''}Click to select line; Shift-click to select range`}
+        onclick={(event) => onselectline?.(row.index + 1, event.shiftKey)}
+      >{showDiff && row.mark ? '+' : row.index + 1}</button>
     {/if}
   {/snippet}
   {#snippet lineText(row: DiffRow)}
@@ -43,9 +69,9 @@
       <span class="line removed">{row.text}</span>
     {:else if htmlLines}
       <!-- highlight.js escapes the file's text -->
-      <span class="line" data-source-line={row.index + 1} class:added={showDiff && row.mark}>{@html htmlLines[row.index]}</span>
+      <span class="line" data-source-line={row.index + 1} class:selected={includesFileLine(selection, row.index + 1)} class:added={showDiff && row.mark}>{@html htmlLines[row.index]}</span>
     {:else}
-      <span class="line" data-source-line={row.index + 1} class:added={showDiff && row.mark}>{plainLines[row.index]}</span>
+      <span class="line" data-source-line={row.index + 1} class:selected={includesFileLine(selection, row.index + 1)} class:added={showDiff && row.mark}>{plainLines[row.index]}</span>
     {/if}
   {/snippet}
   {#if files.wrap}
@@ -183,6 +209,31 @@
     background-color: var(--bg-secondary);
     border-right: 1px solid var(--border-color);
     user-select: none;
+  }
+
+  .line-select {
+    appearance: none;
+    border: 0;
+    border-radius: 0;
+    border-right: 1px solid var(--border-color);
+    font: inherit;
+    line-height: inherit;
+    cursor: pointer;
+  }
+  .line-select:hover,
+  .line-select:focus-visible {
+    color: var(--text-primary);
+    outline: 1px solid var(--accent-color);
+    outline-offset: -1px;
+  }
+  .line.selected,
+  .ln.selected {
+    background-image: linear-gradient(color-mix(in srgb, var(--accent-color) 14%, transparent), color-mix(in srgb, var(--accent-color) 14%, transparent));
+  }
+  /* Empty wrapped lines need height, not generated text (which can leak
+     into the display and text selection). */
+  .code.wrap .line {
+    min-height: 1.5em;
   }
 
   .line {

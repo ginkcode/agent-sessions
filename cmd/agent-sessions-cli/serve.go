@@ -93,6 +93,7 @@ func serveCmd(ctx context.Context, args []string, resolveRoots func() (paths.Roo
 			Import:   true,
 			Search:   true,
 			SaveFile: true,
+			Blame:    true,
 		}, roots, nil
 	})
 	server.Store(srv)

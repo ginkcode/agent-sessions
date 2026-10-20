@@ -409,6 +409,11 @@ func (a *App) ListFiles(dir string) (files.Listing, error) {
 	return a.activeBackend().ListFiles(a.appCtx(), dir)
 }
 
+// BlameFile returns blame for one saved line on the selected host.
+func (a *App) BlameFile(dir, path string, line int) (files.BlameLine, error) {
+	return a.activeBackend().BlameFile(a.appCtx(), dir, path, line)
+}
+
 // ReadFile reads one file of a session directory on the selected host.
 func (a *App) ReadFile(dir, path string) (files.Content, error) {
 	return a.activeBackend().ReadFile(a.appCtx(), dir, path)

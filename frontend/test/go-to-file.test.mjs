@@ -38,7 +38,9 @@ const [picker, tabs, source] = await Promise.all([
     ["import FileIcon from '../FileIcon.svelte';", 'const FileIcon = () => {};'],
     ["import ContextMenu from '../ContextMenu.svelte';", 'const ContextMenu = () => {};'],
   ]),
-  loadServerComponent(new URL('SourceView.svelte', base), [store]),
+  loadServerComponent(new URL('SourceView.svelte', base), [store,
+    ["'../../../fileSelection'", JSON.stringify(new URL('../src/lib/fileSelection.ts', import.meta.url).href)],
+  ]),
 ]);
 
 test('dialog offers an unlocked Escape lock toggle and a separate close button', async () => {
@@ -172,9 +174,19 @@ test('source wraps number/text pairs and labels change markers without diff sign
   assert.match(classTag(html, 'div', 'source'), /font-size: 22px/);
   assert.doesNotMatch(html, /class="gutter|class="lines|class="line [^\"]*added/);
   for (const [index, label] of ['Added line', 'Changed line', 'Lines removed above', 'Lines removed below'].entries()) {
-    assert.match(html, new RegExp(`class="ln mark-${marks[index]}[^\"]*" title="${label}">${index + 1}</span>`));
+    assert.match(html, new RegExp(`class="ln line-select mark-${marks[index]}[^\"]*"[^>]*title="${label}[^\"]*">${index + 1}</button>`));
   }
-  assert.match(html, />1<\/span>[\s\S]*?>one<\/span>[\s\S]*?>2<\/span>[\s\S]*?>two<\/span>/);
+  assert.match(html, />1<\/button>[\s\S]*?>one<\/span>[\s\S]*?>2<\/button>[\s\S]*?>two<\/span>/);
+});
+
+test('source selection highlights the range and exposes accessible line buttons', async () => {
+  const html = await renderSource({}, {
+    rows: [0, 1, 2].map(index => ({ kind: 'line', index })),
+    plainLines: ['one', 'two', 'three'], selection: { anchor: 2, head: 3 },
+  });
+  assert.match(html, /aria-label="Select line 1" aria-pressed="false"/);
+  assert.match(html, /aria-label="Select line 2" aria-pressed="true"/);
+  assert.match(html, /class="line[^\"]*selected[^\"]*" data-source-line="3"/);
 });
 
 test('unwrapped source separates gutter and lines, renders highlighted HTML and diff signs', async () => {
@@ -187,10 +199,10 @@ test('unwrapped source separates gutter and lines, renders highlighted HTML and 
   assert.ok(classTag(html, 'div', 'gutter'));
   assert.ok(classTag(html, 'div', 'lines'));
   assert.match(html, /class="ln sign removed[^\"]*">−<\/span>/);
-  assert.match(html, /class="ln[^\"]*\bsign\b[^\"]*\badded\b[^\"]*">\+<\/span>/);
+  assert.match(html, /class="ln[^\"]*\bsign\b[^\"]*\badded\b[^\"]*"[^>]*>\+<\/button>/);
   assert.match(html, /class="line removed[^\"]*">&lt;old> &amp; gone<\/span>/);
   assert.match(html, /class="line[^\"]*\badded\b[^\"]*"[^>]*>(?:<!--[\s\S]*?-->)*<span class="hljs-keyword">const<\/span>/);
-  assert.match(html, /class="ln[^\"]*">2<\/span>/);
+  assert.match(html, /class="ln[^\"]*"[^>]*>2<\/button>/);
 });
 
 test('plain source escapes HTML and sizes the gutter from the original line count', async () => {
@@ -200,5 +212,5 @@ test('plain source escapes HTML and sizes the gutter from the original line coun
   assert.match(html, /--digits: 2/);
   assert.match(html, /&lt;script>bad &amp; worse&lt;\/script>/);
   assert.doesNotMatch(html, /<script>/);
-  assert.match(html, /class="ln mark-none[^\"]*">10<\/span>/);
+  assert.match(html, /class="ln line-select mark-none[^\"]*"[^>]*>10<\/button>/);
 });

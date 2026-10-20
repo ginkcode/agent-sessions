@@ -28,6 +28,7 @@ import { link } from './link.svelte';
 // Local always has every capability; the backend reports none for it.
 const LOCAL_CAPABILITIES: HostCapabilities = {
   saveFile: true,
+  blame: true,
   trash: true,
   manage: true,
   export: true,

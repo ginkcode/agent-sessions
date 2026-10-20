@@ -131,6 +131,10 @@ func (m *mockBackend) ReadFile(ctx context.Context, dir, path string) (files.Con
 	return files.Content{Path: path, Text: "package main\n"}, nil
 }
 
+func (m *mockBackend) BlameFile(ctx context.Context, dir, path string, line int) (files.BlameLine, error) {
+	return files.BlameLine{Line: line, Commit: "abc123", Author: "Test Author", AuthorTime: 1700000000, Summary: dir + "/" + path}, m.errToReturn
+}
+
 func (m *mockBackend) SaveFile(ctx context.Context, dir string, req files.SaveRequest) (files.SaveResult, error) {
 	return files.SaveResult{Status: files.SaveStatusSaved}, nil
 }

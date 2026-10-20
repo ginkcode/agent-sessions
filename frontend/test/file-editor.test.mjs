@@ -6,8 +6,8 @@ import { compile } from 'svelte/compiler';
 import ts from 'typescript';
 import { EditorState } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
-import { undo, redo, undoDepth } from '@codemirror/commands';
-import { language } from '@codemirror/language';
+import { undo, redo, undoDepth, indentMore, insertNewlineAndIndent } from '@codemirror/commands';
+import { language, indentUnit } from '@codemirror/language';
 import { searchPanelOpen } from '@codemirror/search';
 import { javascriptLanguage, jsxLanguage, tsxLanguage, typescriptLanguage } from '@codemirror/lang-javascript';
 import { jsonLanguage } from '@codemirror/lang-json';
@@ -70,6 +70,10 @@ class FakeEditorView {
     this.dispatches++;
     const tr = this.state.update(...specs);
     this.state = tr.state;
+    for (const effect of tr.effects) {
+      const probe = EditorView.scrollIntoView(0);
+      if (effect.is(probe.type)) this.scrollTarget = effect.value.range.head;
+    }
     for (const listener of this.state.facet(EditorView.updateListener)) {
       listener({ view: this, state: this.state, docChanged: tr.docChanged, transactions: [tr] });
     }
@@ -77,9 +81,19 @@ class FakeEditorView {
 
   setState(state) { this.state = state; }
   requestMeasure(measure) { this.measures.push(measure); }
-  flushMeasures() { for (const m of this.measures.splice(0)) m.write(m.read(this), this); }
+  flushMeasures() {
+    for (const m of this.measures.splice(0)) m.write(m.read(this), this);
+    this.flushScrollTarget();
+  }
+  flushScrollTarget() {
+    if (this.scrollTarget !== undefined) {
+      this.scrollDOM.scrollTop = this.lineBlockAt(this.scrollTarget).top + this.documentPadding.top;
+      this.scrollTarget = undefined;
+    }
+  }
   lineBlockAt(from) { return { from, top: (this.state.doc.lineAt(from).number - 1) * 20 }; }
   lineBlockAtHeight(height) {
+    this.flushMeasures();
     const number = Math.min(this.state.doc.lines, Math.floor(height / 20) + 1);
     return this.lineBlockAt(this.state.doc.line(number).from);
   }
@@ -192,6 +206,63 @@ function type(view, text, at = view.state.doc.length) {
 function wrapped(state) {
   return state.facet(EditorView.contentAttributes).some((attrs) => attrs?.class === 'cm-lineWrapping');
 }
+
+test('switching modes preserves top padding and partially scrolled line offsets after pending editor scrolls', () => {
+  for (const target of [{ line: 1, offset: 8, left: 0 }, { line: 40, offset: -7, left: 24 }]) {
+    const { editor, view } = mount({
+      text: Array.from({ length: 100 }, (_, i) => `line ${i}`).join('\n'),
+      position: target,
+    });
+    editor.focus();
+    view.flushMeasures();
+    assert.equal(view.scrollDOM.scrollTop, (target.line - 1) * 20 + 8 - target.offset);
+    assert.equal(view.scrollDOM.scrollLeft, target.left);
+    editor.destroy();
+  }
+});
+
+test('indentation is inferred from existing content and used by Tab and Enter', async () => {
+  for (const unit of ['  ', '    ', '        ', '\t']) {
+    const text = `function outer() {\n${unit}if (true) {\n${unit}${unit}run();\n${unit}}\n}\n`;
+    const { editor, view } = mount({ text });
+    assert.equal(view.state.facet(indentUnit), unit);
+    assert.equal(view.state.tabSize, 4);
+    await languageOf(view, 'a.ts');
+    view.dispatch({ selection: { anchor: text.indexOf('run();') + 6 } });
+    assert.equal(insertNewlineAndIndent(view), true);
+    assert.ok(view.state.doc.toString().includes(`run();\n${unit}${unit}\n`), unit);
+    view.dispatch({ selection: { anchor: 0 } });
+    assert.equal(indentMore(view), true);
+    assert.ok(view.state.doc.toString().startsWith(`${unit}function`), unit);
+    editor.destroy();
+  }
+});
+
+test('indent detection ignores blank lines and stays stable until external reload', () => {
+  const { editor, view, options } = mount({ text: 'root\n    child\n        nested\n    child\n\nroot' });
+  assert.equal(view.state.facet(indentUnit), '    ');
+  type(view, '\n  temporary');
+  assert.equal(view.state.facet(indentUnit), '    ');
+  editor.update({ ...options, version: 2, text: 'root\n\tchild\n\t\tnested' });
+  assert.equal(view.state.facet(indentUnit), '\t');
+  editor.destroy();
+  const empty = mount({ text: '' });
+  assert.equal(empty.view.state.facet(indentUnit), '  ', 'no evidence keeps the default');
+  empty.editor.destroy();
+});
+
+test('line selection crosses viewer/editor mounts and reports the cursor line on exit', () => {
+  const selections = [];
+  const id = {};
+  const first = mount({ id, text: 'one\ntwo\nthree', selection: { anchor: 2, head: 3 }, onselection: value => selections.push(value) });
+  assert.equal(first.view.state.selection.main.anchor, 4);
+  assert.equal(first.view.state.selection.main.head, 8);
+  first.editor.destroy();
+  assert.deepEqual(selections, [{ anchor: 2, head: 3 }]);
+  const second = mount({ id, text: 'one\ntwo\nthree', selection: { anchor: 1, head: 1 } });
+  assert.equal(second.view.state.selection.main.head, 0, 'viewer selection overrides cached editor selection');
+  second.editor.destroy();
+});
 
 test('editor starts from the given text and reports every edit as a full snapshot', () => {
   const { view, calls } = mount({ text: 'one\n' });
@@ -506,7 +577,10 @@ test('FileEditor server-renders an empty host and inert command exports before t
     Object.defineProperty(props, name, { get: () => undefined, set: (fn) => { bound[name] = fn; }, enumerable: true });
   }
   const html = render(component.default, { props }).body;
-  assert.match(html, /<div class="file-editor[^"]*"><\/div>/);
+  assert.match(html, /<div class="file-editor[^"]*"[^>]*><\/div>/);
+  assert.match(html, /autocorrect="off"/);
+  assert.match(html, /autocapitalize="off"/);
+  assert.match(html, /spellcheck="false"/);
   assert.doesNotMatch(html, /role="alert"/);
   assert.doesNotMatch(html, /secret draft/, 'the document is rendered by CodeMirror, not by SSR markup');
   assert.deepEqual(Object.keys(bound).sort(), ['closeSearch', 'find', 'focus', 'handleKey']);

@@ -1,6 +1,8 @@
 <script lang="ts">
   import { onDestroy, untrack, type Snippet } from 'svelte';
   import type { FilePosition } from '../../../filePosition';
+  import { selectFileLine, type FileLineSelection } from '../../../fileSelection';
+  import type { BlameLine } from '../../../types';
   import { files } from '../../../stores/files.svelte';
   import { highlightFile, splitHighlightedLines, splitLines } from '../../../codeHighlight';
   import { copyToClipboard } from '../../../portable';
@@ -37,6 +39,46 @@
   } = $props();
 
   let status = $derived(files.listing?.status);
+  const lineSelections = new WeakMap<object, FileLineSelection>();
+  let selectionVersion = $state(0);
+  let selectedLines = $derived.by(() => { selectionVersion; return activeTab ? lineSelections.get(activeTab) : undefined; });
+  let blame = $state<BlameLine | null>(null);
+  let blameError = $state('');
+  let blameLoading = $state(false);
+  let blameOpen = $state(false);
+  let blameRequest = 0;
+
+  function selectLine(line: number, extend: boolean) {
+    if (!activeTab) return;
+    lineSelections.set(activeTab, selectFileLine(selectedLines, line, extend));
+    selectionVersion++;
+    closeBlame();
+  }
+  function closeBlame() {
+    blameRequest++;
+    blameOpen = false;
+    blameLoading = false;
+    blame = null;
+    blameError = '';
+  }
+  $effect(() => { activeTab; text; editing; closeBlame(); });
+
+  async function blameSelectedLine() {
+    if (!selectedLines || !files.dir || !files.selected) return;
+    const request = ++blameRequest;
+    blameOpen = true;
+    blameLoading = true;
+    blameError = '';
+    blame = null;
+    try {
+      const result = await api.blameFile(files.dir, files.selected, selectedLines.head);
+      if (request === blameRequest) blame = result;
+    } catch (error) {
+      if (request === blameRequest) blameError = errorText(error, 'Could not load blame for this line.');
+    } finally {
+      if (request === blameRequest) blameLoading = false;
+    }
+  }
 
 
   // Files larger than this are shown without highlighting, which is slow on
@@ -609,6 +651,8 @@
           version={edit.version}
           wrap={files.wrap}
           disabled={frozen}
+          selection={selectedLines}
+          onselection={((tab) => (selection: FileLineSelection) => { lineSelections.set(tab, selection); selectionVersion++; })(activeTab)}
           position={sourcePositions.get(activeTab)}
           onposition={((tab) => (position: FilePosition) => sourcePositions.set(tab, position))(activeTab)}
           onchange={(next) => {
@@ -692,6 +736,26 @@
           </button>
         </div>
       {/if}
+      {#if selectedLines && !showPreview}
+        <div class="line-actions">
+          <span>{selectedLines.anchor === selectedLines.head ? `Line ${selectedLines.head}` : `Lines ${Math.min(selectedLines.anchor, selectedLines.head)}–${Math.max(selectedLines.anchor, selectedLines.head)}`}</span>
+          <button type="button" class="copy-btn" disabled={blameLoading || connectionStore.capabilities.blame !== true || Boolean(blocked)} onclick={blameSelectedLine}>Blame line {selectedLines.head}</button>
+          {#if blameOpen}<button type="button" class="copy-btn" onclick={closeBlame}>Close blame</button>{/if}
+          <button type="button" class="copy-btn" aria-label="Clear line selection" onclick={() => { if (activeTab) lineSelections.delete(activeTab); selectionVersion++; closeBlame(); }}>×</button>
+        </div>
+        {#if blameOpen}
+          <div class="line-blame" role="status" aria-live="polite">
+            {#if blameLoading}Loading blame…
+            {:else if blameError}<span class="blame-error">{blameError}</span>
+            {:else if blame?.uncommitted}<strong>Not committed yet</strong>
+            {:else if blame}
+              <strong>{blame.summary}</strong>
+              <span>{blame.author} · {new Date(blame.authorTime * 1000).toLocaleString()}</span>
+              <button type="button" class="copy-btn" title="Copy commit hash" onclick={async () => { if (blame && !(await copyToClipboard(blame.commit))) toast.show({ title: 'Unable to copy commit hash', body: 'Clipboard access failed.', tone: 'error' }); }}>{blame.commit.slice(0, 12)} · Copy hash</button>
+            {/if}
+          </div>
+        {/if}
+      {/if}
       <div
         class="code-scroll"
         bind:this={codeScroll}
@@ -708,7 +772,7 @@
         {:else if showSvg}
           {@render imageView()}
         {:else}
-        <SourceView {rows} {htmlLines} {plainLines} {showDiff} {presentation} {presentationFontSize} bind:codeEl={find.codeEl} />
+        <SourceView {rows} {htmlLines} {plainLines} {showDiff} {presentation} {presentationFontSize} selection={selectedLines} onselectline={selectLine} bind:codeEl={find.codeEl} />
         {/if}
       </div>
       </div>
@@ -973,6 +1037,42 @@
     color: var(--danger);
     background-color: color-mix(in srgb, var(--danger) 12%, transparent);
   }
+
+  .line-actions {
+    position: absolute;
+    z-index: 3;
+    right: 14px;
+    bottom: 10px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 8px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background: var(--bg-secondary);
+    color: var(--text-secondary);
+    font-size: 12px;
+  }
+  .line-blame {
+    position: absolute;
+    z-index: 4;
+    right: 14px;
+    bottom: 52px;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+    max-width: min(420px, calc(100% - 28px));
+    padding: 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    box-shadow: 0 4px 16px #0002;
+    overflow-wrap: anywhere;
+    font-size: 12px;
+  }
+  .blame-error { color: var(--danger); }
 
   .code-area {
     position: relative;

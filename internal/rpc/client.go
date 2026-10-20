@@ -394,6 +394,16 @@ func (c *Client) ReadFile(ctx context.Context, dir, path string) (files.Content,
 	return out, err
 }
 
+// BlameFile requests blame only when the remote host advertises support.
+func (c *Client) BlameFile(ctx context.Context, dir, path string, line int) (files.BlameLine, error) {
+	if !c.caps.Blame {
+		return files.BlameLine{}, fmt.Errorf("%w: this host's agent-sessions cannot blame files; update it", engine.ErrUnsupportedAction)
+	}
+	var out files.BlameLine
+	err := c.call(ctx, "blameFile", BlameFileParams{Dir: dir, Path: path, Line: line}, &out)
+	return out, err
+}
+
 // SaveFile saves an edited file on the remote host. A server without the
 // SaveFile capability refuses it rather than leaving the method unknown.
 func (c *Client) SaveFile(ctx context.Context, dir string, req files.SaveRequest) (files.SaveResult, error) {

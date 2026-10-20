@@ -1,12 +1,13 @@
 import { Compartment, EditorState, StateField, type Extension } from '@codemirror/state';
 import { EditorView, drawSelection, highlightActiveLine, keymap, lineNumbers } from '@codemirror/view';
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands';
-import { LanguageDescription, indentOnInput } from '@codemirror/language';
+import { LanguageDescription, indentOnInput, indentUnit } from '@codemirror/language';
 import { Decoration, type DecorationSet } from '@codemirror/view';
 import { loadFileHighlighter } from './codeHighlight';
 import type { HLJSApi } from 'highlight.js';
 import { keyHandled } from './fullscreen';
 import type { FilePosition } from './filePosition';
+import type { FileLineSelection } from './fileSelection';
 import { fileLanguage } from './files';
 import { closeSearchPanel, openSearchPanel, search, searchKeymap, searchPanelOpen } from '@codemirror/search';
 
@@ -18,6 +19,8 @@ export interface FileEditorOptions {
   wrap: boolean;
   disabled?: boolean;
   position?: FilePosition;
+  selection?: FileLineSelection;
+  onselection?: (selection: FileLineSelection) => void;
   onposition?: (position: FilePosition) => void;
   onchange: (text: string) => void;
   onsave: () => void;
@@ -100,12 +103,55 @@ function fileHighlight(hljs: HLJSApi, path: string): Extension {
   });
 }
 
+// Infer the unit once per document load, not on each keystroke (which could
+// change the setting halfway through typing). Prefer repeated indent steps
+// over absolute columns, so nested blocks and continuation alignment don't
+// make a four-space file look like an eight-space file.
+function detectIndent(text: string): string {
+  let tabs = 0;
+  let spaces = 0;
+  let previous = 0;
+  const widths = new Map<number, number>();
+  for (const line of text.split('\n').slice(0, 10000)) {
+    if (!line.trim()) continue;
+    const prefix = /^[\t ]*/.exec(line)![0];
+    if (prefix.includes('\t')) {
+      tabs++;
+      previous = 0;
+      continue;
+    }
+    const width = prefix.length;
+    if (width) spaces++;
+    const step = Math.abs(width - previous);
+    // Ignore single-column alignment and unusually deep continuation indents.
+    if (step >= 2 && step <= 8) widths.set(step, (widths.get(step) ?? 0) + 1);
+    previous = width;
+  }
+  if (tabs > spaces) return '\t';
+  let best = 2;
+  let count = 0;
+  for (const [width, votes] of widths) {
+    if (votes > count || (votes === count && width < best)) {
+      best = width;
+      count = votes;
+    }
+  }
+  return ' '.repeat(best);
+}
+
+function lineSelection(text: string, selection: FileLineSelection) {
+  const doc = EditorState.create({ doc: text }).doc;
+  const line = (number: number) => doc.line(Math.max(1, Math.min(number, doc.lines)));
+  return { anchor: line(selection.anchor).from, head: line(selection.head).from };
+}
+
 function freshState(options: FileEditorOptions): EditorState {
   return EditorState.create({
     doc: options.text,
+    selection: options.selection ? lineSelection(options.text, options.selection) : undefined,
     extensions: [
       lineNumbers(), history(), drawSelection(), highlightActiveLine(), indentOnInput(),
-      search(), theme,
+      search(), theme, indentUnit.of(detectIndent(options.text)), EditorState.tabSize.of(4),
       wrapping.of(options.wrap ? EditorView.lineWrapping : []),
       editing.of(editable(options.disabled)), language.of([]), coloring.of([]),
       keymap.of([indentWithTab, ...defaultKeymap, ...historyKeymap, ...searchKeymap]),
@@ -212,6 +258,10 @@ export function createFileEditor(parent: HTMLElement, initial: FileEditorOptions
     // Scroll to the logical line first so CodeMirror renders and measures it,
     // including wrapped lines outside the initial virtual viewport.
     view.dispatch({ effects: EditorView.scrollIntoView(line.from, { y: 'start', yMargin: 0 }) });
+    // Flush CodeMirror's pending scroll before applying the exact viewer
+    // offset. It processes scrollIntoView AFTER requestMeasure writes, so
+    // scheduling both together lets its scroll overwrite our restoration.
+    view.lineBlockAtHeight(0);
     view.requestMeasure({
       read: () => view.lineBlockAt(line.from).top + view.documentPadding.top - target.offset,
       write(top) {
@@ -226,8 +276,11 @@ export function createFileEditor(parent: HTMLElement, initial: FileEditorOptions
   view.scrollDOM.addEventListener('scroll', reportPosition);
   function remember() {
     reportPosition();
+    const range = view.state.selection.main;
+    options.onselection?.({ anchor: view.state.doc.lineAt(range.anchor).number, head: view.state.doc.lineAt(range.head).number });
     tabs.set(options.id, { state: view.state, version: options.version, top: view.scrollDOM.scrollTop, left: view.scrollDOM.scrollLeft });
   }
+  if (reuse && options.selection) view.dispatch({ selection: lineSelection(options.text, options.selection) });
   configure();
   setLanguage();
   if (options.position) restorePosition(options.position);

@@ -617,9 +617,26 @@ export type ConnectionPhase =
   | 'disconnected'
   | 'reconnecting';
 
+/** The last commit that touched one line of a file (git blame). */
+export interface BlameLine {
+  /** 1-based line number the blame is for. */
+  line: number;
+  /** Full commit hash; all zeros when the line is uncommitted. */
+  commit: string;
+  author: string;
+  /** Author time, Unix seconds. */
+  authorTime: number;
+  /** First line of the commit message; empty when uncommitted. */
+  summary: string;
+  /** The line has changes not yet committed. */
+  uncommitted: boolean;
+}
+
 export interface HostCapabilities {
   /** Absent on older servers; editing requires an explicit true. */
   saveFile?: boolean;
+  /** Absent on older servers; per-line blame requires an explicit true. */
+  blame?: boolean;
   trash: boolean;
   manage: boolean;
   export: boolean;

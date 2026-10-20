@@ -12,6 +12,7 @@ import type {
   Diagnostics,
   FileListing,
   FileContent,
+  BlameLine,
   FileSaveRequest,
   FileSaveResult,
   ManageSettings,
@@ -105,6 +106,11 @@ export interface BackendAPI {
   listFiles(dir: string): Promise<FileListing>;
   /** Reads one file, path relative to dir, on the selected host. */
   readFile(dir: string, path: string): Promise<FileContent>;
+  /**
+   * Blames one 1-based line of a file, path relative to dir, on the selected
+   * host. Rejects when the backend has no blame support.
+   */
+  blameFile(dir: string, path: string, line: number): Promise<BlameLine>;
   /**
    * Saves an edited file on the selected host if it still has
    * req.expectedRevision; otherwise reports a conflict and writes nothing.
@@ -202,6 +208,7 @@ interface WailsAppBinding {
   ResolveTerminalFile(dir: string, path: string): Promise<TerminalFileTarget>;
   ListFiles(dir: string): Promise<FileListing>;
   ReadFile(dir: string, path: string): Promise<FileContent>;
+  BlameFile?(dir: string, path: string, line: number): Promise<BlameLine>;
   SaveFile(dir: string, req: FileSaveRequest, host: string): Promise<FileSaveResult>;
   EnableFileEditing(): Promise<boolean>;
   CompleteFileClose(id: number, allow: boolean): Promise<void>;
@@ -249,6 +256,8 @@ interface WailsAppBinding {
   SetHostEnv(env: Record<string, string>): Promise<void>;
   GetHostEnv(): Promise<Record<string, string>>;
 }
+
+export const BLAME_UNSUPPORTED = 'Line blame is not supported by this version of the app backend.';
 
 function normalizeError(err: unknown): Error {
   if (err instanceof Error) return err;
@@ -558,6 +567,16 @@ class WailsBackendAPI implements BackendAPI {
   async readFile(dir: string, path: string): Promise<FileContent> {
     try {
       return await this.binding.ReadFile(dir, path);
+    } catch (e) {
+      throw normalizeError(e);
+    }
+  }
+
+  async blameFile(dir: string, path: string, line: number): Promise<BlameLine> {
+    // Older backends lack the binding.
+    if (!this.binding.BlameFile) throw new Error(BLAME_UNSUPPORTED);
+    try {
+      return await this.binding.BlameFile(dir, path, line);
     } catch (e) {
       throw normalizeError(e);
     }

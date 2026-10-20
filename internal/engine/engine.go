@@ -456,6 +456,11 @@ func (e *Engine) ListFiles(ctx context.Context, dir string) (files.Listing, erro
 	return e.svc.ListFiles(ctx, dir)
 }
 
+// BlameFile returns blame for one saved line of a session directory file.
+func (e *Engine) BlameFile(ctx context.Context, dir, path string, line int) (files.BlameLine, error) {
+	return e.svc.BlameFile(ctx, dir, path, line)
+}
+
 // ReadFile reads one file of a session directory.
 func (e *Engine) ReadFile(ctx context.Context, dir, path string) (files.Content, error) {
 	return e.svc.ReadFile(ctx, dir, path, e.editPolicy())
