@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import type { FileEditorController, FileEditorOptions } from '../../../fileEditor';
+  import { filePrompt } from '../../../stores/filePrompt.svelte';
 
   let { id, text, path, version, wrap, disabled = false, onchange, onsave }: FileEditorOptions = $props();
   let host: HTMLDivElement;
@@ -16,7 +17,8 @@
     void import('../../../fileEditor').then(({ createFileEditor }) => {
       if (!disposed) {
         editor = createFileEditor(host, options());
-        editor.focus();
+        // The runtime loads lazily: by now a prompt may hold focus.
+        if (!filePrompt.request) editor.focus();
       }
     }).catch((cause: unknown) => {
       if (!disposed) error = cause instanceof Error ? cause.message : 'Unable to load editor';

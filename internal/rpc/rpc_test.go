@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/ginkcode/agent-sessions/internal/engine"
+	"github.com/ginkcode/agent-sessions/internal/files"
 )
 
 func TestFrameReader_Limit(t *testing.T) {
@@ -145,6 +146,7 @@ func TestErrors_RoundTripSentinels(t *testing.T) {
 		ErrProtocolMismatch,
 		ErrPayloadTooLarge,
 		ErrTimeout,
+		files.ErrSaveIncomplete,
 	}
 
 	for _, tc := range testCases {

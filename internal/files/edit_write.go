@@ -16,6 +16,12 @@ var ErrEditReadOnly = errors.New("file is read-only")
 // ErrInvalidRevision reports a save without a well-formed expected revision.
 var ErrInvalidRevision = errors.New("invalid expected revision")
 
+// ErrSaveIncomplete reports a save that failed after writing began, so the
+// file may hold the old bytes, the new ones or a mix. Clients must not treat
+// the draft as either saved or unsaved until they read the file again. The
+// text is matched by the frontend; keep it stable.
+var ErrSaveIncomplete = errors.New("the save failed after writing began; the file may have changed")
+
 var revisionPattern = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
 
 // saveSlot is one global lock, as a one-slot semaphore so a waiter can give
@@ -222,15 +228,17 @@ func (t *editTarget) revalidate(policy EditPolicy, root, rel string) error {
 // overwrite replaces the open file's contents with data. It writes first and
 // truncates after, so a failed write never leaves a shorter file than a
 // successful one would.
+// Every failure wraps ErrSaveIncomplete: the file may already hold some of
+// data.
 func (t *editTarget) overwrite(data []byte) error {
 	if _, err := t.file.WriteAt(data, 0); err != nil {
-		return fmt.Errorf("write target: %w", err)
+		return fmt.Errorf("%w: write target: %w", ErrSaveIncomplete, err)
 	}
 	if err := t.file.Truncate(int64(len(data))); err != nil {
-		return fmt.Errorf("truncate target: %w", err)
+		return fmt.Errorf("%w: truncate target: %w", ErrSaveIncomplete, err)
 	}
 	if err := t.file.Sync(); err != nil {
-		return fmt.Errorf("sync target: %w", err)
+		return fmt.Errorf("%w: sync target: %w", ErrSaveIncomplete, err)
 	}
 	return nil
 }

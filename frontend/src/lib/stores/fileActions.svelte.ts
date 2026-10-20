@@ -21,6 +21,7 @@ export class FileActions {
         if (tab.edit) {
           tab.edit.draft = tab.edit.baseline;
           tab.edit.uncertain = null;
+          tab.edit.conflict = null;
           tab.edit.version++;
         }
       }

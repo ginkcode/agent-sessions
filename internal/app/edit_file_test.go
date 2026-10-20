@@ -45,7 +45,7 @@ func TestApp_SaveFileOfflineNeverReachesLocal(t *testing.T) {
 	a.conn.localActive = false
 	a.conn.state = ConnectionState{Phase: ConnReconnecting, Host: "box", Generation: 1, Error: "connection lost"}
 
-	res, err := a.SaveFile("/project", testSave)
+	res, err := a.SaveFile("/project", testSave, "box")
 	if !errors.Is(err, rpc.ErrDisconnected) {
 		t.Fatalf("SaveFile err = %v, want ErrDisconnected", err)
 	}
@@ -58,7 +58,7 @@ func TestApp_SaveFileOfflineNeverReachesLocal(t *testing.T) {
 
 	// Disconnect is the only way back to Local.
 	a.conn.Disconnect()
-	res, err = a.SaveFile("/project", testSave)
+	res, err = a.SaveFile("/project", testSave, "")
 	if err != nil || res.Content == nil || res.Content.Text != "local" {
 		t.Fatalf("after disconnect = %+v, %v", res, err)
 	}
@@ -78,7 +78,7 @@ func TestApp_SaveFileRoutesToSelectedHost(t *testing.T) {
 	a.conn.client = remoteBox
 	a.conn.state = ConnectionState{Phase: ConnConnected, Host: "box", Generation: 1, Capabilities: rpc.Capabilities{SaveFile: true}}
 
-	res, err := a.SaveFile("/remote/project", testSave)
+	res, err := a.SaveFile("/remote/project", testSave, "box")
 	if err != nil || res.Content == nil || res.Content.Text != "box" {
 		t.Fatalf("connected save = %+v, %v", res, err)
 	}
@@ -96,7 +96,10 @@ func TestApp_SaveFileRoutesToSelectedHost(t *testing.T) {
 	a.conn.client = nil
 	a.conn.state = ConnectionState{Phase: ConnConnecting, Host: "other", Generation: 2}
 	a.conn.mu.Unlock()
-	if _, err := a.SaveFile("/remote/project", testSave); !errors.Is(err, rpc.ErrDisconnected) {
+	if _, err := a.SaveFile("/remote/project", testSave, "box"); !errors.Is(err, ErrSaveHostChanged) {
+		t.Fatalf("save meant for box err = %v, want ErrSaveHostChanged", err)
+	}
+	if _, err := a.SaveFile("/remote/project", testSave, "other"); !errors.Is(err, rpc.ErrDisconnected) {
 		t.Fatalf("connecting save err = %v, want ErrDisconnected", err)
 	}
 	if got := remoteBox.calls(); len(got) != 1 {
@@ -104,6 +107,32 @@ func TestApp_SaveFileRoutesToSelectedHost(t *testing.T) {
 	}
 	if got := local.calls(); len(got) != 0 {
 		t.Fatalf("save reached Local: %v", got)
+	}
+}
+
+func TestApp_SaveFileRefusesAnotherHost(t *testing.T) {
+	local := &saveRecorder{name: "local"}
+	remoteBox := &saveRecorder{name: "box"}
+	a := NewApp()
+	a.backend = local
+	a.conn = newConnection(nil)
+
+	// Local serves; a save the editor meant for box must not land here.
+	if _, err := a.SaveFile("/project", testSave, "box"); !errors.Is(err, ErrSaveHostChanged) {
+		t.Fatalf("save for box on Local err = %v, want ErrSaveHostChanged", err)
+	}
+
+	a.conn.wantHost = "box"
+	a.conn.localActive = false
+	a.conn.client = remoteBox
+	a.conn.state = ConnectionState{Phase: ConnConnected, Host: "box", Generation: 1, Capabilities: rpc.Capabilities{SaveFile: true}}
+	for _, host := range []string{"", "other"} {
+		if _, err := a.SaveFile("/project", testSave, host); !errors.Is(err, ErrSaveHostChanged) {
+			t.Fatalf("save for %q on box err = %v, want ErrSaveHostChanged", host, err)
+		}
+	}
+	if got := append(local.calls(), remoteBox.calls()...); len(got) != 0 {
+		t.Fatalf("a save for another host reached a backend: %v", got)
 	}
 }
 

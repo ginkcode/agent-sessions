@@ -86,7 +86,7 @@ test('save snapshots remain attached to hidden/cached tab and later typing stays
   store.updateDraft(tab, 'submitted');
   const pending = deferred();
   let request;
-  fixture.api.saveFile = (dir, req) => { request = { dir, ...req }; return pending.promise; };
+  fixture.api.saveFile = (dir, req, host) => { request = { dir, host, ...req }; return pending.promise; };
   const saving = store.saveEdited(tab);
   assert.equal(tab.edit.saving, true);
   assert.equal(store.closeTab(tab.path), false);
@@ -98,7 +98,7 @@ test('save snapshots remain attached to hidden/cached tab and later typing stays
   assert.equal(store.draftTargets[0].dir, '/p');
   pending.resolve({ status: 'saved', content: content('submitted', 'r2') });
   assert.equal(await saving, true);
-  assert.deepEqual(request, { dir: '/p', path: 'a.txt', text: 'submitted', expectedRevision: 'r1' });
+  assert.deepEqual(request, { dir: '/p', host: undefined, path: 'a.txt', text: 'submitted', expectedRevision: 'r1' });
   assert.equal(tab.edit.baseline, 'submitted');
   assert.equal(tab.edit.draft, 'later typing');
   assert.equal(tab.edit.dirty, true);
@@ -138,6 +138,41 @@ test('conflicts and failures retain drafts; reload errors and races never discar
   assert.equal(tab.edit.draft, 'disk');
   assert.ok(tab.edit.version > version);
   assert.equal(store.hasUnsaved, false);
+});
+
+test('a save failing after writing began stays protected even when undone to the baseline', async () => {
+  const { store, fixture, tab } = await setup();
+  store.startEditing(tab.path);
+  store.updateDraft(tab, 'submitted');
+  const pending = deferred();
+  fixture.api.saveFile = () => pending.promise;
+  const saving = store.saveEdited(tab);
+  store.updateDraft(tab, 'old\n'); // undo back to the baseline while saving
+  const reads = [];
+  fixture.api.readFile = () => { const d = deferred(); reads.push(d); return d.promise; };
+  pending.reject(new Error('the save failed after writing began; the file may have changed: sync target: EIO'));
+  assert.equal(await saving, false);
+  assert.equal(tab.edit.uncertain.text, 'submitted');
+  assert.equal(tabHasUnsaved(tab), true);
+  assert.equal(store.closeTab(tab.path), false);
+  assert.equal(reads.length, 1, 'the outcome is reconciled by a read, never a replayed write');
+
+  // A partial write is neither the old nor the submitted bytes: a conflict
+  // that still protects the draft, the only intact copy.
+  reads[0].resolve(content('subm', 'partial'));
+  await tick();
+  assert.equal(tab.edit.uncertain, null);
+  assert.deepEqual(tab.edit.conflict, { observedRevision: 'partial' });
+  assert.equal(tab.edit.draft, 'old\n');
+  assert.equal(tabHasUnsaved(tab), true);
+  assert.equal(store.closeTab(tab.path), false);
+
+  // A plain refusal (nothing written) is not uncertain.
+  fixture.api.saveFile = async () => { throw new Error('file is read-only'); };
+  tab.edit.conflict = null;
+  store.updateDraft(tab, 'again');
+  assert.equal(await store.saveEdited(tab), false);
+  assert.equal(tab.edit.uncertain, null);
 });
 
 test('host and epoch gates prevent writes to a different host and retain uncertain snapshots', async () => {

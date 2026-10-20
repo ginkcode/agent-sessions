@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/ginkcode/agent-sessions/internal/engine"
+	"github.com/ginkcode/agent-sessions/internal/files"
 )
 
 // Standard JSON-RPC 2.0 error codes.
@@ -33,6 +34,7 @@ const (
 	ErrCodeProtocolMismatch = "protocol_mismatch"
 	ErrCodePayloadTooLarge  = "payload_too_large"
 	ErrCodeTimeout          = "timeout"
+	ErrCodeSaveIncomplete   = "save_incomplete"
 )
 
 // Client-side and server-side sentinel errors.
@@ -114,6 +116,8 @@ func ToRPCError(err error) *ResponseError {
 		strCode = ErrCodePayloadTooLarge
 	case errors.Is(err, ErrTimeout):
 		strCode = ErrCodeTimeout
+	case errors.Is(err, files.ErrSaveIncomplete):
+		strCode = ErrCodeSaveIncomplete
 	default:
 		code = CodeInternalError
 	}
@@ -169,6 +173,8 @@ func FromRPCError(respErr *ResponseError) error {
 		sentinel = ErrPayloadTooLarge
 	case ErrCodeTimeout:
 		sentinel = ErrTimeout
+	case ErrCodeSaveIncomplete:
+		sentinel = files.ErrSaveIncomplete
 	}
 
 	if sentinel != nil {

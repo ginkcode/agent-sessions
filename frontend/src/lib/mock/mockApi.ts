@@ -724,7 +724,7 @@ export class MockBackendAPI {
     return content;
   }
 
-  async saveFile(dir: string, req: FileSaveRequest): Promise<FileSaveResult> {
+  async saveFile(dir: string, req: FileSaveRequest, _host?: string): Promise<FileSaveResult> {
     const current = await this.readFile(dir, req.path);
     if (!current.edit?.eligible) throw new Error('This file cannot be edited.');
     if (current.revision !== req.expectedRevision) {

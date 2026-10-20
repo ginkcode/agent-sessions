@@ -428,6 +428,7 @@ test('after destroy every controller method is an inert no-op and destroy is ide
 
 const component = await loadServerComponent(COMPONENT_URL, [
   ["'svelte'", JSON.stringify(import.meta.resolve('svelte'))],
+  ["import { filePrompt } from '../../../stores/filePrompt.svelte';", 'const filePrompt = { request: null };'],
 ]);
 
 test('FileEditor server-renders an empty host and inert command exports before the runtime loads', async () => {

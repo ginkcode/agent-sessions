@@ -415,10 +415,22 @@ func (a *App) ReadFile(dir, path string) (files.Content, error) {
 }
 
 // SaveFile saves a file edited in the file viewer on the selected host, if
-// it still has the revision it was edited from.
-func (a *App) SaveFile(dir string, req files.SaveRequest) (files.SaveResult, error) {
-	return a.activeBackend().SaveFile(a.appCtx(), dir, req)
+// it still has the revision it was edited from. host is the host the editor
+// read the file from ("" for Local); the save is refused, with nothing
+// written, when calls are routed elsewhere by now. The host is checked
+// against the same routing snapshot the save uses, so a host switch cannot
+// slip in between.
+func (a *App) SaveFile(dir string, req files.SaveRequest, host string) (files.SaveResult, error) {
+	r := a.route()
+	if r.host != host {
+		return files.SaveResult{}, ErrSaveHostChanged
+	}
+	return r.backend.SaveFile(a.appCtx(), dir, req)
 }
+
+// ErrSaveHostChanged refuses a save meant for another host than the one
+// calls now go to. Nothing was written.
+var ErrSaveHostChanged = errors.New("the connection changed to another host; nothing was saved")
 
 // Diagnostics returns aggregated scanner health across providers.
 func (a *App) Diagnostics() (provider.Diagnostics, error) {

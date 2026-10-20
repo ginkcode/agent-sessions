@@ -35,6 +35,15 @@ export function isDisconnectedError(err: unknown): boolean {
 }
 
 /**
+ * Matches files.ErrSaveIncomplete: a save failed after writing began, so the
+ * file may hold the old bytes, the new ones or a mix.
+ */
+export function isSaveIncompleteError(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err ?? '');
+  return msg.includes('the save failed after writing began');
+}
+
+/**
  * Wraps a backend so a reply is rejected with StaleReplyError when `epoch()`
  * moved while the call was in flight. Methods in `passthrough` (connection
  * control, events) are never guarded.

@@ -408,3 +408,33 @@ func TestCheckEdit(t *testing.T) {
 		})
 	}
 }
+
+// A failure once writing began cannot say what the file holds, so it must be
+// distinguishable from a refusal that left the file alone.
+func TestOverwriteFailureIsIncomplete(t *testing.T) {
+	root := t.TempDir()
+	write(t, root, "f.txt", "old\n")
+	f, err := os.Open(filepath.Join(root, "f.txt")) // read-only: writing fails
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	target := &editTarget{file: f}
+	if err := target.overwrite([]byte("new\n")); !errors.Is(err, ErrSaveIncomplete) {
+		t.Fatalf("overwrite err = %v, want ErrSaveIncomplete", err)
+	}
+}
+
+func TestSaveRefusalsAreNotIncomplete(t *testing.T) {
+	root := t.TempDir()
+	write(t, root, "f.txt", "old\n")
+	for _, req := range []SaveRequest{
+		{Path: "f.txt", Text: "x", ExpectedRevision: "sha256:nope"},
+		{Path: "missing.txt", Text: "x", ExpectedRevision: sha("old\n")},
+		{Path: "f.txt", Text: "bad\r", ExpectedRevision: sha("old\n")},
+	} {
+		if _, err := Save(context.Background(), EditPolicy{}, root, req); err == nil || errors.Is(err, ErrSaveIncomplete) {
+			t.Errorf("Save(%q) err = %v, want a refusal that is not ErrSaveIncomplete", req.Path, err)
+		}
+	}
+}

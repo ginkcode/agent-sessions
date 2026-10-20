@@ -65,6 +65,32 @@ other machines over SSH or in WSL distributions.
   OSC 7 directory notifications themselves. Commands that change directories
   and print paths before the next prompt can still require absolute paths.
 
+**Edit files**
+
+- In Go to File, press **Edit** on a text file to make small changes without
+  leaving the app. **Save** (Cmd+S / Ctrl+S) writes the file; there is no
+  autosave. **Discard** reloads the file from disk, and **Done** returns to the
+  viewer. Unsaved tabs show a dot.
+- Drafts survive switching tabs or directories, hiding the dialog and
+  reconnecting to the same host, including undo history. They live only in
+  memory: closing a tab, switching hosts or quitting asks to Save, Discard or
+  Cancel, but a crash or forced quit loses them.
+- Saves check that the file has not changed since it was opened. If it has,
+  your draft is kept and you choose to reload or to overwrite (asked twice).
+  A save interrupted by a dropped connection is never resent; after reconnecting
+  the app reads the file to tell whether it was written.
+- The file's encoding details are kept: UTF-8 BOM, LF or CRLF line endings and
+  the final newline. Saving rewrites the existing file in place, so its
+  permissions and hard links are preserved; a crash or full disk in the middle
+  of a save can leave the file partly written. If a save fails partway, the app
+  rereads the file and keeps your draft until you save or discard it.
+- Files stay read-only when they are larger than 500 KB, binary or not UTF-8,
+  have mixed line endings, are reached through a symbolic link, or are in
+  protected places such as `.git`, credential files and the agents' own data
+  directories.
+- Remote hosts must run a server version that supports saving; older servers
+  stay view-only.
+
 **Share**
 
 - Export a session as a `.agent-session.zip` bundle. *Complete* bundles keep

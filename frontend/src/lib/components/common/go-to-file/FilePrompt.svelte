@@ -5,12 +5,27 @@
   $effect(() => {
     if (!filePrompt.request) return;
     const previous = document.activeElement;
-    void tick().then(() => panel?.querySelector<HTMLButtonElement>('[data-cancel]')?.focus());
-    return () => { if (previous instanceof HTMLElement) previous.focus(); };
+    const cancel = () => panel?.querySelector<HTMLButtonElement>('[data-cancel]')?.focus();
+    void tick().then(cancel);
+    // Keep focus in the prompt, even if something behind it (such as an
+    // editor that just finished loading) takes focus.
+    const contain = (e: FocusEvent) => {
+      if (panel && e.target instanceof Node && !panel.contains(e.target)) cancel();
+    };
+    document.addEventListener('focusin', contain);
+    return () => {
+      document.removeEventListener('focusin', contain);
+      if (previous instanceof HTMLElement) previous.focus();
+    };
   });
+  const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform);
   function key(e: KeyboardEvent) {
     e.stopPropagation();
     if (e.key === 'Escape') { e.preventDefault(); filePrompt.answer(null); }
+    // Shortcuts the dialog and editor own (find, save, close) must not reach
+    // the browser either while the prompt decides.
+    const mod = isMac ? e.metaKey : e.ctrlKey;
+    if (mod && ['f', 's', 'w'].includes(e.key.toLowerCase())) e.preventDefault();
     if (e.key === 'Tab') {
       const buttons = [...(panel?.querySelectorAll<HTMLButtonElement>('button') ?? [])];
       const index = buttons.indexOf(document.activeElement as HTMLButtonElement);

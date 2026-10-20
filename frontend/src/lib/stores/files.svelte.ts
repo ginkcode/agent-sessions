@@ -1,7 +1,7 @@
 import { api } from '../api';
 import type { FileContent, FileEditInfo, FileListing } from '../types';
 import { errorText } from '../manage';
-import { epoch, isDisconnectedError, isStaleReply } from '../link';
+import { epoch, isDisconnectedError, isSaveIncompleteError, isStaleReply } from '../link';
 import { link } from './link.svelte';
 import { canEditContent, editorText, serializedEditSize } from '../fileEditing';
 import { parentFolders } from '../files';
@@ -33,8 +33,14 @@ export interface FileEditState {
   version: number;
 }
 
+/**
+ * A draft that is not known to be on disk. An unresolved conflict counts even
+ * when the draft equals the baseline: after a failed save the disk may hold a
+ * partial write, and the draft is then the only intact copy.
+ */
 export function tabHasUnsaved(tab: FileTab): boolean {
-  return !!tab.edit && (tab.edit.draft !== tab.edit.baseline || tab.edit.saving || !!tab.edit.uncertain);
+  const edit = tab.edit;
+  return !!edit && (edit.draft !== edit.baseline || edit.saving || !!edit.uncertain || !!edit.conflict);
 }
 
 export interface DraftTarget {
@@ -431,7 +437,7 @@ export class FilesStore {
     edit.saveError = null;
     edit.conflict = null;
     try {
-      const result = await api.saveFile(dir, { path: tab.path, text: snapshot.text, expectedRevision: snapshot.expectedRevision });
+      const result = await api.saveFile(dir, { path: tab.path, text: snapshot.text, expectedRevision: snapshot.expectedRevision }, host);
       if (!valid()) return false;
       if (!sameHost()) {
         edit.uncertain = snapshot;
@@ -451,7 +457,10 @@ export class FilesStore {
       return true;
     } catch (err) {
       if (!valid()) return false;
-      if (!sameHost() || isStaleReply(err) || isDisconnectedError(err)) edit.uncertain = snapshot;
+      // The disk may hold the submitted bytes (or part of them): keep unsaved
+      // protection until a read settles it, even if the draft was undone to
+      // the baseline meanwhile.
+      if (!sameHost() || isStaleReply(err) || isDisconnectedError(err) || isSaveIncompleteError(err)) edit.uncertain = snapshot;
       edit.saveError = errorText(err, 'Could not save the file.');
       return false;
     } finally {

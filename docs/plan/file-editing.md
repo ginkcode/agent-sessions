@@ -1,9 +1,10 @@
 # Go to File — lightweight file editing
 
-Status: implementation started. FE-01 audit completed; filesystem policy details
-remain open. FE-02 revision/text-format slice is implemented and tested; path,
-protected-target, and platform eligibility checks are pending. No saves or
-editing UI are enabled.
+Status: FE-01–FE-12 implemented on branch `editor` (commits `11ca1cd`,
+`82e00ca`, `6e5581a` and the release-review fixes). Editing is exposed in the
+UI. Automated regression coverage is in place and the release review (FE-14) is
+done, with its findings fixed. Manual desktop and Linux/Windows/SSH/WSL QA
+(FE-13) has not been performed and blocks release.
 
 ## Goal and scope
 
@@ -223,9 +224,32 @@ otherwise preserve the draft and require the normal revision/conflict flow.
   error bar. Preview, presentation, Git diff and viewer find hide while editing;
   the editor renders ahead of deleted/empty/error states. Typing is frozen only
   during coordinated prompts and quit, not during ordinary saves or disconnects.
-- Current validation: 296 frontend tests pass (drafts, coordinator, prompt,
+- Release review (FE-14): no body/credential logging, no unchecked revision, no
+  silent loss through previews, directory changes, dialog hiding or reset.
+  Findings fixed:
+  - A save failing after writing began (write/truncate/sync) now returns
+    `files.ErrSaveIncomplete` (RPC code `save_incomplete`); the frontend marks
+    it uncertain and reconciles by reading, so a draft undone to the baseline
+    stays protected. An unresolved conflict also counts as unsaved, since after
+    a partial write the draft is the only intact copy.
+  - A lazily loaded editor no longer takes focus while a prompt is open; the
+    prompt keeps focus inside itself (document `focusin`) and blocks the
+    browser's Cmd/Ctrl+F/S/W defaults.
+  - `App.SaveFile` takes the host the file was read from and refuses the save,
+    unwritten (`ErrSaveHostChanged`), unless the same routing snapshot used for
+    the call is that host.
+  - Escape regression from the fullscreen safeguard (`9e2f01a`) fixed in
+    `6e5581a`: handlers use `keyHandled(e)` instead of `defaultPrevented`.
+- Earlier validation: 296 frontend tests pass (drafts, coordinator, prompt,
   editor, viewer controls); Svelte check has 0 errors and the existing tsconfig
   warning; production build passes; full Go suite and desktop-tag tests pass.
+- Bundle check: CodeMirror lives only in the lazy `fileEditor` chunk
+  (~324 kB, ~105 kB gzip) with language modules in separate chunks; the main
+  `index` chunk contains no CodeMirror code, so viewing never loads the editor.
+  Responsiveness near the 500 KB limit is not yet measured.
+- Latest validation (after the review fixes): 299 frontend tests, Svelte check
+  (0 errors, existing tsconfig warning), production build, `go vet ./...`,
+  `go test ./...`, race tests for app/files/rpc and desktop-tag tests pass.
 - Pending: native desktop interaction QA (editing, close/quit prompts, real
   CodeMirror DOM focus/search/scroll), Linux/Windows filesystem behaviour, and
   SSH/WSL disconnect-during-save scenarios.
@@ -259,42 +283,44 @@ otherwise preserve the draft and require the normal revision/conflict flow.
 Every task is scoped to at most four engineering hours, including focused tests.
 Split a task further before implementation if it exceeds that size. Estimates
 are provisional; platform-safe replacement and native close guards are the main
-uncertainties. All tasks start unchecked.
+uncertainties. Checkboxes record actual status; unrun manual QA stays unchecked.
+Since the user chose in-place writes, "replacement"/"temporary file" items below
+are satisfied by the in-place contract (same inode, truncate, sync) instead.
 
-| ID | Task | Est | Depends on |
-|---|---|---|---|
-| FE-01 | Finalize contracts and filesystem safety decisions | 3 h | — |
-| FE-02 | Add edit eligibility and revision metadata to reads | 3 h | FE-01 |
-| FE-03a | Add protected-target and rooted path preflight | 3 h | FE-01 |
-| FE-03b | Add target identity, hard-link and Unix metadata checks | 4 h | FE-02, FE-03a |
-| FE-03c | Implement revision-checked Unix replacement and locking | 4 h | FE-03b |
-| FE-04 | Implement and verify Windows safe replacement | 4 h | FE-03 |
-| FE-05 | Wire backend, RPC, desktop, capabilities, and mocks | 4 h | FE-03, FE-04 |
-| FE-06 | Add draft-aware tab state and save snapshot handling | 4 h | FE-02, FE-05 |
-| FE-07 | Integrate lazy-loaded CodeMirror and retained editor state | 4 h | FE-06 |
-| FE-08 | Add editing toolbar, shortcuts, and viewer transitions | 3 h | FE-07 |
-| FE-09 | Add dirty-tab and coordinated bulk-close guards | 3 h | FE-06, FE-08 |
-| FE-10 | Protect drafts across host transitions and disconnects | 4 h | FE-05, FE-06, FE-09 |
-| FE-11 | Guard native window close and normal app quit | 4 h | FE-09 |
-| FE-12 | Add conflict UI and targeted post-save refresh | 4 h | FE-05, FE-08, FE-09 |
-| FE-13 | Regression coverage and cross-platform QA | 4 h | FE-10, FE-11, FE-12 |
-| FE-14 | Document behavior and complete release review | 2 h | FE-13 |
+| ID | Task | Est | Depends on | Status |
+|---|---|---|---|---|
+| FE-01 | Finalize contracts and filesystem safety decisions | 3 h | — | Done |
+| FE-02 | Add edit eligibility and revision metadata to reads | 3 h | FE-01 | Done |
+| FE-03a | Add protected-target and rooted path preflight | 3 h | FE-01 | Done |
+| FE-03b | Add target identity, hard-link and Unix metadata checks | 4 h | FE-02, FE-03a | Done (in-place) |
+| FE-03c | Implement revision-checked Unix replacement and locking | 4 h | FE-03b | Done (in-place) |
+| FE-04 | Implement and verify Windows safe replacement | 4 h | FE-03 | Code done; Windows QA pending |
+| FE-05 | Wire backend, RPC, desktop, capabilities, and mocks | 4 h | FE-03, FE-04 | Done |
+| FE-06 | Add draft-aware tab state and save snapshot handling | 4 h | FE-02, FE-05 | Done |
+| FE-07 | Integrate lazy-loaded CodeMirror and retained editor state | 4 h | FE-06 | Done; real-DOM QA pending |
+| FE-08 | Add editing toolbar, shortcuts, and viewer transitions | 3 h | FE-07 | Done |
+| FE-09 | Add dirty-tab and coordinated bulk-close guards | 3 h | FE-06, FE-08 | Done |
+| FE-10 | Protect drafts across host transitions and disconnects | 4 h | FE-05, FE-06, FE-09 | Done; SSH/WSL QA pending |
+| FE-11 | Guard native window close and normal app quit | 4 h | FE-09 | Done; native QA pending |
+| FE-12 | Add conflict UI and targeted post-save refresh | 4 h | FE-05, FE-08, FE-09 | Done |
+| FE-13 | Regression coverage and cross-platform QA | 4 h | FE-10, FE-11, FE-12 | Automated done; manual pending |
+| FE-14 | Document behavior and complete release review | 2 h | FE-13 | Done; findings fixed |
 
 Total: approximately 50 hours including platform hardening and QA; revise after
 FE-01. Independent frontend/backend work can overlap once contracts are settled.
 
 ### FE-01 — Contracts and filesystem safety decisions
 
-- [ ] Define revision, eligibility/read-only reason, request, and structured
+- [x] Define revision, eligibility/read-only reason, request, and structured
   success/conflict types, including how conflicts expose the observed revision.
-- [ ] Define byte-preserving editor serialization: BOM, LF/CRLF, empty files,
+- [x] Define byte-preserving editor serialization: BOM, LF/CRLF, empty files,
   final newline, and unsupported newline detection.
-- [ ] Audit reusable Go safe-write/path helpers, Windows replacement APIs,
+- [x] Audit reusable Go safe-write/path helpers, Windows replacement APIs,
   hard-link detection, ACL/metadata handling, and native window/quit hooks.
-- [ ] Define protected targets: project editing must not bypass existing rules
+- [x] Define protected targets: project editing must not bypass existing rules
   against writes to tool session stores or credential files when a known
   directory is unusually broad. Identify enforcement points and tests.
-- [ ] Record concrete decisions here and split any oversized downstream task.
+- [x] Record concrete decisions here and split any oversized downstream task.
 
 Done when: implementation contracts are unambiguous, no safety issue is silently
 left to frontend validation, and unsupported filesystem cases have explicit
@@ -305,9 +331,9 @@ read-only/error behavior.
 - [x] Extend Go and frontend content types with revision and edit eligibility.
 - [x] Compute revisions from the same bytes returned by a text read.
 - [x] Describe text-format/size restrictions without weakening viewer support.
-- [ ] Connect path, protected-target, and platform eligibility checks; remove
+- [x] Connect path, protected-target, and platform eligibility checks; remove
   `safety_pending` only when the complete save safety policy is enforceable.
-- [ ] Test empty files, BOM, LF/CRLF, mixed endings, binary, size boundaries,
+- [x] Test empty files, BOM, LF/CRLF, mixed endings, binary, size boundaries,
   invalid UTF-8, symlink paths, and unsupported/protected targets.
 
 Done when: an eligible read carries enough metadata to open and serialize an
@@ -322,15 +348,16 @@ It is deliberately not authorization for a subsequent pathname-based write.
   rooted component checks, and regression tests. Reject `..` components before
   normalization in targets, project roots, and policy roots; otherwise cleaning
   could conceal symlink traversal or protect the wrong configured directory.
-- [ ] Wire configured host-local roots into service read eligibility and saves.
-- [ ] FE-03b: implement rooted target opening/identity checks, hard-link refusal,
+- [x] Wire configured host-local roots into service read eligibility and saves.
+- [x] FE-03b: implement rooted target opening/identity checks, hard-link refusal,
   and supported Unix permission/ownership/ACL/extended-attribute policy.
-- [ ] FE-03c: add bounded, revision-checked save support under `internal/files/`.
-- [ ] Revalidate target identity, path safety, eligibility, and permissions.
-- [ ] Use a same-directory temporary file and safe replacement, preserve
-  supported metadata, and clean temporary files on all failure paths.
-- [ ] Serialize competing in-process saves to the same canonical target.
-- [ ] Test stale revisions, concurrent saves, deleted/replaced files, traversal,
+- [x] FE-03c: add bounded, revision-checked save support under `internal/files/`.
+- [x] Revalidate target identity, path safety, eligibility, and permissions.
+- [x] ~~Use a same-directory temporary file and safe replacement~~ Superseded by
+  the chosen in-place write (same inode, truncate, sync); metadata is preserved
+  because the inode is kept. No temporary files are created.
+- [x] Serialize competing in-process saves to the same canonical target.
+- [x] Test stale revisions, concurrent saves, deleted/replaced files, traversal,
   symlink components, hard links, no-op saves, cancellation, and failed writes.
 
 Done when: successful saves return the exact new baseline/revision and failures
@@ -338,7 +365,8 @@ do not truncate the original or silently create a missing target.
 
 ### FE-04 — Windows safe saves
 
-- [ ] Implement Windows replacement semantics without a delete-then-write gap.
+- [x] Implement Windows save semantics without a delete-then-write gap (in-place
+  write of the existing file; code and cross-compile vet only).
 - [ ] Verify ACL/read-only attributes, shared/open handles, path casing,
   junctions/reparse points, hard links, Unicode paths, and CRLF/BOM retention.
 - [ ] Test failure cleanup and verify actual behavior on Windows, not only a
@@ -349,12 +377,12 @@ unsupported cases fail clearly and keep the original intact.
 
 ### FE-05 — End-to-end save API
 
-- [ ] Extend backend interface, service known-directory checks, engine routing,
+- [x] Extend backend interface, service known-directory checks, engine routing,
   app binding, RPC params/client/dispatcher, and offline implementations.
-- [ ] Add a save capability and hide/disable editing for older remote servers.
-- [ ] Update frontend API, browser mocks, test backends, and binding types.
-- [ ] Verify structured conflicts across both transports and bounded payloads.
-- [ ] Test local/remote routing, unknown directories, unsupported capability,
+- [x] Add a save capability and hide/disable editing for older remote servers.
+- [x] Update frontend API, browser mocks, test backends, and binding types.
+- [x] Verify structured conflicts across both transports and bounded payloads.
+- [x] Test local/remote routing, unknown directories, unsupported capability,
   disconnected behavior, and protected-target rejection on the backend.
 
 Done when: local, SSH, and WSL use the same validated operation; remote saves
@@ -362,76 +390,76 @@ cannot accidentally write the equivalent path on the local host.
 
 ### FE-06 — Draft-aware tab state
 
-- [ ] Add baseline/revision, draft, dirty, editing, saving, and save-error state.
+- [x] Add baseline/revision, draft, dirty, editing, saving, and save-error state.
   Keep CodeMirror-specific objects out of serializable API data.
-- [ ] Promote preview tabs on edit and preserve drafts in per-directory state.
-- [ ] Make refresh, reopen, and asynchronous reads respect drafts and edits.
-- [ ] Save an immutable snapshot; typing while saving remains dirty relative to
+- [x] Promote preview tabs on edit and preserve drafts in per-directory state.
+- [x] Make refresh, reopen, and asynchronous reads respect drafts and edits.
+- [x] Save an immutable snapshot; typing while saving remains dirty relative to
   that snapshot. Undoing to the baseline clears dirty state.
-- [ ] Key pending operations by host, directory, tab identity, and generation;
+- [x] Key pending operations by host, directory, tab identity, and generation;
   ignore stale responses without moving a draft to another target.
-- [ ] Test tab changes, read/save races, failed saves, refresh, and reopen.
+- [x] Test tab changes, read/save races, failed saves, refresh, and reopen.
 
 Done when: navigation and refresh cannot silently replace an unsaved buffer.
 
 ### FE-07 — CodeMirror component
 
-- [ ] Add `FileEditor.svelte` with lazy-loaded CodeMirror 6 and a bounded set of
+- [x] Add `FileEditor.svelte` with lazy-loaded CodeMirror 6 and a bounded set of
   lazy language modules; plain text is the fallback.
-- [ ] Add theme, line numbers, indentation, history, search, and wrap support.
-- [ ] Retain per-tab editor state/selection/scroll across switches and dialog
+- [x] Add theme, line numbers, indentation, history, search, and wrap support.
+- [x] Retain per-tab editor state/selection/scroll across switches and dialog
   hide/show; dispose it when a tab is discarded or genuinely closed.
-- [ ] Avoid mounting an editor DOM for every inactive tab; avoid rebuilding
+- [x] Avoid mounting an editor DOM for every inactive tab; avoid rebuilding
   editor state from scratch on each keystroke.
-- [ ] Test mount/unmount cleanup, tab switching, undo, and draft synchronization.
+- [x] Test mount/unmount cleanup, tab switching, undo, and draft synchronization.
 
 Done when: editor state stays intact across navigation and the normal viewer
 path does not eagerly load the editor bundle.
 
 ### FE-08 — Editing controls and shortcuts
 
-- [ ] Add Edit, Save, Discard, and Done editing with accessible labels and
+- [x] Add Edit, Save, Discard, and Done editing with accessible labels and
   clear saving/error/read-only states. Empty files must expose Edit.
-- [ ] Route Cmd/Ctrl+S and Cmd/Ctrl+F correctly; prevent app/browser shortcut
+- [x] Route Cmd/Ctrl+S and Cmd/Ctrl+F correctly; prevent app/browser shortcut
   conflicts and preserve Alt+Z, Escape, dialog locking, and focus restoration.
-- [ ] Keep previews, presentation, and Git diff read-only; guard mode changes
+- [x] Keep previews, presentation, and Git diff read-only; guard mode changes
   that leave a dirty editor. Do not render unsaved source as a saved-file diff.
-- [ ] Keep editing available after a successful save without losing history.
+- [x] Keep editing available after a successful save without losing history.
 
 Done when: keyboard and mouse editing flows work without changing read-only
 viewer behavior or silently discarding edits.
 
 ### FE-09 — Tab close coordination
 
-- [ ] Add dirty indicators, including accessible unsaved-state text.
-- [ ] Route close button, middle-click, Cmd/Ctrl+W, and all context-menu close
+- [x] Add dirty indicators, including accessible unsaved-state text.
+- [x] Route close button, middle-click, Cmd/Ctrl+W, and all context-menu close
   actions through a common Save / Discard / Cancel coordinator.
-- [ ] Preflight bulk actions with one coordinated decision; cancel leaves tabs
+- [x] Preflight bulk actions with one coordinated decision; cancel leaves tabs
   open, failed saves retain affected drafts, and no prompt overlaps another.
-- [ ] Reuse the coordinator for Done editing and discard confirmation.
+- [x] Reuse the coordinator for Done editing and discard confirmation.
 
 Done when: every tab-removal path is guarded and tested, including inactive tabs.
 
 ### FE-10 — Host lifecycle and uncertain saves
 
-- [ ] Guard explicit host switches and resets that would clear drafts,
+- [x] Guard explicit host switches and resets that would clear drafts,
   including drafts in cached directories; cancel preserves the current context.
-- [ ] Preserve drafts on unexpected disconnect and prevent writes to a newly
+- [x] Preserve drafts on unexpected disconnect and prevent writes to a newly
   selected host using an old tab's path/revision.
-- [ ] Handle reconnect and stale connection generations without applying late
+- [x] Handle reconnect and stale connection generations without applying late
   save/read replies to the wrong state.
-- [ ] Reconcile unknown save outcomes against the submitted snapshot without
+- [x] Reconcile unknown save outcomes against the submitted snapshot without
   automatic replay; later typing must remain dirty.
 
 Done when: a disconnect or host transition cannot lose or misroute a draft.
 
 ### FE-11 — Native close and quit guards
 
-- [ ] Connect draft protection to actual Wails window-close and normal quit
+- [x] Connect draft protection to actual Wails window-close and normal quit
   paths, not only browser `beforeunload`.
-- [ ] Coordinate Save / Discard / Cancel across all cached drafts; save failure
+- [x] Coordinate Save / Discard / Cancel across all cached drafts; save failure
   or cancellation keeps the window open. Handle repeated close requests.
-- [ ] Provide appropriate browser-development unload protection and clean up
+- [x] Provide appropriate browser-development unload protection and clean up
   listeners. Do not promise protection against forced termination.
 - [ ] Verify shortcut quit, window close, and normal application quit on the
   supported desktop platforms; account for multiple app windows.
@@ -441,20 +469,20 @@ windows close without an unnecessary prompt.
 
 ### FE-12 — Conflict handling and saved-file refresh
 
-- [ ] Add conflict UI retaining the draft, with Reload, Overwrite…, and Cancel.
-- [ ] Confirm destructive reload/overwrite; retry overwrite against the observed
+- [x] Add conflict UI retaining the draft, with Reload, Overwrite…, and Cancel.
+- [x] Confirm destructive reload/overwrite; retry overwrite against the observed
   revision. Another disk change must conflict again.
-- [ ] Keep deleted/replaced/protected targets out of the overwrite path.
-- [ ] On successful save, update the exact submitted baseline and targeted Git
+- [x] Keep deleted/replaced/protected targets out of the overwrite path.
+- [x] On successful save, update the exact submitted baseline and targeted Git
   metadata; do not reread dirty tabs or overwrite edits made during the save.
-- [ ] Distinguish save success from a subsequent Git refresh failure.
+- [x] Distinguish save success from a subsequent Git refresh failure.
 
 Done when: conflicts are explicit, recoverable, and tested across RPC and local
 bindings; disk refresh failures do not misreport a completed write as failed.
 
 ### FE-13 — Regression and platform QA
 
-- [ ] Run Go tests, frontend tests, Svelte checks, and applicable lint/build
+- [x] Run Go tests, frontend tests, Svelte checks, and applicable lint/build
   checks; add regression tests for the complete edit/save lifecycle.
 - [ ] Verify source/Markdown/SVG viewing, images, find, wrapping, Git diff,
   presentation, dialog lock, terminal-file opening, and tab context actions.
@@ -462,7 +490,7 @@ bindings; disk refresh failures do not misreport a completed write as failed.
   stale conflicts, permissions, disconnect during save, and native close guards.
 - [ ] Check editor load/bundle cost, responsiveness near the edit limit, and
   cleanup when many tabs/directories are opened and closed.
-- [ ] Record actual checks and untested platform cases; do not mark unrun QA as
+- [x] Record actual checks and untested platform cases; do not mark unrun QA as
   passing. Split extended QA if the task exceeds four hours.
 
 Done when: acceptance scenarios pass on tested platforms and any remaining
@@ -470,10 +498,10 @@ platform gaps are explicit release blockers or documented limitations.
 
 ### FE-14 — Documentation and release review
 
-- [ ] Update README with editing shortcuts, explicit-save behavior, eligibility,
+- [x] Update README with editing shortcuts, explicit-save behavior, eligibility,
   conflict handling, remote compatibility, and draft-loss limitations.
-- [ ] Record final contracts, deviations, task status, and QA evidence here.
-- [ ] Review changes for accidental credential/body logging, writes outside the
+- [x] Record final contracts, deviations, task status, and QA evidence here.
+- [x] Review changes for accidental credential/body logging, writes outside the
   project boundary, silent draft loss, and unsupported safety claims.
 
 Done when: documentation matches shipped behavior and all unresolved blockers

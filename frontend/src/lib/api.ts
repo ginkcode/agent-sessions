@@ -109,7 +109,8 @@ export interface BackendAPI {
    * Saves an edited file on the selected host if it still has
    * req.expectedRevision; otherwise reports a conflict and writes nothing.
    */
-  saveFile(dir: string, req: FileSaveRequest): Promise<FileSaveResult>;
+  /** host: where the file was read (undefined for Local); refused, unwritten, if calls now go elsewhere. */
+  saveFile(dir: string, req: FileSaveRequest, host: string | undefined): Promise<FileSaveResult>;
   /** Arm native close coordination before mounting any editable document. */
   enableFileEditing(): Promise<boolean>;
   completeFileClose(id: number, allow: boolean): Promise<void>;
@@ -201,7 +202,7 @@ interface WailsAppBinding {
   ResolveTerminalFile(dir: string, path: string): Promise<TerminalFileTarget>;
   ListFiles(dir: string): Promise<FileListing>;
   ReadFile(dir: string, path: string): Promise<FileContent>;
-  SaveFile(dir: string, req: FileSaveRequest): Promise<FileSaveResult>;
+  SaveFile(dir: string, req: FileSaveRequest, host: string): Promise<FileSaveResult>;
   EnableFileEditing(): Promise<boolean>;
   CompleteFileClose(id: number, allow: boolean): Promise<void>;
   RevealFile(dir: string, path: string): Promise<void>;
@@ -562,9 +563,9 @@ class WailsBackendAPI implements BackendAPI {
     }
   }
 
-  async saveFile(dir: string, req: FileSaveRequest): Promise<FileSaveResult> {
+  async saveFile(dir: string, req: FileSaveRequest, host: string | undefined): Promise<FileSaveResult> {
     try {
-      return await this.binding.SaveFile(dir, req);
+      return await this.binding.SaveFile(dir, req, host ?? '');
     } catch (e) {
       throw normalizeError(e);
     }
