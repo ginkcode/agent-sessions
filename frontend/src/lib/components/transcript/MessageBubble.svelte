@@ -97,7 +97,6 @@
   let menuItems = $derived.by((): ContextMenuItem[] => {
     const items: ContextMenuItem[] = [
       { label: 'Copy', onSelect: () => void copyMessage() },
-      { label: 'Print / Save as PDF…', onSelect: print },
     ];
     if (!translateSettings.configured) {
       items.push(
@@ -116,6 +115,7 @@
     } else {
       items.push({ label: `Translate to ${translateSettings.language}`, onSelect: translate });
     }
+    items.push({ label: 'Print / Save as PDF…', onSelect: print });
     return items;
   });
 </script>
