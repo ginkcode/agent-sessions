@@ -772,8 +772,16 @@
       {/if}
       {#if selectedLines && !showPreview}
         <div class="line-actions">
-          <span>{selectedLines.anchor === selectedLines.head ? `Line ${selectedLines.head}` : `Lines ${Math.min(selectedLines.anchor, selectedLines.head)}–${Math.max(selectedLines.anchor, selectedLines.head)}`}</span>
-          <button type="button" class="copy-btn" disabled={blameLoading || connectionStore.capabilities.blame !== true || Boolean(blocked)} onclick={blameSelectedLine}>Blame line {selectedLines.head}</button>
+          <button
+            type="button"
+            class="copy-btn icon-btn"
+            aria-label={selectedLines.anchor === selectedLines.head ? `Blame line ${selectedLines.head}` : `Blame lines ${Math.min(selectedLines.anchor, selectedLines.head)}–${Math.max(selectedLines.anchor, selectedLines.head)}`}
+            title="Blame selected line"
+            disabled={blameLoading || connectionStore.capabilities.blame !== true || Boolean(blocked)}
+            onclick={blameSelectedLine}
+          >
+            <span class="btn-icon icon-git" aria-hidden="true"></span>
+          </button>
           {#if blameOpen}<button type="button" class="copy-btn" onclick={closeBlame}>Close blame</button>{/if}
           <button type="button" class="copy-btn" aria-label="Clear line selection" onclick={() => { if (activeTab) lineSelections.delete(activeTab); selectionVersion++; closeBlame(); }}>×</button>
         </div>
@@ -926,6 +934,11 @@
   .icon-wrap {
     -webkit-mask: url('../../../../../assets/wrap.svg') center / contain no-repeat;
     mask: url('../../../../../assets/wrap.svg') center / contain no-repeat;
+  }
+
+  .icon-git {
+    -webkit-mask: url('../../../../../assets/git.svg') center / contain no-repeat;
+    mask: url('../../../../../assets/git.svg') center / contain no-repeat;
   }
 
   .font-size {
