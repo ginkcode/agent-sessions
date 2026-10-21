@@ -153,7 +153,10 @@ func Rename(ctx context.Context, policy EditPolicy, root, rel, name string) erro
 // Authorize that spelling only; the native no-replace operation remains decisive.
 func (p EditPolicy) checkRenameDestination(root, source, target string) error {
 	err := p.checkTarget(root, target, true, true)
-	if !errors.Is(err, os.ErrExist) || (runtime.GOOS != "darwin" && runtime.GOOS != "windows") || source == target || !strings.EqualFold(filepath.Clean(source), target) {
+	// Callers may supply slash-separated paths even on Windows. Normalize
+	// before distinguishing a no-op from an actual case-only rename.
+	source, target = filepath.Clean(source), filepath.Clean(target)
+	if !errors.Is(err, os.ErrExist) || (runtime.GOOS != "darwin" && runtime.GOOS != "windows") || source == target || !strings.EqualFold(source, target) {
 		return err
 	}
 	if err := p.checkTarget(root, target, false, true); err != nil {

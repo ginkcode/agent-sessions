@@ -55,7 +55,7 @@ func TestRenameRejectsUnsafePaths(t *testing.T) {
 		{filepath.Join(root, "sub/file"), "new"}, {"sub/file", "../new"}, {"sub/file", "a/b"},
 		{"sub/file", "a\\b"}, {"sub/file", ""}, {"sub/file", "."}, {"sub/file", ".."},
 		{"sub/file", "auth.json"}, {".git", "repo"}, {"link/file", "new"}, {"link", "new"},
-		{"sub/file", "existing"}, {"sub/file", "file"}, {"sub/missing", "new"},
+		{"sub/file", "existing"}, {"sub/file", "file"}, {filepath.Join("sub", "file"), "file"}, {"sub/missing", "new"},
 	} {
 		t.Run(tc.path+"->"+tc.name, func(t *testing.T) {
 			if err := Rename(context.Background(), EditPolicy{}, root, tc.path, tc.name); err == nil {
