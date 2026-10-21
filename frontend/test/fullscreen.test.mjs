@@ -4,15 +4,22 @@ import { readFileSync } from 'node:fs';
 import { isFullscreenShortcut, toggleFullscreen, preventDesktopEscapeFullscreen, keyHandled } from '../src/lib/fullscreen.ts';
 import { terminalKeyAction } from '../src/lib/terminal.ts';
 
-const key = { type: 'keydown', key: 'F', code: 'KeyF', metaKey: true, shiftKey: true, ctrlKey: false, altKey: false };
+const key = { type: 'keydown', key: 'f', code: 'KeyF', metaKey: true, shiftKey: false, ctrlKey: true, altKey: false };
 
-test('fullscreen shortcuts use Cmd+Shift+F on macOS and F11 elsewhere, including terminals', () => {
+test('fullscreen shortcuts use Ctrl+Cmd+F on macOS and F11 elsewhere, including terminals', () => {
   assert.equal(isFullscreenShortcut(key, true), true);
-  assert.equal(isFullscreenShortcut({ ...key, shiftKey: false }, true), false);
-  assert.equal(isFullscreenShortcut({ ...key, ctrlKey: true }, true), false);
+  assert.equal(isFullscreenShortcut({ ...key, ctrlKey: false }, true), false);
+  assert.equal(isFullscreenShortcut({ ...key, metaKey: false }, true), false);
+  assert.equal(isFullscreenShortcut({ ...key, shiftKey: true }, true), false);
+  assert.equal(isFullscreenShortcut({ ...key, altKey: true }, true), false);
+  assert.equal(isFullscreenShortcut({ ...key, ctrlKey: false, shiftKey: true }, true), false);
+  assert.equal(isFullscreenShortcut({ ...key, metaKey: false, shiftKey: true }, true), false);
   assert.equal(isFullscreenShortcut(key, false), false);
-  const f11 = { ...key, key: 'F11', code: 'F11', metaKey: false, shiftKey: false };
+  const f11 = { ...key, key: 'F11', code: 'F11', metaKey: false, ctrlKey: false };
   assert.equal(isFullscreenShortcut(f11, false), true);
+  for (const modifier of ['ctrlKey', 'metaKey', 'shiftKey', 'altKey']) {
+    assert.equal(isFullscreenShortcut({ ...f11, [modifier]: true }, false), false);
+  }
   assert.equal(terminalKeyAction(key, true), 'app');
   assert.equal(terminalKeyAction(f11, false), 'app');
 });

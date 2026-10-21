@@ -2,10 +2,10 @@ export function isFullscreenShortcut(
   e: Pick<KeyboardEvent, 'code' | 'metaKey' | 'ctrlKey' | 'altKey' | 'shiftKey'>,
   mac: boolean,
 ): boolean {
-  if (e.ctrlKey || e.altKey) return false;
+  if (e.altKey) return false;
   return mac
-    ? e.code === 'KeyF' && e.metaKey && e.shiftKey
-    : e.code === 'F11' && !e.metaKey && !e.shiftKey;
+    ? e.code === 'KeyF' && e.ctrlKey && e.metaKey && !e.shiftKey
+    : e.code === 'F11' && !e.ctrlKey && !e.metaKey && !e.shiftKey;
 }
 
 // WebKit can consume Escape before NSWindow.cancelOperation is reached.

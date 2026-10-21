@@ -3,6 +3,38 @@
 Platform quirks that cost time to find. Check here before changing the
 affected code.
 
+## macOS fullscreen shortcut — exit needs investigation
+
+Control+Command+F is the standard macOS fullscreen toggle in apps that support
+native fullscreen. It may be handled by AppKit/the window menu before the
+WKWebView receives a keyboard event.
+
+User-reported desktop behavior (not yet independently reproduced):
+
+- Control+Command+F enters fullscreen.
+- Pressing it again does **not** exit fullscreen.
+- The user observed that the shortcut already entered fullscreen; whether that
+  came from native handling or the app's frontend handler is not yet confirmed.
+
+The frontend now recognizes Control+Command+F on macOS in
+`frontend/src/lib/fullscreen.ts` (previously Command+Shift+F). It calls the Wails
+window fullscreen APIs. Non-macOS platforms keep F11. Reserve Control+Shift+F
+for the planned Go to File directory-content search.
+
+Follow-up investigation:
+
+- Test a fresh desktop build, with focus in the file viewer, editor, and terminal,
+  both before and after entering fullscreen.
+- Check whether each keypress reaches `App.svelte` and whether
+  `WindowIsFullscreen` reflects the actual native window state.
+- Check native menu/AppKit handling and possible competing native/frontend
+  toggles before choosing a fix. Do not assume the frontend sees both presses.
+- Verify enter/exit with the green window button or native menu as a comparison.
+- Keep the intentional Escape-does-not-exit-fullscreen behavior separate from
+  this issue. Unit tests cover frontend logic, not native shortcut delivery.
+
+No fullscreen-exit fix has been implemented or verified for this report.
+
 ## Mouse side buttons (back / forward)
 
 The app moves back and forward between sessions with the mouse's side
