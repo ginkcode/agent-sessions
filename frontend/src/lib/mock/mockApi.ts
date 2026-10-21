@@ -684,6 +684,11 @@ export class MockBackendAPI {
     console.info('[MockAPI] copyFile:', dir, path);
   }
 
+  async addFile(dir: string, path: string, host: string): Promise<boolean> {
+    console.info('[MockAPI] addFile:', dir, path, host);
+    return false;
+  }
+
   async downloadFile(dir: string, path: string): Promise<string> {
     console.info('[MockAPI] downloadFile:', dir, path);
     const name = path.split('/').pop();
@@ -706,7 +711,33 @@ export class MockBackendAPI {
     return { dir: root, path: relative };
   }
 
+  private renamedListings = new Map<string, FileListing>();
+
+  async renameFile(dir: string, path: string, name: string, host: string): Promise<void> {
+    if (host !== (this.connState.host ?? '')) throw new Error('The selected host changed.');
+    if (!path || !name || name === '.' || name === '..' || /[\/\\\\\0]/.test(name)) throw new Error('Invalid name.');
+    const listing = await this.listFiles(dir);
+    const paths = [...listing.files, ...(listing.ignored ?? [])];
+    const matches = (p: string) => p === path || p.startsWith(path + '/');
+    if (!paths.some(matches)) throw new Error('File not found.');
+    const destination = path.slice(0, path.lastIndexOf('/') + 1) + name;
+    if (path === destination) return;
+    if (paths.some(p => p === destination || p.startsWith(destination + '/'))) throw new Error('Destination already exists.');
+    const remap = (p: string) => matches(p) ? destination + p.slice(path.length) : p;
+    for (const old of paths.filter(matches)) {
+      const content = await this.readFile(dir, old);
+      this.fileDrafts.set(JSON.stringify([host, dir, remap(old)]), { ...content, path: remap(old) });
+      this.fileDrafts.delete(JSON.stringify([host, dir, old]));
+    }
+    this.renamedListings.set(JSON.stringify([host, dir]), {
+      ...listing, files: listing.files.map(remap), ignored: listing.ignored?.map(remap),
+      status: Object.fromEntries(Object.entries(listing.status ?? {}).map(([p, status]) => [remap(p), status])),
+    });
+  }
+
   async listFiles(dir: string): Promise<FileListing> {
+    const renamed = this.renamedListings.get(JSON.stringify([this.connState.host ?? '', dir]));
+    if (renamed) return structuredClone(renamed);
     return {
       root: dir,
       git: true,

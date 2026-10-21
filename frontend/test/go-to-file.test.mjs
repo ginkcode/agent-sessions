@@ -19,6 +19,7 @@ const dialog = await loadServerComponent(new URL('../GoToFileDialog.svelte', bas
   ["import FileTabs from './go-to-file/FileTabs.svelte';", 'const FileTabs = () => {};'],
   ["import FileViewer from './go-to-file/FileViewer.svelte';", 'const FileViewer = () => {};'],
   ["import FilePrompt from './go-to-file/FilePrompt.svelte';", 'const FilePrompt = () => {};'],
+  ["import RenamePrompt from './go-to-file/RenamePrompt.svelte';", 'const RenamePrompt = () => {};'],
   ["import { fileActions } from '../../stores/fileActions.svelte';", 'const fileActions = {};'],
   ["import { tabShortcut } from '../../tabActions';", lib('../../../tabActions.ts')],
   ["'svelte'", JSON.stringify(import.meta.resolve('svelte'))],
@@ -51,6 +52,7 @@ test('dialog offers an unlocked Escape lock toggle and a separate close button',
   assert.match(html, /aria-keyshortcuts="Control\+Shift\+L"/);
   assert.match(html, /Lock dialog \(Ctrl\+Shift\+L; prevent Escape from closing it\)/);
   assert.match(html, /aria-label="Close"/);
+  assert.match(html, /<button[^>]*aria-label="Project directory actions"[^>]*>\/project<\/button>/);
 });
 
 function renderPicker(files = {}, props = {}) {

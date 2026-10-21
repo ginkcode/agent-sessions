@@ -13,6 +13,8 @@
   import FileViewer from './go-to-file/FileViewer.svelte';
   import { onMount } from 'svelte';
   import FilePrompt from './go-to-file/FilePrompt.svelte';
+  import RenamePrompt from './go-to-file/RenamePrompt.svelte';
+  let renamePath = $state<string | null>(null);
   import { fileActions } from '../../stores/fileActions.svelte';
   import { keyHandled } from '../../fullscreen';
   import { tabShortcut } from '../../tabActions';
@@ -103,12 +105,44 @@
     }
   }
 
+  async function addFile(path: string) {
+    const dir = files.dir;
+    const host = link.dataHost;
+    if (!dir || actionBusy || link.locked || link.blockedReason) return;
+    actionBusy = true;
+    try {
+      if (!await api.addFile(dir, path, host ?? '')) return;
+      toast.show({ title: host ? 'File uploaded' : 'File added', body: path || dir });
+      // A native picker or remote transfer can outlive the current project.
+      if (files.dir === dir && link.dataHost === host) {
+        if (path) files.setExpanded(new Set([...files.expanded, path]));
+        await files.refresh();
+      }
+    } catch (err) {
+      toast.show({ title: host ? 'Upload failed' : 'Could not add file', body: err instanceof Error ? err.message : String(err), tone: 'error' });
+    } finally {
+      actionBusy = false;
+    }
+  }
+
   let contextItems = $derived.by((): ContextMenuItem[] => {
     if (!context) return [];
     const { path, directory } = context;
     const remote = Boolean(link.dataHost);
-    const disabled = actionBusy || link.locked || fileStatus(path) === 'D';
+    const disabled = actionBusy || fileActions.busy || fileActions.quitting || link.locked || fileStatus(path) === 'D';
     const items: ContextMenuItem[] = [];
+    if (directory) items.push({
+      label: remote ? 'Upload File…' : 'Add File…',
+      disabled: disabled || Boolean(link.blockedReason),
+      title: link.blockedReason || (remote ? 'Choose a local file to upload into this directory' : 'Choose a local file to copy into this directory'),
+      onSelect: () => void addFile(path),
+    });
+    if (path) items.push({
+      label: 'Rename…',
+      disabled: disabled || Boolean(link.blockedReason) || Boolean(files.renameUncertain),
+      title: files.renameUncertain || link.blockedReason || 'Rename without losing open drafts',
+      onSelect: () => { renamePath = path; },
+    });
     if (!remote) items.push({ label: 'Reveal', disabled, onSelect: () => void fileAction('reveal', path) });
     items.push({
       label: remote ? 'Download' : 'Copy', disabled,
@@ -123,7 +157,7 @@
   });
 
   function close() {
-    if (fileActions.busy || fileActions.quitting) return;
+    if (fileActions.busy || fileActions.quitting || renamePath !== null) return;
     presentation = false;
     fileTabs?.closeContext();
     context = null;
@@ -144,7 +178,7 @@
 </script>
 
 <svelte:window onkeydown={(e) => {
-  if (!files.open || fileActions.busy || fileActions.quitting) return;
+  if (!files.open || fileActions.busy || fileActions.quitting || renamePath !== null) return;
   if (e.ctrlKey && e.shiftKey && !e.metaKey && !e.altKey && e.code === 'KeyL') {
     e.preventDefault();
     e.stopPropagation();
@@ -170,6 +204,9 @@
 }} />
 
 <FilePrompt />
+{#if renamePath !== null}
+  <RenamePrompt path={renamePath} onClose={() => (renamePath = null)} />
+{/if}
 
 <!-- Keep the viewer mounted so preview preferences and tab scroll positions survive closing. -->
 <div class="dialog-backdrop" hidden={!files.open} role="presentation">
@@ -199,7 +236,15 @@
           <path d="M8 10v1" />
         </svg>
       </button>
-      <span class="root" title={files.dir}>{directoryName(files.dir ?? '')}</span>
+      <button
+        type="button"
+        class="root"
+        title={files.dir}
+        aria-label="Project directory actions"
+        aria-haspopup="menu"
+        oncontextmenu={(e) => openContext(e, '', true)}
+        onclick={(e) => openContext(e, '', true)}
+      >{directoryName(files.dir ?? '')}</button>
       {#if link.dataHost}
         <span class="host-pill">{hostLabel(link.dataHost)}</span>
       {/if}
@@ -265,6 +310,8 @@
   }
 
   .root {
+    cursor: pointer;
+    text-align: left;
     font-family: var(--font-mono);
     font-size: 0.8rem;
     color: var(--text-secondary);

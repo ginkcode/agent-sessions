@@ -83,6 +83,9 @@ export class FilesStore {
   // What was open in each directory (folders, tabs, the tab shown), kept
   // while the app runs, so Go to File opens there as it was left.
   private saved = new Map<string, { expanded: Set<string>; tabs: FileTab[]; selected: string | null }>();
+  renaming = $state(false);
+  /** Do not write to old paths after a rename with an unknown outcome. */
+  renameUncertain = $state<string | null>(null);
   private listSeq = 0;
   private readSeq = 0;
   private editVersion = 0;
@@ -219,6 +222,7 @@ export class FilesStore {
   }
 
   async show(dir: string): Promise<void> {
+    if (this.renaming) return;
     // Until the host-transition coordinator exists, retain the old host's drafts
     // and refuse to populate that cache with another host's responses.
     if (this.hasHost && this.dataHost !== link.dataHost && !this.reset()) return;
@@ -268,6 +272,64 @@ export class FilesStore {
         this.refreshing = false;
       }
     }
+  }
+
+  /** Rename in place: retain tab/editor identities, draft text and undo history. */
+  async rename(path: string, name: string): Promise<void> {
+    const dir = this.dir;
+    const host = this.dataHost;
+    if (!dir || !path || !name || name === '.' || name === '..' || /[\\/\\\\\0]/.test(name)) throw new Error('Enter a single file or directory name.');
+    if (name === path.split('/').pop()) return;
+    if (this.renaming || this.renameUncertain) throw new Error(this.renameUncertain || 'A rename is already in progress.');
+    const blocked = this.mutationError(host);
+    if (blocked) throw new Error(blocked);
+    const matches = (p: string) => p === path || p.startsWith(path + '/');
+    const affected = this.tabs.filter(t => matches(t.path));
+    if (affected.some(t => t.edit?.saving || t.edit?.uncertain) || affected.some(t => this.reconciling.has(t))) {
+      throw new Error('Wait for pending saves to finish and resolve unknown save outcomes before renaming.');
+    }
+    const destination = path.slice(0, path.lastIndexOf('/') + 1) + name;
+    if (this.tabs.some(t => !matches(t.path) && (t.path === destination || t.path.startsWith(destination + '/')))) {
+      throw new Error('The destination already has open tabs. Close them before renaming.');
+    }
+    const started = epoch();
+    const connection = this.connectionSeq;
+    const current = () => started === epoch() && connection === this.connectionSeq && this.dir === dir && host === link.dataHost;
+    this.renaming = true;
+    // Supersede old-path reads, including explicit draft reloads.
+    this.listSeq++;
+    this.loadingList = this.refreshing = false;
+    for (const tab of affected) { tab.token = ++this.readSeq; tab.loading = false; }
+    try {
+      await api.renameFile(dir, path, name, host ?? '');
+      if (!current()) throw new Error('The connection changed during rename.');
+      this.remapPaths(path, destination);
+      this.refreshing = true;
+      await this.list(dir);
+      for (const tab of affected) if (!tab.edit) void this.read(tab.path);
+    } catch (err) {
+      if (!current() || isStaleReply(err) || isDisconnectedError(err)) {
+        this.renameUncertain = 'The rename outcome is unknown. Verify the paths on disk before reopening this project; saving and renaming are disabled to protect drafts.';
+        throw new Error(this.renameUncertain);
+      }
+      throw err;
+    } finally { this.renaming = false; }
+  }
+
+  /** Prefix boundaries matter: renaming src must not change src-old. */
+  remapPaths(path: string, destination: string): void {
+    const remap = (p: string) => p === path || p.startsWith(path + '/') ? destination + p.slice(path.length) : p;
+    for (const tab of this.tabs) {
+      const next = remap(tab.path);
+      if (next === tab.path) continue;
+      tab.token = ++this.readSeq;
+      tab.loading = false;
+      tab.path = next;
+      if (tab.content) tab.content = { ...tab.content, path: next };
+    }
+    if (this.selected) this.selected = remap(this.selected);
+    this.expanded = new Set([...this.expanded].map(remap));
+    this.save();
   }
 
   setExpanded(next: Set<string>): void {
@@ -432,7 +494,7 @@ export class FilesStore {
     if (!target?.tab.edit) return false;
     const { tab, dir, host } = target;
     const edit = tab.edit!;
-    if (edit.saving || edit.uncertain) return false;
+    if (edit.saving || edit.uncertain || this.renaming || this.renameUncertain) return false;
     const blocked = this.mutationError(host);
     if (blocked) {
       edit.saveError = blocked;
@@ -505,7 +567,7 @@ export class FilesStore {
     if (!target?.tab.edit) return false;
     const { tab, dir, host } = target;
     const edit = tab.edit!;
-    if (edit.saving) return false;
+    if (edit.saving || this.renaming || this.renameUncertain) return false;
     const blocked = this.mutationError(host);
     if (blocked) {
       edit.saveError = blocked;
@@ -548,15 +610,17 @@ export class FilesStore {
 
   /** Closes the dialog. What was open is kept for next time. */
   close(): void {
+    if (this.renaming) return;
     this.save();
     this.clear();
   }
 
   /** Refuse destructive resets until a coordinator has resolved every draft. */
   reset(): boolean {
-    if (this.hasUnsaved) return false;
+    if (this.hasUnsaved || this.renaming) return false;
     this.clear();
     this.saved.clear();
+    this.renameUncertain = null;
     this.editVersion++;
     this.hasHost = false;
     this.dataHost = undefined;

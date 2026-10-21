@@ -467,6 +467,20 @@ func (s *Server) dispatch(ctx context.Context, req Request) (any, error) {
 		}
 		return backend.ResolveTerminalFile(ctx, p.Dir, p.Path)
 
+	case "renameFile":
+		var p RenameFileParams
+		if err := json.Unmarshal(req.Params, &p); err != nil {
+			return nil, &ResponseError{Code: CodeInvalidParams, Message: err.Error()}
+		}
+		return nil, backend.RenameFile(ctx, p.Dir, p.Path, p.Name)
+
+	case "commitFileUpload":
+		var p FileDownloadParams
+		if err := json.Unmarshal(req.Params, &p); err != nil {
+			return nil, &ResponseError{Code: CodeInvalidParams, Message: err.Error()}
+		}
+		return nil, backend.CommitFileUpload(ctx, p.Dir, p.Path, p.Token)
+
 	case "prepareFileDownload":
 		var p FileDownloadParams
 		if err := json.Unmarshal(req.Params, &p); err != nil {

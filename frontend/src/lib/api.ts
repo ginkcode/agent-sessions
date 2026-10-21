@@ -123,6 +123,8 @@ export interface BackendAPI {
   revealFile(dir: string, path: string): Promise<void>;
   copyFile(dir: string, path: string): Promise<void>;
   downloadFile(dir: string, path: string): Promise<string>;
+  addFile(dir: string, path: string, host: string): Promise<boolean>;
+  renameFile(dir: string, path: string, name: string, host: string): Promise<void>;
   terminalFonts(): Promise<string[]>;
   listPortForwards(): Promise<PortForwardState>;
   savePortForward(rule: PortForwardRequest): Promise<PortForwardState>;
@@ -215,6 +217,8 @@ interface WailsAppBinding {
   RevealFile(dir: string, path: string): Promise<void>;
   CopyFile(dir: string, path: string): Promise<void>;
   DownloadFile(dir: string, path: string): Promise<string>;
+  AddFile(dir: string, path: string, host: string): Promise<boolean>;
+  RenameFile(dir: string, path: string, name: string, host: string): Promise<void>;
   TerminalFonts(): Promise<string[]>;
   ListPortForwards(): Promise<PortForwardState>;
   SavePortForward(rule: PortForwardRequest): Promise<PortForwardState>;
@@ -612,6 +616,18 @@ class WailsBackendAPI implements BackendAPI {
     } catch (e) {
       throw normalizeError(e);
     }
+  }
+
+  async addFile(dir: string, path: string, host: string): Promise<boolean> {
+    try {
+      return await this.binding.AddFile(dir, path, host);
+    } catch (e) {
+      throw normalizeError(e);
+    }
+  }
+
+  async renameFile(dir: string, path: string, name: string, host: string): Promise<void> {
+    try { await this.binding.RenameFile(dir, path, name, host); } catch (e) { throw normalizeError(e); }
   }
 
   async downloadFile(dir: string, path: string): Promise<string> {

@@ -25,8 +25,8 @@ var ErrSaveIncomplete = errors.New("the save failed after writing began; the fil
 var revisionPattern = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
 
 // saveSlot is one global lock, as a one-slot semaphore so a waiter can give
-// up when its context ends. It serializes every save in this process, and
-// the editing checks, whatever path or project names the file: hard links
+// up when its context ends. It serializes every save, rename, and editing
+// check in this process, whatever path or project names the file: hard links
 // and aliased roots name one file many ways, and saves are short and rare
 // enough that per-file locking would only add hazards. Other processes are
 // not excluded: see Save.

@@ -23,6 +23,26 @@ const { FileActions } = await loadServerModule(new URL('../src/lib/stores/fileAc
   ["import { filePrompt } from './filePrompt.svelte';", fixtureStore('filePrompt', '__actionsFixture')],
 ]);
 
+test('rename holds the shared coordinator lock against closes, saves and host changes', async () => {
+  const pending = deferred();
+  const calls = [];
+  globalThis.__actionsFixture = {
+    files: { rename: (...args) => { calls.push(args); return pending.promise; } },
+    api: {}, filePrompt: {},
+  };
+  const actions = new FileActions();
+  const rename = actions.rename('src', 'lib');
+  assert.equal(actions.busy, true);
+  assert.equal(await actions.closeTabs(['src/a']), false);
+  assert.equal(await actions.saveInPlace({}), false);
+  assert.equal(await actions.changeHost(async () => { throw new Error('must not run'); }), false);
+  await assert.rejects(actions.rename('src', 'other'), /in progress/);
+  pending.resolve();
+  await rename;
+  assert.equal(actions.busy, false);
+  assert.deepEqual(calls, [['src', 'lib']]);
+});
+
 const tick = () => new Promise((r) => setImmediate(r));
 function deferred() {
   let resolve, reject;

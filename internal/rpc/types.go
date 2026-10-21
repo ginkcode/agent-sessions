@@ -61,7 +61,9 @@ type Capabilities struct {
 	// it false, and their files stay read-only.
 	SaveFile bool `json:"saveFile,omitempty"`
 	// Blame supports on-demand blame for one saved working-tree line.
-	Blame bool `json:"blame,omitempty"`
+	Blame      bool `json:"blame,omitempty"`
+	AddFile    bool `json:"addFile,omitempty"`
+	RenameFile bool `json:"renameFile,omitempty"`
 }
 
 // InitializeRequest is the first handshake message sent from client to server.

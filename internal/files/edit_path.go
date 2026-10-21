@@ -37,6 +37,16 @@ type EditPolicy struct {
 // components can change between checks. A save must use rooted opens, recheck
 // identity and eligibility, and implement platform-safe replacement separately.
 func (p EditPolicy) Check(root, rel string) error {
+	return p.check(root, rel, false)
+}
+
+// check also supports creation of a missing leaf, with identical protection rules.
+func (p EditPolicy) check(root, rel string, create bool) error {
+	return p.checkTarget(root, rel, create, false)
+}
+
+// checkTarget permits directory leaves only for rename; editing still requires regular files.
+func (p EditPolicy) checkTarget(root, rel string, create, directory bool) error {
 	if editHasParentComponent(rel) || !filepath.IsLocal(rel) || filepath.Clean(rel) == "." {
 		return ErrOutsideRoot
 	}
@@ -63,7 +73,8 @@ func (p EditPolicy) Check(root, rel string) error {
 			return fmt.Errorf("%w: resolve policy root %q: %w", ErrEditProtected, protected, err)
 		}
 		for _, target := range []string{lexTarget, realTarget} {
-			if editWithin(lexProtected, target) || editWithin(realProtected, target) {
+			if editWithin(lexProtected, target) || editWithin(realProtected, target) ||
+				(directory && (editWithin(target, lexProtected) || editWithin(target, realProtected))) {
 				return fmt.Errorf("%w: configured store", ErrEditProtected)
 			}
 		}
@@ -84,13 +95,21 @@ func (p EditPolicy) Check(root, rel string) error {
 	for i := range parts {
 		name := filepath.Join(parts[:i+1]...)
 		info, err := r.Lstat(name)
+		if create && i == len(parts)-1 {
+			if errors.Is(err, os.ErrNotExist) {
+				return nil
+			}
+			if err == nil {
+				return os.ErrExist
+			}
+		}
 		if err != nil {
 			return fmt.Errorf("%w: %s: %w", ErrEditTarget, name, err)
 		}
 		if info.Mode()&(os.ModeSymlink|os.ModeIrregular) != 0 {
 			return fmt.Errorf("%w: %s", ErrEditLink, name)
 		}
-		if (i < len(parts)-1 && !info.IsDir()) || (i == len(parts)-1 && !info.Mode().IsRegular()) {
+		if (i < len(parts)-1 && !info.IsDir()) || (i == len(parts)-1 && !info.Mode().IsRegular() && !(directory && info.IsDir())) {
 			return fmt.Errorf("%w: %s", ErrEditTarget, name)
 		}
 	}

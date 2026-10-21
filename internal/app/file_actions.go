@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 
 	"github.com/ginkcode/agent-sessions/internal/files"
 	"github.com/ginkcode/agent-sessions/internal/remote"
@@ -142,6 +143,72 @@ func (a *App) DownloadFile(dir, path string) (string, error) {
 		return "", err
 	}
 	return dest, nil
+}
+
+// AddFile picks one file on this computer and copies/uploads it into the selected
+// project directory. path is a project-relative destination directory, not a filename.
+// Cancellation returns false without creating anything.
+func (a *App) AddFile(dir, path, host string) (bool, error) {
+	ctx := a.appCtx()
+	r := a.route()
+	if r.host != host {
+		return false, ErrSaveHostChanged
+	}
+	if r.host != "" {
+		if r.transport == nil {
+			return false, fmt.Errorf("%w %s", rpc.ErrDisconnected, r.host)
+		}
+		if c, ok := r.backend.(*rpc.Client); ok && !c.Capabilities().AddFile {
+			return false, errors.New("remote host does not support adding files")
+		}
+	}
+	var source string
+	var err error
+	if a.openFileDialogOverride != nil {
+		source, err = a.openFileDialogOverride(ctx)
+	} else {
+		source, err = wruntime.OpenFileDialog(ctx, wruntime.OpenDialogOptions{Title: "Add File", DefaultDirectory: dialogDefaultDir()})
+	}
+	if err != nil || source == "" {
+		return false, err
+	}
+	// Preserve the directory text until backend validation (Join would hide '..').
+	name := filepath.Base(source)
+	target := name
+	if path != "" && path != "." {
+		target = strings.TrimRight(path, "/") + "/" + name
+	}
+	if a.route().host != host {
+		return false, ErrSaveHostChanged
+	}
+	if r.host == "" {
+		err = r.backend.AddFile(ctx, dir, target, source)
+		return err == nil, err
+	}
+	f, err := files.OpenAddSource(source)
+	if err != nil {
+		return false, err
+	}
+	defer f.Close()
+	token, err := remote.RandomArtifactToken("upload")
+	if err != nil {
+		return false, err
+	}
+	// Consume any partial upload even when transport/commit fails. A separate
+	// background context permits cleanup after the operation context is cancelled.
+	defer func() {
+		cleanup, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		_ = r.transport.GetArtifact(cleanup, token, true, discardWriter{})
+	}()
+	if _, err = r.transport.PutArtifact(ctx, token, f); err != nil {
+		return false, err
+	}
+	if a.route().host != host {
+		return false, ErrSaveHostChanged
+	}
+	err = r.backend.CommitFileUpload(ctx, dir, target, token)
+	return err == nil, err
 }
 
 type discardWriter struct{}

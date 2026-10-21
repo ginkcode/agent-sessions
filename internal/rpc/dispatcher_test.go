@@ -139,6 +139,10 @@ func (m *mockBackend) SaveFile(ctx context.Context, dir string, req files.SaveRe
 	return files.SaveResult{Status: files.SaveStatusSaved}, nil
 }
 
+func (m *mockBackend) AddFile(context.Context, string, string, string) error          { return nil }
+func (m *mockBackend) RenameFile(context.Context, string, string, string) error       { return nil }
+func (m *mockBackend) CommitFileUpload(context.Context, string, string, string) error { return nil }
+
 func (m *mockBackend) ResolveFile(ctx context.Context, dir, path string) (string, error) {
 	return dir + "/" + path, nil
 }
