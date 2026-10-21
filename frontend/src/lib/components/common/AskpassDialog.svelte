@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { modalFocus } from '../../modalFocus';
   import { connectionStore } from '../../stores/connection.svelte';
 
   let answer = $state('');
@@ -41,6 +42,7 @@
 
   function handleKeydown(e: KeyboardEvent) {
     if (e.key === 'Escape') {
+      e.preventDefault();
       e.stopPropagation();
       handleCancel();
     }
@@ -59,7 +61,7 @@
   >
     <div
       class="dialog"
-      role="dialog"
+      use:modalFocus role="dialog"
       aria-modal="true"
       aria-labelledby="askpass-dialog-title"
     >

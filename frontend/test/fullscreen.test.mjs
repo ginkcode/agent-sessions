@@ -68,6 +68,11 @@ test('desktop Escape safeguard uses capture so dialogs cannot bypass it by stopp
   assert.match(app, /window\.removeEventListener\('keydown', preventDesktopEscapeFullscreen, true\)/);
 });
 
+test('native macOS fullscreen does not exit on Escape', () => {
+  const gui = readFileSync(new URL('../../cmd/agent-sessions/run_gui.go', import.meta.url), 'utf8');
+  assert.match(gui, /DisableEscapeExitsFullscreen:\s*true/);
+});
+
 test('desktop Escape cancels WebKit fullscreen exit without swallowing the key', () => {
   const previous = globalThis.window;
   let cancelled = 0;

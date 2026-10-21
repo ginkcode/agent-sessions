@@ -249,6 +249,7 @@ async function renderDeleteDialog(fixture) {
   deleteDialogModule ??= await loadServerComponent(DELETE_DIALOG_URL, [
     ["'../../manage'", JSON.stringify(new URL('../../manage.ts', DELETE_DIALOG_URL).href)],
     ["'../../format'", JSON.stringify(new URL('../../format.ts', DELETE_DIALOG_URL).href)],
+    ["'../../modalFocus'", JSON.stringify(new URL('../../modalFocus.ts', DELETE_DIALOG_URL).href)],
     ["'../../hosts'", JSON.stringify(new URL('../../hosts.ts', DELETE_DIALOG_URL).href)],
     ["import { manage } from '../../stores/manage.svelte';", fixtureStore('manage')],
     ["import { connectionStore } from '../../stores/connection.svelte';", fixtureStore('connectionStore')],

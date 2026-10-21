@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount, tick } from 'svelte';
+  import { modalFocus } from '../../modalFocus';
   import type { LoadedImage } from '../../images';
   import type { FileRef, SessionRef } from '../../types';
   import { printDocument, printMarkdown, setPrintEditor } from '../../print';
@@ -71,6 +72,7 @@
     // Keep shortcuts from reaching the file viewer underneath this dialog.
     e.stopPropagation();
     if (e.key === 'Escape') {
+      e.preventDefault();
       void close();
     } else if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
       e.preventDefault();
@@ -82,7 +84,7 @@
 {#if open}
   <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
   <div class="dialog-backdrop" role="presentation" onkeydown={onKeydown}>
-    <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="print-dialog-title">
+    <div class="dialog" use:modalFocus role="dialog" aria-modal="true" aria-labelledby="print-dialog-title">
       <header class="dialog-header">
         <h2 id="print-dialog-title">Print / Save as PDF</h2>
       </header>

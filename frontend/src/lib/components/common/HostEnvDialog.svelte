@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { modalFocus } from '../../modalFocus';
   import {
     connectionStore,
     getSavedHostEnv,
@@ -67,12 +68,16 @@
       if (e.target === e.currentTarget) onClose();
     }}
     onkeydown={(e) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        onClose();
+      }
     }}
   >
     <div
       class="dialog"
-      role="dialog"
+      use:modalFocus role="dialog"
       aria-modal="true"
       aria-labelledby="host-env-title"
     >

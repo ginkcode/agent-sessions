@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { modalFocus } from '../../modalFocus';
   import { importer } from '../../stores/importer.svelte';
   import { appState } from '../../stores/appState.svelte';
   import { link } from '../../stores/link.svelte';
@@ -60,12 +61,13 @@
     }}
     onkeydown={(e) => {
       if (e.key === 'Escape') {
+        e.preventDefault();
         e.stopPropagation();
         cancel();
       }
     }}
   >
-    <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="import-dir-title">
+    <div class="dialog" use:modalFocus role="dialog" aria-modal="true" aria-labelledby="import-dir-title">
       <header class="dialog-header">
         <h2 id="import-dir-title">Choose Directory to Import Into</h2>
         {#if link.dataHost}

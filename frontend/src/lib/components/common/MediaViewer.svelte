@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { modalFocus } from '../../modalFocus';
   import { onMount, tick, untrack } from 'svelte';
   import { api } from '../../api';
   import { copyFailed } from '../../guidance';
@@ -294,7 +295,7 @@
 {#if content !== null}
   <div
     class="diagram-viewer"
-    role="dialog"
+    use:modalFocus role="dialog"
     aria-modal="true"
     aria-label={attached ? attached.name : 'Diagram'}
     tabindex="-1"

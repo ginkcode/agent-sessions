@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { modalFocus } from '../../modalFocus';
   import {
     summarizePreview,
     isPermanentDelete,
@@ -60,12 +61,16 @@
       if (e.target === e.currentTarget) handleCancel();
     }}
     onkeydown={(e) => {
-      if (e.key === 'Escape') handleCancel();
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        handleCancel();
+      }
     }}
   >
     <div
       class="dialog"
-      role="dialog"
+      use:modalFocus role="dialog"
       aria-modal="true"
       aria-labelledby="delete-confirm-title"
     >
