@@ -326,6 +326,17 @@ export class FilesStore {
     }
   }
 
+  /**
+   * Selects the tab at a position counting from 1, when that tab exists;
+   * returns whether it did. The digit shortcuts count tabs left to right.
+   */
+  selectNth(n: number): boolean {
+    const tab = this.tabs[n - 1];
+    if (!tab) return false;
+    this.selectTab(tab.path);
+    return true;
+  }
+
   /** Closes a tab; closing the one shown shows its neighbour. */
   closeTab(path: string): boolean {
     const at = this.tabs.findIndex((t) => t.path === path);

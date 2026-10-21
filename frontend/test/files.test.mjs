@@ -254,6 +254,14 @@ test('FilesStore: one click previews, double click keeps a tab, folders are reme
     store.selectTab('a.ts');
     store.selectTab('docs/nested/formats.md');
     assert.deepEqual([...store.expanded], ['docs', 'docs/nested'], 'switching file tabs reveals the selected file');
+
+    store.openFile('a.ts', { keep: true });
+    assert.equal(store.selectNth(0), false, 'positions count from 1');
+    assert.equal(store.selectNth(3), false, 'no tab at that position, no selection');
+    assert.equal(store.selectNth(2), true, 'the second tab selects');
+    assert.equal(store.selected, 'a.ts');
+    assert.equal(store.selectNth(1), true, 'the first tab selects');
+    assert.equal(store.selected, 'docs/nested/formats.md');
   } finally {
     delete globalThis.__storeFixture;
   }

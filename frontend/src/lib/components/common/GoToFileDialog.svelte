@@ -15,6 +15,7 @@
   import FilePrompt from './go-to-file/FilePrompt.svelte';
   import { fileActions } from '../../stores/fileActions.svelte';
   import { keyHandled } from '../../fullscreen';
+  import { tabShortcut } from '../../tabActions';
 
   onMount(() => {
     const off = api.onEvent('files:close-request', (id: number) => {
@@ -151,6 +152,12 @@
     return;
   }
   if (viewer?.handleKey(e)) return;
+  // Cmd+1–9 on macOS, Ctrl+1–9 elsewhere: selects an open file tab.
+  const tabNumber = tabShortcut(e, isMac);
+  if (tabNumber !== null) {
+    if (files.selectNth(tabNumber)) e.preventDefault();
+    return;
+  }
   if (e.key === 'Escape' && !keyHandled(e)) {
     e.preventDefault();
     e.stopPropagation();

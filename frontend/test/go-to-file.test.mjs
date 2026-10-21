@@ -20,6 +20,7 @@ const dialog = await loadServerComponent(new URL('../GoToFileDialog.svelte', bas
   ["import FileViewer from './go-to-file/FileViewer.svelte';", 'const FileViewer = () => {};'],
   ["import FilePrompt from './go-to-file/FilePrompt.svelte';", 'const FilePrompt = () => {};'],
   ["import { fileActions } from '../../stores/fileActions.svelte';", 'const fileActions = {};'],
+  ["import { tabShortcut } from '../../tabActions';", lib('../../../tabActions.ts')],
   ["'svelte'", JSON.stringify(import.meta.resolve('svelte'))],
   ["'../../fullscreen'", lib('../../../fullscreen.ts')],
 ]);
