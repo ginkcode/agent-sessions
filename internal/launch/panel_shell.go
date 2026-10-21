@@ -21,6 +21,13 @@ func panelCwdCommand() string {
 // them on exit/HUP; no user startup file is written. Unsupported shells retain
 // their ordinary login startup, without cwd reporting.
 func panelPosixShellScript(shell string) string {
+	return panelPosixStartupScript(shell, "")
+}
+
+// With a payload, start the agent at the first prompt, after environment hooks
+// (such as mise's project activation) have run. Never feed commands through the
+// terminal's stdin: it belongs to the agent.
+func panelPosixStartupScript(shell, payload string) string {
 	bashHook := `__agent_sessions_cwd() {
   local __as_result=$?
   ` + panelCwdCommand() + `
@@ -52,10 +59,36 @@ precmd_functions+=(__agent_sessions_cwd)
 	fishHook := `function __agent_sessions_cwd --on-event fish_prompt
   ` + "/bin/sh -c " + ShellEscape(panelCwdEncoder) + ` sh "$PWD"
 end`
+	bashRC := ""
+	fallback := `exec "$__as_shell" -l`
+	if payload != "" {
+		// The payload is POSIX sh, regardless of the user's shell syntax.
+		run := JoinCommand(PosixBootstrapArgv(payload))
+		bashHook += "__agent_sessions_run() {\n  " + run + "\n  exit $?\n}\n"
+		bashHook += "if (( BASH_VERSINFO[0] > 4 || (BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] >= 4) )); then\n  PROMPT_COMMAND+=(__agent_sessions_run)\nelse\n  PROMPT_COMMAND=\"$PROMPT_COMMAND\"$'\\n'__agent_sessions_run\nfi\n"
+		zshHook += "function __agent_sessions_run() {\n  " + run + "\n  exit $?\n}\nprecmd_functions+=(__agent_sessions_run)\n"
+		// fish_prompt events run before the prompt function itself.
+		fishHook += "\nfunction fish_prompt\n  " + run + "\n  exit $status\nend"
+		// Login profiles commonly source .bashrc themselves. Track that using
+		// a temporary DEBUG trap so activation isn't performed twice.
+		bashRC = `__as_rc_loaded=
+trap 'case "${BASH_SOURCE[0]}" in "$HOME/.bashrc") __as_rc_loaded=1;; esac' DEBUG
+set -T
+`
+		fallback = `exec "$__as_shell" -ilc ` + ShellEscape("exec "+run)
+	}
+	bashAfterProfile := ""
+	if payload != "" {
+		bashAfterProfile = `set +T
+trap - DEBUG
+if [ -z "$__as_rc_loaded" ] && [ -r "$HOME/.bashrc" ]; then . "$HOME/.bashrc"; fi
+unset __as_rc_loaded
+`
+	}
 	return `__as_shell=` + shell + `
 case "${__as_shell##*/}" in
 bash|zsh)
-  __as_tmp=$(mktemp -d "${TMPDIR:-/tmp}/agent-sessions-shell.XXXXXXXX") || exec "$__as_shell" -l
+  __as_tmp=$(mktemp -d "${TMPDIR:-/tmp}/agent-sessions-shell.XXXXXXXX") || { ` + fallback + `; }
   trap 'rm -rf -- "$__as_tmp"' 0
   trap 'exit 129' HUP
   trap 'exit 143' TERM
@@ -63,13 +96,13 @@ bash|zsh)
   bash)
     cat > "$__as_tmp/bashrc" <<'AGENT_SESSIONS_BASH'
 # --rcfile is ignored by login bash. Reproduce its login startup order here;
-# unlike sourcing .bashrc unconditionally, this respects the user's profile.
-[ ! -r /etc/profile ] || . /etc/profile
+# the plain shell tab respects the user's profile's choice of rc files.
+` + bashRC + `[ ! -r /etc/profile ] || . /etc/profile
 for __as_profile in "$HOME/.bash_profile" "$HOME/.bash_login" "$HOME/.profile"; do
   if [ -r "$__as_profile" ]; then . "$__as_profile"; break; fi
 done
 unset __as_profile
-` + bashHook + `AGENT_SESSIONS_BASH
+` + bashAfterProfile + bashHook + `AGENT_SESSIONS_BASH
     "$__as_shell" --rcfile "$__as_tmp/bashrc" -i
     ;;
   zsh)
@@ -97,7 +130,7 @@ unset __AS_USER_ZDOTDIR __AS_WRAPPER
   exit "$__as_status"
   ;;
 fish) exec "$__as_shell" -il -C ` + ShellEscape(fishHook) + ` ;;
-*) exec "$__as_shell" -l ;;
+*) ` + fallback + ` ;;
 esac
 `
 }

@@ -98,8 +98,10 @@ func TestPosixTerminalScript(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(panel, "exec ") || !strings.HasSuffix(panel, "exit \"$s\"\n") {
-		t.Errorf("panel script does not end with the agent:\n%s", panel)
+	// An ordinary POSIX shell uses the login/interactive command fallback.
+	t.Setenv("SHELL", "/bin/sh")
+	if !strings.Contains(panel, "__as_shell=") {
+		t.Errorf("panel script does not initialize the user's shell:\n%s", panel)
 	}
 	if b, err := exec.Command("/bin/sh", "-c", panel).CombinedOutput(); err != nil {
 		t.Fatalf("%v: %s", err, b)

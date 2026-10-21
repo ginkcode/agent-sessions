@@ -69,6 +69,13 @@ func PanelShellScript(dir string) string {
 	return script
 }
 
+// posixPanelAgentScript initializes the remote user's interactive/login shell
+// in the project before running the safely quoted POSIX agent payload.
+func posixPanelAgentScript(argv []string, dir string) string {
+	return "cd -- " + ShellEscape(dir) + " || exit 1\n" +
+		panelPosixStartupScript(`"${SHELL:-/bin/sh}"`, posixScript(argv, dir, ""))
+}
+
 // PosixBootstrapArgv runs script with /bin/sh. The script travels in
 // OctalEscape form, so the argv means the same to whatever shell an ssh
 // server runs it with, fish and tcsh included (see bootstrapLine).

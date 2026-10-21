@@ -477,7 +477,7 @@ func PosixPanelScript(cmd provider.Command) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return posixScript(argv, cmd.Dir, ""), nil
+	return posixPanelAgentScript(argv, cmd.Dir), nil
 }
 
 // startDetached starts a terminal in its own session, so it outlives the
