@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -71,7 +72,13 @@ func TestBlameFile(t *testing.T) {
 	if err != nil || got.Commit != commit || got.Uncommitted {
 		t.Fatalf("unchanged line = %+v, %v", got, err)
 	}
-	for _, path := range []string{"new.txt", "-option.txt", "[literal]*.txt"} {
+	// A glob-style name exercises --literal-pathspecs, but '[' ']' and '*'
+	// cannot appear in a Windows filename at all, so the case is Unix-only.
+	literalNames := []string{"new.txt", "-option.txt", "[literal]*.txt"}
+	if runtime.GOOS == "windows" {
+		literalNames = []string{"new.txt", "-option.txt"}
+	}
+	for _, path := range literalNames {
 		write(path, "new\n")
 		for _, staged := range []bool{false, true} {
 			if staged {
