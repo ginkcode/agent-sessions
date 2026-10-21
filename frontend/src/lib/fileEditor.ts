@@ -71,6 +71,8 @@ const theme = EditorView.theme({
     backgroundColor: 'color-mix(in srgb, var(--accent-color) 30%, transparent)',
   },
   '.cm-panels': { backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)' },
+  '& .cm-panels-bottom': { borderTop: '1px solid var(--border-color)' },
+  '& .cm-panels-top': { borderBottom: '1px solid var(--border-color)' },
   '.cm-textfield, .cm-button': { background: 'var(--bg-primary)', color: 'var(--text-primary)', border: '1px solid var(--border-color)' },
 });
 
