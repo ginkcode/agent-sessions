@@ -60,15 +60,11 @@ func BlameFile(ctx context.Context, dir, path string, line int) (BlameLine, erro
 	if line > lines {
 		return BlameLine{}, fmt.Errorf("blame: line %d is out of range (file has %d lines)", line, lines)
 	}
-	realDir, err := filepath.EvalSymlinks(dir)
-	if err != nil {
-		return BlameLine{}, err
-	}
-	rel, err := filepath.Rel(realDir, full)
-	if err != nil {
-		return BlameLine{}, err
-	}
-	rel = filepath.ToSlash(rel)
+	// Discover Git from the file's directory, not the workspace root: a
+	// workspace may contain several independent repositories or submodules.
+	// Resolve above still enforces the workspace's containment boundary.
+	realDir := filepath.Dir(full)
+	rel := filepath.Base(full)
 	inside, err := blameGit(ctx, realDir, "rev-parse", "--is-inside-work-tree")
 	if err != nil {
 		return BlameLine{}, err

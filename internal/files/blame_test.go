@@ -123,6 +123,39 @@ func TestBlameFile(t *testing.T) {
 	}
 }
 
+func TestBlameFileRepositoriesBelowWorkspace(t *testing.T) {
+	workspace := t.TempDir()
+	for _, name := range []string{"first", "second"} {
+		t.Run(name, func(t *testing.T) {
+			repo, git := blameRepo(t)
+			if err := os.MkdirAll(filepath.Join(repo, "src"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(repo, "src", "file.txt"), []byte("committed\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			git("add", ".")
+			git("commit", "-m", name)
+			commit := git("rev-parse", "HEAD")
+			if err := os.Rename(repo, filepath.Join(workspace, name)); err != nil {
+				t.Fatal(err)
+			}
+			path := name + "/src/file.txt"
+			got, err := BlameFile(context.Background(), workspace, path, 1)
+			if err != nil || got.Commit != commit || got.Summary != name {
+				t.Fatalf("nested repo blame = %+v, %v", got, err)
+			}
+			if err := os.WriteFile(filepath.Join(workspace, filepath.FromSlash(path)), []byte("changed\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			got, err = BlameFile(context.Background(), workspace, path, 1)
+			if err != nil || !got.Uncommitted {
+				t.Fatalf("nested repo modified blame = %+v, %v", got, err)
+			}
+		})
+	}
+}
+
 func TestBlameFileNewRepositoryAndNonRepository(t *testing.T) {
 	root, git := blameRepo(t)
 	if err := os.WriteFile(filepath.Join(root, "new.txt"), []byte("new\n"), 0o600); err != nil {
