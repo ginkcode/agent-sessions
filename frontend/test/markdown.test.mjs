@@ -57,7 +57,7 @@ test('reachesLineCount counts wrapped visual lines without overcounting', () => 
 test('renderMarkdown converts markdown and strictly neutralizes XSS vectors', () => {
   // Test GFM structures
   const md = renderMarkdown('# Heading 1\n\nThis is **bold** and *italic* and `code`.\n\n- item 1\n- item 2\n\n```go\nfunc Main() {}\n```');
-  assert.ok(md.includes('<h1>Heading 1</h1>'));
+  assert.ok(md.includes('<h1 id="heading-1">Heading 1</h1>'));
   assert.ok(md.includes('<strong>bold</strong>'));
   assert.ok(md.includes('<em>italic</em>'));
   assert.ok(md.includes('<code class="inline-code">code</code>'));
@@ -107,7 +107,7 @@ test('renderMarkdown keeps lines that only look like headings as text', () => {
   assert.equal(renderMarkdown('###'), '<p>###</p>');
   assert.equal(renderMarkdown('#tag'), '<p>#tag</p>');
   assert.equal(renderMarkdown('####### seven'), '<p>####### seven</p>');
-  assert.equal(renderMarkdown('Intro\n###\n## Next'), '<p>Intro</p>\n<p>###</p>\n<h2>Next</h2>');
+  assert.equal(renderMarkdown('Intro\n###\n## Next'), '<p>Intro</p>\n<p>###</p>\n<h2 id="next">Next</h2>');
 });
 
 test('renderMarkdown leaves intraword underscores, code and URLs literal', () => {
@@ -247,4 +247,25 @@ test('project Markdown optionally exposes relative links as inert file metadata'
   assert.match(renderMarkdown('[Next](notes%20one.md#intro)', true), /data-file-link="notes%20one.md#intro"/);
   assert.doesNotMatch(renderMarkdown('[Unsafe](javascript:alert) [Outside](\/etc/passwd)', true), /data-file-link/);
   assert.match(renderMarkdown('[Web](https:\/\/example.com)', true), /href="https:\/\/example.com"/);
+});
+
+test('renderMarkdown gives headings GitHub-style ids for same-document links', () => {
+  const md = renderMarkdown('## How Netscape works\n### 2. Before you start\n## How Netscape works', true);
+  assert.match(md, /<h2 id="how-netscape-works">/);
+  assert.match(md, /<h3 id="2-before-you-start">/);
+  // A repeated heading gets a numeric suffix, as on GitHub.
+  assert.match(md, /<h2 id="how-netscape-works-1">/);
+
+  // Inline markup is slugged from its text, not the markup; a dropped
+  // character between words leaves two hyphens, as GitHub slugs it.
+  const styled = renderMarkdown('## **Setup** & Notes');
+  assert.match(styled, /<h2 id="setup--notes">/);
+
+  // A slug of nothing still yields a usable id.
+  const bare = renderMarkdown('## ###');
+  assert.match(bare, /<h2 id="heading">/);
+
+  // Punctuation with spaces collapses to one hyphen, matching the TOC links.
+  const spaced = renderMarkdown('## Control who can reach what (groups and rules)');
+  assert.match(spaced, /<h2 id="control-who-can-reach-what-groups-and-rules">/);
 });

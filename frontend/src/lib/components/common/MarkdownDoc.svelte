@@ -13,11 +13,29 @@
 
   let renderedHtml = $derived(renderMarkdown(source, Boolean(onFileLink)));
 
+  function scrollToAnchor(root: HTMLElement | undefined, id: string) {
+    if (!root || !id) return;
+    let target: HTMLElement | null = null;
+    try {
+      target = root.querySelector<HTMLElement>(`#${CSS.escape(decodeURIComponent(id))}`);
+    } catch {
+      target = null;
+    }
+    if (target) target.scrollIntoView({ block: 'start' });
+  }
+
   function handleClick(e: MouseEvent) {
     const anchor = e.target instanceof Element ? e.target.closest<HTMLAnchorElement>('a[data-file-link]') : null;
     if (anchor && onFileLink) {
       e.preventDefault();
-      onFileLink(anchor.dataset.fileLink!);
+      const href = anchor.dataset.fileLink!;
+      // A fragment-only link points inside this document; scroll to it here
+      // rather than asking the viewer to open a file.
+      if (href.startsWith('#')) {
+        scrollToAnchor(container, href.slice(1));
+        return;
+      }
+      onFileLink(href);
       return;
     }
     handleCopyCodeClick(e);

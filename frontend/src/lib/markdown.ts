@@ -30,6 +30,16 @@ const star = (n: number) => new RegExp(`\\*{${n}}(?!\\s)(.*?\\S)\\*{${n}}`, 'g')
 const underscore = (n: number) =>
   new RegExp(`(^|[^\\p{L}\\p{N}_])_{${n}}(?!\\s)(.*?\\S)_{${n}}(?![\\p{L}\\p{N}_])`, 'gu');
 
+// A heading's id: the GitHub-style slug, plus -1, -2… for repeats, as GitHub does.
+function headingId(text: string, slugs: Map<string, number>): string {
+  let base = headingSlug(text);
+  if (!base) base = 'heading';
+  const seen = slugs.get(base) ?? -1;
+  const id = seen < 0 ? base : `${base}-${seen + 1}`;
+  slugs.set(base, seen + 1);
+  return id;
+}
+
 function renderEmphasis(text: string): string {
   let out = text;
 
@@ -139,9 +149,25 @@ function mermaidBlock(rawCode: string): string {
   );
 }
 
-export function renderMarkdown(source: string, fileLinks = false): string {
+// A GitHub-style heading slug, so [text](#slug) links resolve: lowercase,
+// punctuation stripped, each space a hyphen. The raw heading text is the
+// source, so inline markup like `## **Setup**` never reaches it. Punctuation
+// between words leaves two adjacent hyphens, exactly as GitHub slugs it.
+function headingSlug(heading: string): string {
+  return heading
+    .replace(/<[^>]*>/g, '')
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s_-]/gu, '')
+    .trim()
+    .replace(/\s/g, '-');
+}
+
+// The slug map is shared through blockquote recursion, so a heading repeated
+// in and outside a quote still gets unique ids.
+export function renderMarkdown(source: string, fileLinks = false, headingIds?: Map<string, number>): string {
   if (!source) return '';
 
+  const slugs = headingIds ?? new Map<string, number>();
   const lines = source.split(/\r?\n/);
   const out: string[] = [];
   let i = 0;
@@ -193,7 +219,7 @@ export function renderMarkdown(source: string, fileLinks = false): string {
     if (headingMatch) {
       const level = headingMatch[1].length;
       const content = renderInline(headingMatch[2], fileLinks);
-      out.push(`<h${level}>${content}</h${level}>`);
+      out.push(`<h${level} id="${headingId(headingMatch[2], slugs)}">${content}</h${level}>`);
       i++;
       continue;
     }
@@ -205,7 +231,7 @@ export function renderMarkdown(source: string, fileLinks = false): string {
         quoteLines.push(lines[i].replace(/^>\s?/, ''));
         i++;
       }
-      const quoteContent = renderMarkdown(quoteLines.join('\n'), fileLinks);
+      const quoteContent = renderMarkdown(quoteLines.join('\n'), fileLinks, slugs);
       out.push(`<blockquote>${quoteContent}</blockquote>`);
       continue;
     }

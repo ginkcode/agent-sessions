@@ -269,17 +269,51 @@
     files.openFile(path, { keep, read: fileStatus(path) !== 'D' });
   }
 
+  // A file link may carry a heading fragment (guide.md#setup); after the
+  // target opens and renders, the viewer scrolls to that heading.
+  let pendingAnchor = $state<{ path: string; id: string } | null>(null);
+
   function followFileLink(href: string) {
     if (!files.selected) return;
-    const target = markdownFileTarget(files.selected, href);
+    const hashIndex = href.indexOf('#');
+    const fragment = hashIndex >= 0 ? href.slice(hashIndex + 1) : '';
+    const target = markdownFileTarget(files.selected, hashIndex >= 0 ? href.slice(0, hashIndex) : href);
     if (!target) {
       toast.show({ title: 'Cannot open this link', body: 'The link must point to a file inside this project.', tone: 'error' });
       return;
     }
     // Keep the referring document so the reader can return to it via its tab.
     files.keepTab(files.selected);
+    // Only a markdown target can resolve the heading; a fragment on anything
+    // else is just a file link.
+    if (fragment && filePreview(target) === 'markdown') pendingAnchor = { path: target, id: fragment };
     pick(target, true);
   }
+
+  // Fragment-only links never reach followFileLink: MarkdownDoc scrolls to the
+  // heading in place. Cross-file fragments land here once the target renders.
+  let pendingScrolled = new WeakSet<{ path: string; id: string }>();
+  $effect(() => {
+    const pending = pendingAnchor;
+    if (!pending || pendingScrolled.has(pending)) return;
+    if (files.selected !== pending.path) return;
+    const el = codeScroll;
+    if (!el || !showMarkdown || !text) return;
+    // The scroll-restore effect also runs on this selection change and would
+    // undo the scroll; the frame defers past it.
+    pendingScrolled.add(pending);
+    untrack(() => {
+      requestAnimationFrame(() => {
+        let id = pending.id;
+        try {
+          id = decodeURIComponent(id);
+        } catch {}
+        const heading = el.querySelector<HTMLElement>(`#${CSS.escape(id)}`);
+        if (!heading) return;
+        el.scrollTop += heading.getBoundingClientRect().top - el.getBoundingClientRect().top - el.clientTop;
+      });
+    });
+  });
 
   // Each tab keeps its scroll position. A plain map: saving it on every
   // scroll must not rerun the effect that restores it.
