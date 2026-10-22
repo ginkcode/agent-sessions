@@ -58,4 +58,23 @@ snapshot. No frontend store or live/document operation was added.
   slow-peer admission, idle expiry, optional old flags and zero-write guards.
 - Scoped `go tool golangci-lint run --new-from-rev=HEAD ./internal/rpc/... ./internal/app/...`
   checks new code; full package lint also reports pre-existing unrelated findings.
+- `code_diagnostics_recovery_test.go` adds actual pipe RPC evidence: complete
+  multipart contents (including escaped strings, duplicates and out-of-order parts),
+  deliberately missing-part metadata, skipped sequence updates followed by latest
+  authoritative snapshot RPC, and stale-sequence suppression. Tests observe parts,
+  never implement or claim frontend atomic assembly, timeout/conflict detection or
+  automatic retry policy; those remain CD-10.
+- A gated real pipe writer deterministically fills the 64-part notification queue;
+  the next admission errors and disconnects, expires the active fake checker, and
+  rejects further snapshots. A fresh connection to the same host/root requires a
+  new attachment/approval, rejects old tokens/late events and can resnapshot. The
+  existing two-update admission and escaped-envelope tests cover other limits.
+- Follow-up validation: `go test ./...` and `go test -race ./...` pass on macOS.
+  Full `go tool golangci-lint run ./...` still fails on 112 pre-existing findings
+  outside this change; `go tool golangci-lint run --new-from-rev=HEAD
+  ./internal/rpc/... ./internal/app/...` passes (0 issues). Focused diagnostics
+  RPC tests also pass 20 consecutive race-enabled runs.
 - No real SSH/WSL identity acquisition or native Windows/Linux runtime QA claimed.
+  [Explicitly split identity activation work](../tasks/CD-09-identity.md) records
+  launcher evidence, trust requirements and four-hour work packages. CD-09 remains
+  blocked and tracker progress stays 8/28 until activation requirements are met.

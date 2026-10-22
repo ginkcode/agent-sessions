@@ -262,7 +262,7 @@ gated on the M8-08 named-pipe credential channel.
 
 ## Follow-up — Go to File code diagnostics (proposed)
 
-Progress: **8/28 complete**. CD-01…CD-08 are ✅ done; CD-09…CD-28 are ⬜ not started.
+Progress: **8/28 complete**. CD-01…CD-08 are ✅ done; CD-09 is ⛔ blocked on authenticated remote identity activation; CD-10…CD-28 are ⬜ not started.
 No user-facing diagnostics capability is enabled yet. Detailed estimates, dependencies,
 contracts, and acceptance criteria are in
 [docs/plan/code-diagnostics.md](docs/plan/code-diagnostics.md). Individual task
@@ -279,7 +279,8 @@ These follow-up tasks are not included in the historical milestone totals above.
 | CD-06 | ✅ | Contained Svelte-check adapter and fixture/fake-supervisor tests | [Policy, evidence and limits](docs/plan/code-diagnostics-svelte.md); targeted race/scoped lint and full Go tests pass |
 | CD-07 | ✅ | Headless result manager, bounded snapshots/events and lifecycle ownership | [Policy, evidence and limits](docs/plan/code-diagnostics-manager.md); deterministic fake-adapter/supervisor races, scoped lint and full Go tests pass |
 | CD-08 | ✅ | Engine/App Stage 1 bindings, ownership and offline routing | [Identity, registry, lifecycle and validation evidence](docs/plan/code-diagnostics-engine.md); full Go/race tests and new-code scoped lint pass |
-| CD-09…CD-10 | ⬜ | RPC, frontend store | Authorized, bounded, host-local checks with race-safe result delivery |
+| [CD-09](docs/tasks/CD-09.md) | ⛔ | RPC transport implemented; recovery evidence complete | Authenticated SSH/WSL identity activation blocked; [scoped split follow-up](docs/tasks/CD-09-identity.md); production capability disabled |
+| CD-10 | ⬜ | Frontend store | Atomic multipart assembly, gap detection and bounded resnapshot reconciliation |
 | CD-11…CD-17 | ⬜ | Approval/check controls, Problems panel, tree badges, viewer/editor markers, integration tests and QA | Stage 1: explicit project checks; no automatic tool execution on open |
 | CD-18…CD-27 | ⬜ | LSP transport/lifecycle, document sync, Go/TypeScript/Svelte adapters, external-change reconciliation and QA | Stage 2: live opened-file diagnostics for approved projects |
 | CD-28 | ⬜ | Opt-in automatic project checks on open/save | Stage 3: background project coverage without blocking the dialog |

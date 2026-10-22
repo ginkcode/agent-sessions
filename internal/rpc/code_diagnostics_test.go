@@ -73,6 +73,11 @@ func (b *diagnosticsBackend) CancelCodeDiagnostics(_ context.Context, c cd.Conte
 func (b *diagnosticsBackend) ResetCodeDiagnostics() { b.m.Close() }
 func rpcDiagnosticsFixture(t *testing.T) (*diagnosticsBackend, *Server, *Client, func()) {
 	t.Helper()
+	return rpcDiagnosticsTransportFixture(t, nil)
+}
+
+func rpcDiagnosticsTransportFixture(t *testing.T, wrap func(io.WriteCloser) io.WriteCloser) (*diagnosticsBackend, *Server, *Client, func()) {
+	t.Helper()
 	dir := t.TempDir()
 	tool := filepath.Join(dir, "tool")
 	if err := os.WriteFile(tool, []byte("non executable fixture"), 0o600); err != nil {
@@ -89,8 +94,24 @@ func rpcDiagnosticsFixture(t *testing.T) (*diagnosticsBackend, *Server, *Client,
 		t.Fatal(e)
 	}
 	b := &diagnosticsBackend{mockBackend: &mockBackend{}, m: m, root: root, host: host, fake: &rpcChecker{tools: []cd.ToolInput{{ProviderID: "test", Executable: tool, Policy: "fixed test"}}, started: make(chan context.Context, 8)}}
-	s, c, cleanup := setupPipePair(b)
-	return b, s, c, func() { cleanup(); m.Close() }
+	inR, inW := io.Pipe()
+	outR, outW := io.Pipe()
+	var output io.WriteCloser = outW
+	if wrap != nil {
+		output = wrap(output)
+	}
+	s, c := NewServer(b, inR, output), NewClient(outR, inW)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		_ = s.Serve(context.Background())
+	}()
+	return b, s, c, func() {
+		_ = c.Close()
+		_ = s.Close()
+		<-done
+		m.Close()
+	}
 }
 
 func TestDiagnosticsRPCOwnershipApprovalAndExpiry(t *testing.T) {

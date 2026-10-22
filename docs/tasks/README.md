@@ -72,7 +72,7 @@ action. It does **not** automatically execute tools when the dialog opens.
 | [CD-06](CD-06.md) | ✅ Done — contained Svelte-check adapter and fixture/fake-supervisor tests | 4 h |
 | [CD-07](CD-07.md) | ✅ Done — headless result manager, bounded snapshots/events and lifecycle races | 4 h |
 | [CD-08](CD-08.md) | ✅ Done — Engine/App bindings and offline behavior | 3 h |
-| [CD-09](CD-09.md) | Remote capabilities, operations, and events | 4 h |
+| [CD-09](CD-09.md) | ⛔ Transport evidence complete; identity activation blocked ([split estimates](CD-09-identity.md)) | 4 h |
 | [CD-10](CD-10.md) | Frontend diagnostics store and API | 4 h |
 | [CD-11](CD-11.md) | Approval, check controls, and summary | 3 h |
 | [CD-12](CD-12.md) | Problems panel and range navigation | 4 h |
