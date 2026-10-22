@@ -1,10 +1,10 @@
 # Implementation task details
 
-Task briefs for **Go to File code diagnostics**. **Progress: 5/28 complete**
+Task briefs for **Go to File code diagnostics**. **Progress: 6/28 complete**
 (CD-01: contract and tested fixtures; CD-02: backend trust and path policy;
 CD-03: bounded checker supervisor; CD-04: installed-checker format evidence;
-CD-05: contained Go vet adapter and tested conservative outcomes);
-CD-06…CD-28 are not started. No user-facing
+CD-05: contained Go vet adapter; CD-06: contained Svelte adapter and tested conservative outcomes);
+CD-07…CD-28 are not started. No user-facing
 diagnostics support has shipped. The authoritative wire contract is
 [contract v1](../plan/code-diagnostics-contract.md). See [the implementation plan](../plan/code-diagnostics.md) for shared
 behavior, architecture, trust rules, and release criteria, and
@@ -67,7 +67,7 @@ action. It does **not** automatically execute tools when the dialog opens.
 | [CD-03](CD-03.md) | ✅ Done — bounded checker process supervisor | 4 h |
 | [CD-04](CD-04.md) | ✅ Done — checker output/version spikes and tested sanitized fixtures | 3 h |
 | [CD-05](CD-05.md) | ✅ Done — contained Go vet adapter and fixture/fake-supervisor tests | 3 h |
-| [CD-06](CD-06.md) | Svelte-check adapter | 4 h |
+| [CD-06](CD-06.md) | ✅ Done — contained Svelte-check adapter and fixture/fake-supervisor tests | 4 h |
 | [CD-07](CD-07.md) | Backend result manager and snapshots | 4 h |
 | [CD-08](CD-08.md) | Engine/App bindings and offline behavior | 3 h |
 | [CD-09](CD-09.md) | Remote capabilities, operations, and events | 4 h |

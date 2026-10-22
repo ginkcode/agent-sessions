@@ -262,7 +262,7 @@ gated on the M8-08 named-pipe credential channel.
 
 ## Follow-up — Go to File code diagnostics (proposed)
 
-Progress: **5/28 complete**. CD-01…CD-05 are ✅ done; CD-06…CD-28 are ⬜ not started.
+Progress: **6/28 complete**. CD-01…CD-06 are ✅ done; CD-07…CD-28 are ⬜ not started.
 No user-facing diagnostics capability is enabled yet. Detailed estimates, dependencies,
 contracts, and acceptance criteria are in
 [docs/plan/code-diagnostics.md](docs/plan/code-diagnostics.md). Individual task
@@ -276,7 +276,8 @@ These follow-up tasks are not included in the historical milestone totals above.
 | CD-03 | ✅ | Bounded argv-only checker supervisor, trust hooks and process-tree cleanup | [Execution semantics](docs/plan/code-diagnostics-supervisor.md); fake/helper race tests and package lint pass |
 | CD-04 | ✅ | Installed Go vet/Svelte-check format spike, sanitized fixtures and tests | [Version/invocation evidence and explicit platform limits](docs/plan/code-diagnostics-checkers.md); full race suite and scoped lint pass; full lint has existing unrelated failures |
 | CD-05 | ✅ | Contained Go vet adapter, fixture parser and fake-supervisor tests | [Policy, evidence and limits](docs/plan/code-diagnostics-go-vet.md); full race suite/scoped lint pass; existing unrelated full-lint failures remain |
-| CD-06…CD-10 | ⬜ | Svelte checker adapter, backend/RPC, frontend store | Authorized, bounded, host-local checks with race-safe result delivery |
+| CD-06 | ✅ | Contained Svelte-check adapter and fixture/fake-supervisor tests | [Policy, evidence and limits](docs/plan/code-diagnostics-svelte.md); targeted race/scoped lint and full Go tests pass |
+| CD-07…CD-10 | ⬜ | Backend/RPC, frontend store | Authorized, bounded, host-local checks with race-safe result delivery |
 | CD-11…CD-17 | ⬜ | Approval/check controls, Problems panel, tree badges, viewer/editor markers, integration tests and QA | Stage 1: explicit project checks; no automatic tool execution on open |
 | CD-18…CD-27 | ⬜ | LSP transport/lifecycle, document sync, Go/TypeScript/Svelte adapters, external-change reconciliation and QA | Stage 2: live opened-file diagnostics for approved projects |
 | CD-28 | ⬜ | Opt-in automatic project checks on open/save | Stage 3: background project coverage without blocking the dialog |
