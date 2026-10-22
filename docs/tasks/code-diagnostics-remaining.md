@@ -21,8 +21,12 @@ its exposed bugs are not implemented fixes or passing regression claims.
   dependency exception or production activation is approved here. Assign/review
   scoped work explicitly; keep live capability unadvertised and automation absent.
 - **Approval/environment** means a real prerequisite for the named execution or
-  sign-off, not a reason to stop unrelated local fixes. No installs/downloads are
-  authorized. Missing tools stay unavailable; private editor caches are not approved
+  sign-off, not a reason to stop unrelated local fixes. The user subsequently approved
+  implementing [explicit consent-based managed installation](tool-installation.md);
+  that independent backlog narrowly supersedes the blanket no-download policy only
+  after actual host-scoped Install consent. No real install is authorized by an
+  offline coding task or execution approval. Missing tools stay unavailable until
+  separately installed; private editor caches are not approved
   production tools. Obtain explicit approval for preinstalled executables/config
   execution and disposable fixtures before real-server runs.
 - [CD-17 Stage 1 HOLD](../plan/code-diagnostics-qa.md#release-decision-and-remaining-work)

@@ -76,6 +76,16 @@ Executable synthetic wire evidence: `internal/rpc/probe_files_test.go`; bounded
 backend/path tests: `internal/files/probe_test.go`; host epoch tests:
 `internal/app/probe_files_test.go`; frontend fake API: `frontend/test/file-probe-api.test.mjs`.
 
+## Managed installation scope clarification (2026-10-22)
+
+The user-approved [managed-tools backlog](../tasks/tool-installation.md) is separate
+from project execution approval. Its TI-01 core has no App/RPC/UI route and changes
+no v1 wire semantics/capabilities. Blanket no-download language in earlier plans
+is superseded only by explicit current host-bound managed Install consent; attach,
+execution approval, missing-tool discovery and offline tests never authorize an
+install. Unauthenticated remote installation remains unavailable pending CD-09.
+Neither installation nor this scope change clears any release HOLD.
+
 ## 1. Identity and scalar rules
 
 All JSON keys use lower camel case. Required arrays serialize as `[]`, never
