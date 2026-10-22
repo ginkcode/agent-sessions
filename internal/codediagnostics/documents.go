@@ -365,6 +365,37 @@ func (m *Manager) PublishDocumentResults(c Context, documentID, generation strin
 	if err != nil {
 		return err
 	}
+	return m.publishLocked(a, d, documentID, generation, version, diagnostics)
+}
+
+// PublishPathDiagnostics is the adapter seam: it finds the open document of the
+// attachment owning project by path, then applies the same guards as
+// PublishDocumentResults. A path with no open document (closed, never opened) is
+// notFound, so a late server publication can never create state.
+func (m *Manager) PublishPathDiagnostics(project Project, generation, path string, version *int64, diagnostics []Diagnostic) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.closed {
+		return failure("disconnected", "Diagnostics owner is closed")
+	}
+	for _, a := range m.attachments {
+		if a.root.Project() != project {
+			continue
+		}
+		if m.liveGate(a) != nil {
+			return failure("unsupported", "Live code diagnostics are unavailable")
+		}
+		for id, d := range a.docs {
+			if d.path == path {
+				return m.publishLocked(a, d, id, generation, version, diagnostics)
+			}
+		}
+		return failure("notFound", "Document is not open")
+	}
+	return failure("staleContext", "Diagnostics attachment is no longer current")
+}
+
+func (m *Manager) publishLocked(a *attachment, d *documentState, documentID, generation string, version *int64, diagnostics []Diagnostic) error {
 	if generation != d.generation || d.broken || (version != nil && *version != d.version) {
 		return failure("staleContext", "Document publication is not current")
 	}

@@ -1,0 +1,227 @@
+{
+  "tool": "gopls",
+  "provenance": "observed",
+  "platform": "darwin/arm64",
+  "versions": {
+    "gopls": "v0.24.0",
+    "goplsBuiltWith": "go1.27.2",
+    "goToolchain": "go1.26.8"
+  },
+  "sanitization": "Synthetic disposable module only; temp root replaced with /fixture; log/showMessage bodies, executeCommand list and module dependency list omitted; timestamps absent.",
+  "argv": [
+    "/installed/gopls",
+    "serve"
+  ],
+  "client": {
+    "capabilities": {
+      "general": {
+        "positionEncodings": [
+          "utf-16"
+        ]
+      }
+    },
+    "rootUri": "file:///fixture",
+    "workspaceFolders": null
+  },
+  "initialize": {
+    "capabilities": {
+      "textDocumentSync": {
+        "openClose": true,
+        "change": 2,
+        "save": {}
+      },
+      "executeCommandProviderPresent": true,
+      "workspaceKeys": [
+        "fileOperations",
+        "workspaceFolders"
+      ]
+    },
+    "serverInfo": {
+      "name": "gopls",
+      "version": "v0.24.0"
+    }
+  },
+  "serverRequestsDuringInit": [],
+  "sources": {
+    "v1": "package main\n\nfunc main() {\n\tvar x int = \"a😀\"\n\t_ = x\n}\n",
+    "v2": "package main\n\nfunc main() {\n\tvar x int = 1\n\t_ = x\n}\n"
+  },
+  "scenarios": [
+    {
+      "id": "open-error",
+      "send": "didOpen v1",
+      "publications": [
+        {
+          "jsonrpc": "2.0",
+          "method": "textDocument/publishDiagnostics",
+          "params": {
+            "uri": "file:///fixture/main.go",
+            "version": 1,
+            "diagnostics": [
+              {
+                "range": {
+                  "start": {
+                    "line": 3,
+                    "character": 13
+                  },
+                  "end": {
+                    "line": 3,
+                    "character": 18
+                  }
+                },
+                "severity": 1,
+                "code": "IncompatibleAssign",
+                "codeDescription": {
+                  "href": "https://pkg.go.dev/golang.org/x/tools/internal/typesinternal#IncompatibleAssign"
+                },
+                "source": "compiler",
+                "message": "cannot use \"a😀\" (untyped string constant) as int value in variable declaration"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "change-fix",
+      "send": "didChange v2 (full text, fixed)",
+      "publications": [
+        {
+          "jsonrpc": "2.0",
+          "method": "textDocument/publishDiagnostics",
+          "params": {
+            "uri": "file:///fixture/main.go",
+            "version": 2,
+            "diagnostics": []
+          }
+        }
+      ]
+    },
+    {
+      "id": "change-break",
+      "send": "didChange v3 (full text, broken)",
+      "publications": [
+        {
+          "jsonrpc": "2.0",
+          "method": "textDocument/publishDiagnostics",
+          "params": {
+            "uri": "file:///fixture/main.go",
+            "version": 3,
+            "diagnostics": [
+              {
+                "range": {
+                  "start": {
+                    "line": 3,
+                    "character": 13
+                  },
+                  "end": {
+                    "line": 3,
+                    "character": 18
+                  }
+                },
+                "severity": 1,
+                "code": "IncompatibleAssign",
+                "codeDescription": {
+                  "href": "https://pkg.go.dev/golang.org/x/tools/internal/typesinternal#IncompatibleAssign"
+                },
+                "source": "compiler",
+                "message": "cannot use \"a😀\" (untyped string constant) as int value in variable declaration"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "close",
+      "send": "didClose",
+      "publications": [
+        {
+          "jsonrpc": "2.0",
+          "method": "textDocument/publishDiagnostics",
+          "params": {
+            "uri": "file:///fixture/main.go",
+            "diagnostics": [
+              {
+                "range": {
+                  "start": {
+                    "line": 3,
+                    "character": 13
+                  },
+                  "end": {
+                    "line": 3,
+                    "character": 18
+                  }
+                },
+                "severity": 1,
+                "code": "IncompatibleAssign",
+                "codeDescription": {
+                  "href": "https://pkg.go.dev/golang.org/x/tools/internal/typesinternal#IncompatibleAssign"
+                },
+                "source": "compiler",
+                "message": "cannot use \"a😀\" (untyped string constant) as int value in variable declaration"
+              }
+            ]
+          }
+        }
+      ],
+      "note": "unversioned; repeats on-disk findings, not a clear"
+    },
+    {
+      "id": "rapid-changes",
+      "send": "didChange v2 (broken), v3 (CRLF fixed), v4 (CRLF broken) back to back",
+      "publications": [
+        {
+          "version": 4,
+          "diagnosticCount": 1,
+          "range": {
+            "start": {
+              "line": 3,
+              "character": 13
+            },
+            "end": {
+              "line": 3,
+              "character": 17
+            }
+          }
+        }
+      ],
+      "note": "intermediate versions coalesced; only the newest version published"
+    }
+  ],
+  "workspaces": [
+    {
+      "id": "root-module",
+      "layout": "go.mod + sub/go.mod",
+      "openFile": "sub/s.go",
+      "published": true,
+      "gowork": "off"
+    },
+    {
+      "id": "root-module-file",
+      "layout": "go.mod + sub/go.mod",
+      "openFile": "r.go",
+      "published": true,
+      "gowork": "off"
+    },
+    {
+      "id": "nested-only",
+      "layout": "no root go.mod; sub/go.mod",
+      "openFile": "sub/s.go",
+      "published": true,
+      "gowork": "off"
+    },
+    {
+      "id": "gowork-outside-use",
+      "layout": "go.work uses ./in and ../out",
+      "openFile": "in/i.go",
+      "published": true,
+      "gowork": "explicit and off",
+      "note": "in-root module diagnosed either way; GOWORK=off means ../out is never configured"
+    }
+  ],
+  "exit": {
+    "shutdown": "result null",
+    "exitCode": 0
+  }
+}

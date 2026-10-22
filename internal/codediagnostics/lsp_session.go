@@ -149,6 +149,20 @@ type SessionOptions struct {
 	LSP             LSPLimits
 	After           func(time.Duration) <-chan time.Time
 	Launch          SessionLaunch
+	// Notifications receives publishDiagnostics (only) from the current
+	// generation, synchronously on the session's serve goroutine. It must be
+	// quick and must not call back into SessionManager. Nil drops them.
+	Notifications func(SessionNotification)
+}
+
+// SessionNotification is one bounded server publication. Params is the raw,
+// transport-bounded JSON; it is never logged or retained by the session.
+type SessionNotification struct {
+	Project    Project
+	ProviderID string
+	Generation string
+	Method     string
+	Params     json.RawMessage
 }
 
 func (o SessionOptions) defaults() SessionOptions {
@@ -702,10 +716,16 @@ func (s *lspSession) stopIfLive(tr *LSPTransport) {
 	}
 }
 
-// handle gives every server request an explicit, prompt reply. Notifications
-// (including publishDiagnostics) are not consumed here: document and diagnostics
-// ownership belongs to later tasks, and nothing is published from this layer.
+// handle gives every server request an explicit, prompt reply. Only
+// publishDiagnostics notifications are forwarded (CD-22) to an owner-supplied
+// callback; this layer itself never interprets or publishes diagnostics.
 func (s *lspSession) handle(tr *LSPTransport, msg LSPMessage) {
+	if msg.Kind == LSPNotification {
+		if h := s.manager.options.Notifications; h != nil && msg.Method == "textDocument/publishDiagnostics" {
+			h(SessionNotification{Project: s.root.Project(), ProviderID: s.config.ProviderID, Generation: s.generation, Method: msg.Method, Params: msg.Params})
+		}
+		return
+	}
 	if msg.Kind != LSPServerRequest {
 		return
 	}

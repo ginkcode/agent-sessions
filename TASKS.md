@@ -262,7 +262,7 @@ gated on the M8-08 named-pipe credential channel.
 
 ## Follow-up — Go to File code diagnostics (proposed)
 
-Progress: **19/28 complete**. CD-01…CD-08, CD-10…CD-16 and CD-18…CD-21 are ✅ done; CD-09 is ⛔ blocked on authenticated remote identity activation; CD-17 is 🟡 partial/blocked (non-GUI QA preparation only; Stage 1 HOLD); CD-22…CD-28 are ⬜ not started. CD-16 proves deterministic automated seams only, not native CD-17 QA or production remote activation.
+Progress: **19/28 complete**. CD-01…CD-08, CD-10…CD-16 and CD-18…CD-21 are ✅ done; CD-09 is ⛔ blocked on authenticated remote identity activation; CD-17 is 🟡 partial/blocked (non-GUI QA preparation only; Stage 1 HOLD); CD-22 is 🟡 partial (gopls spike/adapter seam with automated tests; no production route or manual QA, so not counted); CD-23…CD-28 are ⬜ not started. CD-16 proves deterministic automated seams only, not native CD-17 QA or production remote activation.
 CD-10 explicitly proceeded locally against committed RPC contracts/tests; this dependency exception does not complete CD-09 or activate production remotes.
 No user-facing diagnostics capability is enabled yet. Detailed estimates, dependencies,
 contracts, and acceptance criteria are in
@@ -291,7 +291,8 @@ These follow-up tasks are not included in the historical milestone totals above.
 | [CD-17](docs/tasks/CD-17.md) | 🟡 | Partial/blocked: non-GUI inventory/build/runtime preflight and [blocked QA matrix](docs/plan/code-diagnostics-qa.md) | Stage 1 HOLD; native checks unperformed; macOS link preflight failed; CD-09 remotes blocked |
 | [CD-18](docs/tasks/CD-18.md) | ✅ | Bounded LSP Content-Length stdio transport: framing, correlation, cancel/timeout, queues, close, fake-server tests; [evidence](docs/tasks/CD-18.md#evidence-2026-10-22) | Transport only: no process start, adapters or trust bypass; Stage1 HOLD/CD-17 and CD-09 do not block it |
 | [CD-19](docs/tasks/CD-19.md) | ✅ | Safe LSP session lifecycle: trust/known-dir gate, initialize/initialized, UTF-16/sync negotiation, deny-by-default server requests, idle grace/limits, shutdown/kill, capped restarts; [evidence](docs/tasks/CD-19.md#evidence-2026-10-22) | Fake server/process/clock only: no adapters, document sync or live capability; file watchers rejected (`unwatched`); Stage1 HOLD/CD-17 and CD-09 exceptions do not block local lifecycle |
-| CD-22…CD-27 | ⬜ | Document sync, Go/TypeScript/Svelte adapters, external-change reconciliation and QA | Stage 2: live opened-file diagnostics for approved projects |
+| [CD-22](docs/tasks/CD-22.md) | 🟡 | gopls v0.24.0 spike/decision ([doc](docs/plan/code-diagnostics-gopls.md)), contained Go workspace detection, availability, publishDiagnostics normalization and version guards; fixtures + fake-server tests | Partial: not wired to a production route, `liveCodeDiagnostics` still unadvertised, no manual draft QA |
+| CD-23…CD-27 | ⬜ | Document sync, Go/TypeScript/Svelte adapters, external-change reconciliation and QA | Stage 2: live opened-file diagnostics for approved projects |
 | CD-28 | ⬜ | Opt-in automatic project checks on open/save | Stage 3: background project coverage without blocking the dialog |
 
 **Critical path to the MVP:**

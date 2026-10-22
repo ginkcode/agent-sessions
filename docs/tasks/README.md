@@ -16,7 +16,7 @@ CD-16: deterministic checker/manager/RPC and real-store controls/panel/picker/so
 CD-18: bounded LSP stdio transport, fake-server tests only;
 CD-19: safe LSP session lifecycle, fake server/process/clock only).
 CD-09 remains blocked on authenticated production remote identity activation;
-CD-17 is partial/blocked: [non-GUI preflight and blocked native matrix](../plan/code-diagnostics-qa.md), Stage 1 HOLD; CD-21 (frontend document lifecycle bridge) is complete with automated tests only; CD-22…CD-28 are not started. CD-16 is automated coverage, not native CD-17 QA. CD-10 used an explicit dependency exception against
+CD-17 is partial/blocked: [non-GUI preflight and blocked native matrix](../plan/code-diagnostics-qa.md), Stage 1 HOLD; CD-21 (frontend document lifecycle bridge) is complete with automated tests only; CD-22 (gopls adapter) is partial: spike/adapter seam with automated tests, no production route or manual QA ([decision doc](../plan/code-diagnostics-gopls.md)); CD-23…CD-28 are not started. CD-16 is automated coverage, not native CD-17 QA. CD-10 used an explicit dependency exception against
 committed RPC contracts/tests, not remote activation. Local controls are wired;
 production remote diagnostics are not enabled. Manual keyboard/focus QA is not claimed. The authoritative wire contract is
 [contract v1](../plan/code-diagnostics-contract.md). See [the implementation plan](../plan/code-diagnostics.md) for shared
