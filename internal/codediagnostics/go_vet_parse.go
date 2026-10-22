@@ -36,6 +36,9 @@ type (
 		Range         *Range     `json:"range,omitempty"`
 		Code          string     `json:"code,omitempty"`
 		LocationIssue string     `json:"locationIssue,omitempty"`
+		// Backend-only normalization evidence; never part of the wire contract.
+		partial   bool
+		truncated bool
 	}
 )
 

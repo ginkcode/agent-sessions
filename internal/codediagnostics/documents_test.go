@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -334,8 +335,9 @@ func TestPublicationsReplaceOnlyTheirDocument(t *testing.T) {
 	if len(s.ResultSets) != 2 {
 		t.Fatal(len(s.ResultSets))
 	}
+	slices.SortFunc(s.ResultSets, func(a, b ResultSet) int { return strings.Compare(a.Scope.DocumentID, b.Scope.DocumentID) })
 	a := s.ResultSets[0]
-	if a.Scope.DocumentID != "a" || len(a.Diagnostics) != 2 || a.Diagnostics[0].Freshness != "current" || a.Diagnostics[1].LocationIssue != "invalidRange" || a.Diagnostics[1].Range != nil {
+	if a.Scope.DocumentID != "a" || len(a.Diagnostics) != 2 || a.Diagnostics[0].Freshness != "current" || a.Diagnostics[0].LocationIssue != "invalidRange" || a.Diagnostics[0].Range != nil {
 		t.Fatalf("%+v", a)
 	}
 	// Empty publication clears only its own document.
@@ -343,6 +345,7 @@ func TestPublicationsReplaceOnlyTheirDocument(t *testing.T) {
 		t.Fatal(err)
 	}
 	s, _ = m.GetSnapshot(c)
+	slices.SortFunc(s.ResultSets, func(a, b ResultSet) int { return strings.Compare(a.Scope.DocumentID, b.Scope.DocumentID) })
 	if len(s.ResultSets[0].Diagnostics) != 0 || len(s.ResultSets[1].Diagnostics) != 1 {
 		t.Fatalf("%+v", s.ResultSets)
 	}
@@ -358,6 +361,7 @@ func TestPublicationsReplaceOnlyTheirDocument(t *testing.T) {
 		t.Fatal(err)
 	}
 	s, _ = m.GetSnapshot(c)
+	slices.SortFunc(s.ResultSets, func(a, b ResultSet) int { return strings.Compare(a.Scope.DocumentID, b.Scope.DocumentID) })
 	if d := s.ResultSets[0].Diagnostics[0]; d.Freshness != "uncertain" || d.Range != nil {
 		t.Fatalf("%+v", d)
 	}

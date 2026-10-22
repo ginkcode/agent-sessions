@@ -11,6 +11,7 @@ package codediagnostics
 // testdata/gopls/evidence.json.
 
 import (
+	"bytes"
 	"debug/buildinfo"
 	"encoding/json"
 	"errors"
@@ -336,6 +337,7 @@ type goplsPublication struct {
 	Diagnostics []Diagnostic
 	Dropped     int
 	Truncated   bool
+	Partial     bool
 }
 
 // normalizeGoplsPublication validates one textDocument/publishDiagnostics
@@ -357,9 +359,9 @@ func normalizeLSPPublication(root AuthorizedRoot, params json.RawMessage, provid
 		return out, errGoplsInvalid
 	}
 	var in struct {
-		URI         string            `json:"uri"`
-		Version     json.RawMessage   `json:"version"`
-		Diagnostics []json.RawMessage `json:"diagnostics"`
+		URI         string          `json:"uri"`
+		Version     json.RawMessage `json:"version"`
+		Diagnostics json.RawMessage `json:"diagnostics"`
 	}
 	if json.Unmarshal(params, &in) != nil || in.Diagnostics == nil {
 		return out, errGoplsInvalid
@@ -391,19 +393,29 @@ func normalizeLSPPublication(root AuthorizedRoot, params json.RawMessage, provid
 		}
 		out.Version = &n
 	}
-	out.Diagnostics = []Diagnostic{}
-	for _, raw := range in.Diagnostics {
-		if len(out.Diagnostics) >= maxPublished {
-			out.Truncated = true
-			break
+	decoder := json.NewDecoder(bytes.NewReader(in.Diagnostics))
+	if token, err := decoder.Token(); err != nil || token != json.Delim('[') {
+		return out, errGoplsInvalid
+	}
+	selected := boundedDiagnostics{}
+	for decoder.More() {
+		var raw json.RawMessage
+		if decoder.Decode(&raw) != nil {
+			return out, errGoplsInvalid
 		}
 		d, ok := normalizeLSPDiagnostic(path, raw, providerID)
 		if !ok {
 			out.Dropped++
 			continue
 		}
-		out.Diagnostics = append(out.Diagnostics, d)
+		if d.partial {
+			out.Partial = true
+		}
+		out.Truncated = out.Truncated || d.truncated
+		selected.add(d, ManagerLimits{}.defaults())
 	}
+	out.Diagnostics = selected.results()
+	out.Truncated = out.Truncated || selected.truncated
 	return out, nil
 }
 
@@ -418,7 +430,7 @@ func normalizeLSPDiagnostic(path string, raw json.RawMessage, providerID string)
 	if json.Unmarshal(raw, &in) != nil || in.Message == "" || !utf8.ValidString(in.Message) {
 		return Diagnostic{}, false
 	}
-	d := Diagnostic{Path: path, Message: shorten(in.Message, 8192), Severity: "warning", Freshness: "uncertain", Basis: SavedBasis{Kind: "document"}}
+	d := Diagnostic{partial: len(in.Message) > 8192, truncated: len(in.Message) > 8192, Path: path, Message: shorten(in.Message, 8192), Severity: "warning", Freshness: "uncertain", Basis: SavedBasis{Kind: "document"}}
 	if s := string(in.Severity); s != "" && s != "null" {
 		switch s {
 		case "1":
@@ -438,6 +450,9 @@ func normalizeLSPDiagnostic(path string, raw json.RawMessage, providerID string)
 	if in.Source != "" && utf8.ValidString(in.Source) && len(in.Source) <= 200 {
 		d.Source = providerID + "/" + in.Source
 	}
+	if in.Source != "" && (!utf8.ValidString(in.Source) || len(in.Source) > 200) {
+		d.partial = true
+	}
 	if c := string(in.Code); c != "" && c != "null" {
 		var s string
 		switch {
@@ -447,6 +462,8 @@ func normalizeLSPDiagnostic(path string, raw json.RawMessage, providerID string)
 		}
 		if bounded(s, 256) {
 			d.Code = s
+		} else {
+			d.partial = true
 		}
 	}
 	if len(in.Range) > 0 && string(in.Range) != "null" {
@@ -454,6 +471,7 @@ func normalizeLSPDiagnostic(path string, raw json.RawMessage, providerID string)
 			d.Range = &r
 		} else {
 			d.LocationIssue = "invalidRange"
+			d.partial = true
 		}
 	}
 	return d, true
@@ -523,7 +541,7 @@ func (b *GoplsBridge) Handle(n SessionNotification) {
 		b.note(partialGoNotice)
 		return
 	}
-	if err := b.sink.PublishPathDiagnostics(n.Project, n.ProviderID, n.Generation, pub.Path, pub.Version, pub.Diagnostics); err != nil {
+	if err := publishLivePublication(b.sink, n, pub); err != nil {
 		// A closed/never-opened document or a late generation is expected
 		// and must stay silent; anything else is partial coverage.
 		var e *Error
@@ -532,7 +550,7 @@ func (b *GoplsBridge) Handle(n SessionNotification) {
 		}
 		return
 	}
-	if pub.Dropped > 0 || pub.Truncated {
+	if pub.Dropped > 0 || pub.Partial || pub.Truncated {
 		b.note(partialGoNotice)
 	}
 }

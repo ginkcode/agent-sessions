@@ -440,14 +440,14 @@ func (b *SvelteBridge) Handle(n SessionNotification) {
 	if owner, _ := DocumentOwner(pub.Path); owner != svelteLSProviderID {
 		return // TypeScript-owned and config files never enter the Svelte set
 	}
-	if err := b.sink.PublishPathDiagnostics(n.Project, n.ProviderID, n.Generation, pub.Path, pub.Version, pub.Diagnostics); err != nil {
+	if err := publishLivePublication(b.sink, n, pub); err != nil {
 		var e *Error
 		if !errors.As(err, &e) || (e.Code != "notFound" && e.Code != "staleContext" && e.Code != "unsupported") {
 			b.note(partialSvelteNotice)
 		}
 		return
 	}
-	if pub.Dropped > 0 || pub.Truncated {
+	if pub.Dropped > 0 || pub.Partial || pub.Truncated {
 		b.note(partialSvelteNotice)
 	}
 }

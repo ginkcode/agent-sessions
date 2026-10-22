@@ -138,7 +138,11 @@ func TestNormalizeGoplsPublication(t *testing.T) {
 	if p.Dropped != 2 || len(p.Diagnostics) != 7 {
 		t.Fatalf("dropped %d kept %d", p.Dropped, len(p.Diagnostics))
 	}
-	d := p.Diagnostics
+	byMessage := map[string]Diagnostic{}
+	for _, d := range p.Diagnostics {
+		byMessage[d.Message] = d
+	}
+	d := []Diagnostic{byMessage["bad 😀 value"], byMessage["n"], byMessage["no range"], byMessage["reversed"], byMessage["negative"], byMessage["incomplete range"], byMessage["no severity defaults to warning"]}
 	if d[0].Severity != "error" || d[0].Source != "gopls/compiler" || d[0].Code != "E1" || d[0].Range.End.Character != 4 || d[0].Basis.Kind != "document" {
 		t.Fatalf("%+v", d[0])
 	}

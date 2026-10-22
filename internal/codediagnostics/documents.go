@@ -15,7 +15,6 @@ const (
 	maxDocumentBytes   = 5 << 20
 	maxDocuments       = 64
 	maxClosedDocuments = 256
-	maxPublished       = 10000
 	documentIOTimeout  = 5 * time.Second
 )
 
@@ -422,7 +421,7 @@ func (m *Manager) PublishDocumentResults(c Context, documentID, generation strin
 	// Compatibility for explicit lifecycle callers: derive the owner only from the
 	// bound backend lifecycle, never from a finding's Source. Adapters must use
 	// PublishPathDiagnostics with their concrete notification provenance.
-	return m.publishLocked(a, d, documentID, d.owner.ProviderID, generation, version, diagnostics)
+	return m.publishLocked(a, d, documentID, d.owner.ProviderID, generation, version, diagnostics, false, false)
 }
 
 // PublishPathDiagnostics is the adapter seam: it finds the open document of the
@@ -432,6 +431,10 @@ func (m *Manager) PublishDocumentResults(c Context, documentID, generation strin
 // no open document (closed, never opened) is notFound, so a late server publication
 // can never create state.
 func (m *Manager) PublishPathDiagnostics(project Project, providerID, generation, path string, version *int64, diagnostics []Diagnostic) error {
+	return m.publishPathDiagnostics(project, providerID, generation, path, version, diagnostics, false, false)
+}
+
+func (m *Manager) publishPathDiagnostics(project Project, providerID, generation, path string, version *int64, diagnostics []Diagnostic, partial, truncated bool) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.closed {
@@ -454,7 +457,7 @@ func (m *Manager) PublishPathDiagnostics(project Project, providerID, generation
 				if !ok || !isolation.PublicationIsolated(a.root, path, generation) {
 					return failure("resyncRequired", "Document publication lifecycle is ambiguous; results are unavailable until session restart")
 				}
-				return m.publishLocked(a, d, id, providerID, generation, version, diagnostics)
+				return m.publishLocked(a, d, id, providerID, generation, version, diagnostics, partial, truncated)
 			}
 		}
 		return failure("notFound", "Document is not open")
@@ -462,7 +465,7 @@ func (m *Manager) PublishPathDiagnostics(project Project, providerID, generation
 	return failure("staleContext", "Diagnostics attachment is no longer current")
 }
 
-func (m *Manager) publishLocked(a *attachment, d *documentState, documentID, providerID, generation string, version *int64, diagnostics []Diagnostic) error {
+func (m *Manager) publishLocked(a *attachment, d *documentState, documentID, providerID, generation string, version *int64, diagnostics []Diagnostic, partial, truncated bool) error {
 	if providerID != d.owner.ProviderID {
 		return failure("staleContext", "Publication provider does not own this document")
 	}
@@ -475,42 +478,24 @@ func (m *Manager) publishLocked(a *attachment, d *documentState, documentID, pro
 	if generation != d.generation || d.broken || (version != nil && *version != d.version) {
 		return failure("staleContext", "Document publication is not current")
 	}
-	out := []Diagnostic{}
-	for _, in := range diagnostics {
-		if len(out) >= maxPublished {
-			break
+	bounded := boundedDiagnostics{}
+	for _, candidate := range diagnostics {
+		in, ok, limited := normalizeLiveDiagnostic(candidate, d, documentID, version)
+		partial = partial || limited
+		truncated = truncated || in.truncated
+		if ok {
+			bounded.add(in, m.limits)
 		}
-		if in.Path != d.path || in.Message == "" || !utf8.ValidString(in.Message) || !bounded(in.Source, 256) || (in.Code != "" && !bounded(in.Code, 256)) {
-			continue
+	}
+	out := bounded.results()
+	truncated = truncated || bounded.truncated
+	if partial || truncated {
+		p := provider(a, providerID)
+		if p != nil {
+			p.Truncated = p.Truncated || truncated
+			p.Coverage.Partial = true
+			p.Notice = "Some live findings were omitted, shortened or could not be verified; results are partial"
 		}
-		switch in.Severity {
-		case "error", "warning", "information", "hint":
-		default:
-			continue
-		}
-		in.Message = strings.Clone(shorten(in.Message, 8192))
-		in.Basis = SavedBasis{Kind: "document", DocumentID: documentID, Version: version}
-		in.Freshness = "uncertain"
-		// Preserve the adapter's explicit invalid-range explanation for file-level
-		// findings; malformed server coordinates must not silently lose context.
-		if in.LocationIssue != "invalidRange" {
-			in.LocationIssue = ""
-		}
-		if version != nil {
-			in.Freshness = "current"
-		}
-		if in.Range != nil {
-			switch {
-			case version == nil:
-				in.Range = nil // cannot be proved against the displayed text
-			case !rangeInText(d.text, *in.Range):
-				in.Range, in.LocationIssue = nil, "invalidRange"
-			default:
-				r := *in.Range
-				in.Range = &r
-			}
-		}
-		out = append(out, in)
 	}
 	set := ResultSet{ProviderID: providerID, Origin: "lsp", Scope: Scope{Kind: "document", Path: d.path, DocumentID: documentID}, Diagnostics: out}
 	replaced := false

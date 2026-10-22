@@ -47,7 +47,13 @@ func (h diagnosticHeap) Len() int           { return len(h) }
 func (h diagnosticHeap) Less(i, j int) bool { return diagnosticCompare(h[i], h[j]) > 0 }
 func (h diagnosticHeap) Swap(i, j int)      { h[i], h[j] = h[j], h[i] }
 func (h *diagnosticHeap) Push(v any)        { *h = append(*h, v.(Diagnostic)) }
-func (h *diagnosticHeap) Pop() any          { old := *h; v := old[len(old)-1]; *h = old[:len(old)-1]; return v }
+func (h *diagnosticHeap) Pop() any {
+	old := *h
+	v := old[len(old)-1]
+	old[len(old)-1] = Diagnostic{}
+	*h = old[:len(old)-1]
+	return v
+}
 
 func shorten(s string, n int) string {
 	if len(s) <= n {
@@ -192,7 +198,17 @@ func (m *Manager) retain(a *attachment) {
 	count, bytes := 0, 0
 	// The count/encoded budgets are attachment-wide, not per provider. Metadata is
 	// separately bounded on attach and by normalized run coverage/notices.
-	budget := min(m.limits.FindingBytes, m.limits.SnapshotBytes-encodedSize(Snapshot{ContractVersion: 1, Context: a.snapshot.Context, Approval: a.snapshot.Approval, Providers: a.snapshot.Providers, ResultSets: []ResultSet{}, Proposal: a.snapshot.Proposal})-32*1024)
+	slices.SortFunc(a.snapshot.ResultSets, resultSetCompare)
+	metadata := a.snapshot
+	metadata.ResultSets = make([]ResultSet, len(a.snapshot.ResultSets))
+	for i, set := range a.snapshot.ResultSets {
+		set.Diagnostics = []Diagnostic{}
+		metadata.ResultSets[i] = set
+	}
+	// Include every document-set identity, and reserve space for limit notices
+	// added below plus the next sequence digit. Findings never borrow the v1
+	// 1 MiB metadata reservation, even with many documents/providers.
+	budget := min(m.limits.FindingBytes, m.limits.SnapshotBytes-encodedSize(metadata)-32*1024)
 	stopped := false
 	for i := range a.snapshot.ResultSets {
 		s := &a.snapshot.ResultSets[i]
@@ -215,6 +231,9 @@ func (m *Manager) retain(a *attachment) {
 			copy(kept, s.Diagnostics[:keep])
 			s.Diagnostics = kept
 			p := provider(a, s.ProviderID)
+			if p == nil {
+				continue
+			}
 			p.Truncated = true
 			p.Coverage.Partial = true
 			p.Notice = "Diagnostic retention limit reached; snapshot contains a bounded partial prefix"
