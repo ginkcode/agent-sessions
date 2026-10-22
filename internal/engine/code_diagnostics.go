@@ -45,17 +45,28 @@ const CodeDiagnosticsUpdatedEvent = "codeDiagnostics:updated"
 // diagnosticsOwner has a lifetime independent of any individual request. No
 // callbacks or process joins occur under Engine.mu.
 type diagnosticsOwner struct {
-	manager  *cd.Manager
-	host     string
-	mu       sync.Mutex
-	contexts map[string]cd.Context
-	stop     chan struct{}
-	done     chan struct{}
-	workers  sync.WaitGroup
+	manager *cd.Manager
+	live    *cd.LiveDocuments
+	// Internal route only: explicit reviewed discovery + launcher injection.
+	// Production leaves both nil pending the live release gates.
+	discoverLive func(cd.AuthorizedRoot) ([]cd.Registration, error)
+	roots        map[string]cd.AuthorizedRoot
+	host         string
+	mu           sync.Mutex
+	contexts     map[string]cd.Context
+	stop         chan struct{}
+	done         chan struct{}
+	workers      sync.WaitGroup
 }
 
 func diagnosticError(code, message string) error { return &cd.Error{Code: code, Message: message} }
 func newDiagnosticsOwner(config string, host string) (*diagnosticsOwner, error) {
+	return newDiagnosticsOwnerWithLive(config, host, nil, cd.SessionOptions{})
+}
+
+// The internal route requires explicitly supplied reviewed host metadata and a
+// launcher. Production deliberately calls the checker-only constructor above.
+func newDiagnosticsOwnerWithLive(config, host string, discover func(cd.AuthorizedRoot) ([]cd.Registration, error), options cd.SessionOptions) (*diagnosticsOwner, error) {
 	store, err := cd.NewGrantStore(config)
 	if err != nil {
 		return nil, err
@@ -67,7 +78,13 @@ func newDiagnosticsOwner(config string, host string) (*diagnosticsOwner, error) 
 	if err != nil {
 		return nil, err
 	}
-	return &diagnosticsOwner{manager: manager, host: host, contexts: map[string]cd.Context{}, stop: make(chan struct{}), done: make(chan struct{})}, nil
+	o := &diagnosticsOwner{manager: manager, host: host, roots: map[string]cd.AuthorizedRoot{}, contexts: map[string]cd.Context{}, stop: make(chan struct{}), done: make(chan struct{})}
+	if discover != nil && options.Launch != nil {
+		o.discoverLive = discover
+		o.live = cd.NewLiveDocuments(trust, manager, options)
+		manager.SetDocumentProvider(o.live)
+	}
+	return o, nil
 }
 
 func (e *Engine) diagnostics(ctx context.Context) (*diagnosticsOwner, error) {
@@ -108,6 +125,9 @@ func (o *diagnosticsOwner) events(e *Engine) {
 		case <-o.stop:
 			return
 		case <-ticker.C:
+			if o.live != nil {
+				o.live.Refresh()
+			}
 			o.mu.Lock()
 			contexts := make([]cd.Context, 0, len(o.contexts))
 			for _, c := range o.contexts {
@@ -146,7 +166,16 @@ func (o *diagnosticsOwner) events(e *Engine) {
 		}
 	}
 }
-func (o *diagnosticsOwner) close() { close(o.stop); o.manager.Close(); o.workers.Wait(); <-o.done }
+
+func (o *diagnosticsOwner) close() {
+	close(o.stop)
+	o.manager.Close()
+	o.workers.Wait()
+	if o.live != nil {
+		o.live.Close()
+	}
+	<-o.done
+}
 
 // AuthorizeCodeDiagnosticsRoot checks catalog membership before canonicalization
 // or metadata discovery. Tokens and arbitrary paths are never authority.
@@ -183,11 +212,22 @@ func (e *Engine) AttachCodeDiagnostics(ctx context.Context, dir string, version 
 	if err == nil {
 		o.mu.Lock()
 		o.contexts[s.Context.AttachmentID] = s.Context
+		o.roots[s.Context.AttachmentID] = root
 		o.mu.Unlock()
 		o.workers.Add(1)
 		go func() {
 			defer o.workers.Done()
 			registrations := discoverCheckers(root)
+			if o.discoverLive != nil {
+				live, discoveryErr := o.discoverLive(root)
+				if discoveryErr == nil {
+					registrations = append(registrations, live...)
+					discoveryErr = o.live.Register(root, registrations)
+				}
+				if discoveryErr != nil {
+					registrations = []cd.Registration{{ProviderID: "gopls", Availability: "unsupported"}, {ProviderID: "typescript", Availability: "unsupported"}, {ProviderID: "svelte", Availability: "unsupported"}}
+				}
+			}
 			if err := o.manager.CompleteDiscovery(s.Context, registrations); err != nil {
 				// Combined proposals may exceed the contract's tool/hash budget.
 				// Fail closed with explicit unavailable metadata, never leave an
@@ -231,6 +271,9 @@ func (e *Engine) GetCodeDiagnosticsSnapshot(ctx context.Context, c cd.Context) (
 	if err != nil {
 		return cd.Snapshot{}, err
 	}
+	if o.live != nil {
+		o.live.Refresh()
+	}
 	return o.manager.GetSnapshot(c)
 }
 
@@ -249,6 +292,12 @@ func (e *Engine) RevokeCodeDiagnostics(ctx context.Context, c cd.Context) (cd.Sn
 	}
 	s, err := o.manager.Revoke(c)
 	if s.Context.AttachmentID != "" {
+		if o.live != nil {
+			o.mu.Lock()
+			root := o.roots[c.AttachmentID]
+			o.mu.Unlock()
+			o.live.Revoke(root)
+		}
 		o.mu.Lock()
 		if o.contexts[c.AttachmentID] == c {
 			o.contexts[c.AttachmentID] = s.Context
@@ -267,6 +316,7 @@ func (e *Engine) DetachCodeDiagnostics(ctx context.Context, c cd.Context) (CodeD
 	if err == nil {
 		o.mu.Lock()
 		delete(o.contexts, c.AttachmentID)
+		delete(o.roots, c.AttachmentID)
 		o.mu.Unlock()
 	}
 	return CodeDiagnosticsAck{c}, err

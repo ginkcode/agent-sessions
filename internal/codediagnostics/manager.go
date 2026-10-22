@@ -279,6 +279,7 @@ func (m *Manager) Detach(c Context) error {
 	delete(m.attachments, c.AttachmentID)
 	m.cancelAll(a)
 	m.releaseDocuments(a)
+	m.idleDocuments(a)
 	return nil
 }
 

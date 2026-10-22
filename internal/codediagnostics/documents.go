@@ -166,6 +166,13 @@ func (m *Manager) OpenDocument(ctx context.Context, c Context, path, documentID 
 	if _, err = a.root.ResolvePath(a.root.Project().HostID, path); err != nil {
 		return DocumentReceipt{}, err
 	}
+	if p, ok := m.provider.(interface {
+		EnsureSession(context.Context, AuthorizedRoot, string) error
+	}); ok {
+		if err = p.EnsureSession(ctx, a.root, path); err != nil {
+			return DocumentReceipt{}, err
+		}
+	}
 	owner, generation, _, err := m.documentSession(a.root, path)
 	if err != nil {
 		return DocumentReceipt{}, err
@@ -178,6 +185,14 @@ func (m *Manager) OpenDocument(ctx context.Context, c Context, path, documentID 
 		a.docs = map[string]*documentState{}
 	}
 	a.docs[documentID] = d
+	for i := range a.snapshot.Providers {
+		p := &a.snapshot.Providers[i]
+		if p.ProviderID == owner.ProviderID && p.Coverage.Kind == "openedDocuments" {
+			p.Phase, p.Freshness, p.Failure = "idle", "uncertain", nil
+			p.Notice = "Diagnostics cover opened documents only; external changes are unwatched."
+		}
+	}
+	m.commit(a)
 	return DocumentReceipt{Context: c, DocumentID: documentID, Version: 1}, nil
 }
 
@@ -330,6 +345,7 @@ func (m *Manager) CloseDocument(ctx context.Context, c Context, documentID strin
 	if m.dropDocument(a, documentID) && m.provider != nil && !d.broken {
 		_ = m.docStep(ctx, a, d, DocumentStep{Generation: d.generation, Kind: "close", Version: d.version})
 	}
+	m.idleDocuments(a)
 	m.commit(a)
 	return receipt, nil
 }
