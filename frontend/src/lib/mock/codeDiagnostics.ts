@@ -1,4 +1,4 @@
-import type { CodeDiagnosticsAPI, CodeDiagnosticsContext, CodeDiagnosticsSnapshot, CodeDiagnosticsRun } from '../codeDiagnostics';
+import type { CodeDiagnosticsAPI, CodeDiagnosticsContext, CodeDiagnosticsSnapshot, CodeDiagnosticsRun, CodeDiagnosticsDocumentReceipt } from '../codeDiagnostics';
 import { CODE_DIAGNOSTICS_EVENT, CodeDiagnosticsError, sameContext } from '../codeDiagnostics';
 
 /** Synthetic, in-memory checker. No executable or editor/text dependencies. */
@@ -6,6 +6,10 @@ export class MockCodeDiagnostics implements CodeDiagnosticsAPI {
   private serial = 0;
   private snapshots = new Map<string, CodeDiagnosticsSnapshot>();
   private publishEvent: (name: string, event: unknown) => void;
+  /** Synthetic in-memory document mirror, per attachment. Live support is never advertised. */
+  liveDocuments = false;
+  private documents = new Map<string, Map<string, { path: string; version: number; text: string }>>();
+  private closed = new Set<string>();
   constructor(publishEvent: (name: string, event: unknown) => void) { this.publishEvent = publishEvent; }
   private get(c: CodeDiagnosticsContext, host: string) {
     const s = this.snapshots.get(c.attachmentId);
@@ -24,7 +28,39 @@ export class MockCodeDiagnostics implements CodeDiagnosticsAPI {
     this.snapshots.set(context.attachmentId, snapshot);
     return structuredClone({ project: { hostId: host, root: dir }, context, snapshot });
   }
-  async detachCodeDiagnostics(c: CodeDiagnosticsContext, host: string) { this.get(c, host); this.snapshots.delete(c.attachmentId); return { context: c }; }
+  async detachCodeDiagnostics(c: CodeDiagnosticsContext, host: string) { this.get(c, host); this.snapshots.delete(c.attachmentId); this.documents.delete(c.attachmentId); return { context: c }; }
+  private docs(c: CodeDiagnosticsContext, host: string) {
+    const s = this.get(c, host);
+    if (!this.liveDocuments) throw new CodeDiagnosticsError('unsupported', 'Mock live diagnostics are unavailable');
+    if (s.approval.state !== 'approved') throw new CodeDiagnosticsError('approvalRequired', 'Approve mock checker first');
+    let m = this.documents.get(c.attachmentId);
+    if (!m) this.documents.set(c.attachmentId, m = new Map());
+    return m;
+  }
+  async openCodeDiagnosticDocument(c: CodeDiagnosticsContext, path: string, documentId: string, version: 1, text: string, _revision: string | undefined, host: string): Promise<CodeDiagnosticsDocumentReceipt> {
+    const m = this.docs(c, host);
+    if (version !== 1 || !documentId || m.has(documentId) || this.closed.has(documentId) || [...m.values()].some(d => d.path === path)) throw new CodeDiagnosticsError('invalidArgument', 'Invalid mock document open');
+    m.set(documentId, { path, version, text });
+    return { context: c, documentId, version };
+  }
+  async changeCodeDiagnosticDocument(c: CodeDiagnosticsContext, documentId: string, version: number, text: string, host: string): Promise<CodeDiagnosticsDocumentReceipt> {
+    const d = this.docs(c, host).get(documentId);
+    if (!d) throw new CodeDiagnosticsError('notFound', 'Mock document is not open');
+    if (version < d.version || (version === d.version && text !== d.text)) throw new CodeDiagnosticsError('invalidArgument', 'Mock document version conflict');
+    d.version = version; d.text = text;
+    return { context: c, documentId, version };
+  }
+  async saveCodeDiagnosticDocument(c: CodeDiagnosticsContext, documentId: string, savedVersion: number, _revision: string, host: string): Promise<CodeDiagnosticsDocumentReceipt> {
+    const d = this.docs(c, host).get(documentId);
+    if (!d) throw new CodeDiagnosticsError('notFound', 'Mock document is not open');
+    if (savedVersion > d.version) throw new CodeDiagnosticsError('invalidArgument', 'Mock saved version is unknown');
+    return { context: c, documentId };
+  }
+  async closeCodeDiagnosticDocument(c: CodeDiagnosticsContext, documentId: string, host: string): Promise<CodeDiagnosticsDocumentReceipt> {
+    const m = this.docs(c, host);
+    if (m.delete(documentId)) this.closed.add(documentId);
+    return { context: c, documentId };
+  }
   async getCodeDiagnosticsSnapshot(c: CodeDiagnosticsContext, host: string) { return structuredClone(this.get(c, host)); }
   async approveCodeDiagnostics(c: CodeDiagnosticsContext, mode: 'session' | 'persistent', fingerprint: string, host: string) {
     const s = this.get(c, host);

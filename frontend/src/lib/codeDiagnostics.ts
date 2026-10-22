@@ -59,6 +59,26 @@ export interface CodeDiagnosticsUpdate {
 export interface CodeDiagnosticsRun { providerId: string; runId: string }
 export interface CodeDiagnosticsAck { context: CodeDiagnosticsContext }
 export interface CodeDiagnosticsRuns extends CodeDiagnosticsAck { runs: CodeDiagnosticsRun[] }
+/** Document operations return identity only, never text. */
+export interface CodeDiagnosticsDocumentReceipt { context: CodeDiagnosticsContext; documentId: string; version?: number }
+
+/** What the bridge confirmed for a displayed document; the store keeps no text. */
+export interface LiveDocumentBasis { documentId: string; version: number; synced: boolean }
+
+/**
+ * Whether a document-basis finding may be drawn over the displayed text.
+ * `current`: same lifecycle, version equals the confirmed unchanged version and the
+ * producer verified it. `uncertain`: unversioned or unverified, panel only.
+ * `hidden`: another lifecycle or an older/newer version (never reuse stale ranges).
+ */
+export function liveDocumentEligibility(d: CodeDiagnostic, doc: LiveDocumentBasis): 'current' | 'uncertain' | 'hidden' {
+  const b = d.basis;
+  if (b.kind !== 'document' || b.documentId !== doc.documentId) return 'hidden';
+  if (b.version === undefined) return 'uncertain';
+  if (b.version !== doc.version) return b.version < doc.version ? 'hidden' : 'uncertain';
+  if (!doc.synced || d.freshness !== 'current' || !d.range || d.locationIssue) return 'uncertain';
+  return 'current';
+}
 
 /** All attached calls carry stable host identity, never a picker alias. */
 export interface CodeDiagnosticsAPI {
@@ -69,6 +89,11 @@ export interface CodeDiagnosticsAPI {
   revokeCodeDiagnostics(context: CodeDiagnosticsContext, expectedHostId: string): Promise<CodeDiagnosticsSnapshot>;
   runCodeDiagnostics(context: CodeDiagnosticsContext, providerIds: string[] | undefined, expectedHostId: string): Promise<CodeDiagnosticsRuns>;
   cancelCodeDiagnostics(context: CodeDiagnosticsContext, runs: CodeDiagnosticsRun[], expectedHostId: string): Promise<CodeDiagnosticsAck>;
+  /** Stage 2 (liveCodeDiagnostics only). Bodies are never logged or persisted. */
+  openCodeDiagnosticDocument(context: CodeDiagnosticsContext, path: string, documentId: string, version: 1, text: string, revision: string | undefined, expectedHostId: string): Promise<CodeDiagnosticsDocumentReceipt>;
+  changeCodeDiagnosticDocument(context: CodeDiagnosticsContext, documentId: string, version: number, text: string, expectedHostId: string): Promise<CodeDiagnosticsDocumentReceipt>;
+  saveCodeDiagnosticDocument(context: CodeDiagnosticsContext, documentId: string, savedVersion: number, revision: string, expectedHostId: string): Promise<CodeDiagnosticsDocumentReceipt>;
+  closeCodeDiagnosticDocument(context: CodeDiagnosticsContext, documentId: string, expectedHostId: string): Promise<CodeDiagnosticsDocumentReceipt>;
 }
 
 export const CODE_DIAGNOSTICS_EVENT = 'codeDiagnostics:updated';

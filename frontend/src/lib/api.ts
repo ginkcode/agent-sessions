@@ -1,4 +1,4 @@
-import type { CodeDiagnosticsAPI, CodeDiagnosticsContext, CodeDiagnosticsRun, CodeDiagnosticsAttachment, CodeDiagnosticsSnapshot, CodeDiagnosticsAck, CodeDiagnosticsRuns } from './codeDiagnostics';
+import type { CodeDiagnosticsAPI, CodeDiagnosticsContext, CodeDiagnosticsRun, CodeDiagnosticsAttachment, CodeDiagnosticsSnapshot, CodeDiagnosticsAck, CodeDiagnosticsRuns, CodeDiagnosticsDocumentReceipt } from './codeDiagnostics';
 import { CodeDiagnosticsError, codeDiagnosticsError } from './codeDiagnostics';
 import type { PortForwardRequest, PortForwardState } from './portForward';
 import type { TerminalFileTarget } from './terminalFileOpen';
@@ -185,6 +185,10 @@ interface WailsAppBinding {
   RevokeCodeDiagnostics?: CodeDiagnosticsAPI['revokeCodeDiagnostics'];
   RunCodeDiagnostics?: CodeDiagnosticsAPI['runCodeDiagnostics'];
   CancelCodeDiagnostics?: CodeDiagnosticsAPI['cancelCodeDiagnostics'];
+  OpenCodeDiagnosticDocument?: CodeDiagnosticsAPI['openCodeDiagnosticDocument'];
+  ChangeCodeDiagnosticDocument?: CodeDiagnosticsAPI['changeCodeDiagnosticDocument'];
+  SaveCodeDiagnosticDocument?: CodeDiagnosticsAPI['saveCodeDiagnosticDocument'];
+  CloseCodeDiagnosticDocument?: CodeDiagnosticsAPI['closeCodeDiagnosticDocument'];
   ListGroups(mode: string, filter: FilterOpts): Promise<GroupNode[]>;
   ListSessions(groupKey: string, filter: FilterOpts, sort: SortOpts): Promise<SessionMeta[]>;
   AgentCounts(filter: FilterOpts): Promise<Record<string, number>>;
@@ -314,6 +318,23 @@ class WailsBackendAPI implements BackendAPI {
   cancelCodeDiagnostics(c: CodeDiagnosticsContext, runs: CodeDiagnosticsRun[], host: string): Promise<CodeDiagnosticsAck> {
     const b = this.binding;
     return this.diagnosticsCall(b.CancelCodeDiagnostics && (() => b.CancelCodeDiagnostics!(c, runs, host)));
+  }
+  // Generated Wails bindings are not relied on: an absent method is `unsupported`.
+  openCodeDiagnosticDocument(c: CodeDiagnosticsContext, path: string, documentId: string, version: 1, text: string, revision: string | undefined, host: string): Promise<CodeDiagnosticsDocumentReceipt> {
+    const b = this.binding;
+    return this.diagnosticsCall(b.OpenCodeDiagnosticDocument && (() => b.OpenCodeDiagnosticDocument!(c, path, documentId, version, text, revision, host)));
+  }
+  changeCodeDiagnosticDocument(c: CodeDiagnosticsContext, documentId: string, version: number, text: string, host: string): Promise<CodeDiagnosticsDocumentReceipt> {
+    const b = this.binding;
+    return this.diagnosticsCall(b.ChangeCodeDiagnosticDocument && (() => b.ChangeCodeDiagnosticDocument!(c, documentId, version, text, host)));
+  }
+  saveCodeDiagnosticDocument(c: CodeDiagnosticsContext, documentId: string, savedVersion: number, revision: string, host: string): Promise<CodeDiagnosticsDocumentReceipt> {
+    const b = this.binding;
+    return this.diagnosticsCall(b.SaveCodeDiagnosticDocument && (() => b.SaveCodeDiagnosticDocument!(c, documentId, savedVersion, revision, host)));
+  }
+  closeCodeDiagnosticDocument(c: CodeDiagnosticsContext, documentId: string, host: string): Promise<CodeDiagnosticsDocumentReceipt> {
+    const b = this.binding;
+    return this.diagnosticsCall(b.CloseCodeDiagnosticDocument && (() => b.CloseCodeDiagnosticDocument!(c, documentId, host)));
   }
   private get binding(): WailsAppBinding {
     const b = (window as any).go?.app?.App;

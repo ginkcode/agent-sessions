@@ -10,7 +10,7 @@ test('Wails maps exact Stage 1 arguments/host and normalizes error codes; old bi
     globalThis.window = { go: { app: { App: binding } } };
     const api = createAPI();
     await assert.rejects(api.attachCodeDiagnostics('/p', 1, 'stable-host'), e => e.code === 'unsupported');
-    const methods = ['AttachCodeDiagnostics', 'DetachCodeDiagnostics', 'GetCodeDiagnosticsSnapshot', 'ApproveCodeDiagnostics', 'RevokeCodeDiagnostics', 'RunCodeDiagnostics', 'CancelCodeDiagnostics'];
+    const methods = ['AttachCodeDiagnostics', 'DetachCodeDiagnostics', 'GetCodeDiagnosticsSnapshot', 'ApproveCodeDiagnostics', 'RevokeCodeDiagnostics', 'RunCodeDiagnostics', 'CancelCodeDiagnostics', 'OpenCodeDiagnosticDocument', 'ChangeCodeDiagnosticDocument', 'SaveCodeDiagnosticDocument', 'CloseCodeDiagnosticDocument'];
     for (const method of methods) binding[method] = async (...args) => { calls.push([method, args]); return 'ok'; };
     const c = { connectionId: 'c', attachmentId: 'a', generation: 'g' };
     await api.attachCodeDiagnostics('/p', 1, 'stable-host');
@@ -20,7 +20,15 @@ test('Wails maps exact Stage 1 arguments/host and normalizes error codes; old bi
     await api.revokeCodeDiagnostics(c, 'stable-host');
     await api.runCodeDiagnostics(c, undefined, 'stable-host');
     await api.cancelCodeDiagnostics(c, [{ providerId: 'p', runId: 'r' }], 'stable-host');
+    await api.openCodeDiagnosticDocument(c, 'a.go', 'doc', 1, 'text', 'rev', 'stable-host');
+    await api.changeCodeDiagnosticDocument(c, 'doc', 2, 'text2', 'stable-host');
+    await api.saveCodeDiagnosticDocument(c, 'doc', 2, 'rev2', 'stable-host');
+    await api.closeCodeDiagnosticDocument(c, 'doc', 'stable-host');
     assert.deepEqual(calls.map(c => c[0]), methods);
+    assert.deepEqual(calls[7][1], [c, 'a.go', 'doc', 1, 'text', 'rev', 'stable-host']);
+    assert.deepEqual(calls[8][1], [c, 'doc', 2, 'text2', 'stable-host']);
+    assert.deepEqual(calls[9][1], [c, 'doc', 2, 'rev2', 'stable-host']);
+    assert.deepEqual(calls[10][1], [c, 'doc', 'stable-host']);
     assert.deepEqual(calls[0][1], ['/p', 1, 'stable-host']);
     assert.deepEqual(calls[3][1], [c, 'session', 'fp', 'stable-host']);
     for (const [, args] of calls) assert.equal(args.at(-1), 'stable-host');

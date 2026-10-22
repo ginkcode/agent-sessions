@@ -3,8 +3,8 @@ import { aggregateCodeDiagnostics } from '../codeDiagnosticCounts';
 import { epoch } from '../link';
 import type { BackendAPI } from '../api';
 import type { ConnectionState } from '../types';
-import type { CodeDiagnosticsContext, CodeDiagnosticsProject, CodeDiagnosticsSnapshot, CodeDiagnosticsUpdate, CodeDiagnosticsRun } from '../codeDiagnostics';
-import { CODE_DIAGNOSTICS_EVENT, CODE_DIAGNOSTICS_LIMITS as limits, CodeDiagnosticsError, codeDiagnosticsError, sameAttachment, sameContext, encodedBytes, resultSetKey, groupCodeDiagnostics, inlineCodeDiagnostic } from '../codeDiagnostics';
+import type { LiveDocumentBasis, CodeDiagnosticsContext, CodeDiagnosticsProject, CodeDiagnosticsSnapshot, CodeDiagnosticsUpdate, CodeDiagnosticsRun } from '../codeDiagnostics';
+import { CODE_DIAGNOSTICS_EVENT, CODE_DIAGNOSTICS_LIMITS as limits, CodeDiagnosticsError, codeDiagnosticsError, sameAttachment, sameContext, encodedBytes, resultSetKey, groupCodeDiagnostics, inlineCodeDiagnostic, liveDocumentEligibility } from '../codeDiagnostics';
 
 type Assembly = { parts: Map<number, CodeDiagnosticsUpdate>; bytes: number; timer: ReturnType<typeof setTimeout> };
 
@@ -45,6 +45,25 @@ export class CodeDiagnosticsStore {
   private attempts = 0;
   private host = '';
   private retiredGenerations = new Set<string>();
+  private liveCapable = false;
+  private listeners = new Set<() => void>();
+
+  /**
+   * Identity of the attachment that may carry live document operations: only while
+   * approved, attached to a host that advertises liveCodeDiagnostics. Absent otherwise,
+   * which keeps every document bridge inert. `token` changes with any lifetime or
+   * generation replacement. The store keeps no text.
+   */
+  get liveAttachment(): { context: CodeDiagnosticsContext; host: string; directory: string; token: string } | undefined {
+    if (!this.liveCapable || !this.approved || !this.context || !this.directory || !this.active()) return undefined;
+    return { context: this.context, host: this.host, directory: this.directory, token: `${this.lifetime}:${this.context.generation}` };
+  }
+  /** Notified (synchronously, errors swallowed) whenever attachment state may have changed. */
+  onLifecycle(listener: () => void): () => void {
+    this.listeners.add(listener);
+    return () => { this.listeners.delete(listener); };
+  }
+  private emit() { for (const l of [...this.listeners]) { try { l(); } catch { /* observers never affect protocol state */ } } }
 
   constructor(private backend: BackendAPI = api, private currentEpoch: () => number = epoch) {}
 
@@ -71,6 +90,18 @@ export class CodeDiagnosticsStore {
       return eligible ? [{ ...f, diagnostic: eligible.diagnostic }] : [];
     });
   }
+  /**
+   * Live document findings drawn over the displayed text: only versioned results
+   * of the same document lifecycle whose version equals the confirmed, unchanged
+   * version. Everything else stays panel-only (see liveDocumentEligibility).
+   */
+  liveInline(path: string, doc: LiveDocumentBasis | undefined) {
+    if (this.status !== 'ready' || !doc) return [];
+    return this.findings.flatMap(f => {
+      const eligible = f.entries.find(e => e.diagnostic.path === path && liveDocumentEligibility(e.diagnostic, doc) === 'current');
+      return eligible ? [{ ...f, diagnostic: eligible.diagnostic }] : [];
+    });
+  }
   private active(lifetime = this.lifetime) { return lifetime === this.lifetime && this.startedEpoch === this.currentEpoch(); }
   private clearBuffers() {
     for (const a of this.assemblies.values()) clearTimeout(a.timer);
@@ -90,6 +121,8 @@ export class CodeDiagnosticsStore {
     this.directory = undefined;
     this.project = undefined; this.snapshot = undefined; this.status = 'detached'; this.error = undefined;
     this.pending = undefined; this.revoking = false; this.pendingRuns = [];
+    this.liveCapable = false;
+    this.emit();
     if (c) { try { await this.backend.detachCodeDiagnostics(c, host); } catch { /* Never retry mutations across a connection change. */ } }
   }
   hide() { return this.detach(); }
@@ -100,6 +133,8 @@ export class CodeDiagnosticsStore {
     this.clearBuffers(); this.recovering = false;
     this.pending = undefined; this.pendingRuns = []; this.revoking = false;
     this.status = 'disconnected'; this.stale(true);
+    this.liveCapable = false;
+    this.emit();
   }
   async attach(dir: string, connection: ConnectionState) {
     // Invalidate synchronously, but do not make rendering wait for old detach.
@@ -109,6 +144,7 @@ export class CodeDiagnosticsStore {
     if (!connection.capabilities.codeDiagnostics || !connection.hostId || !['local', 'connected'].includes(connection.phase)) {
       this.status = 'unsupported'; return;
     }
+    this.liveCapable = !!connection.capabilities.liveCodeDiagnostics;
     this.host = connection.hostId; this.status = 'attaching'; this.earlyOverflow = false; this.retiredGenerations.clear();
     this.off = this.backend.onEvent(CODE_DIAGNOSTICS_EVENT, (event: CodeDiagnosticsUpdate) => {
       if (!this.active(life)) return;
@@ -142,6 +178,7 @@ export class CodeDiagnosticsStore {
     this.error = codeDiagnosticsError(e);
     if (this.error.code === 'disconnected' || this.error.code === 'staleContext') { this.disconnect(); return; }
     this.status = this.error.code === 'unsupported' ? 'unsupported' : 'error'; this.stale();
+    this.emit();
   }
   private validSnapshot(s: CodeDiagnosticsSnapshot) {
     return !!s && s.contractVersion === 1 && !!s.context && !!s.approval && Number.isSafeInteger(s.sequence) && s.sequence >= 0 && Array.isArray(s.providers) && s.providers.length <= 32 && Array.isArray(s.resultSets) && s.resultSets.every(r => Array.isArray(r.diagnostics)) && s.resultSets.reduce((n, r) => n + r.diagnostics.length, 0) <= limits.findings && encodedBytes(s) <= limits.snapshotBytes;
@@ -160,6 +197,7 @@ export class CodeDiagnosticsStore {
     this.pendingRuns = this.pendingRuns.filter(r => s.approval.state === 'approved' && !s.providers.some(p => p.providerId === r.providerId && p.runId === r.runId));
     this.snapshot = structuredClone(s); this.status = 'ready'; this.error = undefined;
     this.pruneAssemblies(s.sequence);
+    this.emit();
     return true;
   }
   private pruneAssemblies(sequence: number) {
@@ -206,6 +244,7 @@ export class CodeDiagnosticsStore {
     this.clearBuffers(); this.stale();
     if (!this.context) return;
     this.status = 'resyncing';
+    this.emit();
     if (this.recovering) return;
     if (this.attempts >= limits.retries) { this.status = 'error'; this.error = new CodeDiagnosticsError('resyncRequired', 'Diagnostics recovery exhausted; retry explicitly'); return; }
     this.recovering = true; this.attempts++;
@@ -241,6 +280,7 @@ export class CodeDiagnosticsStore {
   }
   revoke() {
     this.revoking = true; // Fail closed immediately, even if the reply is lost.
+    this.emit();
     return this.request('revoke', () => this.action((c, h) => this.backend.revokeCodeDiagnostics(c, h), s => { if (this.commit(s, false, true)) this.revoking = false; }));
   }
   async run(providerIds?: string[]) {

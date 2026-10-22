@@ -43,6 +43,39 @@ export function tabHasUnsaved(tab: FileTab): boolean {
   return !!edit && (edit.draft !== edit.baseline || edit.saving || !!edit.uncertain || !!edit.conflict);
 }
 
+/** The text a tab currently displays, for live-diagnostics reconciliation only. */
+export interface DisplayedDocument { path: string; text: string; revision?: string }
+
+/**
+ * Explicit notifications of *committed* files-store transitions. The observer
+ * (the live diagnostics bridge) never owns tabs, drafts, revisions or save policy;
+ * failures in it are swallowed and cannot affect editing.
+ */
+export interface FileLifecycleObserver {
+  /** A read committed displayable text to a tab not being edited. */
+  opened(dir: string, path: string, text: string, revision?: string): void;
+  /** The displayed text was replaced by committed text (edit toggle, discard/reload). */
+  replaced(dir: string, path: string, text: string, revision?: string): void;
+  /** The draft changed (already committed to the store). */
+  changed(dir: string, path: string, text: string): void;
+  /** Called with the exact text about to be saved; the opaque token is returned to saved/saveFailed. */
+  beforeSave(dir: string, path: string, text: string): unknown;
+  saved(dir: string, path: string, token: unknown, revision: string): void;
+  saveFailed(dir: string, path: string, token: unknown, uncertain: boolean): void;
+  /** The tab is gone (close, preview replacement, delete, nothing displayable). */
+  removed(dir: string, path: string): void;
+  /** A confirmed rename already remapped open tabs. */
+  renamed(dir: string, from: string, to: string): void;
+  /** A rename/delete outcome is unknown for this path (and its descendants). */
+  uncertain(dir: string, path: string): void;
+  /** Saved tabs of a directory were restored; reconcile all displayed documents. */
+  restored(dir: string): void;
+  /** The store was cleared/reset/dialog closed: forget everything without sending. */
+  cleared(): void;
+  /** The connection changed: cancel pending work immediately. */
+  interrupted(): void;
+}
+
 export interface DraftTarget {
   host: string | undefined;
   dir: string;
@@ -97,9 +130,39 @@ export class FilesStore {
   private hasHost = false;
   private connectionSeq = 0;
   private reconciling = new Map<FileTab, { seq: number; promise: Promise<void> }>();
+  private observer?: FileLifecycleObserver;
+
+  /** Installs the single lifecycle observer; returns an unsubscribe function. */
+  observe(observer: FileLifecycleObserver | undefined): () => void {
+    this.observer = observer;
+    return () => { if (this.observer === observer) this.observer = undefined; };
+  }
+
+  private notify(call: (o: FileLifecycleObserver) => void): void {
+    const o = this.observer;
+    if (!o) return;
+    try { call(o); } catch { /* Diagnostics must never affect files, drafts or saves. */ }
+  }
+
+  /** Displayed text of the browsed directory's tabs (drafts included); never persisted. */
+  displayedDocuments(): DisplayedDocument[] {
+    const out: DisplayedDocument[] = [];
+    for (const tab of this.tabs) {
+      if (tab.edit) out.push({ path: tab.path, text: tab.edit.draft, revision: tab.edit.revision });
+      else if (displayable(tab.content)) out.push({ path: tab.path, text: tab.content.text, revision: tab.content.revision });
+    }
+    return out;
+  }
+
+  private shown(dir: string, tab: FileTab): void {
+    const content = tab.content;
+    if (displayable(content)) this.notify(o => o.opened(dir, tab.path, content.text, content.revision));
+    else this.notify(o => o.removed(dir, tab.path));
+  }
 
   /** Reconnect retains every editor/cache; only an explicitly resolved host switch may reset. */
   async connectionChanged(host?: string): Promise<void> {
+    this.notify(o => o.interrupted());
     this.connectionSeq++;
     this.listSeq++;
     this.loadingList = this.refreshing = false;
@@ -247,6 +310,7 @@ export class FilesStore {
       // The files may have changed since: read them again, keeping what
       // shows until the new text arrives.
       for (const tab of this.tabs) void this.read(tab.path);
+      this.notify(o => o.restored(dir));
     }
     this.loadingList = true;
     await this.list(dir);
@@ -347,6 +411,7 @@ export class FilesStore {
       for (const tab of affected) if (!tab.edit) void this.read(tab.path);
     } catch (err) {
       if (!current() || isStaleReply(err) || isDisconnectedError(err)) {
+        this.notify(o => o.uncertain(dir, path));
         this.renameUncertain = 'The rename outcome is unknown. Verify the paths on disk before reopening this project; saving and renaming are disabled to protect drafts.';
         throw new Error(this.renameUncertain);
       }
@@ -383,6 +448,7 @@ export class FilesStore {
       if (!current()) throw new Error('The connection changed during deletion.');
       const selectedAt = this.tabs.findIndex(t => t.path === this.selected);
       this.tabs = this.tabs.filter(t => !matches(t.path));
+      for (const tab of affected) this.notify(o => o.removed(dir, tab.path));
       if (this.selected && matches(this.selected)) {
         this.selected = (this.tabs[Math.min(selectedAt, this.tabs.length - 1)])?.path ?? null;
       }
@@ -392,6 +458,7 @@ export class FilesStore {
       await this.list(dir);
     } catch (err) {
       if (!current() || isStaleReply(err) || isDisconnectedError(err)) {
+        this.notify(o => o.uncertain(dir, path));
         this.deleteUncertain = 'The deletion outcome is unknown. Some contents may already have been removed. Verify the paths on disk before reopening this project; saving, renaming and deleting are disabled to protect drafts.';
         throw new Error(this.deleteUncertain);
       }
@@ -417,6 +484,8 @@ export class FilesStore {
     if (this.selected) this.selected = remap(this.selected);
     this.expanded = new Set([...this.expanded].map(remap));
     this.save();
+    const dir = this.dir;
+    if (dir) this.notify(o => o.renamed(dir, path, destination));
   }
 
   setExpanded(next: Set<string>): void {
@@ -448,7 +517,10 @@ export class FilesStore {
     };
     const previewAt = keep ? -1 : this.tabs.findIndex((t) => t.preview && !t.edit?.editing && !tabHasUnsaved(t));
     if (previewAt >= 0) {
+      const replaced = this.tabs[previewAt];
       this.tabs[previewAt] = tab;
+      const dir = this.dir;
+      this.notify(o => o.removed(dir, replaced.path));
     } else {
       const activeAt = this.tabs.findIndex((t) => t.path === this.selected);
       this.tabs.splice(activeAt >= 0 ? activeAt + 1 : this.tabs.length, 0, tab);
@@ -494,6 +566,8 @@ export class FilesStore {
     if (this.selected === path) {
       this.selected = (this.tabs[at] ?? this.tabs[at - 1])?.path ?? null;
     }
+    const dir = this.dir;
+    if (dir) this.notify(o => o.removed(dir, path));
     return true;
   }
 
@@ -515,12 +589,14 @@ export class FilesStore {
       if (t) {
         t.content = content;
         t.error = null;
+        this.shown(dir, t);
       }
     } catch (err) {
       const t = current();
       if (t && !isStaleReply(err)) {
         t.content = null;
         t.error = errorText(err, 'Could not read the file.');
+        this.shown(dir, t);
       }
     } finally {
       const t = current();
@@ -551,6 +627,10 @@ export class FilesStore {
       saving: false, saveError: null, conflict: null, uncertain: null,
       version: ++this.editVersion,
     };
+    // The editor shows LF text without the BOM; the viewer showed the raw text.
+    const dir = this.dir;
+    const shown = tab.content.text;
+    if (dir && shown !== baseline) this.notify(o => o.replaced(dir, tab.path, baseline, tab.edit?.revision));
     return true;
   }
 
@@ -560,8 +640,15 @@ export class FilesStore {
    */
   stopEditing(tab: FileTab, reread = false): boolean {
     if (!tab.edit || tab.edit.saving) return false;
+    const draft = tab.edit.draft;
     tab.edit = undefined;
     tab.token = ++this.readSeq;
+    const dir = this.dir;
+    if (dir && this.tabs.includes(tab)) {
+      if (displayable(tab.content)) {
+        if (tab.content.text !== draft) this.notify(o => o.replaced(dir, tab.path, tab.content!.text!, tab.content!.revision));
+      } else this.notify(o => o.removed(dir, tab.path));
+    }
     if (reread && this.tabs.includes(tab)) void this.read(tab.path);
     return true;
   }
@@ -572,6 +659,8 @@ export class FilesStore {
     if (!tab || !edit?.editing) return false;
     tab.token = ++this.readSeq;
     edit.draft = text;
+    const dir = this.target(tab)?.dir;
+    if (dir) this.notify(o => o.changed(dir, tab.path, text));
     return true;
   }
 
@@ -605,6 +694,8 @@ export class FilesStore {
     const valid = () => this.target(tab)?.dir === dir && tab.edit === edit;
     const sameHost = () => epoch() === started && connection === this.connectionSeq
       && link.dataHost === host && !link.blockedReason;
+    // Flush/order the live document change before the write; the token pins its version.
+    const token = (() => { let t: unknown; this.notify(o => { t = o.beforeSave(dir, tab.path, snapshot.text); }); return t; })();
     edit.saving = true;
     edit.saveError = null;
     edit.conflict = null;
@@ -614,9 +705,11 @@ export class FilesStore {
       if (!sameHost()) {
         edit.uncertain = snapshot;
         edit.saveError = 'The connection changed; the save outcome is unknown.';
+        this.notify(o => o.saveFailed(dir, tab.path, token, true));
         return false;
       }
       if (result.status === 'conflict') {
+        this.notify(o => o.saveFailed(dir, tab.path, token, false));
         edit.conflict = { observedRevision: result.observedRevision };
         edit.saveError = 'The file changed on disk.';
         return false;
@@ -626,13 +719,16 @@ export class FilesStore {
       edit.revision = result.content.revision!;
       // draft and version deliberately stay untouched (including typing/undo during save).
       this.refreshSavedListing(dir, host);
+      this.notify(o => o.saved(dir, tab.path, token, result.content.revision!));
       return true;
     } catch (err) {
       if (!valid()) return false;
       // The disk may hold the submitted bytes (or part of them): keep unsaved
       // protection until a read settles it, even if the draft was undone to
       // the baseline meanwhile.
-      if (!sameHost() || isStaleReply(err) || isDisconnectedError(err) || isSaveIncompleteError(err)) edit.uncertain = snapshot;
+      const unknown = !sameHost() || isStaleReply(err) || isDisconnectedError(err) || isSaveIncompleteError(err);
+      if (unknown) edit.uncertain = snapshot;
+      this.notify(o => o.saveFailed(dir, tab.path, token, unknown));
       edit.saveError = errorText(err, 'Could not save the file.');
       return false;
     } finally {
@@ -678,6 +774,7 @@ export class FilesStore {
       edit.conflict = null;
       edit.saveError = null;
       edit.version = ++this.editVersion;
+      this.notify(o => o.replaced(dir, tab.path, text, content.revision));
       return true;
     } catch (err) {
       if (valid()) edit.saveError = errorText(err, 'Could not reload the file.');
@@ -721,6 +818,7 @@ export class FilesStore {
   }
 
   private clear(): void {
+    this.notify(o => o.cleared());
     this.listSeq++;
     this.readSeq++;
     this.dir = null;
@@ -732,6 +830,10 @@ export class FilesStore {
     this.tabs = [];
     this.selected = null;
   }
+}
+
+function displayable(content: FileContent | null): content is FileContent & { text: string } {
+  return !!content && typeof content.text === 'string' && !content.binary && !content.tooLarge && !content.image;
 }
 
 function readFlag(key: string, fallback: boolean): boolean {
