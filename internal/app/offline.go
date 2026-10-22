@@ -68,6 +68,10 @@ func (b offlineBackend) ListFiles(context.Context, string) (files.Listing, error
 	return files.Listing{}, b.err()
 }
 
+func (b offlineBackend) ProbeFiles(context.Context, string, []string) (files.ProbeResult, error) {
+	return files.ProbeResult{}, b.err()
+}
+
 func (b offlineBackend) ReadFile(context.Context, string, string) (files.Content, error) {
 	return files.Content{}, b.err()
 }

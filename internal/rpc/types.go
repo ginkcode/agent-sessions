@@ -147,6 +147,11 @@ type ListFilesParams struct {
 	Dir string `json:"dir"`
 }
 
+type ProbeFilesParams struct {
+	Dir   string   `json:"dir"`
+	Paths []string `json:"paths"`
+}
+
 type ReadFileParams struct {
 	Dir  string `json:"dir"`
 	Path string `json:"path"`

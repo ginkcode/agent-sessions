@@ -408,6 +408,12 @@ func (c *Client) ListFiles(ctx context.Context, dir string) (files.Listing, erro
 	return out, err
 }
 
+func (c *Client) ProbeFiles(ctx context.Context, dir string, paths []string) (files.ProbeResult, error) {
+	var out files.ProbeResult
+	err := c.call(ctx, "probeFiles", ProbeFilesParams{Dir: dir, Paths: paths}, &out)
+	return out, err
+}
+
 func (c *Client) ReadFile(ctx context.Context, dir, path string) (files.Content, error) {
 	var out files.Content
 	err := c.call(ctx, "readFile", ReadFileParams{Dir: dir, Path: path}, &out)

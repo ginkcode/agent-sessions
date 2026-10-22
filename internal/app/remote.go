@@ -175,9 +175,10 @@ func (c *connection) generation() uint64 {
 // single snapshot per call, so the backend that ran a call and the host its
 // command is wrapped for cannot disagree.
 type route struct {
-	backend   engine.Backend // nil means Local
-	host      string         // non-empty: the call belongs to this remote host
-	transport remote.ArtifactTransport
+	generation uint64         // connection epoch for read-only reconciliation replies
+	backend    engine.Backend // nil means Local
+	host       string         // non-empty: the call belongs to this remote host
+	transport  remote.ArtifactTransport
 }
 
 // route returns the live remote while connected. Otherwise Local stays
@@ -188,7 +189,7 @@ func (c *connection) route() route {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.state.Phase == ConnConnected && c.client != nil {
-		return route{backend: c.client, host: c.state.Host, transport: c.xport}
+		return route{backend: c.client, host: c.state.Host, transport: c.xport, generation: c.state.Generation}
 	}
 	if c.wantHost != "" && !c.localActive {
 		return route{backend: offlineBackend{host: c.wantHost}, host: c.wantHost}

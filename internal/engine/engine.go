@@ -468,6 +468,10 @@ func (e *Engine) BlameFile(ctx context.Context, dir, path string, line int) (fil
 }
 
 // ReadFile reads one file of a session directory.
+func (e *Engine) ProbeFiles(ctx context.Context, dir string, paths []string) (files.ProbeResult, error) {
+	return e.svc.ProbeFiles(ctx, dir, paths)
+}
+
 func (e *Engine) ReadFile(ctx context.Context, dir, path string) (files.Content, error) {
 	return e.svc.ReadFile(ctx, dir, path, e.editPolicy())
 }

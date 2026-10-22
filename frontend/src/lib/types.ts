@@ -277,6 +277,15 @@ export interface LineChange {
 }
 
 /** One file read for the Go to File dialog. */
+export interface FileProbeResult {
+  root: string;
+  observations: Array<
+    | { path: string; state: 'present'; revision: string }
+    | { path: string; state: 'absent' }
+    | { path: string; state: 'unknown'; reason: 'unavailable' | 'changed' | 'limit' | 'cancelled' | 'unsupported' }
+  >;
+}
+
 export interface FileContent {
   path: string;
   size: number;

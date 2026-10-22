@@ -415,6 +415,21 @@ func (a *App) BlameFile(dir, path string, line int) (files.BlameLine, error) {
 	return a.activeBackend().BlameFile(a.appCtx(), dir, path, line)
 }
 
+// ProbeFiles observes saved paths on one captured host route. Consumers must
+// also discard replies from superseded connection/request epochs.
+func (a *App) ProbeFiles(dir string, paths []string, host string) (files.ProbeResult, error) {
+	r := a.route()
+	if r.host != host {
+		return files.ProbeResult{}, errors.New("file probe host changed")
+	}
+	out, err := r.backend.ProbeFiles(a.appCtx(), dir, paths)
+	current := a.route()
+	if current.host != r.host || current.backend != r.backend || current.generation != r.generation {
+		return files.ProbeResult{}, errors.New("file probe host changed")
+	}
+	return out, err
+}
+
 // ReadFile reads one file of a session directory on the selected host.
 func (a *App) ReadFile(dir, path string) (files.Content, error) {
 	return a.activeBackend().ReadFile(a.appCtx(), dir, path)

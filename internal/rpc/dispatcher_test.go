@@ -127,6 +127,10 @@ func (m *mockBackend) ListFiles(ctx context.Context, dir string) (files.Listing,
 	return files.Listing{Root: dir, Files: []string{"main.go"}}, nil
 }
 
+func (m *mockBackend) ProbeFiles(ctx context.Context, dir string, paths []string) (files.ProbeResult, error) {
+	return files.ProbeResult{}, m.errToReturn
+}
+
 func (m *mockBackend) ReadFile(ctx context.Context, dir, path string) (files.Content, error) {
 	return files.Content{Path: path, Text: "package main\n"}, nil
 }

@@ -13,6 +13,56 @@ Fixtures and validation: `internal/codediagnostics/testdata/contract/` and
 `internal/codediagnostics/contract_test.go`. The fixtures use synthetic identities
 and source only, never real project contents or secrets.
 
+## R09 additive saved-disk probe (2026-10-22)
+
+Contract version remains **1**: no existing diagnostics field or required method
+changes meaning. Optional read-only `probeFiles` is an independent files RPC;
+`Backend.ProbeFiles(ctx, dir, paths)` / App `ProbeFiles(dir, paths, host)` returns
+`{root, observations:[{path,state,revision?,reason?}]}`. Unsupported/missing methods
+or transport failures are **unknown**, never deletion. The frontend binding is
+optional; old bindings and the synthetic demo mock return `unknown/unsupported`.
+The RPC client may return method-not-found from an old host; consumers must retain
+uncertainty rather than reinterpret the error. No live capability is enabled.
+
+- Authorize the exact catalog directory **before** filesystem access. Canonicalize
+  that root only, never search/widen to a parent. Reject the entire batch for empty,
+  duplicate, noncanonical/absolute/escaping/backslash/NUL paths, >32 paths, or
+  >4096 bytes per path. Paths are slash-separated, relative regular-file names.
+- Open through `os.Root`; reject symlink leaves and ancestors (including contained
+  and dangling links). Missing root/ancestor, nonregular targets, permission or
+  transient errors are `unknown/unavailable`, not missing. Only ENOENT at the leaf
+  below verified existing directories yields `absent`. Recheck directory/root
+  identity and catalog alias; observed swaps invalidate observations. Inodes are
+  used only transiently for these checks, never exposed, persisted or telemetered.
+- `present` requires a bounded stable raw-byte read, regular-file identity/size/
+  mtime checks around it and a `sha256:` content revision identical to file-read
+  revision semantics. Limit 5 MiB/file and 8 MiB/batch (+one sentinel byte);
+  remaining over-budget observations are `unknown/limit`. Cancellation is
+  `unknown/cancelled`; root/alias replacement is `unknown/changed`. No OS error
+  strings, source bodies or excerpts appear in responses/logs/persistence.
+- `absent` confirms **path absence at observation**, not a historical delete event,
+  ongoing absence, rename destination, or permission to discard a draft. An old
+  absent path plus a new present path (even equal revisions) is **not rename**.
+  Identical-content delete/recreate between observations is indistinguishable from
+  uninterrupted presence. Revisions identify bytes, not file objects, LSP opens,
+  sessions or freshness; no external mutation ID is invented.
+- This is not an atomic batch or filesystem lock. External mutations after checks,
+  in-place writes preserving metadata and swap-away-and-back races cannot be fully
+  proven absent. Future consumers must guard request/connection/attachment/tab
+  epochs and revalidate before acting; no destructive filesystem operation is
+  authorized by this probe. App captures the host/backend/connection generation
+  and rejects a superseded reply, including same-host reconnects.
+- R09 supplies the contract/probe only. R10 must integrate reopen/refresh/pre-check,
+  invalidate confirmed deleted-path results without deleting dirty/uncertain tabs,
+  preserve drafts/undo/CAS state on unknown/errors, distinguish reappearance from
+  proven rename, and retain R03 URI ambiguity rules. Existing reconciliation remains
+  unchanged and adapters retain explicit `unwatched` coverage. No watcher or scan,
+  save, process startup, lifecycle mutation or continuous-sync claim is added.
+
+Executable synthetic wire evidence: `internal/rpc/probe_files_test.go`; bounded
+backend/path tests: `internal/files/probe_test.go`; host epoch tests:
+`internal/app/probe_files_test.go`; frontend fake API: `frontend/test/file-probe-api.test.mjs`.
+
 ## 1. Identity and scalar rules
 
 All JSON keys use lower camel case. Required arrays serialize as `[]`, never

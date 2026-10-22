@@ -11,6 +11,7 @@ import type {
   BlobResponse,
   FileListing,
   FileContent,
+  FileProbeResult,
   FileSaveRequest,
   FileSaveResult,
   Diagnostics,
@@ -791,6 +792,11 @@ export class MockBackendAPI extends MockCodeDiagnostics {
 
   async enableFileEditing(): Promise<boolean> { return true; }
   async completeFileClose(_id: number, _allow: boolean): Promise<void> {}
+
+  // Demo reads synthesize files and cannot establish authoritative absence.
+  async probeFiles(_dir: string, paths: string[], _host: string): Promise<FileProbeResult> {
+    return { root: '', observations: paths.map(path => ({ path, state: 'unknown', reason: 'unsupported' })) };
+  }
 
   private fileDrafts = new Map<string, FileContent>();
 

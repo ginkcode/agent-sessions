@@ -453,6 +453,12 @@ func (s *Server) dispatch(ctx context.Context, req Request) (any, error) {
 		}
 		return backend.ListFiles(ctx, p.Dir)
 
+	case "probeFiles":
+		var p ProbeFilesParams
+		if err := json.Unmarshal(req.Params, &p); err != nil {
+			return nil, err
+		}
+		return backend.ProbeFiles(ctx, p.Dir, p.Paths)
 	case "readFile":
 		var p ReadFileParams
 		if err := json.Unmarshal(req.Params, &p); err != nil {

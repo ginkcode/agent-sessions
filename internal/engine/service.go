@@ -596,6 +596,14 @@ func (s *Service) ReadFile(ctx context.Context, dir, rel string, policy files.Ed
 	return c, err
 }
 
+// ProbeFiles authorizes the exact catalog directory before any filesystem work.
+func (s *Service) ProbeFiles(ctx context.Context, dir string, paths []string) (files.ProbeResult, error) {
+	if !s.knownDirectory(dir) {
+		return files.ProbeResult{}, ErrUnknownDirectory
+	}
+	return files.Probe(ctx, dir, paths)
+}
+
 // SaveFile saves an edited file of a session directory, if it still has the
 // revision it was edited from.
 func (s *Service) SaveFile(ctx context.Context, dir string, req files.SaveRequest, policy files.EditPolicy) (files.SaveResult, error) {

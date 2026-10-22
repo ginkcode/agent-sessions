@@ -14,6 +14,7 @@ import type {
   Diagnostics,
   FileListing,
   FileContent,
+  FileProbeResult,
   BlameLine,
   FileSaveRequest,
   FileSaveResult,
@@ -107,6 +108,7 @@ export interface BackendAPI extends CodeDiagnosticsAPI {
   resolveTerminalFile(dir: string, path: string): Promise<TerminalFileTarget>;
   listFiles(dir: string): Promise<FileListing>;
   /** Reads one file, path relative to dir, on the selected host. */
+  probeFiles(dir: string, paths: string[], host: string): Promise<FileProbeResult>;
   readFile(dir: string, path: string): Promise<FileContent>;
   /**
    * Blames one 1-based line of a file, path relative to dir, on the selected
@@ -224,6 +226,7 @@ interface WailsAppBinding {
   RevealSource(ref: SessionRef): Promise<void>;
   ResolveTerminalFile(dir: string, path: string): Promise<TerminalFileTarget>;
   ListFiles(dir: string): Promise<FileListing>;
+  ProbeFiles?(dir: string, paths: string[], host: string): Promise<FileProbeResult>;
   ReadFile(dir: string, path: string): Promise<FileContent>;
   BlameFile?(dir: string, path: string, line: number): Promise<BlameLine>;
   SaveFile(dir: string, req: FileSaveRequest, host: string): Promise<FileSaveResult>;
@@ -632,6 +635,12 @@ class WailsBackendAPI implements BackendAPI {
     } catch (e) {
       throw normalizeError(e);
     }
+  }
+
+  async probeFiles(dir: string, paths: string[], host: string): Promise<FileProbeResult> {
+    if (!this.binding.ProbeFiles) return { root: '', observations: paths.map(path => ({ path, state: 'unknown', reason: 'unsupported' })) };
+    try { return await this.binding.ProbeFiles(dir, paths, host); }
+    catch (e) { throw normalizeError(e); }
   }
 
   async readFile(dir: string, path: string): Promise<FileContent> {
