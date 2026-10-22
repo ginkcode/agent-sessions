@@ -81,6 +81,7 @@
           {#each checks.providers as provider (provider.providerId)}
             <li>
               <span>{provider.providerId}: {availability[provider.availability]} · {provider.phase} · {provider.freshness} · {provider.coverage.kind === 'savedProject' ? 'saved project files' : 'opened documents'} · roots: {provider.coverage.roots.join(', ') || '(project root)'}{provider.coverage.partial ? ' · partial' : ''}{provider.truncated ? ' · truncated' : ''}</span>
+              {#if provider.coverage.externalChanges === 'watching'}<span> · watching saved project files on disk; updates after external changes (open drafts are not analyzed)</span>{/if}
               {#if provider.coverage.externalChanges === 'unwatched'}<span> · external changes unwatched; unopened-file coverage stale — reopen, refresh or rerun to reconcile saved context (not continuous sync)</span>{/if}
               {#if provider.notice}<p>{provider.notice}</p>{/if}
             </li>

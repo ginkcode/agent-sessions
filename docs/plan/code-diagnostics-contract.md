@@ -72,6 +72,15 @@ uncertainty rather than reinterpret the error. No live capability is enabled.
   unchanged and adapters retain explicit `unwatched` coverage. No watcher or scan,
   save, process startup, lifecycle mutation or continuous-sync claim is added.
 
+- 2026-10-23 project watcher: `externalChanges: "watching"` means an approved, bounded,
+  local app watcher republishes the provider's saved-file results after contained
+  on-disk changes. It is never a claim of unsaved-draft analysis. `partial` still marks
+  skipped trees or limits. A watcher that ends degrades to stale + `unwatched`.
+  First user: in-process `go-syntax` (`Registration.InProcess`). It adds no tool to the
+  approval proposal and is gated by the same composite approval. Revoke resets it to `unwatched`.
+  LSP dynamic registration stays rejected. See
+  [project watch](code-diagnostics-project-watch.md).
+
 Executable synthetic wire evidence: `internal/rpc/probe_files_test.go`; bounded
 backend/path tests: `internal/files/probe_test.go`; host epoch tests:
 `internal/app/probe_files_test.go`; frontend fake API: `frontend/test/file-probe-api.test.mjs`.

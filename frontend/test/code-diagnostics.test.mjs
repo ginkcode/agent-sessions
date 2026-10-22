@@ -286,3 +286,24 @@ test('explicit refresh and checker rerun await read-only reconciliation; disconn
   await assert.rejects(pending, e => e.code === 'staleContext');
   assert.deepEqual(order, ['reconcile', 'run']);
 });
+
+test('watching provider runs trigger coalesced read-only tab reconciliation; unwatched runs do not', async () => {
+  const watching = (sequence, runId, extra = {}) => snapshot(sequence, {
+    providers: [{ providerId: 'go-syntax', availability: 'available', phase: 'idle', runId, coverage: { kind: 'savedProject', roots: [''], partial: false, externalChanges: 'watching' }, freshness: 'uncertain', truncated: false }],
+    resultSets: [{ providerId: 'go-syntax', origin: 'checker', scope: { kind: 'project' }, runId, diagnostics: [clone(finding)] }], ...extra });
+  const h = harness(); h.setSnapshot(watching(0, 'w1')); await h.store.attach('/input', connection);
+  let calls = 0; const gate = deferred();
+  h.store.setReconciler(async () => { calls++; if (calls === 1) await gate.promise; });
+  h.emit(update(watching(1, 'w1')));
+  await tick(); assert.equal(calls, 0, 'same run is not an external change');
+  h.emit(update(watching(2, 'w2')));
+  h.emit(update(watching(3, 'w3')));
+  h.emit(update(watching(4, 'w4')));
+  await tick(); assert.equal(calls, 1, 'in-flight reconciliation coalesces later runs');
+  gate.resolve(); await tick(); await tick();
+  assert.equal(calls, 2, 'one trailing pass only');
+  assert.equal(h.store.counts.error, 1);
+  const unwatched = h.store.snapshot; calls = 0;
+  h.emit(update(snapshot(5, { resultSets: [{ ...unwatched.resultSets[0], providerId: 'go', runId: 'other' }] })));
+  await tick(); assert.equal(calls, 0);
+});

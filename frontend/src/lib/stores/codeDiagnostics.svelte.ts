@@ -344,7 +344,35 @@ export class CodeDiagnosticsStore {
       else sets.set(key, structuredClone(set));
     }
     clearTimeout(assembly.timer); this.assemblies.delete(key);
-    if (!this.commit({ ...event.snapshot, resultSets: [...sets.values()] }, false, newGeneration)) this.resync();
+    const previous = this.snapshot;
+    if (!this.commit({ ...event.snapshot, resultSets: [...sets.values()] }, false, newGeneration)) { this.resync(); return; }
+    if (this.watchedRunChanged(previous, this.snapshot)) this.reconcileWatched();
+  }
+  /** A watching provider published a new run: saved files changed on disk. */
+  private watchedRunChanged(before: CodeDiagnosticsSnapshot | undefined, after: CodeDiagnosticsSnapshot | undefined) {
+    if (!before || !after || !sameContext(before.context, after.context)) return false;
+    return after.providers.some(p => p.coverage.externalChanges === 'watching' && p.runId !== undefined
+      && after.resultSets.find(s => s.providerId === p.providerId)?.runId !== before.resultSets.find(s => s.providerId === p.providerId)?.runId);
+  }
+  private watchReconciling = false;
+  private watchReconcileAgain = false;
+  /**
+   * Coalesced, read-only reconciliation of displayed tabs after an external change.
+   * Never saves; drafts and uncertain saves stay editor-owned (files store guards).
+   * At most one in flight plus one trailing pass; stops on lifetime change.
+   */
+  private reconcileWatched() {
+    if (this.watchReconciling) { this.watchReconcileAgain = true; return; }
+    const life = this.lifetime;
+    this.watchReconciling = true;
+    void (async () => {
+      try {
+        do {
+          this.watchReconcileAgain = false;
+          try { await this.reconcileFiles(); } catch { /* reconciliation never affects diagnostics */ }
+        } while (this.watchReconcileAgain && this.active(life));
+      } finally { this.watchReconciling = false; this.watchReconcileAgain = false; }
+    })();
   }
   private resync() {
     this.clearBuffers(); this.stale();

@@ -82,10 +82,49 @@ func TestSessionDocumentsAgainstFakeServer(t *testing.T) {
 	if _, _, err := docs.Session(root, "other.txt"); errCode(err) != "unsupported" {
 		t.Fatal(err)
 	}
+	changes := []FileChange{{Path: "source.go", Kind: 2}, {Path: "gone.go", Kind: 3}, {Path: "../escape.go", Kind: 3}, {Path: "other.txt", Kind: 2}, {Path: "missing.go", Kind: 1}, {Path: "source.go", Kind: 9}}
+	// Watched-file transitions never launch a session either.
+	if err := docs.WatchedFiles(context.Background(), root, changes); err == nil || e.launches() != 0 {
+		t.Fatal("watched files launched or succeeded without a session", err, e.launches())
+	}
 	if _, err := e.mgr.Attach(context.Background(), root, cfg); err != nil {
 		t.Fatal(err)
 	}
 	e.next()
+	if err := os.WriteFile(filepath.Join(root.Project().Root, "source.go"), []byte("package a\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := docs.WatchedFiles(context.Background(), root, changes); err != nil {
+		t.Fatal(err)
+	}
+	var watched []any
+	eventually(t, "watched frame", func() bool {
+		got.mu.Lock()
+		defer got.mu.Unlock()
+		for _, f := range got.frames {
+			if f["method"] == "workspace/didChangeWatchedFiles" {
+				watched = f["params"].(map[string]any)["changes"].([]any)
+				return true
+			}
+		}
+		return false
+	})
+	// Only the contained changed file and the portable deleted path survive:
+	// escapes, non-owned files, unresolvable creates and bad kinds are dropped.
+	if len(watched) != 2 {
+		t.Fatalf("%v", watched)
+	}
+	base := fileURI(root.Project().Root)
+	for i, want := range []struct {
+		suffix string
+		kind   float64
+	}{{"/source.go", 2}, {"/gone.go", 3}} {
+		ev := watched[i].(map[string]any)
+		uri := ev["uri"].(string)
+		if ev["type"].(float64) != want.kind || !strings.HasSuffix(uri, want.suffix) || !strings.HasPrefix(uri, base) {
+			t.Fatalf("%d: %v (root %s)", i, ev, base)
+		}
+	}
 
 	if err := os.WriteFile(filepath.Join(root.Project().Root, "source.go"), []byte("synthetic"), 0o600); err != nil {
 		t.Fatal(err)

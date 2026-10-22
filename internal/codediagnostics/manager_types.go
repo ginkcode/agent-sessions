@@ -89,6 +89,10 @@ type Registration struct {
 	Availability string
 	Adapter      CheckerAdapter    // nil for unsupported/missing/disabled providers
 	Live         *LiveRegistration // backend-owned metadata; never starts a session
+	// InProcess marks a backend-owned analyzer that executes no tool (go-syntax).
+	// It contributes nothing to the approval proposal, yet publishes only while
+	// the attachment's project approval is current (PublishInProcess).
+	InProcess bool
 }
 
 // Limits can only narrow contract v1. Metadata is deliberately limited further

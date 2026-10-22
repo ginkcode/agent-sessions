@@ -3,6 +3,7 @@ package codediagnostics
 import (
 	"context"
 	"errors"
+	"path/filepath"
 )
 
 // DocumentServer is the fixed, adapter-owned choice of server and language for
@@ -110,6 +111,54 @@ func (d SessionDocuments) PublicationIsolated(root AuthorizedRoot, path, generat
 	defer s.mu.Unlock()
 	reused, seen := s.publicationURIs[fileURI(target)]
 	return seen && !reused && !s.publicationFull
+}
+
+// maxWatchedChanges bounds one workspace/didChangeWatchedFiles notification.
+const maxWatchedChanges = 256
+
+// WatchedFiles forwards app-watcher saved-file transitions to the already
+// running session that owns these paths. It never launches, accepts no dynamic
+// registration and sends only contained paths: created/changed files must
+// resolve inside the root; deleted paths are validated portable joins under the
+// canonical root. Unsupported/stopped sessions are silently skipped.
+func (d SessionDocuments) WatchedFiles(ctx context.Context, root AuthorizedRoot, changes []FileChange) error {
+	if len(changes) == 0 {
+		return nil
+	}
+	_, s, err := d.server(root, changes[0].Path)
+	if err != nil {
+		return err
+	}
+	tr := s.transport()
+	if tr == nil || !s.current() {
+		return failure("disconnected", "Language session is not connected")
+	}
+	events := make([]map[string]any, 0, min(len(changes), maxWatchedChanges))
+	for _, c := range changes {
+		if len(events) >= maxWatchedChanges {
+			break
+		}
+		if c.Kind < 1 || c.Kind > 3 || ValidatePath(c.Path) != nil {
+			continue
+		}
+		if owner, ok := d.Resolve(root, c.Path); !ok || owner.Config.ProviderID != s.config.ProviderID {
+			continue
+		}
+		target := filepath.Join(root.Project().Root, filepath.FromSlash(c.Path))
+		if c.Kind != 3 {
+			if target, err = root.ResolvePath(root.Project().HostID, c.Path); err != nil {
+				continue
+			}
+		}
+		events = append(events, map[string]any{"uri": fileURI(target), "type": c.Kind})
+	}
+	if len(events) == 0 {
+		return nil
+	}
+	if err := tr.Notify(ctx, "workspace/didChangeWatchedFiles", map[string]any{"changes": events}); err != nil {
+		return failure("disconnected", "Language session dropped the watched-file update")
+	}
+	return nil
 }
 
 type lspPosition struct {

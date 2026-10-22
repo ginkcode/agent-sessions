@@ -26,6 +26,8 @@ type attachment struct {
 	docs        map[string]*documentState
 	closedDocs  map[string]bool
 	closedOrder []string
+
+	inProcess map[string]bool // provider IDs published by PublishInProcess
 }
 
 // Manager owns one authenticated connection and its Supervisor and Trust. Close
@@ -109,7 +111,7 @@ func (m *Manager) CompleteDiscovery(c Context, registrations []Registration) err
 	}
 	next.snapshot.Context = a.snapshot.Context
 	next.snapshot.Sequence = a.snapshot.Sequence
-	a.adapters, a.tools = next.adapters, next.tools
+	a.adapters, a.tools, a.inProcess = next.adapters, next.tools, next.inProcess
 	a.snapshot = next.snapshot
 	m.commit(a)
 	return nil
@@ -119,7 +121,7 @@ func (m *Manager) prepare(root AuthorizedRoot, registrations []Registration) (*a
 	if len(registrations) > 32 {
 		return nil, failure("limitExceeded", "Provider budget exceeded")
 	}
-	a := &attachment{root: root, adapters: map[string]CheckerAdapter{}, runs: map[string]*managedRun{}}
+	a := &attachment{root: root, adapters: map[string]CheckerAdapter{}, runs: map[string]*managedRun{}, inProcess: map[string]bool{}}
 	a.snapshot = Snapshot{ContractVersion: 1, Context: Context{m.connection, opaqueID(), opaqueID()}, Approval: Approval{State: "required"}, Providers: []ProviderState{}, ResultSets: []ResultSet{}}
 	seen := map[string]bool{}
 	for _, r := range registrations {
@@ -138,6 +140,12 @@ func (m *Manager) prepare(root AuthorizedRoot, registrations []Registration) (*a
 			if r.Availability == "available" {
 				a.tools = append(a.tools, r.Live.Server.Tools()...)
 			}
+		case r.InProcess:
+			if r.Adapter != nil || r.Live != nil {
+				return nil, failure("invalidArgument", "Invalid provider registration")
+			}
+			a.inProcess[r.ProviderID] = true
+			state.Notice = "Watches saved project files after project approval."
 		case r.Adapter != nil:
 			a.adapters[r.ProviderID] = r.Adapter
 			a.tools = append(a.tools, r.Adapter.Tools()...)
@@ -164,6 +172,16 @@ func (m *Manager) prepare(root AuthorizedRoot, registrations []Registration) (*a
 				paths = []string{}
 			}
 			a.snapshot.Proposal.Tools = append(a.snapshot.Proposal.Tools, ProposalTool{t.ProviderID, t.Executable, paths})
+		}
+	}
+	if len(a.tools) == 0 {
+		// In-process analysis is gated on the composite project approval; with no
+		// executable proposal there is nothing to approve, so it stays off.
+		for i := range a.snapshot.Providers {
+			if p := &a.snapshot.Providers[i]; a.inProcess[p.ProviderID] {
+				p.Availability = "unsupported"
+				p.Notice = "Saved-file watching needs a project approval proposal; none is available."
+			}
 		}
 	}
 	m.syncAvailability(a)
@@ -263,6 +281,9 @@ func (m *Manager) Revoke(c Context) (Snapshot, error) {
 		p.Coverage.Partial = true
 		p.Truncated = false
 		p.Failure = nil
+		if a.inProcess[p.ProviderID] {
+			p.Coverage.ExternalChanges = "unwatched"
+		}
 	}
 	m.syncAvailability(a)
 	// Invalidate manager epoch first even if persistent removal fails.
@@ -325,7 +346,9 @@ func (m *Manager) Run(c Context, ids []string, supersede bool) ([]RunIdentity, e
 			}
 		}
 	}
-	ids = slices.Clone(ids)
+	// In-process analyzers follow the project watcher and are never run on demand;
+	// listing them is a harmless no-op rather than an error.
+	ids = slices.DeleteFunc(slices.Clone(ids), func(id string) bool { return a.inProcess[id] })
 	slices.Sort(ids)
 	needed := 0
 	for i, id := range ids {

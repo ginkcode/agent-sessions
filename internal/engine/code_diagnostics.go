@@ -60,6 +60,12 @@ type diagnosticsOwner struct {
 	workers      sync.WaitGroup
 	// tick replaces the 25ms event pump ticker only for injected fixtures.
 	tick <-chan time.Time
+	// watchers are approved per-attachment project watchers (go-syntax), keyed
+	// by attachment ID. watch configures them (tests inject fake fsnotify/time).
+	watchers map[string]*cd.ProjectWatcher
+	watch    cd.ProjectWatchOptions
+	watchMu  sync.Mutex // serializes watcher start/stop; never held with Engine.mu
+	closed   bool
 }
 
 func diagnosticError(code, message string) error { return &cd.Error{Code: code, Message: message} }
@@ -81,7 +87,7 @@ func newDiagnosticsOwnerWithLive(config, host string, discover func(cd.Authorize
 	if err != nil {
 		return nil, err
 	}
-	o := &diagnosticsOwner{manager: manager, host: host, roots: map[string]cd.AuthorizedRoot{}, dirs: map[string]string{}, contexts: map[string]cd.Context{}, stop: make(chan struct{}), done: make(chan struct{})}
+	o := &diagnosticsOwner{manager: manager, host: host, roots: map[string]cd.AuthorizedRoot{}, dirs: map[string]string{}, contexts: map[string]cd.Context{}, watchers: map[string]*cd.ProjectWatcher{}, stop: make(chan struct{}), done: make(chan struct{})}
 	if discover != nil && options.Launch != nil {
 		o.discoverLive = discover
 		o.live = cd.NewLiveDocuments(trust, manager, options)
@@ -199,6 +205,14 @@ func (o *diagnosticsOwner) events(e *Engine) {
 
 func (o *diagnosticsOwner) close() {
 	close(o.stop)
+	o.mu.Lock()
+	o.closed = true
+	watchers := o.watchers
+	o.watchers = map[string]*cd.ProjectWatcher{}
+	o.mu.Unlock()
+	for _, w := range watchers {
+		w.Stop()
+	}
 	o.manager.Close()
 	o.workers.Wait()
 	if o.live != nil {
@@ -268,6 +282,8 @@ func (e *Engine) AttachCodeDiagnostics(ctx context.Context, dir string, version 
 					{ProviderID: "svelte-check", Availability: "unsupported"},
 				})
 			}
+			// A persistent grant may already approve this proposal.
+			o.syncWatcher(s.Context.AttachmentID)
 		}()
 	}
 	e.mu.Unlock()
@@ -294,7 +310,13 @@ func discoverCheckers(root cd.AuthorizedRoot) []cd.Registration {
 	}
 	goPlan, goErr := cd.DiscoverGoVet(root, path, cd.GoVetEnvironment{Home: home, Cache: filepath.Join(cache, "go-build"), ModuleCache: filepath.Join(home, "go", "pkg", "mod")})
 	svelte, svelteErr := cd.DiscoverSvelte(root, path, home)
-	return []cd.Registration{register("go-vet", goPlan, goErr), register("svelte-check", svelte, svelteErr)}
+	out := []cd.Registration{register("go-vet", goPlan, goErr), register("svelte-check", svelte, svelteErr)}
+	if cd.HasGoSources(root) {
+		// In-process saved-file syntax analysis; executes nothing and follows the
+		// project watcher only after the composite project approval.
+		out = append(out, cd.Registration{ProviderID: cd.GoSyntaxProviderID, Availability: "available", InProcess: true})
+	}
+	return out
 }
 
 func (e *Engine) GetCodeDiagnosticsSnapshot(ctx context.Context, c cd.Context) (cd.Snapshot, error) {
@@ -313,7 +335,11 @@ func (e *Engine) ApproveCodeDiagnostics(ctx context.Context, c cd.Context, mode,
 	if err != nil {
 		return cd.Snapshot{}, err
 	}
-	return o.manager.Approve(c, fingerprint, mode)
+	s, err := o.manager.Approve(c, fingerprint, mode)
+	if err == nil {
+		o.syncWatcher(c.AttachmentID)
+	}
+	return s, err
 }
 
 func (e *Engine) RevokeCodeDiagnostics(ctx context.Context, c cd.Context) (cd.Snapshot, error) {
@@ -323,6 +349,8 @@ func (e *Engine) RevokeCodeDiagnostics(ctx context.Context, c cd.Context) (cd.Sn
 	}
 	s, err := o.manager.Revoke(c)
 	if s.Context.AttachmentID != "" {
+		// The generation changed: the old watcher can no longer publish; join it.
+		o.stopWatcher(c.AttachmentID)
 		// Conservative local ownership policy: explicit project revocation also
 		// abandons pending managed-install consent and joins any owned build.
 		e.RevokeManagedTools()
@@ -348,6 +376,7 @@ func (e *Engine) DetachCodeDiagnostics(ctx context.Context, c cd.Context) (CodeD
 	}
 	err = o.manager.Detach(c)
 	if err == nil {
+		o.stopWatcher(c.AttachmentID)
 		o.mu.Lock()
 		delete(o.contexts, c.AttachmentID)
 		delete(o.roots, c.AttachmentID)

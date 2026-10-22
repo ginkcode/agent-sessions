@@ -2,6 +2,7 @@ package codediagnostics
 
 import (
 	"context"
+	"strings"
 	"sync"
 )
 
@@ -101,6 +102,23 @@ func (d *LiveDocuments) Apply(ctx context.Context, step DocumentStep) error {
 		return failure("unsupported", "Live discovery is unavailable")
 	}
 	return p.documents.Apply(ctx, step)
+}
+
+// WatchedFiles notifies the current gopls session (only) of saved Go file
+// transitions observed by the approved project watcher. Non-Go paths and
+// projects without a running session are ignored.
+func (d *LiveDocuments) WatchedFiles(ctx context.Context, root AuthorizedRoot, changes []FileChange) error {
+	p, ok := d.project(root)
+	if !ok {
+		return failure("unsupported", "Live discovery is unavailable")
+	}
+	var goChanges []FileChange
+	for _, c := range changes {
+		if strings.HasSuffix(c.Path, ".go") {
+			goChanges = append(goChanges, c)
+		}
+	}
+	return p.documents.WatchedFiles(ctx, root, goChanges)
 }
 
 func (d *LiveDocuments) notification(n SessionNotification) {

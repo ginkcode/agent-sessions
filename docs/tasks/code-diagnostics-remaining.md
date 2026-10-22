@@ -53,6 +53,14 @@ stays **19/28**, and native QA remains CD-17.
 | R08 / CD-22…CD-24, CD-26 | 3 h | **Complete 2026-10-22; offline frontend only** | Actual store/CodeChecks/Problems/source/editor failure retention and partial/truncation propagation; redacted bridge sync failures with bounded current-approval/fresh-document recovery, checker-only retry and honest same-URI/session limits. Hostile text escaped, unavailable peers do not block drafts/browsing; superseded promises guarded. [Evidence/caveats](../plan/code-diagnostics-r08.md). Production live flag false; R09 untouched. |
 | R09 / CD-25 | 3 h | **Complete 2026-10-22; contract/probe only, after ownership review** | Bounded catalog-first contained `probeFiles` across files/Engine/App/RPC; explicit present/leaf-absent/unknown, raw-byte content revisions (not mutation identities), sanitized failures and host-generation guards. Backend/framed RPC/fake API delete/recreate/inaccessible/escape tests; existing dirty/uncertain tabs and `unwatched` fallback unchanged. [Evidence/limits](../plan/code-diagnostics-r09.md). R10 lifecycle wiring not implemented; live flag false. |
 | R10 / CD-25, CD-26 | 4 h | **Complete 2026-10-22; offline only.** [Evidence/limits](../plan/code-diagnostics-r10.md) | Wire authoritative external delete/rename/recreate into reopen/refresh/pre-check, clear deleted checker/live sets and reject old URI/generation pushes. Tests cover same-path recreation, refresh races, dirty/uncertain drafts and late reads; failed reads never guess deletion or overwrite text. |
+| W01 / CD-25 | 4 h | **Complete 2026-10-23; local only.** [Evidence/limits](../plan/code-diagnostics-project-watch.md) | User-requested revision of the "no watchers" policy. Adds an approved, bounded, local fsnotify project watcher and the in-process `go-syntax` saved-file provider, so unopened `.go` syntax errors show in counts and red names. Running gopls gets contained `didChangeWatchedFiles`. Clean tabs reconcile read-only. Fake plus real-tempdir fsnotify tests. |
+
+Follow-ups from W01 (not started, each ≤4h):
+- W02: saved-file syntax for TS/Svelte through an in-process parser. This needs an approved dependency; none is installed.
+- W03: refresh `go vet` or gopls type diagnostics for unopened files after watched saves. This needs a debounced, approved checker trigger, which overlaps the CD-28 gate.
+- W04: let go-syntax work without an executable checker proposal (a standalone approval surface).
+- W05: demo/mock support for `watching`, plus manual and native UI QA of the watcher (R16/R17).
+- W06: remote host watching once CD-09 identity is active.
 
 ## Verified tools, full-route tests and cleanup
 
