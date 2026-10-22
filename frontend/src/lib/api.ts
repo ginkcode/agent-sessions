@@ -1,6 +1,7 @@
 import type { CodeDiagnosticsAPI, CodeDiagnosticsContext, CodeDiagnosticsRun, CodeDiagnosticsAttachment, CodeDiagnosticsSnapshot, CodeDiagnosticsAck, CodeDiagnosticsRuns, CodeDiagnosticsDocumentReceipt } from './codeDiagnostics';
 import { CodeDiagnosticsError, codeDiagnosticsError } from './codeDiagnostics';
 import type { PortForwardRequest, PortForwardState } from './portForward';
+import type { ManagedToolRequest, ManagedToolState } from './managedTools';
 import type { TerminalFileTarget } from './terminalFileOpen';
 import type {
   GroupMode,
@@ -54,6 +55,8 @@ import { MockBackendAPI } from './mock/mockApi';
 import { epoch, guardEpoch } from './link';
 
 export interface BackendAPI extends CodeDiagnosticsAPI {
+  /** Optional on older App bindings. Remote provisioning currently fails closed. */
+  managedTool?(request: ManagedToolRequest): Promise<ManagedToolState>;
   listGroups(mode: GroupMode, filter?: FilterOpts): Promise<GroupNode[]>;
   listSessions(groupKey: string, filter?: FilterOpts, sort?: SortOpts): Promise<SessionMeta[]>;
   agentCounts(filter?: FilterOpts): Promise<Record<string, number>>;
@@ -180,6 +183,7 @@ export interface BackendAPI extends CodeDiagnosticsAPI {
 }
 
 interface WailsAppBinding {
+  ManagedTool?: (request: ManagedToolRequest) => Promise<ManagedToolState>;
   AttachCodeDiagnostics?: CodeDiagnosticsAPI['attachCodeDiagnostics'];
   DetachCodeDiagnostics?: CodeDiagnosticsAPI['detachCodeDiagnostics'];
   GetCodeDiagnosticsSnapshot?: CodeDiagnosticsAPI['getCodeDiagnosticsSnapshot'];
@@ -294,6 +298,11 @@ class WailsBackendAPI implements BackendAPI {
   private async diagnosticsCall<T>(call: (() => Promise<T>) | undefined): Promise<T> {
     if (!call) throw new CodeDiagnosticsError('unsupported', 'Code diagnostics are unavailable on this backend');
     try { return await call(); } catch (e) { throw codeDiagnosticsError(e); }
+  }
+  managedTool(request: ManagedToolRequest): Promise<ManagedToolState> {
+    const b = this.binding;
+    if (!b.ManagedTool) return Promise.reject(new CodeDiagnosticsError('unsupported', 'Managed tool setup is unavailable on this older backend; backend operator review and Go >=1.27 provisioning are required'));
+    return this.diagnosticsCall(() => b.ManagedTool!(request));
   }
   attachCodeDiagnostics(dir: string, version: 1, host: string): Promise<CodeDiagnosticsAttachment> {
     const b = this.binding;

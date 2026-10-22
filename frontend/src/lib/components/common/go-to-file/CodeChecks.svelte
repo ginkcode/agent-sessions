@@ -28,6 +28,38 @@
   {#if checks.project}
     <p class="scope">Host: {checks.project.hostId} · Root: {checks.project.root}</p>
   {/if}
+  {#if checks.project && checks.status === 'ready'}
+    <section aria-label="Go language-server setup">
+      <p>Go language-server setup · Host: {checks.project.hostId}</p>
+      <p>Installing a tool is separate from trusting this project's execution. Neither approval installs or starts a server automatically. Live diagnostics remain disabled pending review. Revoking project approval also abandons pending setup consent and cancels an owned installation under the backend's conservative policy.</p>
+      {#if checks.managedNotice}<p role="status">{checks.managedNotice}</p>{/if}
+      {#if checks.managed?.message}<p role="status">{checks.managed.message}</p>{/if}
+      {#if checks.managed?.state === 'proposed' && checks.managed.proposal && !checks.managedDismissed}
+        {@const proposal = checks.managed.proposal}
+        <p>Install {proposal.tool} {proposal.version} on {proposal.hostId}?</p>
+        <p>Source: {proposal.source} · Integrity: {proposal.integrity}</p>
+        <p>App-private destination: {proposal.destination}</p>
+        <p>Requires an explicitly reviewed installed Go &gt;=1.27 tree provisioned by the backend operator. No automatic Go download or upgrade. Installation downloads pinned source and dependencies over the network, builds with Go, and writes private staging/build/module caches and the app-private tool directory. It does not use project configuration or install globally.</p>
+        <p>Approval expires: {proposal.expires}. Installation does not approve project execution. Reattach and review execution approval separately after installation.</p>
+        <button type="button" disabled={blocked || checks.managedPending} onclick={() => perform(() => checks.managedAction('install'))}>Install</button>
+        <button type="button" disabled={checks.managedPending} onclick={() => perform(() => checks.managedAction('dismiss'))}>Not now</button>
+      {:else if checks.managed?.state === 'installing'}
+        <p role="status">Installing gopls on {checks.managed.hostId}… Download/build progress is coarse; no percentage is available. Hiding this panel stops polling, not the approved installation. Disconnecting cancels backend-owned work.</p>
+        <button type="button" disabled={blocked || checks.managedPending} onclick={() => perform(() => checks.managedAction('cancel'))}>Cancel installation</button>
+      {:else if checks.managed?.state === 'installed' || checks.managed?.state === 'available'}
+        <p>Managed gopls is installed. Reopen project diagnostics to rediscover tools and review separate execution approval. No server has been started by setup.</p>
+      {:else if checks.managed?.state === 'missingTool' || checks.managed?.state === 'failed' || checks.managed?.state === 'canceled' || checks.managed?.state === 'idle'}
+        {#if checks.managedDismissed}
+          <p>Setup dismissed. No installation requested.</p>
+        {:else}
+          <button type="button" disabled={blocked || checks.managedPending} onclick={() => perform(() => checks.managedAction('propose'))}>Review gopls installation</button>
+        {/if}
+      {:else if !checks.managedNotice}
+        <p>Managed setup unavailable. Backend operator review and provisioning of Go &gt;=1.27 is required. Remote setup requires authenticated host identity; older backends may not support setup.</p>
+      {/if}
+      <button type="button" disabled={blocked || checks.managedPending} onclick={() => perform(() => checks.refreshManaged())}>Refresh setup status</button>
+    </section>
+  {/if}
   {#if checks.status === 'ready' && checks.snapshot}
     {#if checks.snapshot.approval.state !== 'approved'}
       {#if dismissed}

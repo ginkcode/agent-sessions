@@ -1,4 +1,5 @@
 import { api } from '../api';
+import type { ManagedToolRequest, ManagedToolState } from '../managedTools';
 import type { LiveDocumentStatus } from '../liveDocuments';
 import { aggregateCodeDiagnostics } from '../codeDiagnosticCounts';
 import { epoch } from '../link';
@@ -20,6 +21,58 @@ export class CodeDiagnosticsStore {
   revoking = $state(false);
   private pendingRuns = $state.raw<CodeDiagnosticsRun[]>([]);
   private context?: CodeDiagnosticsContext;
+  managed = $state.raw<ManagedToolState | undefined>(undefined);
+  managedPending = $state(false);
+  managedNotice = $state('');
+  managedDismissed = $state(false);
+  private managedTimer?: ReturnType<typeof setTimeout>;
+  private managedPolls = 0;
+  private clearManaged() {
+    clearTimeout(this.managedTimer); this.managedTimer = undefined;
+    this.managed = undefined; this.managedPending = false; this.managedNotice = ''; this.managedDismissed = false;
+    this.managedPolls = 0;
+  }
+  /** Only bounded read-only polling is repeated; consent mutations are never replayed. */
+  private scheduleManaged() {
+    clearTimeout(this.managedTimer);
+    if (this.managed?.state !== 'installing') return;
+    if (++this.managedPolls > 300) { this.managedNotice = 'Progress polling paused. Refresh status to resume; installation may still be running.'; return; }
+    const life = this.lifetime;
+    this.managedTimer = setTimeout(() => { if (this.active(life) && this.context) void this.managedAction('status'); }, 2000);
+  }
+  async managedAction(action: ManagedToolRequest['action']) {
+    if (!this.context || !this.active() || this.managedPending) return;
+    const life = this.lifetime, c = this.context, host = this.host;
+    const current = this.managed;
+    const proposal = current?.proposal;
+    if (action === 'install' && (current?.state !== 'proposed' || !proposal)) return;
+    if (action === 'install' && Date.parse(proposal!.expires) <= Date.now()) {
+      this.managed = undefined; this.managedNotice = 'Approval expired. Review a fresh installation proposal.'; return;
+    }
+    if (action === 'cancel' && (!current?.jobId || current.state !== 'installing')) return;
+    if (action === 'propose' && current?.state === 'installing') return;
+    this.managedPending = true; this.managedNotice = '';
+    clearTimeout(this.managedTimer);
+    // Consume locally before sending. Lost acknowledgements require status, never token replay.
+    if (action === 'install') this.managed = undefined;
+    if (action === 'dismiss') { this.managedDismissed = true; this.managed = undefined; }
+    const valid = () => this.active(life) && !!this.context && sameContext(c, this.context!);
+    try {
+      if (!this.backend.managedTool) throw new Error('Managed setup unavailable on this older backend. Ask the backend operator to provision reviewed Go >=1.27.');
+      const out = await this.backend.managedTool({ action, expectedHostId: host,
+        ...(action === 'propose' ? { tool: 'gopls' as const } : {}),
+        ...(action === 'install' ? { token: proposal!.token } : {}),
+        ...(['status', 'cancel'].includes(action) && current?.jobId ? { jobId: current.jobId } : {}) });
+      if (!valid()) return;
+      if (out.hostId !== host || (out.proposal && (out.state !== 'proposed' || out.proposal.hostId !== host || out.proposal.tool !== 'gopls' || !out.proposal.token || !out.proposal.connectionId || !Number.isFinite(Date.parse(out.proposal.expires))))) throw new Error('Managed setup identity mismatch. Reconnect to the intended host.');
+      if (out.state === 'installing' && (!out.jobId || (current?.jobId && action === 'status' && out.jobId !== current.jobId))) throw new Error('Installation job identity mismatch. Refresh status explicitly.');
+      this.managed = out;
+      this.scheduleManaged();
+    } catch (e) {
+      if (valid()) { this.managed = undefined; this.managedNotice = `Managed setup unavailable: ${codeDiagnosticsError(e).message}. Refresh status before retrying; no installation request will be replayed.`; }
+    } finally { if (valid()) this.managedPending = false; }
+  }
+  refreshManaged() { this.managedPolls = 0; this.managedDismissed = false; return this.managedAction('status'); }
 
   get approved() { return this.status === 'ready' && !this.revoking && this.snapshot?.approval.state === 'approved'; }
   get running() { return this.pending === 'run' || this.pendingRuns.length > 0 || this.providers.some(p => ['starting', 'checking'].includes(p.phase)); }
@@ -161,6 +214,8 @@ export class CodeDiagnosticsStore {
   async detach() {
     const c = this.context, host = this.host;
     this.lifetime++; this.context = undefined;
+    // Hiding only stops observation; an explicitly approved install remains backend-owned.
+    this.clearManaged();
     this.off?.(); this.offConnection?.(); this.off = this.offConnection = undefined;
     this.clearBuffers(); this.recovering = false; this.attempts = 0;
     this.directory = undefined;
@@ -174,6 +229,8 @@ export class CodeDiagnosticsStore {
   /** Called on any route change/drop; retained findings are explicitly stale. */
   disconnect() {
     this.lifetime++; this.context = undefined;
+    // Hiding only stops observation; an explicitly approved install remains backend-owned.
+    this.clearManaged();
     this.off?.(); this.offConnection?.(); this.off = this.offConnection = undefined;
     this.clearBuffers(); this.recovering = false;
     this.pending = undefined; this.pendingRuns = []; this.revoking = false;
@@ -202,7 +259,7 @@ export class CodeDiagnosticsStore {
       } else this.receive(event);
     });
     this.offConnection = this.backend.onEvent('connection:state', (next: ConnectionState) => {
-      if (next.generation !== connection.generation || next.phase !== connection.phase || next.host !== connection.host || (next.hostId && next.hostId !== this.host)) this.disconnect();
+      if (next.generation !== connection.generation || next.phase !== connection.phase || next.host !== connection.host || next.hostId !== this.host) this.disconnect();
     });
     try {
       const attachment = await this.backend.attachCodeDiagnostics(dir, 1, this.host);
@@ -217,6 +274,8 @@ export class CodeDiagnosticsStore {
       const early = this.early; this.early = []; this.earlyBytes = 0;
       for (const event of early) this.receive(event);
       if (this.earlyOverflow) this.resync();
+      // Optional App contract is discovered by a read-only status call, not a fabricated capability.
+      void this.managedAction('status');
     } catch (e) { if (this.active(life)) this.fail(e); }
   }
   private fail(e: unknown) {
@@ -234,7 +293,7 @@ export class CodeDiagnosticsStore {
     if (!sameContext(this.context, s.context)) {
       if (!revoke || s.approval.state !== 'revoked' || this.retiredGenerations.has(s.context.generation)) return false;
       this.retiredGenerations.add(this.context.generation);
-      this.context = s.context; this.clearBuffers();
+      this.context = s.context; this.clearBuffers(); this.clearManaged();
     }
     // Run acknowledgements never install result sets: sequence-ordered full snapshots
     // are authoritative, including retained old-run sets on failure/cancellation.

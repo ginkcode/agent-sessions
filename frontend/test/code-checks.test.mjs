@@ -5,6 +5,7 @@ import { fixtureStore, loadServerComponent, renderWithFixture, renderedButtons }
 const component = await loadServerComponent(new URL('../src/lib/components/common/go-to-file/CodeChecks.svelte', import.meta.url), [
   ["import { codeDiagnostics as checks } from '../../../stores/codeDiagnostics.svelte';", fixtureStore('checks')],
 ]);
+const executionButtons = html => renderedButtons(html).filter(b => b.text !== 'Refresh setup status');
 const provider = { providerId: 'go', availability: 'available', phase: 'idle', freshness: 'current', coverage: { kind: 'savedProject', roots: [''], externalChanges: 'unwatched', partial: false }, truncated: false };
 function render(overrides = {}, props = {}) {
   return renderWithFixture(component, { checks: { status: 'ready', project: { hostId: 'local:actual', root: '/canonical/<root>' }, snapshot: { approval: { state: 'approved', mode: 'session' } }, providers: [provider], approved: true, canRun: true, canRetry: () => true, counts: { error: 0, warning: 0 }, ...overrides } }, props);
@@ -14,29 +15,29 @@ test('every attachment state remains textual and non-actionable until ready', as
   for (const [status, text] of Object.entries({ detached: 'disabled', attaching: 'Discovering', unsupported: 'unsupported', resyncing: 'Reconciling', disconnected: 'disconnected', error: 'uncertain' })) {
     const html = await render({ status, project: undefined, snapshot: undefined, approved: false, providers: [] });
     assert.match(html, new RegExp(text));
-    assert.equal(renderedButtons(html).length, 0);
+    assert.equal(executionButtons(html).length, 0);
   }
 });
 
 test('approval choices expose canonical scope, tools and non-sandbox risk without run', async () => {
   const html = await render({ approved: false, snapshot: { approval: { state: 'revoked' }, proposal: { fingerprint: 'fp', tools: [{ providerId: 'go', executable: '/bin/go', configPaths: ['go.work'] }] } } });
-  assert.deepEqual(renderedButtons(html).map(b => b.text), ['Enable for this session', 'Always allow this project', 'Not now']);
+  assert.deepEqual(executionButtons(html).map(b => b.text), ['Enable for this session', 'Always allow this project', 'Not now']);
   for (const text of ['local:actual', '/canonical/&lt;root>', '/bin/go', 'go.work', 'network', 'caches', 'not a sandbox', 'drafts are never saved']) assert.ok(html.includes(text));
   assert.doesNotMatch(html, /Check Project/);
   const noProposal = await render({ approved: false, snapshot: { approval: { state: 'required' } } });
-  assert.deepEqual(renderedButtons(noProposal).map(b => b.disabled), [true, true, false]);
+  assert.deepEqual(executionButtons(noProposal).map(b => b.disabled), [true, true, false]);
 });
 
 test('approved check/cancel/retry rules and prompt locks reflect store selectors', async () => {
-  assert.deepEqual(renderedButtons(await render()).map(b => b.text), ['Check Project', 'Revoke approval']);
-  const busy = renderedButtons(await render({ running: true, canRun: false }));
+  assert.deepEqual(executionButtons(await render()).map(b => b.text), ['Check Project', 'Revoke approval']);
+  const busy = executionButtons(await render({ running: true, canRun: false }));
   assert.equal(busy.find(b => b.text === 'Check Project').disabled, true);
   assert.equal(busy.find(b => b.text === 'Cancel check').disabled, false);
   const failed = await render({ providers: [{ ...provider, phase: 'failed', failure: { message: '<failed>' } }] });
-  assert.ok(renderedButtons(failed).some(b => b.text === 'Retry go'));
+  assert.ok(executionButtons(failed).some(b => b.text === 'Retry go'));
   assert.match(failed, /&lt;failed>/);
-  assert.ok(renderedButtons(await render({}, { blocked: true })).every(b => b.disabled));
-  const revoking = renderedButtons(await render({ approved: false, revoking: true }));
+  assert.ok(executionButtons(await render({}, { blocked: true })).every(b => b.disabled));
+  const revoking = executionButtons(await render({ approved: false, revoking: true }));
   assert.deepEqual(revoking.map(b => b.text), ['Revoke approval']);
   assert.equal(revoking[0].disabled, true);
 });

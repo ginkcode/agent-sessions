@@ -240,3 +240,47 @@ Validation 2026-10-22: `go test ./...` PASS;
 PASS; `go tool golangci-lint run --new-from-rev=604e6a5 ./internal/engine/... ./internal/app/... ./internal/rpc/...`
 PASS (0 issues; initial new-test gofumpt spacing fixed). No real download, build,
 installation or server start. Diagnostics **19/28** and release HOLDs unchanged.
+
+## TI-04 — frontend setup controls (2026-10-22)
+
+Implemented after `2f2cb99` in `frontend/src/lib/managedTools.ts`, `api.ts`,
+`mock/mockApi.ts`, `stores/codeDiagnostics.svelte.ts` and
+`components/common/go-to-file/CodeChecks.svelte`. The optional Wails adapter calls
+TI-03 `App.ManagedTool`; no Go/backend policy changes. A read-only status call
+on attachment discovers optional contract support (TI-03 advertises no managed
+capability). Old bindings and absent authenticated identity do not produce an
+enabled Install button. The mock honestly reports unavailable and never installs.
+
+Review obtains the closed gopls proposal and displays exact host, version, source,
+integrity, app-private destination and expiry, plus explicit reviewed Go >=1.27
+provisioning, network/source/dependency build and private cache/staging writes.
+The frontend sends only action, actual expectedHostId, closed tool ID, opaque
+consent or job ID; paths, hashes, versions and URLs are never request policy.
+Project execution trust remains independent. Opening, execution approval and
+Not now never install. The store consumes the proposal locally before Install;
+uncertain acknowledgement is status-only recovery, never token replay. Failed or
+canceled work can be retried only by reviewing fresh consent. Backend production
+still returns actionable unavailable: operator review/provisioning is not wired,
+Go 1.26.8 cannot meet the pinned Go >=1.27 requirement, and automatic upgrades are
+disabled. Remote identity remains CD-09 fail-closed; live remains disabled.
+
+Progress is coarse installing/terminal, not fabricated percent. Polling is serial
+and bounded to 300 two-second polls; explicit refresh renews only the read budget.
+Host epoch, attachment/context and connection guards drop late replies. Hide,
+disconnect, host replacement and context replacement clear timers/proposals.
+Hiding does not cancel an approved backend job; reopening status can rediscover
+it. Explicit Cancel targets the current job; backend connection ownership still
+cancels on disconnect. No installation cancellation is sent to a new host.
+
+Evidence: `frontend/test/managed-tools.test.mjs` uses the real compiled Svelte
+store, SSR controls and fake timers for Install once, denial, expiry, old backend,
+missing identity/capability, wrong host/proposal, late host/context/status/Install,
+lost acknowledgements, failure escaping, explicit cancel, bounded polling and
+hide cleanup without cancellation. Existing execution-control SSR tests filter
+setup refresh separately, retaining their exact execution approval assertions.
+Validation: `npm test` **458/458 PASS**; `npm run check` **0 errors** (existing
+invalid ignoreDeprecations warning); `npm run build` **PASS** (existing large
+chunk warning). Initial tests exposed expected SSR entity normalization and new
+setup refresh in exact execution button lists; assertions corrected and full
+suite rerun. Go untouched. No real download/install/build/server run. TI-05 not
+started; diagnostics **19/28**, CD-09, Stage 1/2 and release HOLDs unchanged.
