@@ -32,6 +32,8 @@ const viewer = await loadServerComponent(VIEWER_URL, [
   ["import { fileActions } from '../../../stores/fileActions.svelte';", fixtureStore('fileActions')],
   ["'../../../fileEditing'", lib('../../../fileEditing.ts')],
   ["'../../../fullscreen'", lib('../../../fullscreen.ts')],
+  ["import { codeDiagnostics } from '../../../stores/codeDiagnostics.svelte';", 'const codeDiagnostics = {};'],
+  ["'../../../problemNavigation'", lib('../../../problemNavigation.ts')],
   ["'../../../fileSelection'", lib('../../../fileSelection.ts')],
   ["import LoadingSpinner from '../LoadingSpinner.svelte';", `const LoadingSpinner = ${stub('data-spinner', '')};`],
   ["import MarkdownDoc from '../MarkdownDoc.svelte';", `const MarkdownDoc = ${stub('data-markdown-doc', '')};`],

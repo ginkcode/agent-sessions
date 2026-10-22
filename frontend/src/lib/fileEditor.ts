@@ -7,6 +7,8 @@ import { loadFileHighlighter } from './codeHighlight';
 import type { HLJSApi } from 'highlight.js';
 import { keyHandled } from './fullscreen';
 import type { FilePosition } from './filePosition';
+import type { CodeDiagnosticRange } from './codeDiagnostics';
+import { rangeOffsets } from './problemNavigation';
 import type { FileLineSelection } from './fileSelection';
 import { fileLanguage } from './files';
 import { closeSearchPanel, openSearchPanel, search, searchKeymap, searchPanelOpen } from '@codemirror/search';
@@ -306,6 +308,14 @@ export function createFileEditor(parent: HTMLElement, initial: FileEditorOptions
       }
       configure();
       if (reset || changedPath) setLanguage();
+    },
+    revealRange(range: CodeDiagnosticRange): boolean {
+      if (destroyed) return false;
+      const selection = rangeOffsets(view.state.doc.toString(), range);
+      if (!selection) return false;
+      ++scrollRequest; // Supersede pending scroll restoration, not document/history.
+      view.dispatch({ selection, effects: EditorView.scrollIntoView(selection.anchor, { y: 'center' }) });
+      return true;
     },
     focus() { if (!destroyed) view.focus(); },
     find() { return !destroyed && openSearchPanel(view); },

@@ -117,6 +117,7 @@ async function loadEditorModule() {
   // (including the lazily imported languages) to the same files the test uses.
   source = source.replace(/'(@(?:codemirror|lezer)\/[a-z-]+)'/g, (_, name) => JSON.stringify(import.meta.resolve(name)));
   source = source.replace("'./fullscreen'", JSON.stringify(new URL('fullscreen.ts', EDITOR_URL).href));
+  source = source.replace("'./problemNavigation'", JSON.stringify(new URL('problemNavigation.ts', EDITOR_URL).href));
   source = source.replace("'./files'", JSON.stringify(new URL('files.ts', EDITOR_URL).href));
   source = source.replace("'./codeHighlight'", JSON.stringify(new URL('codeHighlight.ts', EDITOR_URL).href));
   source = source.replace("'@replit/codemirror-lang-svelte'", JSON.stringify(import.meta.resolve('@replit/codemirror-lang-svelte')));
@@ -619,4 +620,18 @@ test('no other source file statically pulls CodeMirror or fileEditor into the ma
     }
   }
   assert.deepEqual(offenders, []);
+});
+
+test('diagnostic range uses exact UTF16 columns without doc/history/blame changes', () => {
+  const { editor, view, calls } = mount({ text: 'a😀z\nβxy', path: 'a.txt' });
+  view.dispatch({ changes: { from: 8, insert: '!' } });
+  const depth = undoDepth(view.state), text = view.state.doc.toString();
+  assert.equal(editor.revealRange({ start: { line: 0, character: 1 }, end: { line: 1, character: 2 } }), true);
+  assert.equal(view.state.selection.main.anchor, 1);
+  assert.equal(view.state.selection.main.head, 7);
+  assert.equal(view.state.doc.toString(), text);
+  assert.equal(undoDepth(view.state), depth);
+  assert.equal(calls.changes.length, 1);
+  assert.equal(editor.revealRange({ start: { line: 0, character: 2 }, end: { line: 0, character: 3 } }), false);
+  editor.destroy();
 });

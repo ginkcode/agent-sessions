@@ -1,5 +1,12 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import type { CodeDiagnosticRange } from '../../../codeDiagnostics';
+  let pending: { range: CodeDiagnosticRange; valid: () => boolean } | undefined;
+  export function revealRange(range: CodeDiagnosticRange, valid: () => boolean): boolean {
+    if (editor) return valid() && editor.revealRange(range);
+    pending = { range, valid };
+    return false;
+  }
   import type { FileEditorController, FileEditorOptions } from '../../../fileEditor';
   import { filePrompt } from '../../../stores/filePrompt.svelte';
 
@@ -17,6 +24,8 @@
     void import('../../../fileEditor').then(({ createFileEditor }) => {
       if (!disposed) {
         editor = createFileEditor(host, options());
+        if (pending?.valid()) editor.revealRange(pending.range);
+        pending = undefined;
         // The runtime loads lazily: by now a prompt may hold focus.
         if (!filePrompt.request) editor.focus();
       }

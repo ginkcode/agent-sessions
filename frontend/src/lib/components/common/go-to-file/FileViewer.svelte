@@ -1,5 +1,8 @@
 <script lang="ts">
-  import { onDestroy, untrack, type Snippet } from 'svelte';
+  import { onDestroy, tick, untrack, type Snippet } from 'svelte';
+  import { codeDiagnostics } from '../../../stores/codeDiagnostics.svelte';
+  import type { CodeDiagnostic } from '../../../codeDiagnostics';
+  import { problemPath, problemLocation, rangeOffsets, revealSourceRange, matchesProblemNavigation, type ProblemNavigationRequest } from '../../../problemNavigation';
   import type { FilePosition } from '../../../filePosition';
   import { selectFileLine, type FileLineSelection } from '../../../fileSelection';
   import type { BlameLine } from '../../../types';
@@ -88,6 +91,64 @@
   const isMac = typeof navigator !== 'undefined' && /Mac/i.test(navigator.platform);
 
   let previewOn = $state(false);
+  let navigation = $state.raw<ProblemNavigationRequest | null>(null);
+  let navigationSequence = 0;
+  let navigationNotice = $state('');
+  function navigationIdentity() {
+    return { dir: files.dir, host: link.dataHost, version: files.contextVersion,
+      context: JSON.stringify([codeDiagnostics.project, codeDiagnostics.snapshot?.context, codeDiagnostics.status]) };
+  }
+  export function navigateProblem(diagnostic: CodeDiagnostic) {
+    navigation = null;
+    if (!problemPath(diagnostic.path) || !files.dir || frozen || blocked) {
+      navigationNotice = 'Cannot open this problem target in the current project.';
+      return;
+    }
+    files.openFile(diagnostic.path, { keep: true, read: fileStatus(diagnostic.path) !== 'D' });
+    const tab = files.activeTab;
+    if (!tab || tab.path !== diagnostic.path) return;
+    pendingAnchor = null;
+    navigationNotice = '';
+    navigation = { id: ++navigationSequence, identity: navigationIdentity(), tab, path: diagnostic.path, diagnostic };
+  }
+  // Wait for the matching load and a source render. Recheck identity after every
+  // async boundary; a late read/tick must never select another tab or host.
+  $effect(() => {
+    const request = navigation;
+    if (!request) return;
+    const identity = navigationIdentity();
+    const valid = () => matchesProblemNavigation(request, navigation, navigationIdentity(), files.activeTab, files.selected);
+    if (!matchesProblemNavigation(request, navigation, identity, files.activeTab, files.selected)) { navigation = null; return; }
+    if (files.loadingFile || (!editing && highlightPending)) return;
+    if (files.fileError || fileStatus(request.path) === 'D') {
+      navigationNotice = files.fileError ?? 'This problem target was deleted; the finding remains in Problems.';
+      navigation = null; return;
+    }
+    const tab = files.activeTab!;
+    const reason = problemLocation(request.diagnostic, { dirty: Boolean(tab.edit?.dirty || tab.edit?.uncertain || tab.edit?.conflict), revision: tab.edit?.revision ?? tab.content?.revision });
+    if (reason) { navigationNotice = reason; navigation = null; return; }
+    const range = request.diagnostic.range!;
+    const source = tab.edit?.editing ? tab.edit.draft : text;
+    if (!isTextContent(tab.content) || !rangeOffsets(source, range)) {
+      navigationNotice = 'This saved-file range cannot be shown in the current source.';
+      navigation = null; return;
+    }
+    previewOn = false;
+    if (files.diff) files.toggleDiff();
+    presentation = false;
+    closeBlame();
+    untrack(() => { void tick().then(() => {
+      if (!valid() || showPreview || showDiff || frozen || (!editing && highlightPending)) return;
+      // A draft may have changed while the source/editor was mounting.
+      if (problemLocation(request.diagnostic, { dirty: Boolean(tab.edit?.dirty || tab.edit?.uncertain || tab.edit?.conflict), revision: tab.edit?.revision ?? tab.content?.revision })) {
+        navigationNotice = 'Saved-file location is stale over this draft; location remains in Problems only.';
+        navigation = null; return;
+      }
+      const editorValid = () => valid() && !frozen && !problemLocation(request.diagnostic, { dirty: Boolean(tab.edit?.dirty || tab.edit?.uncertain || tab.edit?.conflict), revision: tab.edit?.revision ?? tab.content?.revision });
+      const shown = editing ? editor?.revealRange(range, editorValid) : codeScroll && revealSourceRange(codeScroll, range);
+      if (shown) navigation = null;
+    }); });
+  });
 
   // Editing. A tab in edit mode shows the editor in place of every viewer
   // state, so a draft stays reachable even when the listing says deleted.
@@ -224,6 +285,7 @@
   // The highlighted file. Until highlight.js has loaded and run, the text
   // shows plain, so a file never waits on the highlighter.
   let html = $state<string | null>(null);
+  let highlightPending = $state(false);
   // One entry per line, so a wrapped line keeps its number beside it.
   // Highlighted lines are HTML; plain ones are text.
   let htmlLines = $derived(html !== null ? splitHighlightedLines(html) : null);
@@ -249,13 +311,15 @@
     const code = text;
     const lang = language;
     html = null;
+    highlightPending = false;
     if (!code || !lang || code.length > HIGHLIGHT_LIMIT) return;
+    highlightPending = true;
     let current = true;
     highlightFile(code, lang).then(
       (out) => {
-        if (current) html = out;
+        if (current) { html = out; highlightPending = false; }
       },
-      () => {}
+      () => { if (current) highlightPending = false; }
     );
     return () => {
       current = false;
@@ -493,6 +557,7 @@
 
 <section class="viewer" class:presentation aria-label="File content">
   {@render tabs?.()}
+  {#if navigationNotice}<div class="state" role="status">{navigationNotice}</div>{/if}
   {#if !files.selected}
     <div class="state center">Pick a file to see its content. Double-click keeps it open in a tab.</div>
   {:else}

@@ -1,4 +1,23 @@
-# Code diagnostics frontend (CD-10 / CD-11)
+# Code diagnostics frontend (CD-10 / CD-11 / CD-12)
+
+## CD-12 Problems navigation
+
+Overall progress is **11/28** (CD-01…CD-08 + CD-10…CD-12); CD-09 remains blocked.
+The shared collapsible panel groups exact findings, filters severities locally,
+retains source attribution and supports native button activation plus scoped arrow
+and wrapping next/previous navigation. It is a sibling of the mounted viewer.
+`problemNavigation.ts` keeps UTF-16 exclusive ranges separate from line-only blame,
+validates revision/freshness/draft eligibility and maps source text-node offsets.
+Viewer navigation uses kept tabs and captures request/tab/path/host/root/connection/
+attachment generation identity through load/render and lazy editor mount. Dirty or
+unverified saved ranges stay panel-only; no saves, reloads or destructive guards are
+bypassed. Markdown/SVG/diff locations switch to source. CodeMirror selection is a
+selection-only transaction preserving document/undo history.
+
+See [CD-12 completion evidence](../tasks/CD-12.md#completion-evidence). Frontend
+validation: **399/399 tests**, check 0 errors (existing config warning), build passed.
+Node async/store/controller/SSR and keyboard-handler fixtures are not native QA;
+focus/paint/scroll and native activation verification remain CD-16/CD-17 work.
 
 ## CD-11 integration
 

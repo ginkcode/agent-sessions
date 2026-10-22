@@ -15,6 +15,7 @@
   import { codeDiagnostics } from '../../stores/codeDiagnostics.svelte';
   import { connectionStore } from '../../stores/connection.svelte';
   import CodeChecks from './go-to-file/CodeChecks.svelte';
+  import ProblemsPanel from './go-to-file/ProblemsPanel.svelte';
 
   // Track routing, not diagnostics mutations. Discovery never delays picker rendering.
   $effect(() => {
@@ -298,6 +299,9 @@
         {/snippet}
       </FileViewer>
     </div>
+    {#if files.open && !presentation}
+      <ProblemsPanel onnavigate={(diagnostic) => viewer?.navigateProblem(diagnostic)} blocked={!!link.blockedReason || fileActions.busy || fileActions.quitting || renamePath !== null || newFolderPath !== null} />
+    {/if}
   </div>
 </div>
 

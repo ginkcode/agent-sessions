@@ -10,6 +10,7 @@ const dialog = await loadServerComponent(new URL('../GoToFileDialog.svelte', bas
   ["import { link } from '../../stores/link.svelte';", fixtureStore('link')],
   ["import { codeDiagnostics } from '../../stores/codeDiagnostics.svelte';", 'const codeDiagnostics = {};'],
   ["import { connectionStore } from '../../stores/connection.svelte';", 'const connectionStore = {};'],
+  ["import ProblemsPanel from './go-to-file/ProblemsPanel.svelte';", 'const ProblemsPanel = () => {};'],
   ["import CodeChecks from './go-to-file/CodeChecks.svelte';", 'const CodeChecks = () => {};'],
   ["import { hostLabel } from '../../hosts';", 'const hostLabel = (host) => host;'],
   ["import { copyToClipboard } from '../../portable';", 'const copyToClipboard = async () => true;'],
