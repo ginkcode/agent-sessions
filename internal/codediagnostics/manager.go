@@ -125,13 +125,24 @@ func (m *Manager) prepare(root AuthorizedRoot, registrations []Registration) (*a
 			return nil, failure("invalidArgument", "Invalid provider registration")
 		}
 		seen[r.ProviderID] = true
-		if r.Adapter != nil {
+		state := ProviderState{ProviderID: r.ProviderID, Availability: r.Availability, Phase: "idle", Freshness: "uncertain", Coverage: Coverage{Kind: "savedProject", Roots: []string{}, Partial: true, ExternalChanges: "unwatched"}}
+		switch {
+		case r.Live != nil:
+			if err := validateLive(r); err != nil {
+				return nil, err
+			}
+			state = r.Live.State
+			state.Coverage.Roots = slices.Clone(state.Coverage.Roots)
+			if r.Availability == "available" {
+				a.tools = append(a.tools, r.Live.Server.Tool())
+			}
+		case r.Adapter != nil:
 			a.adapters[r.ProviderID] = r.Adapter
 			a.tools = append(a.tools, r.Adapter.Tools()...)
-		} else if r.Availability == "available" {
+		case r.Availability == "available":
 			return nil, failure("invalidArgument", "Available provider needs an adapter")
 		}
-		a.snapshot.Providers = append(a.snapshot.Providers, ProviderState{ProviderID: r.ProviderID, Availability: r.Availability, Phase: "idle", Freshness: "uncertain", Coverage: Coverage{Kind: "savedProject", Roots: []string{}, Partial: true, ExternalChanges: "unwatched"}})
+		a.snapshot.Providers = append(a.snapshot.Providers, state)
 	}
 	slices.SortFunc(a.snapshot.Providers, func(a, b ProviderState) int { return strings.Compare(a.ProviderID, b.ProviderID) })
 	if len(a.tools) > 0 {
@@ -306,7 +317,7 @@ func (m *Manager) Run(c Context, ids []string, supersede bool) ([]RunIdentity, e
 	}
 	if ids == nil {
 		for _, p := range a.snapshot.Providers {
-			if p.Availability == "available" {
+			if p.Availability == "available" && a.adapters[p.ProviderID] != nil {
 				ids = append(ids, p.ProviderID)
 			}
 		}

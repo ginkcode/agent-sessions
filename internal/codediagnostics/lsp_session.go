@@ -19,6 +19,7 @@ import (
 	"net/url"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -78,6 +79,9 @@ type ServerConfig struct {
 	Directory     string   // relative to the authorized root; empty is the root
 	AdapterPolicy string
 	ConfigPaths   []string // relative config/lock identities bound into approval
+	// ApprovalTools is the complete attachment proposal, not a subset grant.
+	// Nil preserves the standalone single-server seam used by adapter tests.
+	ApprovalTools []ToolInput
 }
 
 func (c ServerConfig) command() Command {
@@ -90,6 +94,13 @@ func (c ServerConfig) Policy() string { return c.command().Policy() }
 // Tool is the approval input for this server.
 func (c ServerConfig) Tool() ToolInput {
 	return ToolInput{ProviderID: c.ProviderID, Executable: c.Executable, ConfigPaths: append([]string(nil), c.ConfigPaths...), Policy: c.Policy()}
+}
+
+func (c ServerConfig) approvalTools() []ToolInput {
+	if c.ApprovalTools != nil {
+		return cloneTools(c.ApprovalTools)
+	}
+	return []ToolInput{c.Tool()}
 }
 
 // ServerCapabilities is the negotiated subset recorded for document operations.
@@ -239,11 +250,11 @@ func (m *SessionManager) Attach(ctx context.Context, root AuthorizedRoot, cfg Se
 	if m.trust == nil || m.options.Launch == nil {
 		return SessionInfo{}, failure("invalidArgument", "Language server owner is not configured")
 	}
-	if err := m.gate(root, cfg, tool); err != nil {
+	if err := m.gate(root, cfg); err != nil {
 		return SessionInfo{}, err
 	}
 	// Preflight rechecks approval and rehashes executable/config identity.
-	lease, err := m.trust.Preflight(root, []ToolInput{tool})
+	lease, err := m.trust.Preflight(root, cfg.approvalTools())
 	if err != nil {
 		return SessionInfo{}, err
 	}
@@ -307,14 +318,26 @@ func (m *SessionManager) attach(ctx context.Context, root AuthorizedRoot, cfg Se
 }
 
 // gate enforces the fixed executable/argv contract before anything can start.
-func (m *SessionManager) gate(root AuthorizedRoot, cfg ServerConfig, tool ToolInput) error {
+func (m *SessionManager) gate(root AuthorizedRoot, cfg ServerConfig) error {
 	if err := root.Revalidate(); err != nil { // known-directory authorization
 		return err
 	}
 	if len(cfg.ConfigPaths) > 128 {
 		return failure("invalidArgument", "Too many configuration identities")
 	}
-	return validateCommand(root, []ToolInput{tool}, cfg.command())
+	selected := cfg.Tool()
+	member := false
+	for _, tool := range cfg.approvalTools() {
+		if tool.ProviderID == selected.ProviderID && tool.Executable == selected.Executable && tool.Policy == selected.Policy && slices.Equal(tool.ConfigPaths, selected.ConfigPaths) {
+			member = true
+		}
+	}
+	if !member {
+		return failure("invalidArgument", "Server is not in the complete approval proposal")
+	}
+	// Validate membership in the whole proposal; never authorize arbitrary argv
+	// merely because another tool in that proposal is approved.
+	return validateCommand(root, cfg.approvalTools(), cfg.command())
 }
 
 // atCapacityLocked reports whether starting a project would exceed the cap.
@@ -421,7 +444,7 @@ func (m *SessionManager) Retry(ctx context.Context, root AuthorizedRoot, cfg Ser
 	if m.trust == nil || m.options.Launch == nil {
 		return SessionInfo{}, failure("invalidArgument", "Language server owner is not configured")
 	}
-	if err := m.gate(root, cfg, tool); err != nil {
+	if err := m.gate(root, cfg); err != nil {
 		return SessionInfo{}, err
 	}
 	m.mu.Lock()
@@ -436,7 +459,7 @@ func (m *SessionManager) Retry(ctx context.Context, root AuthorizedRoot, cfg Ser
 	}
 	e.restarted++
 	m.mu.Unlock()
-	lease, err := m.trust.Preflight(root, []ToolInput{tool})
+	lease, err := m.trust.Preflight(root, cfg.approvalTools())
 	if err != nil {
 		return SessionInfo{}, err
 	}
@@ -625,7 +648,7 @@ func (s *lspSession) run() {
 func (s *lspSession) initialize() (ServerCapabilities, error) {
 	dir, err := commandDirectory(s.root, s.config.Directory)
 	if err == nil {
-		err = s.lease.Validate(s.root, []ToolInput{s.tool}) // immediately before spawn
+		err = s.lease.Validate(s.root, s.config.approvalTools()) // immediately before spawn
 	}
 	if err != nil {
 		return ServerCapabilities{}, err

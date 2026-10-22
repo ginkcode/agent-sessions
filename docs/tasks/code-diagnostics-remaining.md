@@ -1,6 +1,6 @@
 # Code diagnostics — remaining-work split
 
-Date: 2026-10-22. **R01 audit, R02 concrete ownership and R03 URI isolation complete; R04–R20 not started.** Parent progress remains **19/28**:
+Date: 2026-10-22. **R01 audit, R02 concrete ownership and R03 URI isolation complete; R04 offline discovery/trust seam complete; R05–R20 not started.** Parent progress remains **19/28**:
 19 complete, 7 partial (CD-17, CD-22…CD-27), 2 blocked (CD-09, CD-28), 0 untouched
 not-started tasks. Partial/blocked parents are not counted complete. These package
 IDs subdivide remaining acceptance work; they do not add to the 28-task denominator.
@@ -10,7 +10,7 @@ and the [task split rules](README.md#how-to-use-these-briefs). Each estimate inc
 focused tests/evidence and is **≤4 developer hours**. Re-estimate/split before coding
 if a package exceeds its cap; never omit acceptance to fit. Full regression and
 native evidence have separate packages. **R01 is complete (audit/decision only); R02
-is complete (offline ownership seams/tests); R03 is complete (offline conservative URI isolation/tests); R04–R20 are not started.** The [R01 ownership audit](../plan/code-diagnostics-ownership-audit.md)
+is complete (offline ownership seams/tests); R03 is complete (offline conservative URI isolation/tests); R04 is complete (offline discovery/trust seam/tests); R05–R20 are not started.** The [R01 ownership audit](../plan/code-diagnostics-ownership-audit.md)
 is authoritative for R02/R03 ownership and conservative reused-URI freshness policy;
 its exposed bugs are not implemented fixes or passing regression claims.
 
@@ -36,7 +36,7 @@ its exposed bugs are not implemented fixes or passing regression claims.
 | R01 / CD-22, CD-24, CD-26 | 3 h | **Complete 2026-10-22; audit only** | [Ownership map, code-trace evidence, R02/R03 policy and deterministic schedules](../plan/code-diagnostics-ownership-audit.md). Concrete identity loss and same URI/version late-push false freshness exposed; no fixes/activation claimed. |
 | R02 / CD-22…CD-24, CD-26 | 4 h | **Complete 2026-10-22; offline only** | Concrete session-envelope provider + bound document provider/policy survive publication and exact-key replacement/snapshots/events. `live_ownership_test.go` covers concurrent checker + Go/TS and TS/Svelte, wrong-owner findings/empties, reverse order, equivalent attribution and session reuse. [Evidence/caveats](CD-26.md#r02-concrete-ownership-2026-10-22); R03 ambiguity remains, no activation. |
 | R03 / CD-25, CD-26 | 4 h | **Complete 2026-10-22; offline only** | Transport-lifetime canonical URI history rejects ambiguous findings and empties; bounded history exhaustion fails closed for every path publication until a new session. Deterministic same URI/v1 reopen, identical/different text, repeated paths, reapproval/new attachment owner, crash/retry/old generation, alias and budget tests pass. [Evidence/caveats](CD-26.md#r03-conservative-uri-isolation-2026-10-22). No activation or R04 work. |
-| R04 / CD-22…CD-24 | 4 h | R01/R02; Code | Add production discovery/trust resolver seam: bounded contained roots, host-local fixed executable/argv, current known-directory + fingerprint grants, independent missing/unsupported status. Fake launch asserts zero starts before trust, no parent promotion/config evaluation/install fallback. No real tool execution or capability activation. |
+| R04 / CD-22…CD-24 | 4 h | **Complete 2026-10-22; offline only** | Production-callable bounded `DiscoverLive`, live metadata registration and contained `DiscoveryDocuments` resolver; same exact attachment-wide checker + multi-live approval with current-root/fingerprint preflight and exact selected-policy membership. Fake launches prove zero starts before composite approval/current identity and independent provider availability. [Evidence/caveats](../plan/code-diagnostics-r04.md). No Engine activation, real tool run or R05 lifecycle wiring. |
 | R05 / CD-22…CD-25 | 4 h | R03/R04; Code | Wire session owner, `openedDocuments` provider mapping, reuse/reopen displayed text, failure notices, revoke/disconnect/idle teardown. Fake route proves exactly one owner per project/provider/policy and retained findings become stale on failure; keep production advertisement disabled pending evidence/gates. |
 | R06 / CD-26 | 4 h | R02; Code | Apply bounded live retention/normalization and escaped snapshot/RPC budgets, finding/message caps and observable truncation/partial status (including shortened adapter messages). Boundary/hostile-escape/many-document tests prove bounded storage and no false all-clean result; do not raise caps. |
 | R07 / CD-22…CD-24, CD-26 | 4 h | R02/R03; Code | Wire live source/editor marker eligibility and navigation, preserving lazy editor import, UTF-16 ranges, cached drafts/undo and no diff/blame/preview overlays. Component/store tests distinguish saved checker, current versioned live and unversioned uncertain results. Native paint/undo remains R16. |

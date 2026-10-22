@@ -454,7 +454,7 @@ func NewManagerForTest(t *testing.T, root AuthorizedRoot) *managerHarness {
 	}
 	t.Cleanup(m.Close)
 	tools := []ToolInput{{ProviderID: "t", Executable: filepath.Join(root.Project().Root, "server"), ConfigPaths: []string{"cfg"}, Policy: "adapter-v1 fixed argv and env"}}
-	snap, err := m.Attach(root, 1, []Registration{{"t", "available", &fakeChecker{tools: tools, calls: make(chan adapterCall, 1)}}})
+	snap, err := m.Attach(root, 1, []Registration{{ProviderID: "t", Availability: "available", Adapter: &fakeChecker{tools: tools, calls: make(chan adapterCall, 1)}}})
 	if err != nil {
 		t.Fatal(err)
 	}

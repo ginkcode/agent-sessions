@@ -35,7 +35,7 @@ func TestManagerSupervisorRevokeIntegration(t *testing.T) {
 	}
 	defer m.Close()
 	f := &supervisedChecker{root, tools, c}
-	snap, err := m.Attach(root, 1, []Registration{{"checker", "available", f}})
+	snap, err := m.Attach(root, 1, []Registration{{ProviderID: "checker", Availability: "available", Adapter: f}})
 	if err != nil {
 		t.Fatal(err)
 	}

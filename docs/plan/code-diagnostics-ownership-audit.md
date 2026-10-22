@@ -144,3 +144,13 @@ at audit completion; R02 and R03 are now implemented separately as linked above.
 The exposed outcomes and pre-fix evidence limits above remain historical audit
 findings, not the current implementation. R03 deliberately discards reused-URI
 pushes rather than claiming matching-version freshness.
+
+
+## R04 follow-up (2026-10-22)
+
+[Offline discovery/trust seam implemented](code-diagnostics-r04.md): concrete
+live registrations can join the checker proposal and resolve one contained
+owner per file under a shared exact composite Trust grant. Session policy keys
+remain concrete; grants do not become subset/provider grants. The historical
+map above predates this seam. Engine/session-owner lifecycle wiring remains R05;
+no production activation or parent completion is implied. Progress **19/28**.

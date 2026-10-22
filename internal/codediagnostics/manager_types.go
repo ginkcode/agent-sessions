@@ -87,7 +87,8 @@ type CheckerAdapter interface {
 type Registration struct {
 	ProviderID   string
 	Availability string
-	Adapter      CheckerAdapter // nil for unsupported/missing/disabled providers
+	Adapter      CheckerAdapter    // nil for unsupported/missing/disabled providers
+	Live         *LiveRegistration // backend-owned metadata; never starts a session
 }
 
 // Limits can only narrow contract v1. Metadata is deliberately limited further

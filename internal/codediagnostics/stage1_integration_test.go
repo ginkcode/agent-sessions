@@ -37,7 +37,7 @@ func TestStage1GoAdapterManagerReplacement(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer m.Close()
-	snap, err := m.Attach(p.root, 1, []Registration{{"go", "available", p}, {"svelte", "missingTool", nil}})
+	snap, err := m.Attach(p.root, 1, []Registration{{ProviderID: "go", Availability: "available", Adapter: p}, {ProviderID: "svelte", Availability: "missingTool", Adapter: nil}})
 	if err != nil {
 		t.Fatal(err)
 	}

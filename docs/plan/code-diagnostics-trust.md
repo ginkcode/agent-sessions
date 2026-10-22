@@ -198,3 +198,13 @@ out-of-root content reads through symlink swaps, but do not freeze a project.
 The supervisor must revalidate immediately and observe cancellation; stronger
 executable handles, immutable snapshots, or OS sandboxing are separate work.
 Fixed argv, canonical containment and metadata checks are no no-write guarantee.
+
+## R04 composite proposal seam (2026-10-22)
+
+`LiveRegistration` and `DiscoveryDocuments` extend the existing checker proposal
+without changing Trust's one-exact-fingerprint-per-project storage. Every live
+session preflights and validates the complete available checker + live tool set;
+its selected fixed executable/argv/config identity must be an exact member.
+A subset grant never authorizes the composite, and changes to any member require
+renewed approval. This is metadata-only integration; production activation and
+session lifecycle wiring remain deferred. [Evidence and limits](code-diagnostics-r04.md).

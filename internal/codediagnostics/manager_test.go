@@ -39,7 +39,7 @@ func managerFixture(t *testing.T, l ManagerLimits) (*Manager, Snapshot, *fakeChe
 		t.Fatal(err)
 	}
 	f := &fakeChecker{tools, make(chan adapterCall, 32)}
-	snap, err := m.Attach(root, 1, []Registration{{"checker", "available", f}, {"missing", "missingTool", nil}})
+	snap, err := m.Attach(root, 1, []Registration{{ProviderID: "checker", Availability: "available", Adapter: f}, {ProviderID: "missing", Availability: "missingTool", Adapter: nil}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -201,7 +201,7 @@ func TestManagerRevokeDetachShutdown(t *testing.T) {
 				}
 			}
 			if mode == "detach" || mode == "invalidate" {
-				next, err := m.Attach(mustRoot(t, f.tools[0].Executable), 1, []Registration{{"checker", "available", f}})
+				next, err := m.Attach(mustRoot(t, f.tools[0].Executable), 1, []Registration{{ProviderID: "checker", Availability: "available", Adapter: f}})
 				if err != nil || next.Context.AttachmentID == old.AttachmentID || len(next.ResultSets) != 0 {
 					t.Fatal(next, err)
 				}

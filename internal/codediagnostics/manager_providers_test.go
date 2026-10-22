@@ -17,7 +17,7 @@ func TestManagerIndependentProvidersAndAttachmentBudget(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer m.Close()
-	snap, err := m.Attach(root, 1, []Registration{{"checker", "available", f}, {"second", "available", g}})
+	snap, err := m.Attach(root, 1, []Registration{{ProviderID: "checker", Availability: "available", Adapter: f}, {ProviderID: "second", Availability: "available", Adapter: g}})
 	if err != nil {
 		t.Fatal(err)
 	}

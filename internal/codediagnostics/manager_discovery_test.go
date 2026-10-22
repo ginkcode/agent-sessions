@@ -18,7 +18,7 @@ func TestManagerAsynchronousDiscoveryApproval(t *testing.T) {
 		t.Fatal("initial discovery not pending")
 	}
 	f := &fakeChecker{tools: tools, calls: make(chan adapterCall, 1)}
-	if err := manager.CompleteDiscovery(s.Context, []Registration{{"checker", "available", f}}); err != nil {
+	if err := manager.CompleteDiscovery(s.Context, []Registration{{ProviderID: "checker", Availability: "available", Adapter: f}}); err != nil {
 		t.Fatal(err)
 	}
 	s, err = manager.GetSnapshot(s.Context)
@@ -61,10 +61,10 @@ func TestManagerAsynchronousDiscoveryApproval(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := manager.CompleteDiscovery(s.Context, []Registration{{"checker", "available", f}}); err == nil {
+	if err := manager.CompleteDiscovery(s.Context, []Registration{{ProviderID: "checker", Availability: "available", Adapter: f}}); err == nil {
 		t.Fatal("old discovery revived revoke")
 	}
-	if err := manager.CompleteDiscovery(revoked.Context, []Registration{{"checker", "available", f}}); err == nil {
+	if err := manager.CompleteDiscovery(revoked.Context, []Registration{{ProviderID: "checker", Availability: "available", Adapter: f}}); err == nil {
 		t.Fatal("revoked discovery revived proposal")
 	}
 	call.result <- goodResult("late")
