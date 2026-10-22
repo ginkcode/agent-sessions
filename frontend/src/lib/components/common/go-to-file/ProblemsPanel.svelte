@@ -41,7 +41,8 @@
       <button type="button" disabled={!rows.length || blocked} onclick={() => step(-1)}>Previous problem</button>
       <button type="button" disabled={!rows.length || blocked} onclick={() => step(1)}>Next problem</button>
     </div>
-    <p>Saved-file locations · Next/previous wrap through the filtered set, including collapsed groups. ↑/↓ in the list navigate.</p>
+    {#if checks.partial || checks.truncated}<p>Partial coverage{checks.truncated ? ' · results truncated' : ''}; retained findings are not a complete check.</p>{/if}
+    <p>Reported locations (saved files or synchronized documents) · Next/previous wrap through the filtered set, including collapsed groups. ↑/↓ in the list navigate.</p>
     <!-- Native buttons own activation; this group only delegates arrow navigation. -->
     <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
     <div class="results" bind:this={region} role="group" aria-label="Problems by file"

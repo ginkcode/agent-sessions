@@ -51,7 +51,7 @@
     {:else}
       <p>{checks.revoking ? 'Revocation pending; checks disabled' : `Approved for ${checks.snapshot.approval.mode === 'persistent' ? 'this project persistently' : 'this session'}`}. Checks run only when requested.</p>
       <div class="actions">
-        {#if checks.approved && checks.providers.some(p => p.availability === 'available')}
+        {#if checks.approved && checks.providers.some(p => p.availability === 'available' && p.coverage.kind === 'savedProject')}
           <button type="button" disabled={blocked || !checks.canRun} onclick={() => perform(() => checks.run())}>Check Project</button>
         {/if}
         {#if checks.approved && checks.running}
@@ -62,9 +62,19 @@
     {/if}
   {/if}
   {#if checks.snapshot}
-    <p>{checks.counts.error} errors · {checks.counts.warning} warnings · saved files{checks.partial ? ' · partial coverage' : ''}{checks.truncated ? ' · truncated' : ''}</p>
+    <p>{checks.counts.error} errors · {checks.counts.warning} warnings · reported findings{checks.partial ? ' · partial coverage' : ''}{checks.truncated ? ' · truncated' : ''}</p>
     {#if checks.counts.error === 0 && checks.counts.warning === 0}<p>No reported problems — this does not establish complete coverage.</p>{/if}
     {#if checks.providers.length === 0}<p>No supported checker discovered.</p>{/if}
+    {#if checks.truncated}<p>Results were shortened or omitted to stay within limits; no complete-coverage claim.</p>{/if}
+    {#each checks.liveDocuments ?? [] as document (document.documentId)}
+      {#if document.failure}
+        <p role="status">{document.path}: Live document synchronization failed ({document.failure}); retained findings are stale. Browsing and drafts remain available.</p>
+        {#if document.canReopen}
+          <button type="button" disabled={blocked || !!checks.pending} onclick={() => checks.reopenDocument(document.path, document.documentId)}>Reopen live synchronization for {document.path}</button>
+          <p>Resends displayed text with a fresh document identity under current approval, at most twice. This is not a provider restart; same-URI results may remain uncertain until a new isolated session.</p>
+        {/if}
+      {/if}
+    {/each}
     <ul>
       {#each checks.providers as provider (provider.providerId)}
         <li>
@@ -74,7 +84,11 @@
           {#if provider.failure}<p>{provider.failure.message} (retained findings are not a successful check)</p>{/if}
           {#if provider.phase === 'canceled'}<p>Check canceled; retained findings may be stale.</p>{/if}
           {#if checks.approved && provider.phase === 'failed' && provider.availability === 'available'}
-            <button type="button" disabled={blocked || !checks.canRun} onclick={() => perform(() => checks.retry(provider.providerId))}>Retry {provider.providerId}</button>
+            {#if provider.coverage.kind === 'savedProject'}
+              <button type="button" disabled={blocked || !checks.canRetry(provider.providerId)} onclick={() => perform(() => checks.retry(provider.providerId))}>Retry {provider.providerId}</button>
+            {:else}
+              <p>No provider restart action is supported here. A failed session can be recreated by a subsequent document open; reopening in a surviving session may remain uncertain until a new isolated session. Refresh check status only reads status.</p>
+            {/if}
           {/if}
         </li>
       {/each}

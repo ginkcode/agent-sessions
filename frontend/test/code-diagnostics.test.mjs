@@ -238,7 +238,7 @@ test('visible discovery is asynchronous, hide/replacement invalidates replies, u
 test('approval never runs, duplicate checks blocked through ack/event gap, cancel exact run, retry scoped, revoke immediate', async () => {
   const h = harness(); await h.store.attach('/input', connection);
   let calls = 0; const reply = deferred();
-  h.backend.runCodeDiagnostics = (c, ids, host) => { calls++; assert.deepEqual(c, context); assert.equal(host, 'host1'); assert.equal(ids, undefined); return reply.promise; };
+  h.backend.runCodeDiagnostics = (c, ids, host) => { calls++; assert.deepEqual(c, context); assert.equal(host, 'host1'); assert.deepEqual(ids, ['go']); return reply.promise; };
   const running = h.store.run(); assert.equal(h.store.canRun, false);
   await assert.rejects(h.store.run(), /active/); assert.equal(calls, 1);
   reply.resolve({ context, runs: [{ providerId: 'go', runId: 'new-run' }] }); await running;

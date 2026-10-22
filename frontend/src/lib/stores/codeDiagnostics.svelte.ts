@@ -1,4 +1,5 @@
 import { api } from '../api';
+import type { LiveDocumentStatus } from '../liveDocuments';
 import { aggregateCodeDiagnostics } from '../codeDiagnosticCounts';
 import { epoch } from '../link';
 import type { BackendAPI } from '../api';
@@ -22,7 +23,8 @@ export class CodeDiagnosticsStore {
 
   get approved() { return this.status === 'ready' && !this.revoking && this.snapshot?.approval.state === 'approved'; }
   get running() { return this.pending === 'run' || this.pendingRuns.length > 0 || this.providers.some(p => ['starting', 'checking'].includes(p.phase)); }
-  get canRun() { return this.approved && !this.pending && !this.running && this.providers.some(p => p.availability === 'available'); }
+  get canRun() { return this.approved && !this.pending && !this.running && this.providers.some(p => p.availability === 'available' && p.coverage.kind === 'savedProject'); }
+  canRetry(providerId: string) { return this.canRun && this.providers.some(p => p.providerId === providerId && p.availability === 'available' && p.coverage.kind === 'savedProject'); }
   /** Visibility discovery is asynchronous; only the latest visible route may attach. */
   async show(dir: string) {
     void this.detach();
@@ -52,7 +54,24 @@ export class CodeDiagnosticsStore {
   private readLiveBasis: (path: string) => LiveDocumentBasis | undefined = () => undefined;
   /** Bridge-owned protocol identity only; never text or editor state. */
   setLiveBasis(read: (path: string) => LiveDocumentBasis | undefined): void { this.readLiveBasis = read; }
-  liveChanged(): void { this.liveRevision++; }
+  private readLiveStatus: () => LiveDocumentStatus[] = () => [];
+  private reopenLive: (path: string, documentId: string) => void = () => {};
+  setLiveRecovery(read: () => LiveDocumentStatus[], reopen: (path: string, documentId: string) => void): void {
+    this.readLiveStatus = read; this.reopenLive = reopen;
+  }
+  get liveDocuments(): LiveDocumentStatus[] {
+    this.liveRevision;
+    return this.liveAttachment ? this.readLiveStatus() : [];
+  }
+  reopenDocument(path: string, documentId: string): void {
+    if (this.liveDocuments.some(d => d.path === path && d.documentId === documentId && d.canReopen)) this.reopenLive(path, documentId);
+  }
+  liveChanged(): void {
+    this.liveRevision++;
+    // A failed lifecycle cannot regain freshness just because a replacement opens.
+    // Only a subsequent authoritative publication can replace its retained sets.
+    if (this.snapshot && this.liveDocuments.some(d => d.failure)) this.snapshot = { ...this.snapshot, resultSets: this.resultSets };
+  }
   liveBasis(path: string): LiveDocumentBasis | undefined {
     this.liveRevision;
     return this.liveAttachment ? this.readLiveBasis(path) : undefined;
@@ -79,13 +98,18 @@ export class CodeDiagnosticsStore {
 
   constructor(private backend: BackendAPI = api, private currentEpoch: () => number = epoch) {}
 
-  get resultSets() { return this.snapshot?.resultSets ?? []; }
+  get resultSets() {
+    const failedProviders = new Set(this.providers.filter(p => p.failure || p.availability !== 'available' || ['failed', 'canceled', 'disconnected'].includes(p.phase)).map(p => p.providerId));
+    const failedDocuments = new Set(this.liveDocuments.filter(d => d.failure).map(d => d.documentId));
+    return (this.snapshot?.resultSets ?? []).map(s => failedProviders.has(s.providerId) || (s.scope.kind === 'document' && failedDocuments.has(s.scope.documentId))
+      ? { ...s, diagnostics: s.diagnostics.map(d => ({ ...d, freshness: 'stale' as const })) } : s);
+  }
   get providers() { return this.snapshot?.providers ?? []; }
   private grouped = $derived(groupCodeDiagnostics(this.resultSets));
   private aggregated = $derived(aggregateCodeDiagnostics(this.grouped));
   get findings() { return this.grouped; }
   get pathCounts() { return this.aggregated; }
-  get partial() { return this.status !== 'ready' || this.providers.length === 0 || this.providers.some(p => p.coverage.partial || p.availability !== 'available' || ['failed', 'canceled', 'disconnected'].includes(p.phase)); }
+  get partial() { return this.status !== 'ready' || this.providers.length === 0 || this.liveDocuments.some(d => d.failure) || this.providers.some(p => p.truncated || p.failure || p.coverage.partial || p.availability !== 'available' || ['failed', 'canceled', 'disconnected'].includes(p.phase)); }
   get truncated() { return this.providers.some(p => p.truncated); }
   get counts() {
     const { error, warning } = this.pathCounts.total;
@@ -283,7 +307,7 @@ export class CodeDiagnosticsStore {
       const value = await operation(c, this.host);
       if (this.active(life) && this.context && sameContext(c, this.context)) apply?.(value);
       return value;
-    } catch (e) { if (this.active(life)) this.fail(e); throw e; }
+    } catch (e) { if (this.active(life) && this.context && sameContext(c, this.context)) this.fail(e); throw e; }
   }
   private async request<T>(kind: string, work: () => Promise<T>) {
     if (this.pending && kind !== 'revoke') throw new CodeDiagnosticsError('busy', 'Request already pending');
@@ -303,14 +327,16 @@ export class CodeDiagnosticsStore {
   async run(providerIds?: string[]) {
     if (!this.approved) throw new CodeDiagnosticsError('approvalRequired', 'Approve code checks before running');
     if (this.running) throw new CodeDiagnosticsError('busy', 'Check already active');
-    if (!this.providers.some(p => p.availability === 'available' && (!providerIds || providerIds.includes(p.providerId)))) throw new CodeDiagnosticsError('unsupported', 'No available checker');
+    const checkerIds = this.providers.filter(p => p.availability === 'available' && p.coverage.kind === 'savedProject' && (!providerIds || providerIds.includes(p.providerId))).map(p => p.providerId);
+    if (!checkerIds.length || providerIds?.some(id => !checkerIds.includes(id))) throw new CodeDiagnosticsError('unsupported', 'No available saved-file checker; live providers cannot be retried with Check Project');
     return this.request('run', async () => {
       const life = this.lifetime;
       await this.reconcileFiles();
       if (!this.active(life)) throw new CodeDiagnosticsError('staleContext', 'Attach diagnostics again');
+      if (!this.approved) throw new CodeDiagnosticsError('approvalRequired', 'Approve code checks before running');
       // Only the checker reads disk. Reconciliation does not save drafts, send
       // didSave, or certify unversioned LSP publications.
-      return this.action((c, h) => this.backend.runCodeDiagnostics(c, providerIds, h), reply => {
+      return this.action((c, h) => this.backend.runCodeDiagnostics(c, checkerIds, h), reply => {
         this.pendingRuns = reply.runs.filter(r => !this.providers.some(p => p.providerId === r.providerId && p.runId === r.runId));
       });
     });

@@ -43,6 +43,7 @@ async function harness(live = true) {
   const files = new FilesStore(), checks = new CodeDiagnosticsStore(api, () => 0);
   const bridge = new LiveDocumentBridge({ api, store: checks, source: () => ({ dir: files.dir, documents: files.displayedDocuments() }), newId: () => `d${++id}`, timers: { set(fn) { timers.set(fn, fn); return fn; }, clear(fn) { timers.delete(fn); } } });
   checks.setLiveBasis(path => bridge.basis(path));
+  checks.setLiveRecovery(() => bridge.statuses, (path, id) => bridge.reopen(path, id));
   bridge.onChange(() => checks.liveChanged());
   files.observe(bridge);
   const off = checks.onLifecycle(() => bridge.sync());
@@ -53,7 +54,7 @@ async function harness(live = true) {
     const s = snapshot(providers.map(providerId => ({ providerId, origin: 'lsp', scope: { kind: 'document', path: 'a.go', documentId }, diagnostics: [d] })));
     listeners.get('codeDiagnostics:updated')?.({ contractVersion: 1, context, sequence: s.sequence, updateId: `u${s.sequence}`, partIndex: 0, partCount: 1, snapshot: s });
   }
-  return { files, checks, bridge, calls, timers, emit, listeners, off, async flush() { for (const fn of [...timers.keys()]) { timers.delete(fn); fn(); } await tick(); } };
+  return { files, checks, bridge, api, snapshot, calls, timers, emit, listeners, off, async flush() { for (const fn of [...timers.keys()]) { timers.delete(fn); fn(); } await tick(); } };
 }
 
 test('real files + diagnostics stores: freshness, attribution, save, close and host drop', async () => {
@@ -136,6 +137,96 @@ test('R07 real store source/component/editor projection and navigation require t
   h.checks.disconnect(); projection(0);
   assert.equal(edit.draft, 'a😀\nnew\n');
   h.off(); await h.checks.detach();
+});
+
+const checksComponent = await loadServerComponent(new URL('../src/lib/components/common/go-to-file/CodeChecks.svelte', import.meta.url), [
+  ["import { codeDiagnostics as checks } from '../../../stores/codeDiagnostics.svelte';", fixtureStore('checks')],
+]);
+const problemsComponent = await loadServerComponent(new URL('../src/lib/components/common/go-to-file/ProblemsPanel.svelte', import.meta.url), [
+  ["'svelte'", JSON.stringify(import.meta.resolve('svelte'))],
+  ["import { codeDiagnostics as checks } from '../../../stores/codeDiagnostics.svelte';", fixtureStore('checks')],
+  ["'../../../codeDiagnostics'", lib('codeDiagnostics')], ["'../../../problemNavigation'", lib('problemNavigation')],
+]);
+
+test('R08 provider crash/truncation propagates through actual store, panel, counts and marker projections', async () => {
+  const h = await harness();
+  h.files.openFile('a.go', { keep: true }); await tick(); h.emit();
+  const s = h.snapshot(h.checks.snapshot.resultSets);
+  Object.assign(s.providers[0], { phase: 'failed', failure: { code: 'toolFailed', message: '<script>crash</script>' }, truncated: true, notice: '<img src=x> shortened' });
+  s.providers[1].availability = 'missingTool';
+  h.listeners.get('codeDiagnostics:updated')({ contractVersion: 1, context, sequence: s.sequence, updateId: 'failure', partIndex: 0, partCount: 1, snapshot: s });
+  assert.equal(h.checks.status, 'ready'); // provider failure is not a browsing failure
+  assert.equal(h.checks.counts.error, 1); assert.equal(h.checks.countsUnder('a.go'), 1);
+  assert.equal(h.checks.findings[0].diagnostic.freshness, 'stale');
+  assert.equal(h.checks.partial, true); assert.equal(h.checks.truncated, true);
+  assert.equal(h.checks.liveInline('a.go', h.checks.liveBasis('a.go')).length, 0);
+  const basis = { dirty: false, revision: 'r1', live: h.checks.liveBasis('a.go') };
+  assert.equal(projectSourceDiagnostics(h.files.content.text, h.checks.findings, basis, true).segments.length, 0);
+  assert.equal(editorDiagnostics(EditorState.create({ doc: h.files.content.text }), { id: 't', path: 'a.go', diagnostics: { tab: 't', path: 'a.go', findings: h.checks.findings, ...basis, current: true } }).length, 0);
+  const html = await renderWithFixture(checksComponent, { checks: h.checks });
+  for (const text of ['failed', 'Tool missing', 'partial coverage', 'truncated', '&lt;script>', '&lt;img', 'No provider restart action']) assert.ok(html.includes(text), text);
+  assert.doesNotMatch(html, /<script>|<img|Retry lsp/);
+  const panel = await renderWithFixture(problemsComponent, { checks: h.checks }, { expanded: true, onnavigate() {} });
+  assert.match(panel, /stale/); assert.match(panel, /results truncated/); assert.doesNotMatch(panel, /<script>/);
+  await assert.rejects(h.checks.retry('lsp'), /live providers cannot be retried/);
+  h.files.startEditing('a.go'); h.files.updateDraft('a.go', 'still browsable');
+  assert.equal(h.files.activeTab.edit.draft, 'still browsable');
+  h.off(); await h.checks.detach();
+});
+
+test('R08 bridge failure is rendered without raw error text; explicit recovery is bounded and identity guarded', async () => {
+  const h = await harness();
+  h.files.openFile('a.go', { keep: true }); await tick(); h.emit();
+  h.api.changeCodeDiagnosticDocument = async () => { throw new Error('toolFailed: SECRET DOCUMENT TEXT'); };
+  h.files.startEditing('a.go'); h.files.updateDraft('a.go', 'latest displayed text'); await h.flush();
+  const failed = h.checks.liveDocuments[0];
+  assert.equal(failed.failure, 'toolFailed'); assert.equal(failed.canReopen, true);
+  assert.equal(h.checks.findings[0].diagnostic.freshness, 'stale'); assert.equal(h.checks.partial, true);
+  const html = await renderWithFixture(checksComponent, { checks: h.checks });
+  assert.match(html, /Live document synchronization failed \(toolFailed\)/); assert.match(html, /Reopen live synchronization/);
+  assert.doesNotMatch(html, /SECRET DOCUMENT TEXT|latest displayed text/);
+  h.checks.reopenDocument('a.go', 'wrong-id'); await tick();
+  assert.equal(h.checks.liveDocuments[0].documentId, failed.documentId);
+  h.checks.reopenDocument('a.go', failed.documentId); await tick();
+  assert.notEqual(h.checks.liveDocuments[0].documentId, failed.documentId);
+  assert.deepEqual(h.calls.at(-1), ['open', 1, 'latest displayed text']);
+  const fresh = h.checks.liveBasis('a.go');
+  assert.equal(h.checks.findings[0].diagnostic.freshness, 'stale');
+  h.emit(1, failed.documentId); assert.equal(h.checks.liveInline('a.go', fresh).length, 0);
+  h.emit(1, fresh.documentId); assert.equal(h.checks.liveInline('a.go', fresh).length, 1);
+  for (let n = 0; n < 2; n++) {
+    h.files.updateDraft('a.go', `next${n}`); await h.flush();
+    const d = h.checks.liveDocuments[0];
+    h.checks.reopenDocument(d.path, d.documentId); await tick();
+  }
+  assert.equal(h.checks.liveDocuments[0].canReopen, false);
+  const calls = h.calls.length, d = h.checks.liveDocuments[0];
+  h.checks.reopenDocument(d.path, d.documentId); await tick(); assert.equal(h.calls.length, calls);
+  h.checks.revoking = true;
+  assert.deepEqual(h.checks.liveDocuments, []); h.checks.reopenDocument(d.path, d.documentId);
+  await tick(); assert.equal(h.calls.length, calls);
+  h.off(); await h.checks.detach();
+});
+
+test('R08 superseded open/change promises cannot poison a new attachment or restore markers', async () => {
+  for (const operation of ['openCodeDiagnosticDocument', 'changeCodeDiagnosticDocument']) {
+    const h = await harness();
+    let reject;
+    if (operation === 'changeCodeDiagnosticDocument') { h.files.openFile('a.go', { keep: true }); await tick(); }
+    h.api[operation] = () => new Promise((_resolve, no) => { reject = no; });
+    if (operation === 'openCodeDiagnosticDocument') { h.files.openFile('a.go', { keep: true }); await tick(); }
+    else { h.files.startEditing('a.go'); h.files.updateDraft('a.go', 'held'); await h.flush(); }
+    const old = h.checks.liveDocuments[0].documentId;
+    h.checks.disconnect();
+    await h.checks.attach('/p', { phase: 'connected', generation: 2, hostId: 'h', capabilities: { codeDiagnostics: true, liveCodeDiagnostics: true } });
+    h.api.openCodeDiagnosticDocument = async () => ({});
+    reject(new Error('toolFailed: old body')); await tick();
+    assert.equal(h.checks.status, 'ready');
+    assert.notEqual(h.checks.liveDocuments[0].documentId, old);
+    assert.equal(h.checks.liveDocuments[0].failure, undefined);
+    h.emit(1, old); assert.equal(h.checks.liveInline('a.go', h.checks.liveBasis('a.go')).length, 0);
+    h.off(); await h.checks.detach();
+  }
 });
 
 test('old remote missing live flag keeps bridge entirely inert through edit/save/close', async () => {

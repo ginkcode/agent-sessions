@@ -16,6 +16,7 @@ export function startLiveDocuments(): LiveDocumentBridge {
   });
   codeDiagnostics.setReconciler(() => files.reconcileDisplayed());
   codeDiagnostics.setLiveBasis(path => bridge.basis(path));
+  codeDiagnostics.setLiveRecovery(() => bridge.statuses, (path, id) => bridge.reopen(path, id));
   bridge.onChange(() => codeDiagnostics.liveChanged());
   files.observe(bridge);
   codeDiagnostics.onLifecycle(() => bridge.sync());

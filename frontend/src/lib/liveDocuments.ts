@@ -22,6 +22,13 @@ export interface LiveAttachmentSource {
 type Att = NonNullable<LiveAttachmentSource['liveAttachment']>;
 type LiveApi = Pick<BackendAPI, 'openCodeDiagnosticDocument' | 'changeCodeDiagnosticDocument' | 'saveCodeDiagnosticDocument' | 'closeCodeDiagnosticDocument'>;
 
+export interface LiveDocumentStatus {
+  path: string;
+  documentId: string;
+  failure?: string;
+  canReopen: boolean;
+}
+
 export interface LiveDocumentDeps {
   api: LiveApi;
   store: LiveAttachmentSource;
@@ -113,6 +120,19 @@ export class LiveDocumentBridge implements FileLifecycleObserver {
   /** Failed synchronization is surfaced, never hidden behind fresh-looking results. */
   failure(path: string): string | undefined { return this.docs.get(path)?.failed; }
   get tracked(): string[] { return [...this.docs.keys()]; }
+  get statuses(): LiveDocumentStatus[] {
+    const att = this.deps.store.liveAttachment;
+    if (!att || att.token !== this.token) return [];
+    return [...this.docs.values()].map(d => ({ path: d.path, documentId: d.id, failure: d.failed,
+      canReopen: !!d.failed && !d.saving && !this.blocked.has(d.path) && d.recoveries < MAX_RECOVERIES && ['toolFailed', 'resyncRequired', 'invalidArgument', 'notFound', 'busy', 'limitExceeded'].includes(d.failed) }));
+  }
+  /** Explicit sync recovery, not a provider restart or a guarantee of fresh results. */
+  reopen(path: string, documentId: string): void {
+    const att = this.deps.store.liveAttachment;
+    const d = this.docs.get(path);
+    if (!att || att.token !== this.token || !d || d.id !== documentId || !this.statuses.some(s => s.documentId === documentId && s.path === path && s.canReopen)) return;
+    this.recover(att, d);
+  }
 
   // -- attachment ownership ------------------------------------------------
 
@@ -382,7 +402,8 @@ export class LiveDocumentBridge implements FileLifecycleObserver {
 
   private fail(att: Att, d: Doc, error: unknown): void {
     if (this.token !== att.token || this.docs.get(d.path) !== d) return;
-    const code = codeDiagnosticsError(error).code;
+    const reported = codeDiagnosticsError(error).code;
+    const code = ['unsupported', 'disconnected', 'unauthorized', 'approvalRequired', 'approvalChanged', 'staleContext', 'invalidArgument', 'notFound', 'busy', 'limitExceeded', 'resyncRequired', 'toolFailed', 'canceled'].includes(reported) ? reported : 'toolFailed';
     d.failed = code;
     d.pending = undefined;
     this.changed_();
@@ -392,7 +413,8 @@ export class LiveDocumentBridge implements FileLifecycleObserver {
 
   /** Bounded: close the broken lifecycle and open a fresh documentId with the latest text. */
   private recover(att: Att, d: Doc): void {
-    if (this.docs.get(d.path) !== d || d.recoveries >= MAX_RECOVERIES) return;
+    if (this.deps.store.liveAttachment?.token !== att.token || this.token !== att.token || this.docs.get(d.path) !== d || this.blocked.has(d.path) || d.recoveries >= MAX_RECOVERIES) return;
+    if (d.failed && !['toolFailed', 'resyncRequired', 'invalidArgument', 'notFound', 'busy', 'limitExceeded'].includes(d.failed)) return;
     const { path, latest, revision, recoveries } = d;
     this.closeDoc(att, d);
     if (this.token !== att.token) return;

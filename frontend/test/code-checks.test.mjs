@@ -7,7 +7,7 @@ const component = await loadServerComponent(new URL('../src/lib/components/commo
 ]);
 const provider = { providerId: 'go', availability: 'available', phase: 'idle', freshness: 'current', coverage: { kind: 'savedProject', roots: [''], externalChanges: 'unwatched', partial: false }, truncated: false };
 function render(overrides = {}, props = {}) {
-  return renderWithFixture(component, { checks: { status: 'ready', project: { hostId: 'local:actual', root: '/canonical/<root>' }, snapshot: { approval: { state: 'approved', mode: 'session' } }, providers: [provider], approved: true, canRun: true, counts: { error: 0, warning: 0 }, ...overrides } }, props);
+  return renderWithFixture(component, { checks: { status: 'ready', project: { hostId: 'local:actual', root: '/canonical/<root>' }, snapshot: { approval: { state: 'approved', mode: 'session' } }, providers: [provider], approved: true, canRun: true, canRetry: () => true, counts: { error: 0, warning: 0 }, ...overrides } }, props);
 }
 
 test('every attachment state remains textual and non-actionable until ready', async () => {
@@ -44,7 +44,7 @@ test('approved check/cancel/retry rules and prompt locks reflect store selectors
 test('zero counts never promise full coverage; provider availability and freshness stay independent', async () => {
   for (const availability of ['approvalRequired', 'available', 'missingTool', 'unsupported', 'disabled']) {
     const html = await render({ partial: true, truncated: true, providers: [{ ...provider, availability, phase: 'canceled', freshness: 'stale', coverage: { ...provider.coverage, partial: true } }] });
-    for (const text of ['No reported problems', 'saved files', 'partial coverage', 'truncated', 'stale', 'unopened-file coverage stale', 'Check canceled']) assert.ok(html.includes(text));
+    for (const text of ['No reported problems', 'reported findings', 'partial coverage', 'truncated', 'stale', 'unopened-file coverage stale', 'Check canceled']) assert.ok(html.includes(text));
     assert.doesNotMatch(html, /all clean/i);
     if (availability !== 'available') assert.doesNotMatch(html, />Check Project</);
   }
