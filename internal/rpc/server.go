@@ -364,6 +364,8 @@ func (s *Server) dispatch(ctx context.Context, req Request) (any, error) {
 		return nil, &ResponseError{Code: CodeInvalidRequest, Message: "server not initialized; call initialize first"}
 	}
 	switch req.Method {
+	case "managedTool":
+		return s.dispatchManagedTool(ctx, req)
 	case "invalidateCodeDiagnosticsPath", "attachCodeDiagnostics", "detachCodeDiagnostics", "getCodeDiagnosticsSnapshot", "approveCodeDiagnostics", "revokeCodeDiagnostics", "runCodeDiagnostics", "cancelCodeDiagnostics",
 		"openCodeDiagnosticDocument", "changeCodeDiagnosticDocument", "saveCodeDiagnosticDocument", "closeCodeDiagnosticDocument":
 		return s.dispatchDiagnostics(ctx, req)

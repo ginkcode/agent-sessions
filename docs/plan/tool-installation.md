@@ -1,4 +1,4 @@
-# Managed language-server installation — TI-01/TI-02 design and evidence
+# Managed language-server installation — TI-01/TI-03 design and evidence
 
 Date: 2026-10-22. Status: **backend core and Engine ownership, offline tested**. Task split:
 [TI-01–TI-05](../tasks/tool-installation.md). Diagnostics progress stays **19/28**;
@@ -14,10 +14,10 @@ No execution grant, project process start, automatic update, PATH change or
 project/global write follows installation. No real installation/download/build
 was performed on this development host. Existing R11 is a separate unit.
 
-TI-01 added `internal/managedtools`; TI-02 adds backend-only Engine seams below,
-not App/RPC/frontend integration.
-There is no advertised capability, UI prompt, missing-tool detector, remote route
-or progress event yet. Installation success returns a private executable path;
+TI-01 added `internal/managedtools`; TI-02 adds backend-only Engine seams below;
+TI-03 adds the optional local App/backend contract and fail-closed remote RPC seam.
+There is no advertised remote capability, UI prompt, automatic missing-tool prompt,
+remote installation or progress event yet (TI-03 uses bounded job polling). Installation success returns a private executable path;
 errors are fixed sanitized text, never raw compiler/network/filesystem output.
 TI-02 supplies trusted ownership/cancellation; TI-03–TI-04 must supply actual
 host display, routing, status/progress, Install/Not now and independent execution
@@ -190,4 +190,53 @@ Validation 2026-10-22: `go test ./...` PASS;
 `go tool golangci-lint run --new-from-rev=c68716c ./internal/managedtools/... ./internal/engine/...`
 PASS (0 issues). Unfiltered scoped lint found pre-existing Engine errcheck,
 gofumpt, unparam/unused issues; changed-code findings were fixed, unrelated files
-left untouched. TI-03 not started; diagnostics **19/28** and all release HOLDs unchanged.
+left untouched. TI-03 evidence follows; diagnostics **19/28** and all release HOLDs unchanged.
+
+## TI-03 optional contract, bounded jobs and offline evidence
+
+`engine.ManagedToolsBackend` exposes one optional `ManagedTool` operation with
+status/propose/install/dismiss/cancel actions. Requests carry expectedHostId, the
+closed gopls tool ID, opaque token and job ID only. They cannot provision Go or
+select URL/path/hash/version/argv. App checks actual backend identity and selected
+connection generation before and after routing; stale job acknowledgments cancel
+on the original backend, never the newly selected host. Existing connection reset
+cancels/joins the managed owner. No base Backend interface change is required.
+
+A proposal does not discover/probe/install anything. Status may read installed
+metadata; proposal only generates consent metadata. Install reserves that consent
+synchronously and acknowledges a random job ID without waiting for the build.
+One job record per owner replaces prior terminal state; no event queues, polling
+goroutines, timer-per-poll, log retention or unbounded job history. Poll status
+with the returned job ID; progress is `installing` then `installed`, `failed` or
+`canceled`, not a compiler-percent claim. Cancel requests cancellation; polling
+reports terminal cancellation after cleanup. Owner cancellation/close/disconnect
+joins the admitted worker. Job deadline is ten minutes in addition to core limits.
+Failures use fixed bounded actionable text; install never returns executable paths
+or raw process/filesystem output. Fresh proposal is required after consumption.
+
+Production startup still supplies no reviewed Go tree. Status/proposal therefore
+returns `unavailable` with explicit backend-operator review/provisioning guidance,
+not a fabricated review or default PATH executable. Local optional routes are
+implemented for explicitly provisioned backends. Remote RPC dispatch explicitly
+rejects installation pending CD-09 authenticated managed host identity review;
+neither local backend identity nor diagnostics fixture identity authorizes it.
+RPC Client returns unsupported with old/new peers, no legacy fallback. Real-pipe
+requests reject arbitrary fields and envelopes over 2 KiB before fail-closed
+unsupported. No managed remote capability or live capability is advertised.
+
+Offline tests: Engine fake installer covers wrong host/tool/token/job, proposal
+without install, replay, progress, cancel, bounded input, explicit unavailable
+prerequisite, disconnect joining and old token rejection. Existing core tests
+continue to cover true token expiry/owner binding/replay and sanitized failures.
+App tests cover real Engine unavailable state, wrong actual-host routing, optional
+old backend and disconnected selection refusing local fallback. RPC real pipes
+cover old capability flags, direct install refusal, URL/path/hash rejection,
+oversized input and continued browsing after optional refusal. No frontend files
+were touched, so frontend check/test/build was not needed. TI-04 UI/API adapter
+and native real installation evidence remain separate work.
+
+Validation 2026-10-22: `go test ./...` PASS;
+`go test -race ./internal/engine ./internal/app ./internal/rpc ./internal/managedtools`
+PASS; `go tool golangci-lint run --new-from-rev=604e6a5 ./internal/engine/... ./internal/app/... ./internal/rpc/...`
+PASS (0 issues; initial new-test gofumpt spacing fixed). No real download, build,
+installation or server start. Diagnostics **19/28** and release HOLDs unchanged.

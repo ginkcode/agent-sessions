@@ -34,6 +34,8 @@ type managedToolsOwner struct {
 	ctx       context.Context
 	cancel    context.CancelFunc
 	workers   sync.WaitGroup // Add serialized with removal under Engine.mu
+	pending   *mt.Proposal
+	job       *managedJob
 }
 
 func (o *managedToolsOwner) close() {
@@ -120,6 +122,10 @@ func (e *Engine) InstallManagedTool(ctx context.Context, token string) (string, 
 	o.workers.Add(1)
 	e.mu.Unlock()
 	defer o.workers.Done()
+	return e.installManagedOwned(ctx, o, token)
+}
+
+func (e *Engine) installManagedOwned(ctx context.Context, o *managedToolsOwner, token string) (string, error) {
 	request, cancel := context.WithCancel(ctx)
 	stop := context.AfterFunc(o.ctx, cancel)
 	defer stop()
