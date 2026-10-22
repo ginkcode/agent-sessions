@@ -1,0 +1,152 @@
+{
+  "tool": "vtsls",
+  "provenance": "observed (driven by a Python stdio script, not by the Go adapter)",
+  "platform": "darwin/arm64",
+  "versions": {
+    "@vtsls/language-server": "0.3.0",
+    "typescript": "5.9.3",
+    "node": "v22.23.2"
+  },
+  "location": "Zed-managed private install (~/Library/Application Support/Zed/languages/vtsls); NOT on PATH and NOT approved host tooling. Spike ran it read-only; nothing installed or downloaded.",
+  "sanitization": "Disposable synthetic project in a temp dir replaced with /fixture; window/logMessage bodies omitted; message text kept verbatim (no user content).",
+  "argv": [
+    "/installed/vtsls",
+    "--stdio"
+  ],
+  "client": {
+    "capabilities": {
+      "general": {
+        "positionEncodings": [
+          "utf-16"
+        ]
+      },
+      "textDocument": {
+        "publishDiagnostics": {
+          "versionSupport": true
+        }
+      }
+    },
+    "workspaceFolders": null,
+    "rootUri": null,
+    "serverRequests": "answered -32601"
+  },
+  "initialize": {
+    "serverInfo": {
+      "name": "vtsls",
+      "version": "0.3.0"
+    },
+    "capabilities": {
+      "textDocumentSync": {
+        "openClose": true,
+        "change": 2,
+        "willSave": false,
+        "willSaveWaitUntil": false,
+        "save": false
+      },
+      "positionEncoding": null,
+      "diagnosticProvider": null
+    }
+  },
+  "shutdown": {
+    "result": null,
+    "exitCode": 0
+  },
+  "notes": [
+    "Every publishDiagnostics lacked a version even though versionSupport was advertised: all vtsls pushes are unversioned and therefore uncertain.",
+    "Source line contained a non-BMP character and CRLF; reported range start 22 is a UTF-16 column.",
+    "Empty publication followed the fix edit and the didClose; both unversioned.",
+    "tsconfig.json itself received a publication (config diagnostics) although never opened; it is not a JS/TS document and is ignored by the bridge.",
+    "No server->client requests other than window/logMessage notifications were observed."
+  ],
+  "scenarios": [
+    {
+      "id": "open-error",
+      "publications": [
+        {
+          "params": {
+            "uri": "file:///fixture/a.ts",
+            "diagnostics": [
+              {
+                "range": {
+                  "start": {
+                    "line": 0,
+                    "character": 22
+                  },
+                  "end": {
+                    "line": 0,
+                    "character": 23
+                  }
+                },
+                "message": "Type 'string' is not assignable to type 'number'.",
+                "code": 2322,
+                "source": "ts",
+                "severity": 1
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "change-fix",
+      "publications": [
+        {
+          "params": {
+            "uri": "file:///fixture/a.ts",
+            "diagnostics": []
+          }
+        }
+      ]
+    },
+    {
+      "id": "change-break",
+      "publications": [
+        {
+          "params": {
+            "uri": "file:///fixture/a.ts",
+            "diagnostics": [
+              {
+                "range": {
+                  "start": {
+                    "line": 0,
+                    "character": 22
+                  },
+                  "end": {
+                    "line": 0,
+                    "character": 23
+                  }
+                },
+                "message": "Type 'string' is not assignable to type 'number'.",
+                "code": 2322,
+                "source": "ts",
+                "severity": 1
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "close",
+      "publications": [
+        {
+          "params": {
+            "uri": "file:///fixture/a.ts",
+            "diagnostics": []
+          }
+        }
+      ]
+    },
+    {
+      "id": "config-file",
+      "publications": [
+        {
+          "params": {
+            "uri": "file:///fixture/tsconfig.json",
+            "diagnostics": []
+          }
+        }
+      ]
+    }
+  ]
+}

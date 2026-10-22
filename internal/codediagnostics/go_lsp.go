@@ -346,6 +346,12 @@ type goplsPublication struct {
 // findings with an invalidRange issue. No raw server text other than the
 // bounded message is kept.
 func normalizeGoplsPublication(root AuthorizedRoot, params json.RawMessage) (goplsPublication, error) {
+	return normalizeLSPPublication(root, params, goplsProviderID)
+}
+
+// normalizeLSPPublication is the provider-agnostic body shared with the
+// TypeScript adapter (CD-23); providerID only prefixes diagnostic attribution.
+func normalizeLSPPublication(root AuthorizedRoot, params json.RawMessage, providerID string) (goplsPublication, error) {
 	var out goplsPublication
 	if len(params) == 0 || len(params) > maxGoplsParams {
 		return out, errGoplsInvalid
@@ -391,7 +397,7 @@ func normalizeGoplsPublication(root AuthorizedRoot, params json.RawMessage) (gop
 			out.Truncated = true
 			break
 		}
-		d, ok := normalizeGoplsDiagnostic(path, raw)
+		d, ok := normalizeLSPDiagnostic(path, raw, providerID)
 		if !ok {
 			out.Dropped++
 			continue
@@ -401,7 +407,7 @@ func normalizeGoplsPublication(root AuthorizedRoot, params json.RawMessage) (gop
 	return out, nil
 }
 
-func normalizeGoplsDiagnostic(path string, raw json.RawMessage) (Diagnostic, bool) {
+func normalizeLSPDiagnostic(path string, raw json.RawMessage, providerID string) (Diagnostic, bool) {
 	var in struct {
 		Range    json.RawMessage `json:"range"`
 		Severity json.RawMessage `json:"severity"`
@@ -428,9 +434,9 @@ func normalizeGoplsDiagnostic(path string, raw json.RawMessage) (Diagnostic, boo
 		}
 	}
 	// gopls attribution is kept distinct from go vet and other providers.
-	d.Source = goplsProviderID
+	d.Source = providerID
 	if in.Source != "" && utf8.ValidString(in.Source) && len(in.Source) <= 200 {
-		d.Source = goplsProviderID + "/" + in.Source
+		d.Source = providerID + "/" + in.Source
 	}
 	if c := string(in.Code); c != "" && c != "null" {
 		var s string
