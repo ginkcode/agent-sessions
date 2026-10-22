@@ -1,8 +1,9 @@
 # Implementation task details
 
-Task briefs for **Go to File code diagnostics**. **Progress: 2/28 complete**
-(CD-01: contract and tested fixtures; CD-02: backend trust and path policy);
-CD-03…CD-28 are not started. No user-facing
+Task briefs for **Go to File code diagnostics**. **Progress: 3/28 complete**
+(CD-01: contract and tested fixtures; CD-02: backend trust and path policy;
+CD-03: bounded checker supervisor);
+CD-04…CD-28 are not started. No user-facing
 diagnostics support has shipped. The authoritative wire contract is
 [contract v1](../plan/code-diagnostics-contract.md). See [the implementation plan](../plan/code-diagnostics.md) for shared
 behavior, architecture, trust rules, and release criteria, and
@@ -62,7 +63,7 @@ action. It does **not** automatically execute tools when the dialog opens.
 |---|---|---|
 | [CD-01](CD-01.md) | ✅ Done — shared contracts and tested protocol fixtures | 3 h |
 | [CD-02](CD-02.md) | ✅ Done — project execution trust and authorization | 4 h |
-| [CD-03](CD-03.md) | Bounded checker process supervisor | 4 h |
+| [CD-03](CD-03.md) | ✅ Done — bounded checker process supervisor | 4 h |
 | [CD-04](CD-04.md) | Checker output/version spikes | 3 h |
 | [CD-05](CD-05.md) | Go vet adapter | 3 h |
 | [CD-06](CD-06.md) | Svelte-check adapter | 4 h |
