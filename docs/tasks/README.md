@@ -1,16 +1,17 @@
 # Implementation task details
 
-Task briefs for **Go to File code diagnostics**. **Progress: 9/28 complete**
+Task briefs for **Go to File code diagnostics**. **Progress: 10/28 complete**
 (CD-01: contract and tested fixtures; CD-02: backend trust and path policy;
 CD-03: bounded checker supervisor; CD-04: installed-checker format evidence;
 CD-05: contained Go vet adapter; CD-06: contained Svelte adapter and tested conservative outcomes;
 CD-07: headless result manager with bounded lifecycle/snapshot/event tests;
 CD-08: Engine/App bindings, owned metadata discovery and offline routing;
-CD-10: standalone frontend API/store with atomic reconciliation and mock race tests).
+CD-10: standalone frontend API/store with atomic reconciliation and mock race tests;
+CD-11: local dialog approval, explicit check controls and honest status/coverage).
 CD-09 remains blocked on authenticated production remote identity activation;
-CD-11…CD-28 are not started. CD-10 used an explicit dependency exception against
-committed RPC contracts/tests, not remote activation. No user-facing
-diagnostics support has shipped. The authoritative wire contract is
+CD-12…CD-28 are not started. CD-10 used an explicit dependency exception against
+committed RPC contracts/tests, not remote activation. Local controls are wired;
+production remote diagnostics are not enabled. Manual keyboard/focus QA is not claimed. The authoritative wire contract is
 [contract v1](../plan/code-diagnostics-contract.md). See [the implementation plan](../plan/code-diagnostics.md) for shared
 behavior, architecture, trust rules, and release criteria, and
 [the task tracker](../../TASKS.md#follow-up--go-to-file-code-diagnostics-proposed)
@@ -77,7 +78,7 @@ action. It does **not** automatically execute tools when the dialog opens.
 | [CD-08](CD-08.md) | ✅ Done — Engine/App bindings and offline behavior | 3 h |
 | [CD-09](CD-09.md) | ⛔ Transport evidence complete; identity activation blocked ([split estimates](CD-09-identity.md)) | 4 h |
 | [CD-10](CD-10.md) | ✅ Standalone frontend store/API, bounded atomic reconciliation and mock race tests (CD-09 remote activation still blocked) | 4 h |
-| [CD-11](CD-11.md) | Approval, check controls, and summary | 3 h |
+| [CD-11](CD-11.md) | ✅ Local approval, explicit check/cancel/retry controls, honest summary/coverage; remote CD-09 blocked | 3 h |
 | [CD-12](CD-12.md) | Problems panel and range navigation | 4 h |
 | [CD-13](CD-13.md) | Tree badges and aggregate counts | 3 h |
 | [CD-14](CD-14.md) | Read-only source-view diagnostics | 4 h |

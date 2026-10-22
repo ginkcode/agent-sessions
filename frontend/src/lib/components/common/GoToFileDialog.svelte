@@ -11,7 +11,21 @@
   import FilePicker from './go-to-file/FilePicker.svelte';
   import FileTabs from './go-to-file/FileTabs.svelte';
   import FileViewer from './go-to-file/FileViewer.svelte';
-  import { onMount } from 'svelte';
+  import { onMount, untrack } from 'svelte';
+  import { codeDiagnostics } from '../../stores/codeDiagnostics.svelte';
+  import { connectionStore } from '../../stores/connection.svelte';
+  import CodeChecks from './go-to-file/CodeChecks.svelte';
+
+  // Track routing, not diagnostics mutations. Discovery never delays picker rendering.
+  $effect(() => {
+    const open = files.open, dir = files.dir;
+    void link.dataHost; void link.host; void link.phase; void connectionStore.generation;
+    untrack(() => {
+      if (open && dir && !link.blockedReason) void codeDiagnostics.show(dir);
+      else void codeDiagnostics.hide();
+    });
+    return () => { untrack(() => { void codeDiagnostics.hide(); }); };
+  });
   import FilePrompt from './go-to-file/FilePrompt.svelte';
   import RenamePrompt from './go-to-file/RenamePrompt.svelte';
   let renamePath = $state<string | null>(null);
@@ -273,6 +287,9 @@
       {/if}
       <button type="button" class="close-button" aria-label="Close" title="Close" onclick={close}>×</button>
     </header>
+    {#if files.open && !presentation}
+      <CodeChecks blocked={!!link.blockedReason || fileActions.busy || fileActions.quitting || renamePath !== null || newFolderPath !== null} />
+    {/if}
     <div class="body">
       <FilePicker bind:this={picker} bind:input {presentation} onPick={pick} onContext={openContext} />
       <FileViewer bind:this={viewer} bind:presentation bind:presentationFontSize>

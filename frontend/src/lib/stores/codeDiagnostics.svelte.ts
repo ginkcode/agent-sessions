@@ -13,7 +13,24 @@ export class CodeDiagnosticsStore {
   snapshot = $state.raw<CodeDiagnosticsSnapshot | undefined>(undefined);
   status = $state<'detached' | 'attaching' | 'ready' | 'unsupported' | 'resyncing' | 'disconnected' | 'error'>('detached');
   error = $state<CodeDiagnosticsError | undefined>(undefined);
+  pending = $state<string | undefined>(undefined);
+  revoking = $state(false);
+  private pendingRuns = $state.raw<CodeDiagnosticsRun[]>([]);
   private context?: CodeDiagnosticsContext;
+
+  get approved() { return this.status === 'ready' && !this.revoking && this.snapshot?.approval.state === 'approved'; }
+  get running() { return this.pending === 'run' || this.pendingRuns.length > 0 || this.providers.some(p => ['starting', 'checking'].includes(p.phase)); }
+  get canRun() { return this.approved && !this.pending && !this.running && this.providers.some(p => p.availability === 'available'); }
+  /** Visibility discovery is asynchronous; only the latest visible route may attach. */
+  async show(dir: string) {
+    void this.detach();
+    const life = this.lifetime, epoch = this.currentEpoch();
+    this.status = 'attaching';
+    try {
+      const connection = await this.backend.connectionState();
+      if (life === this.lifetime && epoch === this.currentEpoch()) await this.attach(dir, connection);
+    } catch (e) { if (life === this.lifetime && epoch === this.currentEpoch()) this.fail(e); }
+  }
   private lifetime = 0;
   private startedEpoch = 0;
   private off?: () => void;
@@ -32,7 +49,7 @@ export class CodeDiagnosticsStore {
   get resultSets() { return this.snapshot?.resultSets ?? []; }
   get providers() { return this.snapshot?.providers ?? []; }
   get findings() { return groupCodeDiagnostics(this.resultSets); }
-  get partial() { return this.status !== 'ready' || this.providers.some(p => p.coverage.partial); }
+  get partial() { return this.status !== 'ready' || this.providers.length === 0 || this.providers.some(p => p.coverage.partial || p.availability !== 'available' || ['failed', 'canceled', 'disconnected'].includes(p.phase)); }
   get truncated() { return this.providers.some(p => p.truncated); }
   get counts() {
     const counts = { error: 0, warning: 0 };
@@ -67,6 +84,7 @@ export class CodeDiagnosticsStore {
     this.off?.(); this.offConnection?.(); this.off = this.offConnection = undefined;
     this.clearBuffers(); this.recovering = false; this.attempts = 0;
     this.project = undefined; this.snapshot = undefined; this.status = 'detached'; this.error = undefined;
+    this.pending = undefined; this.revoking = false; this.pendingRuns = [];
     if (c) { try { await this.backend.detachCodeDiagnostics(c, host); } catch { /* Never retry mutations across a connection change. */ } }
   }
   hide() { return this.detach(); }
@@ -75,6 +93,7 @@ export class CodeDiagnosticsStore {
     this.lifetime++; this.context = undefined;
     this.off?.(); this.offConnection?.(); this.off = this.offConnection = undefined;
     this.clearBuffers(); this.recovering = false;
+    this.pending = undefined; this.pendingRuns = []; this.revoking = false;
     this.status = 'disconnected'; this.stale(true);
   }
   async attach(dir: string, connection: ConnectionState) {
@@ -131,6 +150,8 @@ export class CodeDiagnosticsStore {
     }
     // Run acknowledgements never install result sets: sequence-ordered full snapshots
     // are authoritative, including retained old-run sets on failure/cancellation.
+    if (s.approval.state === 'revoked') this.revoking = false;
+    this.pendingRuns = this.pendingRuns.filter(r => s.approval.state === 'approved' && !s.providers.some(p => p.providerId === r.providerId && p.runId === r.runId));
     this.snapshot = structuredClone(s); this.status = 'ready'; this.error = undefined;
     this.pruneAssemblies(s.sequence);
     return true;
@@ -202,14 +223,31 @@ export class CodeDiagnosticsStore {
       return value;
     } catch (e) { if (this.active(life)) this.fail(e); throw e; }
   }
-  approve(mode: 'session' | 'persistent', fingerprint = this.snapshot?.proposal?.fingerprint ?? '') {
-    return this.action((c, h) => this.backend.approveCodeDiagnostics(c, mode, fingerprint, h), s => { this.commit(s); });
+  private async request<T>(kind: string, work: () => Promise<T>) {
+    if (this.pending && kind !== 'revoke') throw new CodeDiagnosticsError('busy', 'Request already pending');
+    const life = this.lifetime;
+    this.pending = kind;
+    try { return await work(); }
+    finally { if (this.active(life) && this.pending === kind) this.pending = undefined; }
   }
-  revoke() { return this.action((c, h) => this.backend.revokeCodeDiagnostics(c, h), s => { this.commit(s, false, true); }); }
-  run(providerIds?: string[]) { return this.action((c, h) => this.backend.runCodeDiagnostics(c, providerIds, h)); }
+  approve(mode: 'session' | 'persistent', fingerprint = this.snapshot?.proposal?.fingerprint ?? '') {
+    return this.request('approve', () => this.action((c, h) => this.backend.approveCodeDiagnostics(c, mode, fingerprint, h), s => { this.commit(s); }));
+  }
+  revoke() {
+    this.revoking = true; // Fail closed immediately, even if the reply is lost.
+    return this.request('revoke', () => this.action((c, h) => this.backend.revokeCodeDiagnostics(c, h), s => { if (this.commit(s, false, true)) this.revoking = false; }));
+  }
+  async run(providerIds?: string[]) {
+    if (!this.approved) throw new CodeDiagnosticsError('approvalRequired', 'Approve code checks before running');
+    if (this.running) throw new CodeDiagnosticsError('busy', 'Check already active');
+    if (!this.providers.some(p => p.availability === 'available' && (!providerIds || providerIds.includes(p.providerId)))) throw new CodeDiagnosticsError('unsupported', 'No available checker');
+    return this.request('run', () => this.action((c, h) => this.backend.runCodeDiagnostics(c, providerIds, h), reply => {
+      this.pendingRuns = reply.runs.filter(r => !this.providers.some(p => p.providerId === r.providerId && p.runId === r.runId));
+    }));
+  }
   retry(providerId: string) { return this.run([providerId]); }
-  cancel(runs: CodeDiagnosticsRun[] = this.providers.flatMap(p => p.runId && ['starting', 'checking'].includes(p.phase) ? [{ providerId: p.providerId, runId: p.runId }] : [])) {
-    return this.action((c, h) => this.backend.cancelCodeDiagnostics(c, runs, h));
+  cancel(runs: CodeDiagnosticsRun[] = [...this.pendingRuns, ...this.providers.flatMap(p => p.runId && ['starting', 'checking'].includes(p.phase) ? [{ providerId: p.providerId, runId: p.runId }] : [])]) {
+    return this.request('cancel', () => this.action((c, h) => this.backend.cancelCodeDiagnostics(c, runs, h)));
   }
 }
 

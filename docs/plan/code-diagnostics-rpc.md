@@ -77,6 +77,6 @@ snapshot. No frontend store or live/document operation was added.
 - No real SSH/WSL identity acquisition or native Windows/Linux runtime QA claimed.
   [Explicitly split identity activation work](../tasks/CD-09-identity.md) records
   launcher evidence, trust requirements and four-hour work packages. CD-09 remains
-  blocked. Progress is 9/28 for CD-01…CD-08 + CD-10 only; CD-10 proceeded
+  blocked. Progress is 10/28 for CD-01…CD-08 + CD-10…CD-11 only; frontend work proceeded
 locally against committed contracts/tests under an explicit dependency exception.
 CD-09 is not counted complete and production remotes remain inactive.

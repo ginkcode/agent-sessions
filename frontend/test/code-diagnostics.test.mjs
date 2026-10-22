@@ -172,3 +172,55 @@ test('early update-count overflow and detach during recovery keep bounded owners
   await h.store.detach(); recovery.resolve(snapshot(8)); await tick();
   assert.equal(h.store.status, 'detached'); assert.equal(h.store.snapshot, undefined);
 });
+
+test('visible discovery is asynchronous, hide/replacement invalidates replies, unsupported remote never attaches', async () => {
+  const h = harness(), discovery = deferred(); let attaches = 0, runs = 0;
+  h.backend.connectionState = () => discovery.promise;
+  const attach = h.backend.attachCodeDiagnostics;
+  h.backend.attachCodeDiagnostics = (...args) => { attaches++; return attach(...args); };
+  h.backend.runCodeDiagnostics = () => { runs++; assert.fail('opening must not execute'); };
+  const showing = h.store.show('/first');
+  assert.equal(h.store.status, 'attaching'); assert.equal(attaches, 0);
+  await h.store.hide(); discovery.resolve(connection); await showing;
+  assert.equal(attaches, 0); assert.equal(h.store.status, 'detached');
+  h.backend.connectionState = async () => ({ ...connection, phase: 'connected', hostId: undefined });
+  await h.store.show('/remote'); assert.equal(h.store.status, 'unsupported'); assert.equal(attaches, 0);
+  h.backend.connectionState = async () => connection;
+  await h.store.show('/local'); assert.equal(attaches, 1); assert.equal(runs, 0);
+  await h.store.hide();
+});
+
+test('approval never runs, duplicate checks blocked through ack/event gap, cancel exact run, retry scoped, revoke immediate', async () => {
+  const h = harness(); await h.store.attach('/input', connection);
+  let calls = 0; const reply = deferred();
+  h.backend.runCodeDiagnostics = (c, ids, host) => { calls++; assert.deepEqual(c, context); assert.equal(host, 'host1'); assert.equal(ids, undefined); return reply.promise; };
+  const running = h.store.run(); assert.equal(h.store.canRun, false);
+  await assert.rejects(h.store.run(), /active/); assert.equal(calls, 1);
+  reply.resolve({ context, runs: [{ providerId: 'go', runId: 'new-run' }] }); await running;
+  assert.equal(h.store.running, true); await assert.rejects(h.store.run(), /active/);
+  h.backend.cancelCodeDiagnostics = async (c, runs, host) => { assert.deepEqual(c, context); assert.equal(host, 'host1'); assert.ok(runs.some(r => r.runId === 'new-run')); return { context }; };
+  await h.store.cancel();
+  const failed = snapshot(1); failed.providers[0] = { ...failed.providers[0], runId: 'new-run', phase: 'failed' }; h.emit(update(failed));
+  assert.equal(h.store.canRun, true);
+  h.backend.runCodeDiagnostics = async (c, ids) => { assert.deepEqual(ids, ['go']); return { context, runs: [] }; };
+  await h.store.retry('go');
+  const revocation = deferred(); h.backend.revokeCodeDiagnostics = () => revocation.promise;
+  const revoke = h.store.revoke(); assert.equal(h.store.approved, false); assert.equal(h.store.canRun, false);
+  await assert.rejects(h.store.run(), /Approve/);
+  revocation.resolve(snapshot(2, { approval: { state: 'revoked' } })); await revoke;
+  for (const mode of ['session', 'persistent']) {
+    h.backend.approveCodeDiagnostics = async (c, actualMode, fp, host) => { assert.deepEqual(c, context); assert.equal(host, 'host1'); assert.equal(actualMode, mode); assert.equal(fp, 'proposal'); return snapshot(h.store.snapshot.sequence + 1); };
+    await h.store.approve(mode, 'proposal');
+  }
+  assert.equal(calls, 1); await h.store.hide();
+});
+
+test('late approval on root switch cannot mutate current pending controls', async () => {
+  const h = harness(); await h.store.attach('/old', connection);
+  const reply = deferred(); h.backend.approveCodeDiagnostics = () => reply.promise;
+  const approval = h.store.approve('session', 'fp');
+  await h.store.attach('/new', connection);
+  reply.resolve(snapshot(10)); await approval;
+  assert.equal(h.store.snapshot.sequence, 0); assert.equal(h.store.pending, undefined);
+  await h.store.hide();
+});

@@ -1,4 +1,16 @@
-# Code diagnostics frontend (CD-10)
+# Code diagnostics frontend (CD-10 / CD-11)
+
+## CD-11 integration
+
+Completed local approval/check/status controls; overall progress **10/28**
+(CD-01…CD-08 + CD-10…CD-11). CD-09 production remote identity remains blocked.
+The dialog calls asynchronous `show(dir)` and `hide()` on visibility/route changes,
+with no check execution on attach, approval, dismissal, save or context changes.
+`CodeChecks.svelte` consumes shared selectors and store-owned mutation gating,
+including ack/event-gap ownership and immediate fail-closed revocation.
+See [CD-11 completion evidence](../tasks/CD-11.md#completion-evidence) for tests
+and limitations. Manual keyboard/focus QA has not been performed.
+
 
 ## Dependency exception and release boundary
 
