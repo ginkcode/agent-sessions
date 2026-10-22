@@ -45,6 +45,8 @@ type App struct {
 	manageOverride   *manage.Manager
 	cacheEnabled     bool
 	cacheDirOverride string
+	// localLive enables the local live code-diagnostics route (desktop only).
+	localLive bool
 	// roots are the provider roots of svc; the engine names its index by them.
 	roots                  paths.Roots
 	saveDialogOverride     func(ctx context.Context, defaultName string) (string, error)
@@ -90,6 +92,7 @@ func NewApp() *App {
 		engine.WithService(svc),
 		engine.WithRunner(runner),
 		engine.WithCacheEnabled(true),
+		engine.WithLocalLiveCodeDiagnostics(),
 	)
 	return &App{
 		localEngine:  eng,
@@ -97,6 +100,7 @@ func NewApp() *App {
 		svc:          svc,
 		runner:       runner,
 		cacheEnabled: true,
+		localLive:    true,
 		roots:        roots,
 	}
 }
@@ -172,6 +176,7 @@ func (a *App) localBackend() engine.Backend {
 		engine.WithCacheEnabled(a.cacheEnabled),
 		engine.WithCacheDir(a.cacheDirOverride),
 		engine.WithManage(a.manageOverride),
+		localLiveOption(a.localLive),
 	)
 	return a.localEngine
 }
@@ -209,6 +214,7 @@ func (a *App) OnStartup(ctx context.Context) {
 		engine.WithCacheEnabled(a.cacheEnabled),
 		engine.WithCacheDir(a.cacheDirOverride),
 		engine.WithManage(a.manageOverride),
+		localLiveOption(a.localLive),
 		engine.WithEmitter(localOnlyEmitter(wailsEmitter, a.conn)),
 	)
 	a.backendMu.Lock()
@@ -494,4 +500,13 @@ func startDetached(cmd *exec.Cmd) error {
 	}
 	go func() { _ = cmd.Wait() }()
 	return nil
+}
+
+// localLiveOption enables the local live diagnostics route only for the
+// desktop App (NewApp); explicit-service/test Apps keep the checker-only route.
+func localLiveOption(enabled bool) engine.Option {
+	if enabled {
+		return engine.WithLocalLiveCodeDiagnostics()
+	}
+	return func(*engine.Engine) {}
 }

@@ -136,7 +136,7 @@ func (m *Manager) prepare(root AuthorizedRoot, registrations []Registration) (*a
 			state = r.Live.State
 			state.Coverage.Roots = slices.Clone(state.Coverage.Roots)
 			if r.Availability == "available" {
-				a.tools = append(a.tools, r.Live.Server.Tool())
+				a.tools = append(a.tools, r.Live.Server.Tools()...)
 			}
 		case r.Adapter != nil:
 			a.adapters[r.ProviderID] = r.Adapter

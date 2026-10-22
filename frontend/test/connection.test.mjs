@@ -464,6 +464,33 @@ test('ConnectionStore names the selected connection in the window title', async 
   }
 });
 
+test('ConnectionStore keeps local diagnostics capabilities only as the backend reports them', async () => {
+  const { ConnectionStore } = await loadConnectionStore();
+  const hadWindow = 'window' in globalThis;
+  const hadDocument = 'document' in globalThis;
+  globalThis.window = { runtime: { WindowSetTitle() {} } };
+  globalThis.document = { title: '' };
+  globalThis.__storeFixture = { api: {}, link: { seed() {}, update: () => false } };
+  try {
+    const store = new ConnectionStore();
+    store.applyState({ phase: 'local', generation: 0, hostId: 'local-id', capabilities: { codeDiagnostics: true, liveCodeDiagnostics: true } }, false);
+    assert.equal(store.capabilities.codeDiagnostics, true);
+    assert.equal(store.capabilities.liveCodeDiagnostics, true);
+    assert.equal(store.capabilities.saveFile, true, 'local file capabilities are kept');
+    store.applyState({ phase: 'local', generation: 1, hostId: 'local-id', capabilities: { codeDiagnostics: true } }, false);
+    assert.equal(store.capabilities.codeDiagnostics, true);
+    assert.ok(!store.capabilities.liveCodeDiagnostics, 'live is not assumed locally');
+    store.applyState({ phase: 'local', generation: 2, capabilities: { liveCodeDiagnostics: true } }, false);
+    assert.ok(!store.capabilities.codeDiagnostics && !store.capabilities.liveCodeDiagnostics, 'live requires Stage 1');
+    store.applyState({ phase: 'local', generation: 3 }, false);
+    assert.ok(!store.capabilities.codeDiagnostics && !store.capabilities.liveCodeDiagnostics);
+  } finally {
+    delete globalThis.__storeFixture;
+    if (!hadWindow) delete globalThis.window;
+    if (!hadDocument) delete globalThis.document;
+  }
+});
+
 test('ConnectionStore points to the window that has the host open', async () => {
   const { ConnectionStore } = await loadConnectionStore();
   const shown = [];

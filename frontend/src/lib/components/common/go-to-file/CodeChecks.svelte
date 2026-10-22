@@ -31,7 +31,7 @@
   {#if checks.project && checks.status === 'ready'}
     <section aria-label="Go language-server setup">
       <p>Go language-server setup · Host: {checks.project.hostId}</p>
-      <p>Installing a tool is separate from trusting this project's execution. Neither approval installs or starts a server automatically. Live diagnostics remain disabled pending review. Revoking project approval also abandons pending setup consent and cancels an owned installation under the backend's conservative policy.</p>
+      <p>Installing a tool is separate from trusting this project's execution. Neither approval installs or starts a server automatically. {checks.liveEnabled ? 'Live diagnostics (experimental) use an installed, supported gopls on this host for opened Go files only, after project approval. A missing or unsupported gopls is shown as its own status; TypeScript and Svelte live diagnostics are not enabled.' : 'Live diagnostics are not available on this connection.'} Revoking project approval also abandons pending setup consent and cancels an owned installation under the backend's conservative policy.</p>
       {#if checks.managedNotice}<p role="status">{checks.managedNotice}</p>{/if}
       {#if checks.managed?.message}<p role="status">{checks.managed.message}</p>{/if}
       {#if checks.managed?.state === 'proposed' && checks.managed.proposal && !checks.managedDismissed}
@@ -68,7 +68,7 @@
       {:else}
         <p>Enable code checks for this project</p>
         <p>Code checks run the listed tools on this host with your account's permissions. Project configuration and plugins can execute code. Tools may read files and dependencies, access the network, and write caches or other files. This is not a sandbox or a read-only guarantee. Only approve projects and tools you trust.</p>
-        <p>Only saved files are checked; drafts are never saved or checked automatically. Session approval lasts until this connection or app session ends. Always allow remembers this host, project and tool/config identity; relevant changes require approval again. Approval does not start a check.</p>
+        <p>{checks.liveEnabled ? 'Check Project runs on saved files. After approval, opened Go files are also sent unsaved to the listed gopls for live diagnostics; drafts are never saved.' : 'Only saved files are checked; drafts are never saved or checked automatically.'} Session approval lasts until this connection or app session ends. Always allow remembers this host, project and tool/config identity; relevant changes require approval again. Approval does not start a check.</p>
         <p>Proposal identity: {checks.snapshot.proposal?.fingerprint ?? 'unavailable'}</p>
         {#if checks.snapshot.approval.state === 'revoked'}<p>Permission revoked. Pending and running checks are being canceled; previous findings have been cleared.</p>{/if}
         {#each checks.snapshot.proposal?.tools ?? [] as tool}

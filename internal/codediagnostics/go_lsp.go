@@ -73,7 +73,11 @@ func DiscoverGopls(root AuthorizedRoot, reviewedPath []string, env GoplsEnvironm
 	if err := root.Revalidate(); err != nil {
 		return nil, err
 	}
-	for _, path := range []string{env.Home, env.Cache, env.ModuleCache, env.GoRoot} {
+	paths := []string{env.Home, env.Cache, env.ModuleCache}
+	if env.GoRoot != "" { // no toolchain found: reported as missingTool below
+		paths = append(paths, env.GoRoot)
+	}
+	for _, path := range paths {
 		if !filepath.IsAbs(path) || !bounded(path, 4096) || hasParent(path) {
 			return nil, failure("invalidArgument", "Reviewed absolute cache, home and toolchain paths are required")
 		}
@@ -90,7 +94,7 @@ func DiscoverGopls(root AuthorizedRoot, reviewedPath []string, env GoplsEnvironm
 	if executable == "" {
 		return unavailable("missingTool", "The gopls language server is not installed.")
 	}
-	if !isExecutable(filepath.Join(env.GoRoot, "bin", "go")) {
+	if env.GoRoot == "" || !isExecutable(filepath.Join(env.GoRoot, "bin", "go")) {
 		return unavailable("missingTool", "The Go toolchain required by gopls is not installed.")
 	}
 	versionOf := env.versionOf
@@ -127,11 +131,28 @@ func DiscoverGopls(root AuthorizedRoot, reviewedPath []string, env GoplsEnvironm
 		},
 		AdapterPolicy: goplsPolicy,
 		ConfigPaths:   w.configs,
+		Toolchain:     goplsToolchain(env.GoRoot),
 	}
-	if _, err := Fingerprint(root, []ToolInput{p.config.Tool()}); err != nil {
+	if _, err := Fingerprint(root, p.config.Tools()); err != nil {
 		return nil, err
 	}
 	return p, nil
+}
+
+// goplsToolchain binds the reviewed GOROOT that gopls executes (bin/go for
+// go list/env) and its metadata into the project approval. Optional metadata
+// files are bound only when present; their later appearance or removal changes
+// the fingerprint and requires renewed approval. This is enumerated identity,
+// not transitive attestation of the standard library.
+func goplsToolchain(goroot string) []ToolInput {
+	tools := []ToolInput{{ProviderID: "gopls-toolchain-bin-go", Executable: filepath.Join(goroot, "bin", "go"), Policy: "gopls-toolchain-v1"}}
+	for _, name := range []string{"VERSION", "go.env"} {
+		path := filepath.Join(goroot, name)
+		if st, err := os.Lstat(path); err == nil && st.Mode().IsRegular() {
+			tools = append(tools, ToolInput{ProviderID: "gopls-toolchain-" + strings.ReplaceAll(name, ".", "-"), Executable: path, Policy: "gopls-toolchain-v1"})
+		}
+	}
+	return tools
 }
 
 func buildVersion(path string) (string, string, error) {
@@ -171,8 +192,8 @@ func (p *GoplsPlan) Modules() []string    { return slices.Clone(p.modules) }
 // Server is the fixed server identity, only when the plan is available.
 func (p *GoplsPlan) Server() (ServerConfig, bool) { return p.config, p.availability == "available" }
 
-// Provider describes honest opened-documents coverage. It is data only: the
-// manager does not yet consume it (no production route exists), and neither
+// Provider describes honest opened-documents coverage. DiscoverGoLive registers
+// it for the desktop local live route (experimental), and neither
 // successful initialization nor an empty publication is reported as clean Go.
 func (p *GoplsPlan) Provider() ProviderState {
 	notice := goplsOpenedNotic

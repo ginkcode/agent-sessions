@@ -42,6 +42,8 @@ type Engine struct {
 	managedGo       *managedtools.ReviewedGo
 	// liveInjection is set only by tests/fixtures; production never sets it.
 	liveInjection *LiveCodeDiagnosticsInjection
+	// localLive enables the production local live route (desktop App only).
+	localLive bool
 
 	manageMu       sync.Mutex
 	manage         *manage.Manager

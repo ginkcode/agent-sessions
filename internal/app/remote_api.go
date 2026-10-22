@@ -5,6 +5,7 @@ import (
 	"errors"
 	"path/filepath"
 
+	"github.com/ginkcode/agent-sessions/internal/engine"
 	"github.com/ginkcode/agent-sessions/internal/remote"
 )
 
@@ -70,10 +71,21 @@ func (a *App) ConnectionState() ConnectionState {
 	a.ensureConn()
 	state := a.conn.snapshot()
 	if a.conn.route().backend == nil {
-		if identity, ok := a.localBackend().(interface {
+		local := a.localBackend()
+		if identity, ok := local.(interface {
 			CodeDiagnosticsHostID(context.Context) (string, error)
 		}); ok {
 			state.HostID, _ = identity.CodeDiagnosticsHostID(a.appCtx())
+		}
+		// Local reports its diagnostics capabilities like a remote handshake
+		// does. Live is advertised only when the local Engine owns a live route
+		// and implements the document surface; tool availability stays a
+		// per-provider status, never a capability.
+		_, stage1 := local.(engine.CodeDiagnosticsBackend)
+		state.Capabilities.CodeDiagnostics = stage1 && state.HostID != ""
+		if ready, ok := local.(interface{ LiveCodeDiagnosticsReady() bool }); ok && state.Capabilities.CodeDiagnostics {
+			_, docs := local.(engine.LiveCodeDiagnosticsBackend)
+			state.Capabilities.LiveCodeDiagnostics = docs && ready.LiveCodeDiagnosticsReady()
 		}
 	}
 	return state

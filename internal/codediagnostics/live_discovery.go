@@ -65,6 +65,33 @@ func DiscoverLive(root AuthorizedRoot, env LiveEnvironment) ([]Registration, err
 	}, nil
 }
 
+// DiscoverGoLive is the production local live route's discovery: gopls only.
+// TypeScript and Svelte language servers have no verified host install
+// (CD-23/CD-24), so they are registered as independently unsupported
+// opened-document providers and never offered for execution. Metadata only.
+func DiscoverGoLive(root AuthorizedRoot, reviewedPath []string, env GoplsEnvironment) ([]Registration, error) {
+	if len(reviewedPath) > 64 {
+		return nil, failure("limitExceeded", "Reviewed executable search budget exceeded")
+	}
+	goPlan, err := DiscoverGopls(root, reviewedPath, env)
+	if err != nil {
+		return nil, err
+	}
+	goConfig, _ := goPlan.Server()
+	regs := []Registration{liveRegistration(goPlan.Provider(), goConfig, func(file string) (string, bool) {
+		return "go", strings.HasSuffix(file, ".go") && coversPackage(goPlan.modules, file)
+	})}
+	for _, id := range []string{tsProviderID, svelteLSProviderID} {
+		state := ProviderState{
+			ProviderID: id, Availability: "unsupported", Phase: "idle", Freshness: "uncertain",
+			Coverage: Coverage{Kind: "openedDocuments", Roots: []string{}, Partial: true, ExternalChanges: CoverageExternalChanges},
+			Notice:   "Live diagnostics for this language are not enabled: no language server version has been verified.",
+		}
+		regs = append(regs, liveRegistration(state, ServerConfig{}, nil))
+	}
+	return regs, nil
+}
+
 func liveRegistration(state ProviderState, cfg ServerConfig, resolve func(string) (string, bool)) Registration {
 	return Registration{
 		ProviderID: state.ProviderID, Availability: state.Availability,
@@ -98,7 +125,7 @@ func DiscoveryDocuments(root AuthorizedRoot, registrations []Registration, sessi
 			}
 			if r.Availability == "available" {
 				cfg := r.Live.Server
-				tools = append(tools, cfg.Tool())
+				tools = append(tools, cfg.Tools()...)
 				entry := *r.Live
 				entry.Server = cloneServer(cfg)
 				live = append(live, entry)
@@ -138,6 +165,7 @@ func cloneServer(cfg ServerConfig) ServerConfig {
 	cfg.Args = append([]string(nil), cfg.Args...)
 	cfg.Env = append([]string(nil), cfg.Env...)
 	cfg.ConfigPaths = append([]string(nil), cfg.ConfigPaths...)
+	cfg.Toolchain = cloneTools(cfg.Toolchain)
 	cfg.ApprovalTools = cloneTools(cfg.ApprovalTools)
 	return cfg
 }

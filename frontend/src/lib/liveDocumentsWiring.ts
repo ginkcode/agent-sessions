@@ -5,7 +5,8 @@ import { codeDiagnostics } from './stores/codeDiagnostics.svelte';
 
 /**
  * Connects the files store and the diagnostics store through the bridge. Without a
- * live-capable attachment (liveCodeDiagnostics is not advertised in production yet)
+ * live-capable attachment (liveCodeDiagnostics is advertised only by the desktop
+ * local route, experimental, Go only)
  * every hook is a no-op and no document call is made.
  */
 export function startLiveDocuments(): LiveDocumentBridge {

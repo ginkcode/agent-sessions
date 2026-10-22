@@ -79,6 +79,9 @@ type ServerConfig struct {
 	Directory     string   // relative to the authorized root; empty is the root
 	AdapterPolicy string
 	ConfigPaths   []string // relative config/lock identities bound into approval
+	// Toolchain binds additional host files the server executes or loads (for
+	// gopls: the reviewed GOROOT's bin/go and VERSION) into the same proposal.
+	Toolchain []ToolInput
 	// ApprovalTools is the complete attachment proposal, not a subset grant.
 	// Nil preserves the standalone single-server seam used by adapter tests.
 	ApprovalTools []ToolInput
@@ -96,11 +99,17 @@ func (c ServerConfig) Tool() ToolInput {
 	return ToolInput{ProviderID: c.ProviderID, Executable: c.Executable, ConfigPaths: append([]string(nil), c.ConfigPaths...), Policy: c.Policy()}
 }
 
+// Tools is the server's complete approval contribution: its own identity plus
+// any bound toolchain files.
+func (c ServerConfig) Tools() []ToolInput {
+	return append([]ToolInput{c.Tool()}, cloneTools(c.Toolchain)...)
+}
+
 func (c ServerConfig) approvalTools() []ToolInput {
 	if c.ApprovalTools != nil {
 		return cloneTools(c.ApprovalTools)
 	}
-	return []ToolInput{c.Tool()}
+	return c.Tools()
 }
 
 // ServerCapabilities is the negotiated subset recorded for document operations.

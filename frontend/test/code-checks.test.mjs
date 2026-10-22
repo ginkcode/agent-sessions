@@ -24,6 +24,14 @@ test('approval choices expose canonical scope, tools and non-sandbox risk withou
   assert.deepEqual(executionButtons(html).map(b => b.text), ['Enable for this session', 'Always allow this project', 'Not now']);
   for (const text of ['local:actual', '/canonical/&lt;root>', '/bin/go', 'go.work', 'network', 'caches', 'not a sandbox', 'drafts are never saved']) assert.ok(html.includes(text));
   assert.doesNotMatch(html, /Check Project/);
+  assert.match(html, /Only saved files are checked/);
+  assert.match(html, /Live diagnostics are not available on this connection/);
+  const live = await render({ liveEnabled: true, approved: false, snapshot: { approval: { state: 'required' }, proposal: { fingerprint: 'fp', tools: [] } } });
+  assert.match(live, /opened Go files are also sent unsaved to the listed gopls/);
+  assert.match(live, /drafts are never saved/);
+  assert.match(live, /Live diagnostics \(experimental\)/);
+  assert.match(live, /TypeScript and Svelte live diagnostics are not enabled/);
+  assert.doesNotMatch(live, /Only saved files are checked/);
   const noProposal = await render({ approved: false, snapshot: { approval: { state: 'required' } } });
   assert.deepEqual(executionButtons(noProposal).map(b => b.disabled), [true, true, false]);
 });

@@ -100,7 +100,9 @@ export class CodeDiagnosticsStore {
   private attempts = 0;
   private host = '';
   private retiredGenerations = new Set<string>();
-  private liveCapable = false;
+  private liveCapable = $state(false);
+  /** The attached host advertises live document diagnostics (copy only; never a grant). */
+  get liveEnabled(): boolean { return this.liveCapable; }
   private listeners = new Set<() => void>();
   private reconcileFiles: () => Promise<void> = async () => {};
   private liveRevision = $state(0);

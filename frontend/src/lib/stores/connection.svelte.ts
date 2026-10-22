@@ -204,7 +204,13 @@ export class ConnectionStore {
     // Only a live session reports real capabilities. A dropped host keeps
     // its last ones so the stale view still describes that host.
     if (state.phase === 'local') {
-      this.capabilities = { ...LOCAL_CAPABILITIES };
+      // Code diagnostics are optional even locally: keep what the local
+      // backend reports instead of assuming support.
+      this.capabilities = {
+        ...LOCAL_CAPABILITIES,
+        ...(state.capabilities?.codeDiagnostics ? { codeDiagnostics: true } : {}),
+        ...(state.capabilities?.codeDiagnostics && state.capabilities.liveCodeDiagnostics ? { liveCodeDiagnostics: true } : {}),
+      };
     } else if (state.phase === 'connected' && state.capabilities) {
       this.capabilities = state.capabilities;
     }

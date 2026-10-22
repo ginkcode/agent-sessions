@@ -47,8 +47,8 @@ const CodeDiagnosticsUpdatedEvent = "codeDiagnostics:updated"
 type diagnosticsOwner struct {
 	manager *cd.Manager
 	live    *cd.LiveDocuments
-	// Internal route only: explicit reviewed discovery + launcher injection.
-	// Production leaves both nil pending the live release gates.
+	// Live route: the desktop's local Engine (WithLocalLiveCodeDiagnostics) or
+	// an explicit fixture injection. Headless/remote Engines leave both nil.
 	discoverLive func(cd.AuthorizedRoot) ([]cd.Registration, error)
 	roots        map[string]cd.AuthorizedRoot
 	dirs         map[string]string // original catalog directories
@@ -67,8 +67,8 @@ func newDiagnosticsOwner(config string, host string) (*diagnosticsOwner, error) 
 	return newDiagnosticsOwnerWithLive(config, host, nil, cd.SessionOptions{})
 }
 
-// The internal route requires explicitly supplied reviewed host metadata and a
-// launcher. Production deliberately calls the checker-only constructor above.
+// The live route requires a discovery function and a launcher. Engines without
+// the local live option call the checker-only constructor above.
 func newDiagnosticsOwnerWithLive(config, host string, discover func(cd.AuthorizedRoot) ([]cd.Registration, error), options cd.SessionOptions) (*diagnosticsOwner, error) {
 	store, err := cd.NewGrantStore(config)
 	if err != nil {
@@ -126,7 +126,14 @@ func (e *Engine) diagnostics(ctx context.Context) (*diagnosticsOwner, error) {
 		if host, err = localDiagnosticsIdentity(roots.Config); err != nil {
 			return nil, err
 		}
-		if owner, err = newDiagnosticsOwner(roots.Config, host); err != nil {
+		if e.localLive && localLiveSupported() {
+			// Production local route: metadata-only discovery and the host
+			// launcher, reached only after per-project composite approval.
+			owner, err = newDiagnosticsOwnerWithLive(roots.Config, host, discoverLocalLive, cd.SessionOptions{Launch: cd.HostSessionLaunch})
+		} else {
+			owner, err = newDiagnosticsOwner(roots.Config, host)
+		}
+		if err != nil {
 			return nil, err
 		}
 	}
