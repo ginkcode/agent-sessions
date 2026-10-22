@@ -1,0 +1,22 @@
+{
+  "tool": "svelte-language-server",
+  "date": "2026-10-22",
+  "result": "none verified",
+  "provenance": "inventory only; no server was executed because none was found",
+  "platform": "darwin/arm64",
+  "searched": [
+    {"location": "PATH (svelteserver, svelte-language-server)", "found": false},
+    {"location": "frontend/node_modules/.bin and frontend/node_modules", "found": "svelte-check 4.7.6 (checker CLI, not an LSP server), svelte 5.57.1; no svelte-language-server, svelte2tsx or typescript-svelte-plugin"},
+    {"location": "Zed private cache languages/*", "found": "basedpyright, bash, eslint, gopls, json, package-version, ruff, rust-analyzer, tailwindcss, vtsls, yaml; no svelte-language-server"},
+    {"location": "Zed extensions/installed/svelte", "found": "grammar, language config and extension.wasm only (v0.2.11); the extension would download the server on demand and has not; extensions/work/svelte is empty"},
+    {"location": "Zed prettier cache", "found": "prettier-plugin-svelte and svelte 5.57.2 only; a formatter, not a language server"}
+  ],
+  "supportedVersions": [],
+  "unobserved": [
+    "initialize result / capabilities / positionEncoding",
+    "whether publishDiagnostics carries version",
+    "virtual-document URIs and coordinate mapping",
+    "argv and runtime requirements (svelteserver --stdio is assumed from public convention, not observed)",
+    "crash / missing-dependency behavior"
+  ]
+}
