@@ -1,4 +1,17 @@
-# Code diagnostics frontend (CD-10 / CD-11 / CD-12)
+# Code diagnostics frontend (CD-10 / CD-11 / CD-12 / CD-13)
+
+## CD-13 tree counts
+
+Overall progress is **12/28** (CD-01…CD-08 + CD-10…CD-13); CD-09 remains blocked.
+Cached shared exact groups now feed file and component-ancestor count maps, summary,
+Problems and inline selectors. Every file contributes once per ancestor, independent
+of expansion, filtering, listing truncation or tabs. Provider originals survive
+shared grouping and single-provider clearing. Tree/search badges expose severity,
+stale/uncertain and partial/truncated context independently of Git and ignored tags;
+no discovery changes or diagnostic-only nodes are introduced. See
+[completion evidence](../tasks/CD-13.md#completion-evidence). Frontend validation:
+**403/403 tests**, check 0 errors (existing configuration warning), build passed
+(existing chunk-size advisory). Native layout/theme/screen-reader QA remains CD-17.
 
 ## CD-12 Problems navigation
 

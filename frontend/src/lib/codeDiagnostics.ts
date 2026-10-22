@@ -110,7 +110,9 @@ export function groupCodeDiagnostics(sets: readonly CodeDiagnosticsResultSet[]):
     const key = diagnosticKey(diagnostic);
     const group = groups.get(key) ?? { diagnostic, entries: [] };
     if (!groups.has(key)) groups.set(key, group);
-    if (!group.entries.some(e => e.providerId === set.providerId && e.diagnostic.source === diagnostic.source)) group.entries.push({ providerId: set.providerId, diagnostic });
+    // Keep provider-owned originals (including differing bases/freshness) intact.
+    // Only the visible equivalence group is deduplicated, not its attribution.
+    group.entries.push({ providerId: set.providerId, diagnostic });
   }
   return [...groups.values()];
 }

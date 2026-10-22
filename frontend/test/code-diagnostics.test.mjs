@@ -9,8 +9,53 @@ const { CodeDiagnosticsStore } = await loadServerModule(url, [
   ["import { api } from '../api';", 'const api = {};'],
   ["import { epoch } from '../link';", 'const epoch = () => 0;'],
   ["'../codeDiagnostics'", JSON.stringify(new URL('../src/lib/codeDiagnostics.ts', import.meta.url).href)],
+  ["'../codeDiagnosticCounts'", JSON.stringify(new URL('../src/lib/codeDiagnosticCounts.ts', import.meta.url).href)],
 ]);
+import { aggregateCodeDiagnostics } from '../src/lib/codeDiagnosticCounts.ts';
 const clone = structuredClone;
+
+test('exact equivalence counts file-level findings and component ancestors once', () => {
+  const variants = [finding, { ...finding, range: undefined }, { ...finding, code: 'x' },
+    { ...finding, message: finding.message + ' ' }, { ...finding, severity: 'warning' },
+    { ...finding, range: { start: { line: 1, character: 0 }, end: { line: 1, character: 2 } } }];
+  const sets = [{ providerId: 'a', diagnostics: variants.map(d => ({ ...d, path: 'src/a/nested/f.go' })) },
+    { providerId: 'b', diagnostics: [{ ...variants[0], path: 'src/a/nested/f.go', source: 'other', freshness: 'stale' },
+      { ...finding, path: 'src/ab/f.go' }, { ...finding, path: 'root.go' },
+      { ...finding, path: 'src/a/info.go', severity: 'information' }, { ...finding, path: 'src/a/hint.go', severity: 'hint' },
+      { ...finding, path: 'Src/a/f.go' }] }];
+  const groups = groupCodeDiagnostics(sets);
+  const counts = aggregateCodeDiagnostics(groups);
+  assert.equal(groups[0].entries.length, 2);
+  assert.equal(counts.files.get('src/a/nested/f.go').error, 5);
+  assert.equal(counts.folders.get('src/a').error, 5);
+  assert.equal(counts.folders.get('src/a/nested').warning, 1);
+  assert.equal(counts.folders.get('src').error, 6);
+  assert.equal(counts.total.error, 8);
+  assert.equal(counts.total.warning, 1);
+  assert.equal(counts.folders.get('src/a').stale, true);
+  assert.equal(counts.folders.has('empty'), false);
+  assert.equal(counts.files.has('src/a/info.go'), false);
+});
+
+test('shared attribution and counts survive provider clears, then empty replacement and detach clear maps', async () => {
+  const h = harness(); const s = snapshot();
+  s.resultSets.push({ ...clone(s.resultSets[0]), providerId: 'second', diagnostics: [{ ...clone(finding), source: 'second' }] });
+  h.setSnapshot(s); await h.store.attach('/input', connection);
+  assert.equal(h.store.counts.error, 1);
+  assert.equal(h.store.findings[0].entries.length, 2);
+  h.emit(update(snapshot(1, { resultSets: [{ ...s.resultSets[0], diagnostics: [] }, s.resultSets[1]] })));
+  assert.equal(h.store.counts.error, 1);
+  assert.equal(h.store.findings[0].entries[0].providerId, 'second');
+  assert.equal(h.store.pathCounts.files.get('a.go').error, 1);
+  h.emit(update(snapshot(2, { resultSets: [] })));
+  assert.equal(h.store.pathCounts.files.size, 0);
+  assert.equal(h.store.countsUnder(''), 0);
+  h.emit(update(snapshot(3)));
+  h.store.disconnect();
+  assert.equal(h.store.pathCounts.files.get('a.go').stale, true);
+  await h.store.detach();
+  assert.equal(h.store.pathCounts.files.size, 0);
+});
 const deferred = () => { let resolve, reject; const promise = new Promise((a,b) => { resolve=a; reject=b; }); return { promise, resolve, reject }; };
 const tick = () => new Promise(r => setImmediate(r));
 const context = { connectionId: 'connection', attachmentId: 'attachment', generation: 'generation' };

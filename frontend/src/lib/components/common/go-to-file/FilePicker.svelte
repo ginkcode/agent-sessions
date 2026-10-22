@@ -1,5 +1,7 @@
 <script lang="ts">
   import { files } from '../../../stores/files.svelte';
+  import { codeDiagnostics as checks } from '../../../stores/codeDiagnostics.svelte';
+  import DiagnosticBadge from './DiagnosticBadge.svelte';
   import {
     STATUS_LABELS,
     buildFileTree,
@@ -22,6 +24,12 @@
   let { input = $bindable(), presentation = false, onPick, onContext }: Props = $props();
 
   let query = $state('');
+  let diagnosticContext = $derived([
+    checks.status !== 'ready' ? 'status uncertain; retained results are not a successful check' : '',
+    checks.providers.some(p => p.freshness !== 'current' || p.coverage.externalChanges === 'unwatched') ? 'provider freshness stale or uncertain' : '',
+    checks.partial ? 'partial coverage' : '',
+    checks.truncated ? 'diagnostics truncated' : '',
+  ].filter(Boolean).join(' · '));
   let activeIndex = $state(0);
   let resultsEl: HTMLElement | undefined = $state();
 
@@ -100,6 +108,7 @@
           <span class="chevron" class:open={files.expanded.has(node.path)}>▸</span>
           <FileIcon path={node.path} folder expanded={files.expanded.has(node.path)} />
           <span class="tree-name git-{folders.get(node.path) ?? 'none'}">{node.name}</span>
+          <DiagnosticBadge counts={checks.pathCounts.folders.get(node.path)} context={diagnosticContext} />
           {#if folders.has(node.path)}
             <span class="git-dot git-{folders.get(node.path)}" title="Holds changed files">●</span>
           {/if}
@@ -123,6 +132,7 @@
         >
           <FileIcon path={node.path} />
           <span class="tree-name git-{st ?? 'none'}">{node.name}</span>
+          <DiagnosticBadge counts={checks.pathCounts.files.get(node.path)} context={diagnosticContext} />
           {#if st}<span class="git-letter git-{st}">{st}</span>{/if}
         </button>
       </li>
@@ -178,6 +188,7 @@
               <FileIcon {path} />
               <span class="match-name git-{st ?? 'none'}">{parts.name}</span>
               {#if parts.dir}<span class="match-dir">{parts.dir}</span>{/if}
+              <DiagnosticBadge counts={checks.pathCounts.files.get(path)} context={diagnosticContext} />
               {#if st}<span class="git-letter git-{st}" title={STATUS_LABELS[st]}>{st}</span>{/if}
               {#if ignored.has(path)}<span class="ignored-tag">ignored</span>{/if}
             </li>
@@ -198,6 +209,7 @@
           {files.listing.files.length.toLocaleString()} files{files.listing.truncated ? ' (list cut short)' : ''}
           {#if files.listing.git}· .gitignore applied{/if}
           {#if changedCount > 0}· {changedCount} changed{/if}
+          {#if checks.counts.error || checks.counts.warning}· Diagnostic counts include findings outside this listing and search.{/if}
         {/if}
       </span>
       <button
@@ -310,6 +322,8 @@
   }
 
   .tree-name {
+    flex: 1;
+    min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -395,7 +409,9 @@
   }
 
   .match-name {
-    flex-shrink: 0;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .match-dir {

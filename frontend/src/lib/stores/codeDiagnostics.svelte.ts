@@ -1,4 +1,5 @@
 import { api } from '../api';
+import { aggregateCodeDiagnostics } from '../codeDiagnosticCounts';
 import { epoch } from '../link';
 import type { BackendAPI } from '../api';
 import type { ConnectionState } from '../types';
@@ -48,17 +49,19 @@ export class CodeDiagnosticsStore {
 
   get resultSets() { return this.snapshot?.resultSets ?? []; }
   get providers() { return this.snapshot?.providers ?? []; }
-  get findings() { return groupCodeDiagnostics(this.resultSets); }
+  private grouped = $derived(groupCodeDiagnostics(this.resultSets));
+  private aggregated = $derived(aggregateCodeDiagnostics(this.grouped));
+  get findings() { return this.grouped; }
+  get pathCounts() { return this.aggregated; }
   get partial() { return this.status !== 'ready' || this.providers.length === 0 || this.providers.some(p => p.coverage.partial || p.availability !== 'available' || ['failed', 'canceled', 'disconnected'].includes(p.phase)); }
   get truncated() { return this.providers.some(p => p.truncated); }
   get counts() {
-    const counts = { error: 0, warning: 0 };
-    for (const { diagnostic } of this.findings) if (diagnostic.severity === 'error' || diagnostic.severity === 'warning') counts[diagnostic.severity]++;
-    return counts;
+    const { error, warning } = this.pathCounts.total;
+    return { error, warning };
   }
   countsUnder(path: string) {
-    const prefix = path ? path + '/' : '';
-    return this.findings.filter(f => (f.diagnostic.path === path || f.diagnostic.path.startsWith(prefix)) && ['error', 'warning'].includes(f.diagnostic.severity)).length;
+    const counts = path ? this.pathCounts.folders.get(path) ?? this.pathCounts.files.get(path) : this.pathCounts.total;
+    return counts ? counts.error + counts.warning : 0;
   }
   inline(path: string, saved: { dirty: boolean; revision?: string }) {
     if (this.status !== 'ready') return [];

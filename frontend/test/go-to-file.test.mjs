@@ -31,9 +31,15 @@ const dialog = await loadServerComponent(new URL('../GoToFileDialog.svelte', bas
   ["'../../fullscreen'", lib('../../../fullscreen.ts')],
 ]);
 
+const badge = await loadServerComponent(new URL('DiagnosticBadge.svelte', base), [
+  ["'../../../codeDiagnosticCounts'", lib('../../../codeDiagnosticCounts.ts')],
+]);
+globalThis.__diagnosticBadge = badge.default;
 const [picker, tabs, source] = await Promise.all([
   loadServerComponent(new URL('FilePicker.svelte', base), [
     store,
+    ["import { codeDiagnostics as checks } from '../../../stores/codeDiagnostics.svelte';", fixtureStore('checks')],
+    ["import DiagnosticBadge from './DiagnosticBadge.svelte';", 'const DiagnosticBadge = globalThis.__diagnosticBadge;'],
     ["'../../../files'", lib('../../../files.ts')],
     ["import FileIcon from '../FileIcon.svelte';", 'const FileIcon = () => {};'],
     ["import LoadingSpinner from '../LoadingSpinner.svelte';", 'const LoadingSpinner = () => {};'],
@@ -60,8 +66,8 @@ test('dialog offers an unlocked Escape lock toggle and a separate close button',
   assert.match(html, /<button[^>]*aria-label="Project directory actions"[^>]*>\/project<\/button>/);
 });
 
-function renderPicker(files = {}, props = {}) {
-  return renderWithFixture(picker, { files: { expanded: new Set(), ...files } }, {
+function renderPicker(files = {}, props = {}, checks = {}) {
+  return renderWithFixture(picker, { checks: { status: 'ready', providers: [], counts: { error: 0, warning: 0 }, pathCounts: { files: new Map(), folders: new Map() }, ...checks }, files: { expanded: new Set(), ...files } }, {
     onPick() {}, onContext() {}, ...props,
   });
 }
@@ -148,6 +154,43 @@ test('picker footer counts listed files and changes, reports truncation and disa
   assert.match(classTag(html, 'aside', 'picker'), /\bpresentation\b/);
   const initial = await renderPicker();
   assert.equal(classTag(initial, 'footer', 'picker-footer'), undefined);
+});
+
+test('diagnostic badges keep ancestor totals when collapsed and include unlisted descendants without discovery changes', async () => {
+  const counts = { error: 12345, warning: 2, stale: true, uncertain: true };
+  const checks = { counts, partial: true, truncated: true, pathCounts: { files: new Map([['src/nested/a.ts', counts]]), folders: new Map([['src', counts], ['src/nested', counts]]) } };
+  const listing = { files: ['src/nested/a.ts'], ignored: ['.env'], truncated: true, status: { 'src/nested/a.ts': 'M' } };
+  const collapsed = await renderPicker({ listing }, {}, checks);
+  assert.match(collapsed, /aria-label="12345 errors, 2 warnings · stale retained findings · freshness uncertain · partial coverage · diagnostics truncated"/);
+  assert.equal((collapsed.match(/class="diagnostic-badge/g) ?? []).length, 1);
+  assert.match(collapsed, /Holds changed files/);
+  assert.doesNotMatch(collapsed, />a.ts<|>nested<|>\.env</);
+  assert.match(collapsed, /Diagnostic counts include findings outside this listing and search/);
+  const expanded = await renderPicker({ listing, expanded: new Set(['src', 'src/nested']) }, {}, checks);
+  assert.equal((expanded.match(/class="diagnostic-badge/g) ?? []).length, 3);
+  assert.match(expanded, /title="src\/nested\/a.ts · Modified"/);
+});
+
+test('search-only ignored rows retain Git, ignored tags and accessible diagnostic context', async () => {
+  const searchPicker = await loadServerComponent(new URL('FilePicker.svelte', base), [
+    store,
+    ["import { codeDiagnostics as checks } from '../../../stores/codeDiagnostics.svelte';", fixtureStore('checks')],
+    ["import DiagnosticBadge from './DiagnosticBadge.svelte';", 'const DiagnosticBadge = globalThis.__diagnosticBadge;'],
+    ["'../../../files'", lib('../../../files.ts')],
+    ["import FileIcon from '../FileIcon.svelte';", 'const FileIcon = () => {};'],
+    ["import LoadingSpinner from '../LoadingSpinner.svelte';", 'const LoadingSpinner = () => {};'],
+    ["let query = '';", "let query = '.env';"],
+  ]);
+  const counts = { error: 1, warning: 0, stale: true, uncertain: false };
+  const html = await renderWithFixture(searchPicker, {
+    files: { expanded: new Set(), listing: { files: ['other.ts'], ignored: ['.env'], truncated: true, status: { '.env': 'M' } } },
+    checks: { status: 'disconnected', providers: [], counts, partial: true, pathCounts: { files: new Map([['.env', counts]]), folders: new Map() } },
+  }, { onPick() {}, onContext() {} });
+  assert.match(html, /role="option" aria-selected="true"/);
+  assert.match(html, /aria-label="1 errors, 0 warnings · stale retained findings · status uncertain; retained results are not a successful check · partial coverage"/);
+  assert.match(html, /title="Modified">M/);
+  assert.match(html, />ignored<\/span>/);
+  assert.doesNotMatch(html, />other.ts</);
 });
 
 test('tabs expose active and preview states, git status and accessible close labels', async () => {
