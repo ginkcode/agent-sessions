@@ -131,3 +131,19 @@ func (a *App) DetachCodeDiagnostics(c cd.Context, expectedHostID string) (engine
 	}
 	return s, err
 }
+
+func (a *App) InvalidateCodeDiagnosticsPath(c cd.Context, path, expectedHostID string) (cd.Snapshot, error) {
+	b, gen, err := a.diagnosticsRoute(expectedHostID)
+	if err != nil {
+		return cd.Snapshot{}, err
+	}
+	invalidator, ok := b.(engine.CodeDiagnosticsInvalidator)
+	if !ok {
+		return cd.Snapshot{}, &cd.Error{Code: "unsupported", Message: "Diagnostics invalidation unavailable"}
+	}
+	out, err := invalidator.InvalidateCodeDiagnosticsPath(a.appCtx(), c, path)
+	if stale := a.diagnosticsCurrent(gen); stale != nil {
+		return cd.Snapshot{}, stale
+	}
+	return out, err
+}

@@ -129,6 +129,12 @@ func (s *Server) dispatchDiagnostics(ctx context.Context, req Request) (any, err
 		return out, err
 	case "runCodeDiagnostics":
 		return s.backend.(engine.CodeDiagnosticsBackend).RunCodeDiagnostics(ctx, p.Context, p.ProviderIDs)
+	case "invalidateCodeDiagnosticsPath":
+		b, ok := s.backend.(engine.CodeDiagnosticsInvalidator)
+		if !ok {
+			return nil, cdError("unsupported", "Diagnostics invalidation unavailable")
+		}
+		return b.InvalidateCodeDiagnosticsPath(ctx, p.Context, p.Path)
 	case "cancelCodeDiagnostics":
 		return s.backend.(engine.CodeDiagnosticsBackend).CancelCodeDiagnostics(ctx, p.Context, p.Runs)
 	}

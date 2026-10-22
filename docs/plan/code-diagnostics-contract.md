@@ -13,6 +13,19 @@ Fixtures and validation: `internal/codediagnostics/testdata/contract/` and
 `internal/codediagnostics/contract_test.go`. The fixtures use synthetic identities
 and source only, never real project contents or secrets.
 
+## R10 additive path invalidation (2026-10-22)
+
+Optional `invalidateCodeDiagnosticsPath(context, path)` (App/Engine/RPC, frontend
+binding `InvalidateCodeDiagnosticsPath`) returns a full snapshot. It never touches the
+filesystem: it requires current owned context, exact catalog directory plus root
+revalidation, a canonical relative path (same validation as `DeletePath`), cancels
+current runs, closes live documents for that path (best-effort didClose), and removes
+that path's findings from every checker/LSP set. Old hosts/bindings return
+`unsupported`; that is not evidence of deletion. The sole trigger is a confirmed
+`probeFiles` leaf `absent`; `unknown` never invalidates. Recreation is a fresh document
+lifecycle/documentId; old IDs/generation pushes are `staleContext`. Contract version
+remains 1.
+
 ## R09 additive saved-disk probe (2026-10-22)
 
 Contract version remains **1**: no existing diagnostics field or required method

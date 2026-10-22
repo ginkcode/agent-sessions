@@ -476,6 +476,9 @@ func (m *Manager) DeletePath(c Context, path string) error {
 	for id, d := range a.docs {
 		if d.path == path {
 			m.dropDocument(a, id)
+			if m.provider != nil && !d.broken {
+				_ = m.docStep(context.Background(), a, d, DocumentStep{Generation: d.generation, Kind: "close", Version: d.version})
+			}
 		}
 	}
 	for i := range a.snapshot.ResultSets {

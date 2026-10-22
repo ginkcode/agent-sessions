@@ -51,6 +51,7 @@ type diagnosticsOwner struct {
 	// Production leaves both nil pending the live release gates.
 	discoverLive func(cd.AuthorizedRoot) ([]cd.Registration, error)
 	roots        map[string]cd.AuthorizedRoot
+	dirs         map[string]string // original catalog directories
 	host         string
 	mu           sync.Mutex
 	contexts     map[string]cd.Context
@@ -78,7 +79,7 @@ func newDiagnosticsOwnerWithLive(config, host string, discover func(cd.Authorize
 	if err != nil {
 		return nil, err
 	}
-	o := &diagnosticsOwner{manager: manager, host: host, roots: map[string]cd.AuthorizedRoot{}, contexts: map[string]cd.Context{}, stop: make(chan struct{}), done: make(chan struct{})}
+	o := &diagnosticsOwner{manager: manager, host: host, roots: map[string]cd.AuthorizedRoot{}, dirs: map[string]string{}, contexts: map[string]cd.Context{}, stop: make(chan struct{}), done: make(chan struct{})}
 	if discover != nil && options.Launch != nil {
 		o.discoverLive = discover
 		o.live = cd.NewLiveDocuments(trust, manager, options)
@@ -213,6 +214,7 @@ func (e *Engine) AttachCodeDiagnostics(ctx context.Context, dir string, version 
 		o.mu.Lock()
 		o.contexts[s.Context.AttachmentID] = s.Context
 		o.roots[s.Context.AttachmentID] = root
+		o.dirs[s.Context.AttachmentID] = dir
 		o.mu.Unlock()
 		o.workers.Add(1)
 		go func() {
@@ -317,6 +319,7 @@ func (e *Engine) DetachCodeDiagnostics(ctx context.Context, c cd.Context) (CodeD
 		o.mu.Lock()
 		delete(o.contexts, c.AttachmentID)
 		delete(o.roots, c.AttachmentID)
+		delete(o.dirs, c.AttachmentID)
 		o.mu.Unlock()
 	}
 	return CodeDiagnosticsAck{c}, err
@@ -342,3 +345,33 @@ func (e *Engine) CancelCodeDiagnostics(ctx context.Context, c cd.Context, runs [
 }
 
 var _ CodeDiagnosticsBackend = (*Engine)(nil)
+
+// CodeDiagnosticsInvalidator is additive: older backends may omit reconciliation.
+type CodeDiagnosticsInvalidator interface {
+	InvalidateCodeDiagnosticsPath(context.Context, cd.Context, string) (cd.Snapshot, error)
+}
+
+// InvalidateCodeDiagnosticsPath invalidates findings, never filesystem contents.
+func (e *Engine) InvalidateCodeDiagnosticsPath(ctx context.Context, c cd.Context, path string) (cd.Snapshot, error) {
+	o, err := e.diagnostics(ctx)
+	if err != nil {
+		return cd.Snapshot{}, err
+	}
+	o.mu.Lock()
+	root, ok := o.roots[c.AttachmentID]
+	current, dir := o.contexts[c.AttachmentID], o.dirs[c.AttachmentID]
+	o.mu.Unlock()
+	if !ok || current != c {
+		return cd.Snapshot{}, diagnosticError("staleContext", "Attachment is no longer current")
+	}
+	if _, err = e.svc.AuthorizeCodeDiagnosticsRoot(ctx, o.host, dir); err != nil {
+		return cd.Snapshot{}, err
+	}
+	if err = root.Revalidate(); err != nil {
+		return cd.Snapshot{}, err
+	}
+	if err = o.manager.DeletePath(c, path); err != nil {
+		return cd.Snapshot{}, err
+	}
+	return o.manager.GetSnapshot(c)
+}

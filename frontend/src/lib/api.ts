@@ -186,6 +186,7 @@ interface WailsAppBinding {
   ApproveCodeDiagnostics?: CodeDiagnosticsAPI['approveCodeDiagnostics'];
   RevokeCodeDiagnostics?: CodeDiagnosticsAPI['revokeCodeDiagnostics'];
   RunCodeDiagnostics?: CodeDiagnosticsAPI['runCodeDiagnostics'];
+  InvalidateCodeDiagnosticsPath?: NonNullable<CodeDiagnosticsAPI['invalidateCodeDiagnosticsPath']>;
   CancelCodeDiagnostics?: CodeDiagnosticsAPI['cancelCodeDiagnostics'];
   OpenCodeDiagnosticDocument?: CodeDiagnosticsAPI['openCodeDiagnosticDocument'];
   ChangeCodeDiagnosticDocument?: CodeDiagnosticsAPI['changeCodeDiagnosticDocument'];
@@ -317,6 +318,10 @@ class WailsBackendAPI implements BackendAPI {
   runCodeDiagnostics(c: CodeDiagnosticsContext, ids: string[] | undefined, host: string): Promise<CodeDiagnosticsRuns> {
     const b = this.binding;
     return this.diagnosticsCall(b.RunCodeDiagnostics && (() => b.RunCodeDiagnostics!(c, ids, host)));
+  }
+  invalidateCodeDiagnosticsPath(c: CodeDiagnosticsContext, path: string, host: string): Promise<CodeDiagnosticsSnapshot> {
+    const b = this.binding;
+    return this.diagnosticsCall(b.InvalidateCodeDiagnosticsPath && (() => b.InvalidateCodeDiagnosticsPath!(c, path, host)));
   }
   cancelCodeDiagnostics(c: CodeDiagnosticsContext, runs: CodeDiagnosticsRun[], host: string): Promise<CodeDiagnosticsAck> {
     const b = this.binding;

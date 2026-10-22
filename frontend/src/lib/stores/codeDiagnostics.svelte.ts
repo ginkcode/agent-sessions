@@ -76,6 +76,15 @@ export class CodeDiagnosticsStore {
     this.liveRevision;
     return this.liveAttachment ? this.readLiveBasis(path) : undefined;
   }
+  async invalidatePath(dir: string, path: string): Promise<void> {
+    const c = this.context, life = this.lifetime;
+    if (!c || this.directory !== dir || !this.active(life)) return;
+    try {
+      if (!this.backend.invalidateCodeDiagnosticsPath) throw new CodeDiagnosticsError('unsupported', 'Diagnostics invalidation unavailable');
+      const s = await this.backend.invalidateCodeDiagnosticsPath(c, path, this.host);
+      if (this.active(life) && this.context && sameContext(c, this.context)) this.commit(s);
+    } catch (e) { if (this.active(life)) this.fail(e); }
+  }
   /** Read-only files-store reconciliation; no discovery or language-server startup. */
   setReconciler(reconcile: () => Promise<void>): void { this.reconcileFiles = reconcile; }
 

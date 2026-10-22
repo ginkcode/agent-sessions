@@ -344,3 +344,43 @@ test('overlapping saved reads commit only the latest revision, and reload wins o
   assert.equal(s.store.activeTab.edit.draft, 'reload');
   assert.equal(s.store.activeTab.content.revision, 'r4');
 });
+
+test('R10 absence retains dirty/uncertain text; observed same-content recreation starts fresh', async () => {
+  const s = await setup();
+  s.store.openFile('a.txt', { keep: true }); await tick(); s.store.startEditing('a.txt');
+  s.store.updateDraft('a.txt', 'draft');
+  const tab = s.store.activeTab, edit = tab.edit, version = edit.version;
+  const uncertain = edit.uncertain = { text: 'attempt', expectedRevision: 'r1', format: tab.content.edit };
+  let state = 'absent'; const clears = [];
+  s.fixture.api.probeFiles = async () => ({ observations: [{ path: 'a.txt', state, revision: 'r1' }] });
+  s.store.setPathInvalidator(async (dir, path) => clears.push([dir, path]));
+  await s.store.reconcileDisplayed(); await tick();
+  assert.equal(tab.diskAbsent, true); assert.equal(s.bridge.basis('a.txt'), undefined);
+  s.store.updateDraft('a.txt', 'newest'); await s.timers.advance(400);
+  assert.equal(s.calls.filter(c => c[0] === 'open').length, 1);
+  assert.deepEqual(clears, [['/p', 'a.txt']]);
+  state = 'unknown'; await s.store.reconcileDisplayed(); assert.equal(tab.diskAbsent, true);
+  state = 'present'; await s.store.reconcileDisplayed(); await tick();
+  assert.equal(s.bridge.basis('a.txt').documentId, 'doc2');
+  assert.equal(edit.draft, 'newest'); assert.equal(edit.version, version);
+  assert.equal(edit.uncertain, uncertain); assert.equal(edit.revision, 'r1');
+  assert.equal(s.calls.some(c => c[0] === 'save'), false);
+});
+
+test('R10 overlapping probes, host changes and late read errors never guess deletion', async () => {
+  const s = await setup(); s.store.openFile('a.txt', { keep: true }); await tick();
+  const tab = s.store.activeTab, replies = [];
+  s.fixture.api.probeFiles = () => new Promise(r => replies.push(r));
+  const first = s.store.reconcileDisplayed(), second = s.store.reconcileDisplayed();
+  replies[1]({ observations: [{ path: 'a.txt', state: 'present', revision: 'r1' }] }); await second;
+  replies[0]({ observations: [{ path: 'a.txt', state: 'absent' }] }); await first;
+  assert.notEqual(tab.diskAbsent, true);
+  const late = s.store.reconcileDisplayed(); s.fixture.link.dataHost = 'other';
+  replies[2]({ observations: [{ path: 'a.txt', state: 'absent' }] }); await late;
+  assert.notEqual(tab.diskAbsent, true); assert.equal(tab.content.text, 'one\n');
+  s.fixture.link.dataHost = 'h'; delete s.fixture.api.probeFiles;
+  let reject; s.fixture.api.readFile = () => new Promise((_r, j) => { reject = j; });
+  const old = s.store.reconcileDisplayed(); s.store.startEditing('a.txt'); s.store.updateDraft('a.txt', 'keep');
+  reject(new Error('not found')); await old;
+  assert.equal(tab.edit.draft, 'keep'); assert.equal(tab.content.text, 'one\n');
+});

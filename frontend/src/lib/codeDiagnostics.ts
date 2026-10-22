@@ -89,6 +89,7 @@ export interface CodeDiagnosticsAPI {
   revokeCodeDiagnostics(context: CodeDiagnosticsContext, expectedHostId: string): Promise<CodeDiagnosticsSnapshot>;
   runCodeDiagnostics(context: CodeDiagnosticsContext, providerIds: string[] | undefined, expectedHostId: string): Promise<CodeDiagnosticsRuns>;
   cancelCodeDiagnostics(context: CodeDiagnosticsContext, runs: CodeDiagnosticsRun[], expectedHostId: string): Promise<CodeDiagnosticsAck>;
+  invalidateCodeDiagnosticsPath?(context: CodeDiagnosticsContext, path: string, expectedHostId: string): Promise<CodeDiagnosticsSnapshot>;
   /** Stage 2 (liveCodeDiagnostics only). Bodies are never logged or persisted. */
   openCodeDiagnosticDocument(context: CodeDiagnosticsContext, path: string, documentId: string, version: 1, text: string, revision: string | undefined, expectedHostId: string): Promise<CodeDiagnosticsDocumentReceipt>;
   changeCodeDiagnosticDocument(context: CodeDiagnosticsContext, documentId: string, version: number, text: string, expectedHostId: string): Promise<CodeDiagnosticsDocumentReceipt>;

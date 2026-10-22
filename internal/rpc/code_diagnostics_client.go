@@ -240,3 +240,9 @@ func (c *Client) CloseCodeDiagnosticDocument(ctx context.Context, token cd.Conte
 	err := c.liveCall(ctx, "closeCodeDiagnosticDocument", codeDiagnosticsParams{Context: token, DocumentID: documentID}, &out)
 	return out, err
 }
+
+func (c *Client) InvalidateCodeDiagnosticsPath(ctx context.Context, token cd.Context, path string) (cd.Snapshot, error) {
+	var out cd.Snapshot
+	err := c.diagnosticsCall(ctx, "invalidateCodeDiagnosticsPath", codeDiagnosticsParams{Context: token, Path: path}, &out)
+	return out, err
+}

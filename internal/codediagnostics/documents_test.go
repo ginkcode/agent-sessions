@@ -497,3 +497,44 @@ func TestPublicationRejectsEvictedSessionEvenWithMatchingMirrorGeneration(t *tes
 		t.Fatalf("restart must reopen displayed text: %+v", step)
 	}
 }
+
+func TestDeletePathClosesLiveAndClearsEveryProvider(t *testing.T) {
+	m, s, f := docFixture(t, ServerCapabilities{OpenClose: true, Change: 1})
+	ctx := context.Background()
+	if _, err := m.OpenDocument(ctx, s.Context, "source.go", "before", 1, "package main\n", "same"); err != nil {
+		t.Fatal(err)
+	}
+	v := int64(1)
+	if err := m.PublishDocumentResults(s.Context, "before", f.gen, &v, []Diagnostic{{Path: "source.go", Message: "live", Severity: "error"}}); err != nil {
+		t.Fatal(err)
+	}
+	m.mu.Lock()
+	a := m.attachments[s.Context.AttachmentID]
+	for _, id := range []string{"checker-a", "checker-b"} {
+		a.snapshot.ResultSets = append(a.snapshot.ResultSets, ResultSet{ProviderID: id, Origin: "checker", Scope: Scope{Kind: "project"}, Diagnostics: []Diagnostic{{Path: "source.go", Message: "old"}, {Path: "other.go", Message: "keep"}}})
+	}
+	m.mu.Unlock()
+	if err := m.DeletePath(s.Context, "source.go"); err != nil {
+		t.Fatal(err)
+	}
+	if f.last().Kind != "close" {
+		t.Fatal("didClose missing")
+	}
+	out, err := m.GetSnapshot(s.Context)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, set := range out.ResultSets {
+		for _, d := range set.Diagnostics {
+			if d.Path == "source.go" {
+				t.Fatal("deleted finding retained")
+			}
+		}
+	}
+	code(t, m.PublishDocumentResults(s.Context, "before", f.gen, &v, nil), "staleContext")
+	if _, err = m.OpenDocument(ctx, s.Context, "source.go", "after", 1, "package main\n", "same"); err != nil {
+		t.Fatal(err)
+	}
+	code(t, m.PublishDocumentResults(s.Context, "before", f.gen, &v, nil), "staleContext")
+	code(t, m.PublishDocumentResults(s.Context, "after", "old-generation", &v, nil), "staleContext")
+}

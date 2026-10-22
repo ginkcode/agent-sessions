@@ -162,3 +162,41 @@ func TestCodeDiagnosticsDocumentsUnsupportedWithoutAdapters(t *testing.T) {
 	_, err = e.OpenCodeDiagnosticDocument(ctx, c, "a.go", "d", 1, "x", "")
 	requireDiagnosticCode(t, err, "disconnected")
 }
+
+func TestInvalidateCodeDiagnosticsPathContextChecks(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	catalog := scan.NewCatalog()
+	catalog.Reset([]model.SessionMeta{{Ref: model.SessionRef{Agent: model.AgentClaude, ID: "inv"}, CWD: dir, RepoRoot: dir}})
+	owner, err := newDiagnosticsOwner(t.TempDir(), "test-host")
+	if err != nil {
+		t.Fatal(err)
+	}
+	e := NewEngine(WithService(NewService(catalog, nil)), WithCacheEnabled(false))
+	e.codeDiagnostics = owner
+	go owner.events(e)
+	t.Cleanup(func() { _ = e.Close() })
+	a, err := e.AttachCodeDiagnostics(ctx, dir, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = e.InvalidateCodeDiagnosticsPath(ctx, a.Context, "x.go"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = e.InvalidateCodeDiagnosticsPath(ctx, a.Context, "../x.go"); err == nil {
+		t.Fatal("escape accepted")
+	}
+	foreign := a.Context
+	foreign.AttachmentID = "other"
+	if _, err = e.InvalidateCodeDiagnosticsPath(ctx, foreign, "x.go"); err == nil {
+		t.Fatal("foreign attachment accepted")
+	}
+	old := a.Context
+	old.Generation = "old"
+	_, err = e.InvalidateCodeDiagnosticsPath(ctx, old, "x.go")
+	requireDiagnosticCode(t, err, "staleContext")
+	catalog.Reset(nil)
+	if _, err = e.InvalidateCodeDiagnosticsPath(ctx, a.Context, "x.go"); err == nil {
+		t.Fatal("removed catalog root accepted")
+	}
+}

@@ -61,6 +61,14 @@ export class MockCodeDiagnostics implements CodeDiagnosticsAPI {
     if (m.delete(documentId)) this.closed.add(documentId);
     return { context: c, documentId };
   }
+  async invalidateCodeDiagnosticsPath(c: CodeDiagnosticsContext, path: string, host: string) {
+    const s = this.get(c, host);
+    if (!path || path.length > 4096 || /[\\\\\0]/.test(path) || path.split('/').some(p => !p || p === '.' || p === '..')) throw new CodeDiagnosticsError('invalidArgument', 'Invalid path');
+    for (const p of s.providers) if (p.phase === 'checking' || p.phase === 'starting') p.phase = 'canceled';
+    for (const [id, d] of this.documents.get(c.attachmentId) ?? []) if (d.path === path) { this.documents.get(c.attachmentId)!.delete(id); this.closed.add(id); }
+    s.resultSets = s.resultSets.filter(set => set.scope.kind !== 'document' || set.scope.path !== path).map(set => ({ ...set, diagnostics: set.diagnostics.filter(d => d.path !== path) }));
+    return this.publish(s);
+  }
   async getCodeDiagnosticsSnapshot(c: CodeDiagnosticsContext, host: string) { return structuredClone(this.get(c, host)); }
   async approveCodeDiagnostics(c: CodeDiagnosticsContext, mode: 'session' | 'persistent', fingerprint: string, host: string) {
     const s = this.get(c, host);

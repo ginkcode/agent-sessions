@@ -14,6 +14,8 @@ export function startLiveDocuments(): LiveDocumentBridge {
     store: codeDiagnostics,
     source: () => ({ dir: files.dir, documents: files.displayedDocuments() }),
   });
+  files.setPathInvalidator((dir, path) => codeDiagnostics.invalidatePath(dir, path));
+  files.setDiagnosticPaths(() => codeDiagnostics.directory === files.dir ? codeDiagnostics.resultSets.flatMap(s => s.diagnostics.map(d => d.path)) : []);
   codeDiagnostics.setReconciler(() => files.reconcileDisplayed());
   codeDiagnostics.setLiveBasis(path => bridge.basis(path));
   codeDiagnostics.setLiveRecovery(() => bridge.statuses, (path, id) => bridge.reopen(path, id));

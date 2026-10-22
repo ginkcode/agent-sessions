@@ -53,6 +53,7 @@ export interface DisplayedDocument { path: string; text: string; revision?: stri
  */
 export interface FileLifecycleObserver {
   /** A read committed displayable text to a tab not being edited. */
+  diskState?(dir: string, path: string, absent: boolean): void;
   opened(dir: string, path: string, text: string, revision?: string): void;
   /** The displayed text was replaced by committed text (edit toggle, discard/reload). */
   replaced(dir: string, path: string, text: string, revision?: string): void;
@@ -91,6 +92,8 @@ export interface FileTab {
   /** Matches the read in flight, so a late reply for a replaced tab is dropped. */
   token: number;
   edit?: FileEditState;
+  /** Only a confirmed leaf absence, never a failed read. */
+  diskAbsent?: boolean;
 }
 
 export class FilesStore {
@@ -131,6 +134,13 @@ export class FilesStore {
   private connectionSeq = 0;
   private reconciling = new Map<FileTab, { seq: number; promise: Promise<void> }>();
   private observer?: FileLifecycleObserver;
+  private diagnosticPaths: () => string[] = () => [];
+  setDiagnosticPaths(paths: () => string[]): void { this.diagnosticPaths = paths; }
+  private extraProbeSeq = 0;
+  private invalidations = new WeakMap<FileTab, Promise<void>>();
+  private probeReads = new WeakMap<FileTab, number>();
+  private invalidatePath: (dir: string, path: string) => Promise<void> = async () => {};
+  setPathInvalidator(invalidate: (dir: string, path: string) => Promise<void>): void { this.invalidatePath = invalidate; }
   private savedReads = new WeakMap<FileTab, number>();
 
   /** Installs the single lifecycle observer; returns an unsubscribe function. */
@@ -149,6 +159,7 @@ export class FilesStore {
   displayedDocuments(): DisplayedDocument[] {
     const out: DisplayedDocument[] = [];
     for (const tab of this.tabs) {
+      if (tab.diskAbsent) continue;
       if (tab.edit) out.push({ path: tab.path, text: tab.edit.draft, revision: tab.edit.revision });
       else if (displayable(tab.content)) out.push({ path: tab.path, text: tab.content.text, revision: tab.content.revision });
     }
@@ -326,6 +337,48 @@ export class FilesStore {
     await Promise.all([this.reconcileDisplayed(), this.list(dir)]);
   }
 
+  /** Bounded, explicit observations only. No revision can prove rename or recreation. */
+  private async probe(dir: string, tab: FileTab): Promise<boolean> {
+    const host = this.dataHost, connection = this.connectionSeq, started = epoch();
+    const path = tab.path, token = tab.token, edit = tab.edit;
+    const revision = edit?.revision, version = edit?.version;
+    const seq = (this.probeReads.get(tab) ?? 0) + 1;
+    this.probeReads.set(tab, seq);
+    const valid = () => this.dir === dir && host === link.dataHost && connection === this.connectionSeq
+      && started === epoch() && this.tabs.includes(tab) && tab.path === path && tab.token === token
+      && this.probeReads.get(tab) === seq && tab.edit === edit && !edit?.saving
+      && edit?.revision === revision && edit?.version === version;
+    if (edit?.saving) return false;
+    try {
+      const result = await api.probeFiles(dir, [path], host ?? '');
+      if (!valid()) return false;
+      const observation = result.observations.find(o => o.path === path);
+      if (observation?.state === 'absent') {
+        tab.diskAbsent = true;
+        tab.token = ++this.readSeq;
+        tab.loading = false;
+        this.savedReads.set(tab, (this.savedReads.get(tab) ?? 0) + 1);
+        tab.error = 'The file was observed absent on disk. Displayed text has been retained.';
+        this.notify(o => o.diskState?.(dir, path, true));
+        // Owned backend cancellation/clear must precede any recreation lifecycle.
+        const invalidation = this.invalidatePath(dir, path);
+        this.invalidations.set(tab, invalidation);
+        await invalidation;
+        if (this.invalidations.get(tab) === invalidation) this.invalidations.delete(tab);
+        return false;
+      }
+      if (observation?.state === 'present' && tab.diskAbsent) {
+        await this.invalidations.get(tab);
+        if (!valid()) return false;
+        tab.diskAbsent = false;
+        tab.error = null;
+        this.notify(o => o.diskState?.(dir, path, false));
+        if (edit) this.notify(o => o.opened(dir, path, edit.draft, observation.revision));
+      }
+      return !tab.diskAbsent;
+    } catch { return valid() && !tab.diskAbsent; } // Unsupported/unknown is never deletion.
+  }
+
   /** Read-only revision reconciliation. Never writes, settles uncertainty or resets undo. */
   async reconcileDisplayed(): Promise<void> {
     const dir = this.dir, host = this.dataHost, connection = this.connectionSeq, started = epoch();
@@ -333,7 +386,7 @@ export class FilesStore {
     await Promise.all(this.tabs.map(async tab => {
       const edit = tab.edit;
       if (!edit) { await this.read(tab.path); return; }
-      if (edit.saving) return;
+      if (edit.saving || (typeof api.probeFiles === 'function' && !await this.probe(dir, tab))) return;
       // Typing is allowed during the read. Commit saved context only, not the
       // captured draft; version/draft/baseline/uncertain are editor-owned.
       const read = (this.savedReads.get(tab) ?? 0) + 1;
@@ -351,11 +404,24 @@ export class FilesStore {
         if (tab.token === token) tab.error = null;
         this.notify(o => o.replaced(dir, tab.path, edit.draft, content.revision));
       } catch (err) {
-        if (this.dir === dir && started === epoch() && connection === this.connectionSeq && tab.edit === edit && !isStaleReply(err)) {
+        if (this.dir === dir && started === epoch() && connection === this.connectionSeq && host === link.dataHost
+          && this.savedReads.get(tab) === read && this.tabs.includes(tab) && tab.edit === edit
+          && !edit.saving && edit.version === version && edit.revision === revision && !isStaleReply(err)) {
           tab.error = errorText(err, 'Could not reconcile the saved file.');
         }
       }
     }));
+    // Retained findings may refer to files without tabs. Use the captured file-host
+    // alias, not the diagnostics stable identity, for this read-only API.
+    const seq = ++this.extraProbeSeq;
+    const paths = [...new Set(this.diagnosticPaths())].filter(path => !this.tabs.some(t => t.path === path));
+    for (let i = 0; i < paths.length; i += 32) {
+      try {
+        const out = await api.probeFiles(dir, paths.slice(i, i + 32), host ?? '');
+        if (this.dir !== dir || started !== epoch() || connection !== this.connectionSeq || host !== link.dataHost || seq !== this.extraProbeSeq) return;
+        for (const o of out.observations) if (o.state === 'absent' && paths.includes(o.path)) await this.invalidatePath(dir, o.path);
+      } catch { /* Unknown never deletes findings. */ }
+    }
   }
 
   private async list(dir: string): Promise<void> {
@@ -617,6 +683,7 @@ export class FilesStore {
     const current = () => started === epoch() && this.dataHost === link.dataHost && this.dir === dir
       && this.tabs.find((t) => t === tab && t.token === token && !t.edit);
     try {
+      if ((typeof api.probeFiles === 'function' && !await this.probe(dir, tab)) || !current()) return;
       const content = await api.readFile(dir, path);
       const t = current();
       if (t) {
@@ -627,9 +694,8 @@ export class FilesStore {
     } catch (err) {
       const t = current();
       if (t && !isStaleReply(err)) {
-        t.content = null;
+        // Unknown read failure retains the last displayed text.
         t.error = errorText(err, 'Could not read the file.');
-        this.shown(dir, t);
       }
     } finally {
       const t = current();

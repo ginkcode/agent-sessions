@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	cd "github.com/ginkcode/agent-sessions/internal/codediagnostics"
 	"github.com/ginkcode/agent-sessions/internal/files"
 )
 
@@ -35,5 +36,13 @@ func TestProbeHostEpoch(t *testing.T) {
 	b.run = nil
 	if out, err := a.ProbeFiles("/repo", []string{"a"}, "remote-server"); err != nil || out.Observations[0].State != "absent" {
 		t.Fatalf("%+v %v", out, err)
+	}
+}
+
+func TestInvalidateDiagnosticsRouteFailsClosed(t *testing.T) {
+	a := setupRemoteApp(&stubRemoteBackend{})
+	a.conn.client = &stubRemoteBackend{}
+	if _, err := a.InvalidateCodeDiagnosticsPath(cd.Context{}, "a", "remote-server"); err == nil {
+		t.Fatal("unsupported backend accepted invalidation")
 	}
 }

@@ -176,6 +176,15 @@ export class LiveDocumentBridge implements FileLifecycleObserver {
 
   // -- FileLifecycleObserver ---------------------------------------------------
 
+  diskState(dir: string, path: string, absent: boolean): void {
+    const att = this.for(dir);
+    if (!att) return;
+    if (absent) {
+      this.blocked.add(path);
+      this.closePath(att, path);
+    } else this.blocked.delete(path);
+    this.changed_();
+  }
   opened(dir: string, path: string, text: string, revision?: string): void {
     const att = this.for(dir);
     if (att) this.track(att, path, text, revision);

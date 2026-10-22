@@ -231,3 +231,35 @@ func TestDiagnosticsFailClosedIdentity(t *testing.T) {
 		t.Fatal(init, e)
 	}
 }
+
+func (b *diagnosticsBackend) InvalidateCodeDiagnosticsPath(_ context.Context, c cd.Context, path string) (cd.Snapshot, error) {
+	if err := b.m.DeletePath(c, path); err != nil {
+		return cd.Snapshot{}, err
+	}
+	return b.m.GetSnapshot(c)
+}
+
+func TestInvalidateDiagnosticsWireOwnership(t *testing.T) {
+	b, _, c, cleanup := rpcDiagnosticsFixture(t)
+	defer cleanup()
+	ctx := context.Background()
+	if _, err := c.Initialize(ctx, InitializeRequest{}); err != nil {
+		t.Fatal(err)
+	}
+	a, err := c.AttachCodeDiagnostics(ctx, b.root.Project().Root, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = c.InvalidateCodeDiagnosticsPath(ctx, a.Context, "source.go"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = c.InvalidateCodeDiagnosticsPath(ctx, a.Context, "../escape"); err == nil {
+		t.Fatal("invalid path accepted")
+	}
+	foreign := a.Context
+	foreign.ConnectionID = "other"
+	var out cd.Snapshot
+	if err = c.call(ctx, "invalidateCodeDiagnosticsPath", codeDiagnosticsParams{Context: foreign, Path: "source.go"}, &out); err == nil {
+		t.Fatal("foreign owner accepted")
+	}
+}
