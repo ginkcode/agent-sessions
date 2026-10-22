@@ -69,6 +69,49 @@ func (d SessionDocuments) Session(root AuthorizedRoot, path string) (string, Ser
 	return s.generation, info.Capabilities, nil
 }
 
+// maxPublicationURIs bounds transport-lifetime URI history, independently of the
+// app's closed-ID FIFO. Exhaustion disables all path publications until restart.
+const maxPublicationURIs = 256
+
+func (s *lspSession) recordPublicationURI(uri string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.publicationFull {
+		return
+	}
+	if reused, seen := s.publicationURIs[uri]; seen {
+		if !reused {
+			s.publicationURIs[uri] = true
+		}
+		return
+	}
+	if len(s.publicationURIs) >= maxPublicationURIs {
+		s.publicationFull = true
+		return
+	}
+	if s.publicationURIs == nil {
+		s.publicationURIs = make(map[string]bool)
+	}
+	s.publicationURIs[uri] = false
+}
+
+// PublicationIsolated proves that exactly one open was attempted for this wire
+// URI on the current transport. Matching versions cannot provide this proof.
+func (d SessionDocuments) PublicationIsolated(root AuthorizedRoot, path, generation string) bool {
+	_, s, err := d.server(root, path)
+	if err != nil || s.generation != generation {
+		return false
+	}
+	target, err := root.ResolvePath(root.Project().HostID, path)
+	if err != nil {
+		return false
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	reused, seen := s.publicationURIs[fileURI(target)]
+	return seen && !reused && !s.publicationFull
+}
+
 type lspPosition struct {
 	Line      int `json:"line"`
 	Character int `json:"character"`
@@ -104,6 +147,9 @@ func (d SessionDocuments) Apply(ctx context.Context, step DocumentStep) error {
 	var params any
 	switch step.Kind {
 	case "open":
+		// Record before attempting delivery: an interrupted write may have reached
+		// the server. A failed open must never make the next open look isolated.
+		s.recordPublicationURI(uri)
 		method = "textDocument/didOpen"
 		params = map[string]any{"textDocument": lspItem{uri, server.LanguageID, step.Version, step.Text}}
 	case "change":

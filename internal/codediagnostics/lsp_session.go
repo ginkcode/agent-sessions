@@ -492,6 +492,10 @@ type lspSession struct {
 	idle      chan struct{}
 	watchRej  int
 
+	// Transport-lifetime history: never evicted on close or attachment changes.
+	publicationURIs map[string]bool // value true means reused/ambiguous
+	publicationFull bool            // budget exhausted: reject every path push
+
 	ready    chan struct{} // closed once with the first terminal/ready result
 	readyErr error
 	exited   chan struct{} // closed when the process Wait returns

@@ -335,7 +335,8 @@ func (m *Manager) CloseDocument(ctx context.Context, c Context, documentID strin
 }
 
 // dropDocument removes the registry entry and its LSP result set and remembers
-// the identity (bounded FIFO) so it can never be reused or published to.
+// recent identities in a bounded FIFO. Wire lifecycle isolation must not rely on
+// this history: it is owned independently by the server transport.
 func (m *Manager) dropDocument(a *attachment, documentID string) bool {
 	d := a.docs[documentID]
 	if d == nil {
@@ -391,8 +392,8 @@ func (m *Manager) releaseDocuments(a *attachment) {
 
 // PublishDocumentResults replaces exactly one open document's LSP set (empty
 // included). The explicit identity, bound owner/policy, session generation and
-// version must match. This does not resolve reused-URI ambiguity on the adapter
-// path route (R03); an explicit old ID is rejected, not rebound.
+// version must match. Only callers with actual lifecycle provenance may use this
+// seam; wire adapters must use the isolation-guarded path route.
 // Unversioned publications stay uncertain and panel-only; ranges are validated
 // against the mirrored text and invalid ones become file-level findings.
 func (m *Manager) PublishDocumentResults(c Context, documentID, generation string, version *int64, diagnostics []Diagnostic) error {
@@ -429,6 +430,14 @@ func (m *Manager) PublishPathDiagnostics(project Project, providerID, generation
 		}
 		for id, d := range a.docs {
 			if d.path == path {
+				// Wire pushes carry no documentId. Require transport-owned proof,
+				// independent of attachment epochs, versions and closed-ID history.
+				isolation, ok := m.provider.(interface {
+					PublicationIsolated(AuthorizedRoot, string, string) bool
+				})
+				if !ok || !isolation.PublicationIsolated(a.root, path, generation) {
+					return failure("resyncRequired", "Document publication lifecycle is ambiguous; results are unavailable until session restart")
+				}
 				return m.publishLocked(a, d, id, providerID, generation, version, diagnostics)
 			}
 		}

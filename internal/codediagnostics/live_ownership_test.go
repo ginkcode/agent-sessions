@@ -75,6 +75,10 @@ func (s splitOwnedSessions) OwnerSession(root AuthorizedRoot, path string) (Docu
 	return s.route(root, path).OwnerSession(root, path)
 }
 
+func (s splitOwnedSessions) PublicationIsolated(root AuthorizedRoot, path, generation string) bool {
+	return s.route(root, path).PublicationIsolated(root, path, generation)
+}
+
 func (s splitOwnedSessions) Apply(ctx context.Context, step DocumentStep) error {
 	return s.route(step.Root, step.Path).Apply(ctx, step)
 }

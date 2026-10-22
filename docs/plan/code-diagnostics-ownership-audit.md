@@ -1,9 +1,9 @@
 # R01 — live diagnostics ownership and freshness decision
 
-Date: 2026-10-22. **R01 complete (audit/decision only). R02 implemented (offline ownership seams/tests); R03 not implemented.**
+Date: 2026-10-22. **R01 complete (audit/decision only). R02 implemented (offline ownership seams/tests); R03 implemented (offline conservative transport-lifetime URI isolation/tests).**
 The map and exposed outcomes below record the pre-R02 audit; the decisions remain
 controlling. See [R02 implementation evidence](../tasks/CD-26.md#r02-concrete-ownership-2026-10-22)
-for corrected ownership boundaries and the unchanged R03 freshness risk.
+for corrected ownership boundaries and [R03 evidence](../tasks/CD-26.md#r03-conservative-uri-isolation-2026-10-22) for conservative rejection of reused-URI pushes.
 Parent progress remains **19/28**; CD-22…CD-26 remain partial. This is the
 controlling ownership/freshness decision for R02/R03, superseding any broader
 matching-version or close/reopen assurance in earlier evidence. No capability,
@@ -140,5 +140,7 @@ eligibility; recorded one ownership map, exposed bugs, conservative R02/R03
 policy and deterministic schedules. No implementation/test code changed, so no
 code test run is claimed. Documentation validation: `git diff --check`.
 Parent release HOLDs and live capability omission remain unchanged. R02 was next
-at audit completion and is now implemented separately as linked above; R03 must implement and test the above safety policy
-before any matching-version freshness claim on reused URIs.
+at audit completion; R02 and R03 are now implemented separately as linked above.
+The exposed outcomes and pre-fix evidence limits above remain historical audit
+findings, not the current implementation. R03 deliberately discards reused-URI
+pushes rather than claiming matching-version freshness.
