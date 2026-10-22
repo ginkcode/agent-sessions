@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"errors"
 	"path/filepath"
 
@@ -48,19 +49,34 @@ func (a *App) ListWSLDistros() ([]WSLEntry, error) {
 // active backend until the handshake completes.
 func (a *App) Connect(alias string) error {
 	a.ensureConn()
-	return a.conn.Connect(a.appCtx(), alias)
+	err := a.conn.Connect(a.appCtx(), alias)
+	if err == nil && a.localEngine != nil {
+		a.localEngine.ResetCodeDiagnostics()
+	}
+	return err
 }
 
 // Disconnect closes the remote session and returns the app to Local.
 func (a *App) Disconnect() {
 	a.ensureConn()
 	a.conn.Disconnect()
+	if a.localEngine != nil {
+		a.localEngine.ResetCodeDiagnostics()
+	}
 }
 
 // ConnectionState returns the current connection snapshot.
 func (a *App) ConnectionState() ConnectionState {
 	a.ensureConn()
-	return a.conn.snapshot()
+	state := a.conn.snapshot()
+	if a.conn.route().backend == nil {
+		if identity, ok := a.localBackend().(interface {
+			CodeDiagnosticsHostID(context.Context) (string, error)
+		}); ok {
+			state.HostID, _ = identity.CodeDiagnosticsHostID(a.appCtx())
+		}
+	}
+	return state
 }
 
 // AskpassReply sends an answer for an active askpass prompt.

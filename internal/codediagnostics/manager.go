@@ -74,19 +74,55 @@ func (m *Manager) Attach(root AuthorizedRoot, version int, registrations []Regis
 	if len(registrations) > 32 {
 		return Snapshot{}, failure("limitExceeded", "Provider budget exceeded")
 	}
+	a, err := m.prepare(root, registrations)
+	if err != nil {
+		return Snapshot{}, err
+	}
+	m.attachments[a.snapshot.Context.AttachmentID] = a
+	return copySnapshot(a.snapshot), nil
+}
+
+// CompleteDiscovery installs backend-only metadata on an attachment that has not
+// yet offered an approval proposal. Detached or revoked epochs cannot be revived.
+func (m *Manager) CompleteDiscovery(c Context, registrations []Registration) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	a, err := m.lookup(c)
+	if err != nil {
+		return err
+	}
+	if a.snapshot.Proposal != nil || a.snapshot.Approval.State != "required" {
+		return failure("staleContext", "Discovery epoch is no longer current")
+	}
+	next, err := m.prepare(a.root, registrations)
+	if err != nil {
+		return err
+	}
+	next.snapshot.Context = a.snapshot.Context
+	next.snapshot.Sequence = a.snapshot.Sequence
+	a.adapters, a.tools = next.adapters, next.tools
+	a.snapshot = next.snapshot
+	m.commit(a)
+	return nil
+}
+
+func (m *Manager) prepare(root AuthorizedRoot, registrations []Registration) (*attachment, error) {
+	if len(registrations) > 32 {
+		return nil, failure("limitExceeded", "Provider budget exceeded")
+	}
 	a := &attachment{root: root, adapters: map[string]CheckerAdapter{}, runs: map[string]*managedRun{}}
 	a.snapshot = Snapshot{ContractVersion: 1, Context: Context{m.connection, opaqueID(), opaqueID()}, Approval: Approval{State: "required"}, Providers: []ProviderState{}, ResultSets: []ResultSet{}}
 	seen := map[string]bool{}
 	for _, r := range registrations {
 		if !bounded(r.ProviderID, 256) || seen[r.ProviderID] || !availability(r.Availability) {
-			return Snapshot{}, failure("invalidArgument", "Invalid provider registration")
+			return nil, failure("invalidArgument", "Invalid provider registration")
 		}
 		seen[r.ProviderID] = true
 		if r.Adapter != nil {
 			a.adapters[r.ProviderID] = r.Adapter
 			a.tools = append(a.tools, r.Adapter.Tools()...)
 		} else if r.Availability == "available" {
-			return Snapshot{}, failure("invalidArgument", "Available provider needs an adapter")
+			return nil, failure("invalidArgument", "Available provider needs an adapter")
 		}
 		a.snapshot.Providers = append(a.snapshot.Providers, ProviderState{ProviderID: r.ProviderID, Availability: r.Availability, Phase: "idle", Freshness: "uncertain", Coverage: Coverage{Kind: "savedProject", Roots: []string{}, Partial: true, ExternalChanges: "unwatched"}})
 	}
@@ -94,11 +130,11 @@ func (m *Manager) Attach(root AuthorizedRoot, version int, registrations []Regis
 	if len(a.tools) > 0 {
 		fp, err := Fingerprint(root, a.tools)
 		if err != nil {
-			return Snapshot{}, err
+			return nil, err
 		}
 		approval, err := m.trust.Lookup(root, fp)
 		if err != nil {
-			return Snapshot{}, err
+			return nil, err
 		}
 		a.snapshot.Approval = approval
 		a.snapshot.Proposal = &Proposal{Fingerprint: fp, Tools: []ProposalTool{}}
@@ -113,10 +149,9 @@ func (m *Manager) Attach(root AuthorizedRoot, version int, registrations []Regis
 	m.syncAvailability(a)
 	// Leave enough per-part room for metadata plus a maximal escaped finding.
 	if encodedSize(a.snapshot) > min(128<<10, m.limits.EventBytes/4) || encodedSize(a.snapshot) > m.limits.SnapshotBytes {
-		return Snapshot{}, failure("limitExceeded", "Provider metadata exceeds delivery budget")
+		return nil, failure("limitExceeded", "Provider metadata exceeds delivery budget")
 	}
-	m.attachments[a.snapshot.Context.AttachmentID] = a
-	return copySnapshot(a.snapshot), nil
+	return a, nil
 }
 
 func availability(s string) bool {
@@ -255,6 +290,9 @@ func (m *Manager) Run(c Context, ids []string, supersede bool) ([]RunIdentity, e
 	}
 	if ids != nil && len(ids) == 0 {
 		return nil, failure("invalidArgument", "Provider list is empty")
+	}
+	if a.snapshot.Approval.State != "approved" {
+		return nil, failure("approvalRequired", "Explicit execution approval is required")
 	}
 	if ids == nil {
 		for _, p := range a.snapshot.Providers {

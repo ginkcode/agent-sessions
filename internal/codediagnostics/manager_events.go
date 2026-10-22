@@ -1,5 +1,17 @@
 package codediagnostics
 
+// SnapshotEvents builds bounded recovery events after a drain overflow. It does
+// not increment sequence or retain another copy in the delivery queue.
+func (m *Manager) SnapshotEvents(c Context) ([]Event, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	a, err := m.lookup(c)
+	if err != nil {
+		return nil, err
+	}
+	return m.eventParts(a.snapshot)
+}
+
 // eventParts uses encoded sizes, including Go's HTML/control escaping. A 1024
 // byte reserve covers the RPC notification wrapper (CD-09 must verify its own
 // exact envelope). No finding is split; clients assemble whole updates only.

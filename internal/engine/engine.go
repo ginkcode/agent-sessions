@@ -29,13 +29,14 @@ var _ Backend = (*Engine)(nil)
 type Engine struct {
 	mu sync.Mutex
 
-	svc        *Service
-	runner     *scan.Runner
-	refresher  *index.Refresher
-	indexer    *index.Indexer
-	closeWatch func() error
-	events     *CatalogBus
-	emitter    Emitter
+	svc             *Service
+	runner          *scan.Runner
+	refresher       *index.Refresher
+	indexer         *index.Indexer
+	closeWatch      func() error
+	events          *CatalogBus
+	emitter         Emitter
+	codeDiagnostics *diagnosticsOwner
 
 	manageMu       sync.Mutex
 	manage         *manage.Manager
@@ -315,6 +316,8 @@ func (e *Engine) Close() error {
 	readDB := e.readDB
 	lock := e.lock
 
+	diagnostics := e.codeDiagnostics
+	e.codeDiagnostics = nil
 	e.events = nil
 	e.closeWatch = nil
 	e.runCtx = nil
@@ -325,6 +328,9 @@ func (e *Engine) Close() error {
 	e.lock = nil
 	e.mu.Unlock()
 
+	if diagnostics != nil {
+		diagnostics.close()
+	}
 	if runCancel != nil {
 		runCancel()
 	}

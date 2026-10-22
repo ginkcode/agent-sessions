@@ -47,6 +47,7 @@ var reconnectBackoff = []time.Duration{
 type ConnectionState struct {
 	Phase        string           `json:"phase"`
 	Host         string           `json:"host,omitempty"`
+	HostID       string           `json:"hostId,omitempty"`
 	Generation   uint64           `json:"generation"`
 	Error        string           `json:"error,omitempty"`
 	Capabilities rpc.Capabilities `json:"capabilities"`

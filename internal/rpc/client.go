@@ -25,18 +25,19 @@ type NotificationHandler func(method string, params json.RawMessage)
 
 // Client implements engine.Backend by forwarding requests over a JSON-RPC 2.0 transport.
 type Client struct {
-	rawR     io.Reader
-	rawW     io.Writer
-	reader   *FrameReader
-	writer   *FrameWriter
-	seq      int64
-	mu       sync.Mutex
-	pending  map[string]chan *Response
-	handlers []NotificationHandler
-	emitter  engine.Emitter
-	closed   bool
-	done     chan struct{}
-	closeErr error
+	engine.UnsupportedCodeDiagnostics // CD-09: replace with negotiated RPC methods.
+	rawR                              io.Reader
+	rawW                              io.Writer
+	reader                            *FrameReader
+	writer                            *FrameWriter
+	seq                               int64
+	mu                                sync.Mutex
+	pending                           map[string]chan *Response
+	handlers                          []NotificationHandler
+	emitter                           engine.Emitter
+	closed                            bool
+	done                              chan struct{}
+	closeErr                          error
 
 	caps   Capabilities
 	roots  paths.Roots
