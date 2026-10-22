@@ -1,6 +1,6 @@
 # Implementation task details
 
-Task briefs for **Go to File code diagnostics**. **Progress: 18/28 complete**
+Task briefs for **Go to File code diagnostics**. **Progress: 19/28 complete**
 (CD-01: contract and tested fixtures; CD-02: backend trust and path policy;
 CD-03: bounded checker supervisor; CD-04: installed-checker format evidence;
 CD-05: contained Go vet adapter; CD-06: contained Svelte adapter and tested conservative outcomes;
@@ -14,9 +14,11 @@ CD-14: verified source gutter/range indicators and plain-text file/stale message
 CD-15: lazy CodeMirror lint with verified saved ranges and draft/cache freshness guards;
 CD-16: deterministic checker/manager/RPC and real-store controls/panel/picker/source/editor integration evidence;
 CD-18: bounded LSP stdio transport, fake-server tests only;
-CD-19: safe LSP session lifecycle, fake server/process/clock only).
+CD-19: safe LSP session lifecycle, fake server/process/clock only;
+CD-20: bounded versioned document operations across backend transports;
+CD-21: frontend document lifecycle bridge, automated tests only).
 CD-09 remains blocked on authenticated production remote identity activation;
-CD-17 is partial/blocked: [non-GUI preflight and blocked native matrix](../plan/code-diagnostics-qa.md), Stage 1 HOLD; CD-21 (frontend document lifecycle bridge) is complete with automated tests only; CD-22 (gopls adapter) is partial: spike/adapter seam with automated tests, no production route or manual QA ([decision doc](../plan/code-diagnostics-gopls.md)); CD-23 (TypeScript adapter) is partial/blocked: adapter seam and synthetic tests, no host-approved LSP server verified ([doc](../plan/code-diagnostics-typescript.md)); CD-24 (Svelte adapter) is partial/blocked: adapter seam, ownership policy and synthetic tests, no Svelte language server verified ([doc](../plan/code-diagnostics-svelte.md)); CD-25 is partial (read-only revision reconciliation and fake-session guards; external rename/delete reconciliation and production wiring incomplete, not counted); CD-26 is partial ([deterministic fake lifecycle integration and blockers](CD-26.md); live retention/ownership/status gaps and manual UI smoke remain, not counted); CD-27…CD-28 are not started. CD-16 is automated coverage, not native CD-17 QA. CD-10 used an explicit dependency exception against
+CD-17 is partial/blocked: [non-GUI preflight and blocked native matrix](../plan/code-diagnostics-qa.md), Stage 1 HOLD; CD-21 (frontend document lifecycle bridge) is complete with automated tests only; CD-22 (gopls adapter) is partial: spike/adapter seam with automated tests, no production route or manual QA ([decision doc](../plan/code-diagnostics-gopls.md)); CD-23 (TypeScript adapter) is partial/blocked: adapter seam and synthetic tests, no host-approved LSP server verified ([doc](../plan/code-diagnostics-typescript.md)); CD-24 (Svelte adapter) is partial/blocked: adapter seam, ownership policy and synthetic tests, no Svelte language server verified ([doc](../plan/code-diagnostics-svelte.md)); CD-25 is partial (read-only revision reconciliation and fake-session guards; external rename/delete reconciliation and production wiring incomplete, not counted); CD-26 is partial ([deterministic fake lifecycle integration and blockers](CD-26.md); live retention/ownership/status gaps and manual UI smoke remain, not counted); CD-27 is partial/blocked ([live QA matrix](../plan/code-diagnostics-live-qa.md), focused fake preflight only; all live cells blocked/untested, Stage 2 HOLD, not counted); CD-28 is not started. CD-16 is automated coverage, not native CD-17 QA. CD-10 used an explicit dependency exception against
 committed RPC contracts/tests, not remote activation. Local controls are wired;
 production remote diagnostics are not enabled. Manual keyboard/focus QA is not claimed. The authoritative wire contract is
 [contract v1](../plan/code-diagnostics-contract.md). See [the implementation plan](../plan/code-diagnostics.md) for shared
@@ -109,7 +111,7 @@ not a promise that the entire workspace has been checked.
 | [CD-24](CD-24.md) | Svelte language-server adapter | 4 h |
 | [CD-25](CD-25.md) | External-change and file-watch reconciliation | 4 h |
 | [CD-26](CD-26.md) 🟡 Partial | Fake-server lifecycle integration; retention/ownership/status and UI smoke gaps remain (not counted) | 4 h |
-| [CD-27](CD-27.md) | Real-server QA and Stage 2 gate | 4 h |
+| [CD-27](CD-27.md) 🟡 Partial/blocked | [Blocked live matrix](../plan/code-diagnostics-live-qa.md); focused fake preflight only, no live measurements; Stage 2 HOLD (not counted) | 4 h |
 
 ## Stage 3 — Optional automatic project checks
 
