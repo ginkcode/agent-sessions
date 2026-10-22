@@ -3,6 +3,7 @@ package rpc
 import (
 	"context"
 	"encoding/json"
+	"errors"
 
 	cd "github.com/ginkcode/agent-sessions/internal/codediagnostics"
 	"github.com/ginkcode/agent-sessions/internal/engine"
@@ -32,7 +33,37 @@ func (c *Client) diagnosticsCall(ctx context.Context, method string, p codeDiagn
 			return cdError("staleContext", "Context is not owned by this connection")
 		}
 	}
-	return c.call(ctx, method, p, out)
+	return normalizeDiagnosticsError(c.call(ctx, method, p, out))
+}
+
+// normalizeDiagnosticsError restores the stable contract code. FromRPCError maps
+// a few shared codes (unsupported, disconnected, canceled) onto sentinels, which
+// would otherwise lose the string code the App/frontend normalizes on.
+func normalizeDiagnosticsError(err error) error {
+	if err == nil {
+		return nil
+	}
+	var diagnostic *cd.Error
+	if errors.As(err, &diagnostic) {
+		return err
+	}
+	var rpcErr *ResponseError
+	if errors.As(err, &rpcErr) && rpcErr.Data != nil && rpcErr.Data.Code != "" {
+		return &cd.Error{Code: rpcErr.Data.Code, Message: rpcErr.Message}
+	}
+	for _, m := range []struct {
+		target error
+		code   string
+	}{{engine.ErrUnsupportedAction, "unsupported"}, {ErrDisconnected, "disconnected"}, {ErrCancelled, "canceled"}} {
+		if errors.Is(err, m.target) {
+			message := err.Error()
+			if len(message) > 2048 {
+				message = message[:2048]
+			}
+			return &cd.Error{Code: m.code, Message: message}
+		}
+	}
+	return err
 }
 
 func (c *Client) AttachCodeDiagnostics(ctx context.Context, dir string, version int) (engine.CodeDiagnosticsAttachment, error) {
@@ -155,4 +186,57 @@ func (c *Client) diagnosticsNotification(params json.RawMessage) (cd.Event, bool
 	}
 	c.cdSequences[ev.Context.AttachmentID] = ev.Sequence
 	return ev, true
+}
+
+// liveCall checks the separate liveCodeDiagnostics capability and every size
+// bound before anything is written, so an old server never sees a live request
+// and an oversized draft never reaches the wire.
+func (c *Client) liveCall(ctx context.Context, method string, p codeDiagnosticsParams, out *engine.CodeDiagnosticsDocument) error {
+	if _, err := c.CodeDiagnosticsHostID(ctx); err != nil {
+		return err
+	}
+	c.mu.Lock()
+	live := c.caps.LiveCodeDiagnostics
+	c.mu.Unlock()
+	if !live {
+		return cdError("unsupported", "Live code diagnostics unavailable")
+	}
+	if err := checkLiveParams(p); err != nil {
+		return err
+	}
+	if raw, err := json.Marshal(p); err != nil {
+		return cdError("invalidArgument", "Invalid diagnostics parameters")
+	} else if len(raw) > maxLiveParamsBytes {
+		return cdError("limitExceeded", "Document request exceeds the transport budget")
+	}
+	err := c.diagnosticsCall(ctx, method, p, out)
+	if err == nil && (out.Context != p.Context || (p.DocumentID != "" && out.DocumentID != p.DocumentID)) {
+		*out = engine.CodeDiagnosticsDocument{}
+		return cdError("staleContext", "Document acknowledgement does not match the request")
+	}
+	return err
+}
+
+func (c *Client) OpenCodeDiagnosticDocument(ctx context.Context, token cd.Context, path, documentID string, version int64, text, revision string) (engine.CodeDiagnosticsDocument, error) {
+	var out engine.CodeDiagnosticsDocument
+	err := c.liveCall(ctx, "openCodeDiagnosticDocument", codeDiagnosticsParams{Context: token, Path: path, DocumentID: documentID, Version: version, Text: text, Revision: revision}, &out)
+	return out, err
+}
+
+func (c *Client) ChangeCodeDiagnosticDocument(ctx context.Context, token cd.Context, documentID string, version int64, text string) (engine.CodeDiagnosticsDocument, error) {
+	var out engine.CodeDiagnosticsDocument
+	err := c.liveCall(ctx, "changeCodeDiagnosticDocument", codeDiagnosticsParams{Context: token, DocumentID: documentID, Version: version, Text: text}, &out)
+	return out, err
+}
+
+func (c *Client) SaveCodeDiagnosticDocument(ctx context.Context, token cd.Context, documentID string, savedVersion int64, revision string) (engine.CodeDiagnosticsDocument, error) {
+	var out engine.CodeDiagnosticsDocument
+	err := c.liveCall(ctx, "saveCodeDiagnosticDocument", codeDiagnosticsParams{Context: token, DocumentID: documentID, SavedVersion: savedVersion, Revision: revision}, &out)
+	return out, err
+}
+
+func (c *Client) CloseCodeDiagnosticDocument(ctx context.Context, token cd.Context, documentID string) (engine.CodeDiagnosticsDocument, error) {
+	var out engine.CodeDiagnosticsDocument
+	err := c.liveCall(ctx, "closeCodeDiagnosticDocument", codeDiagnosticsParams{Context: token, DocumentID: documentID}, &out)
+	return out, err
 }

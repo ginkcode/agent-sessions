@@ -16,6 +16,7 @@ import (
 type diagnosticsRPC struct {
 	mu             sync.Mutex
 	host           string
+	live           bool
 	owned          map[string]cd.Context
 	closed         bool
 	queue          chan Notification
@@ -31,6 +32,12 @@ type codeDiagnosticsParams struct {
 	Fingerprint     string           `json:"fingerprint"`
 	ProviderIDs     []string         `json:"providerIds"`
 	Runs            []cd.RunIdentity `json:"runs"`
+	Path            string           `json:"path"`
+	DocumentID      string           `json:"documentId"`
+	Version         int64            `json:"version"`
+	SavedVersion    int64            `json:"savedVersion"`
+	Text            string           `json:"text"`
+	Revision        string           `json:"revision"`
 }
 
 func cdError(code, message string) error { return &cd.Error{Code: code, Message: message} }
@@ -57,10 +64,24 @@ func (s *Server) initializeDiagnostics(ctx context.Context, caps *Capabilities) 
 	s.diagnostics.host = host
 	s.diagnostics.mu.Unlock()
 	caps.CodeDiagnostics = true
+	// liveCodeDiagnostics is separate and opt-in by the backend. The production
+	// Engine never reports ready (no concrete language server adapter exists
+	// before CD-22…CD-24), so it stays unadvertised.
+	if live, ok := s.backend.(interface{ LiveCodeDiagnosticsReady() bool }); ok && live.LiveCodeDiagnosticsReady() {
+		if _, ok := s.backend.(engine.LiveCodeDiagnosticsBackend); ok {
+			caps.LiveCodeDiagnostics = true
+			s.diagnostics.mu.Lock()
+			s.diagnostics.live = true
+			s.diagnostics.mu.Unlock()
+		}
+	}
 	return host
 }
 
 func (s *Server) dispatchDiagnostics(ctx context.Context, req Request) (any, error) {
+	if isLiveDiagnosticsMethod(req.Method) {
+		return s.dispatchLiveDiagnostics(ctx, req)
+	}
 	d := &s.diagnostics
 	d.mu.Lock()
 	defer d.mu.Unlock()

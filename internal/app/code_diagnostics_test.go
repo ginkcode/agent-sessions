@@ -116,3 +116,71 @@ func TestCodeDiagnosticsRouting(t *testing.T) {
 		t.Fatal("stale attach was not detached")
 	}
 }
+
+type liveDiagnosticsBackend struct {
+	diagnosticsBackend
+	live int
+}
+
+func (b *liveDiagnosticsBackend) OpenCodeDiagnosticDocument(context.Context, cd.Context, string, string, int64, string, string) (engine.CodeDiagnosticsDocument, error) {
+	b.live++
+	return engine.CodeDiagnosticsDocument{DocumentID: "d", Version: 1}, nil
+}
+func (b *liveDiagnosticsBackend) ChangeCodeDiagnosticDocument(context.Context, cd.Context, string, int64, string) (engine.CodeDiagnosticsDocument, error) {
+	b.live++
+	return engine.CodeDiagnosticsDocument{}, nil
+}
+func (b *liveDiagnosticsBackend) SaveCodeDiagnosticDocument(context.Context, cd.Context, string, int64, string) (engine.CodeDiagnosticsDocument, error) {
+	b.live++
+	return engine.CodeDiagnosticsDocument{}, nil
+}
+func (b *liveDiagnosticsBackend) CloseCodeDiagnosticDocument(context.Context, cd.Context, string) (engine.CodeDiagnosticsDocument, error) {
+	b.live++
+	return engine.CodeDiagnosticsDocument{}, nil
+}
+
+func TestLiveCodeDiagnosticsRouting(t *testing.T) {
+	c := cd.Context{}
+	live := &liveDiagnosticsBackend{diagnosticsBackend: diagnosticsBackend{host: "local-id"}}
+	a := &App{backend: live}
+	if _, err := a.OpenCodeDiagnosticDocument(c, "a.go", "d", 1, "x", "", "other-id"); err == nil {
+		t.Fatal("wrong host accepted")
+	} else {
+		checkDiagnosticsError(t, err, "staleContext")
+	}
+	if live.live != 0 {
+		t.Fatal("wrong host dispatched")
+	}
+	if out, err := a.OpenCodeDiagnosticDocument(c, "a.go", "d", 1, "x", "", "local-id"); err != nil || out.DocumentID != "d" || live.live != 1 {
+		t.Fatal(out, err)
+	}
+	// A backend with only the Stage 1 surface (old remote) is unsupported.
+	old := &diagnosticsBackend{host: "local-id"}
+	a = &App{backend: old}
+	for _, call := range []func() error{
+		func() error { _, e := a.OpenCodeDiagnosticDocument(c, "a.go", "d", 1, "x", "", "local-id"); return e },
+		func() error { _, e := a.ChangeCodeDiagnosticDocument(c, "d", 2, "x", "local-id"); return e },
+		func() error { _, e := a.SaveCodeDiagnosticDocument(c, "d", 1, "r", "local-id"); return e },
+		func() error { _, e := a.CloseCodeDiagnosticDocument(c, "d", "local-id"); return e },
+	} {
+		checkDiagnosticsError(t, call(), "unsupported")
+	}
+	if old.calls != 0 {
+		t.Fatal("unsupported call dispatched")
+	}
+	// Offline never falls back to the local backend.
+	a = &App{backend: live}
+	a.conn = &connection{wantHost: "remote", localActive: false, state: ConnectionState{Phase: ConnDisconnected}}
+	before := live.live
+	for _, call := range []func() error{
+		func() error { _, e := a.OpenCodeDiagnosticDocument(c, "a.go", "d", 1, "x", "", "local-id"); return e },
+		func() error { _, e := a.ChangeCodeDiagnosticDocument(c, "d", 2, "x", "local-id"); return e },
+		func() error { _, e := a.SaveCodeDiagnosticDocument(c, "d", 1, "r", "local-id"); return e },
+		func() error { _, e := a.CloseCodeDiagnosticDocument(c, "d", "local-id"); return e },
+	} {
+		checkDiagnosticsError(t, call(), "disconnected")
+	}
+	if live.live != before {
+		t.Fatal("offline fell back to local")
+	}
+}

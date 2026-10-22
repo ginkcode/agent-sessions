@@ -1,11 +1,11 @@
 # Go to File — project code diagnostics
 
-Status: **17/28 complete**: CD-01…CD-08, CD-10…CD-16, CD-18 and CD-19 are complete (contract,
+Status: **18/28 complete**: CD-01…CD-08, CD-10…CD-16, CD-18, CD-19 and CD-20 are complete (contract,
 backend trust/checkers/manager, Engine/App bindings, frontend API/store, local approval/check/status controls, draft-safe Problems navigation, shared file/tree diagnostic badges, verified source/editor indicators and deterministic Stage 1 integration tests).
 CD-09 RPC contracts/tests are committed, but authenticated production SSH/WSL
 identity activation remains **blocked**. CD-10 proceeded locally with an explicit
 dependency exception; it does not complete CD-09 or activate remotes.
-CD-17 is **partial / blocked**: [non-GUI preflight and blocked native QA matrix](code-diagnostics-qa.md), with **Stage 1 HOLD**; CD-20…CD-28 are not started. Local dialog controls are wired with asynchronous
+CD-17 is **partial / blocked**: [non-GUI preflight and blocked native QA matrix](code-diagnostics-qa.md), with **Stage 1 HOLD**; CD-21…CD-28 are not started. Local dialog controls are wired with asynchronous
 identity/capability discovery; unsupported remotes expose status only, never execution controls.
 Manual keyboard/focus QA and all CD-17 native matrix checks have not been performed.
 Frontend policy/evidence: [CD-10](code-diagnostics-frontend.md). Trust policy and approval copy: [CD-02 addendum](code-diagnostics-trust.md).
@@ -246,7 +246,7 @@ part of the approval warning, not a guarantee the app can enforce.
 
 ## Task breakdown
 
-CD-01…CD-08, CD-10…CD-16, CD-18 and CD-19 are complete; CD-09 is blocked on production remote identity activation; CD-17 partial/blocked; CD-20…CD-28 are not started. CD-10's local contract/test dependency exception is explicit above. Estimates include focused automated tests; each task
+CD-01…CD-08, CD-10…CD-16, CD-18, CD-19 and CD-20 are complete; CD-09 is blocked on production remote identity activation; CD-17 partial/blocked; CD-21…CD-28 are not started. CD-10's local contract/test dependency exception is explicit above. Estimates include focused automated tests; each task
 is at most four developer hours. Re-estimate adapter spikes before committing
 to server-version support. Split tasks that exceed four hours before coding.
 The [TASKS.md](../../TASKS.md) feature section tracks these IDs and status.

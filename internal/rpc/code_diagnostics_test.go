@@ -33,6 +33,8 @@ type diagnosticsBackend struct {
 	fake          *rpcChecker
 	host          string
 	registrations []cd.Registration // optional Stage 1 integration adapters
+	live          bool              // test-only: advertise liveCodeDiagnostics
+	liveCalls     int
 }
 
 func (b *diagnosticsBackend) RemoteCodeDiagnosticsHostID(context.Context) (string, error) {

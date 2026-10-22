@@ -1,6 +1,6 @@
 # Implementation task details
 
-Task briefs for **Go to File code diagnostics**. **Progress: 17/28 complete**
+Task briefs for **Go to File code diagnostics**. **Progress: 18/28 complete**
 (CD-01: contract and tested fixtures; CD-02: backend trust and path policy;
 CD-03: bounded checker supervisor; CD-04: installed-checker format evidence;
 CD-05: contained Go vet adapter; CD-06: contained Svelte adapter and tested conservative outcomes;
@@ -16,7 +16,7 @@ CD-16: deterministic checker/manager/RPC and real-store controls/panel/picker/so
 CD-18: bounded LSP stdio transport, fake-server tests only;
 CD-19: safe LSP session lifecycle, fake server/process/clock only).
 CD-09 remains blocked on authenticated production remote identity activation;
-CD-17 is partial/blocked: [non-GUI preflight and blocked native matrix](../plan/code-diagnostics-qa.md), Stage 1 HOLD; CD-20…CD-28 are not started. CD-16 is automated coverage, not native CD-17 QA. CD-10 used an explicit dependency exception against
+CD-17 is partial/blocked: [non-GUI preflight and blocked native matrix](../plan/code-diagnostics-qa.md), Stage 1 HOLD; CD-21…CD-28 are not started. CD-16 is automated coverage, not native CD-17 QA. CD-10 used an explicit dependency exception against
 committed RPC contracts/tests, not remote activation. Local controls are wired;
 production remote diagnostics are not enabled. Manual keyboard/focus QA is not claimed. The authoritative wire contract is
 [contract v1](../plan/code-diagnostics-contract.md). See [the implementation plan](../plan/code-diagnostics.md) for shared

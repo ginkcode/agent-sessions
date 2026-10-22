@@ -19,6 +19,12 @@ type attachment struct {
 	runs     map[string]*managedRun
 	events   [][]Event
 	gap      bool
+
+	// Live document lifecycles are owned by this attachment generation: revoke,
+	// detach and invalidation drop them. Closed identities are a bounded FIFO.
+	docs        map[string]*documentState
+	closedDocs  map[string]bool
+	closedOrder []string
 }
 
 // Manager owns one authenticated connection and its Supervisor and Trust. Close
@@ -35,6 +41,7 @@ type Manager struct {
 	projects    map[Project]bool // bounded connection-lifetime identity ledger
 	closed      bool
 	workers     sync.WaitGroup
+	provider    DocumentProvider // nil: live document operations are unsupported
 }
 
 func NewManager(connection string, trust *Trust, supervisor *Supervisor, limits ManagerLimits) (*Manager, error) {
@@ -229,6 +236,7 @@ func (m *Manager) Revoke(c Context) (Snapshot, error) {
 		return Snapshot{}, err
 	}
 	a.snapshot.Context.Generation = opaqueID()
+	m.releaseDocuments(a)
 	a.events = nil
 	a.gap = false
 	m.cancelAll(a)
@@ -259,6 +267,7 @@ func (m *Manager) Detach(c Context) error {
 	}
 	delete(m.attachments, c.AttachmentID)
 	m.cancelAll(a)
+	m.releaseDocuments(a)
 	return nil
 }
 
@@ -271,6 +280,7 @@ func (m *Manager) Close() {
 	for id, a := range m.attachments {
 		delete(m.attachments, id)
 		m.cancelAll(a)
+		m.releaseDocuments(a)
 	}
 	m.mu.Unlock()
 	m.trust.Close()
@@ -451,6 +461,11 @@ func (m *Manager) DeletePath(c Context, path string) error {
 		return err
 	}
 	m.cancelAll(a)
+	for id, d := range a.docs {
+		if d.path == path {
+			m.dropDocument(a, id)
+		}
+	}
 	for i := range a.snapshot.ResultSets {
 		s := &a.snapshot.ResultSets[i]
 		s.Diagnostics = slices.DeleteFunc(s.Diagnostics, func(d Diagnostic) bool { return d.Path == path })
@@ -480,6 +495,7 @@ func (m *Manager) commit(a *attachment) {
 	if a.snapshot.Sequence == maxSequence {
 		delete(m.attachments, a.snapshot.Context.AttachmentID)
 		m.cancelAll(a)
+		m.releaseDocuments(a)
 		return
 	}
 	a.snapshot.Sequence++

@@ -118,3 +118,47 @@ func TestCodeDiagnosticsCatalogFirst(t *testing.T) {
 	_, err := svc.AuthorizeCodeDiagnosticsRoot(context.Background(), "host", filepath.Join(t.TempDir(), "does-not-exist"))
 	requireDiagnosticCode(t, err, "unauthorized")
 }
+
+func TestCodeDiagnosticsDocumentsUnsupportedWithoutAdapters(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	catalog := scan.NewCatalog()
+	catalog.Reset([]model.SessionMeta{{Ref: model.SessionRef{Agent: model.AgentClaude, ID: "documents"}, CWD: dir, RepoRoot: dir}})
+	owner, err := newDiagnosticsOwner(t.TempDir(), "test-host")
+	if err != nil {
+		t.Fatal(err)
+	}
+	e := NewEngine(WithService(NewService(catalog, nil)), WithCacheEnabled(false))
+	e.codeDiagnostics = owner
+	go owner.events(e)
+	t.Cleanup(func() { _ = e.Close() })
+	attached, err := e.AttachCodeDiagnostics(ctx, dir, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := attached.Context
+	// No concrete adapter installs a provider: every operation is unsupported and
+	// starts nothing, with or without approval, and creates no document state.
+	_, err = e.OpenCodeDiagnosticDocument(ctx, c, "a.go", "d", 1, "package a", "")
+	requireDiagnosticCode(t, err, "unsupported")
+	_, err = e.ChangeCodeDiagnosticDocument(ctx, c, "d", 2, "x")
+	requireDiagnosticCode(t, err, "unsupported")
+	_, err = e.SaveCodeDiagnosticDocument(ctx, c, "d", 1, "r")
+	requireDiagnosticCode(t, err, "unsupported")
+	if _, err = e.CloseCodeDiagnosticDocument(ctx, c, "d"); err == nil {
+		t.Fatal("close of an unknown document succeeded")
+	}
+	foreign := c
+	foreign.AttachmentID = "other"
+	_, err = e.OpenCodeDiagnosticDocument(ctx, foreign, "a.go", "d", 1, "x", "")
+	requireDiagnosticCode(t, err, "staleContext")
+	canceled, cancel := context.WithCancel(ctx)
+	cancel()
+	_, err = e.OpenCodeDiagnosticDocument(canceled, c, "a.go", "d", 1, "x", "")
+	requireDiagnosticCode(t, err, "canceled")
+	if err := e.Close(); err != nil {
+		t.Fatal(err)
+	}
+	_, err = e.OpenCodeDiagnosticDocument(ctx, c, "a.go", "d", 1, "x", "")
+	requireDiagnosticCode(t, err, "disconnected")
+}

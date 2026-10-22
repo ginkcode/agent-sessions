@@ -48,3 +48,19 @@ func (u UnsupportedCodeDiagnostics) CancelCodeDiagnostics(context.Context, cd.Co
 func (u UnsupportedCodeDiagnostics) DetachCodeDiagnostics(context.Context, cd.Context) (CodeDiagnosticsAck, error) {
 	return CodeDiagnosticsAck{}, u.err()
 }
+
+func (u UnsupportedCodeDiagnostics) OpenCodeDiagnosticDocument(context.Context, cd.Context, string, string, int64, string, string) (CodeDiagnosticsDocument, error) {
+	return CodeDiagnosticsDocument{}, u.err()
+}
+
+func (u UnsupportedCodeDiagnostics) ChangeCodeDiagnosticDocument(context.Context, cd.Context, string, int64, string) (CodeDiagnosticsDocument, error) {
+	return CodeDiagnosticsDocument{}, u.err()
+}
+
+func (u UnsupportedCodeDiagnostics) SaveCodeDiagnosticDocument(context.Context, cd.Context, string, int64, string) (CodeDiagnosticsDocument, error) {
+	return CodeDiagnosticsDocument{}, u.err()
+}
+
+func (u UnsupportedCodeDiagnostics) CloseCodeDiagnosticDocument(context.Context, cd.Context, string) (CodeDiagnosticsDocument, error) {
+	return CodeDiagnosticsDocument{}, u.err()
+}

@@ -38,3 +38,19 @@ func (u offlineBackend) CancelCodeDiagnostics(context.Context, cd.Context, []cd.
 func (u offlineBackend) DetachCodeDiagnostics(context.Context, cd.Context) (engine.CodeDiagnosticsAck, error) {
 	return engine.CodeDiagnosticsAck{}, &cd.Error{Code: "disconnected", Message: "Selected host is disconnected"}
 }
+
+func (u offlineBackend) OpenCodeDiagnosticDocument(context.Context, cd.Context, string, string, int64, string, string) (engine.CodeDiagnosticsDocument, error) {
+	return engine.CodeDiagnosticsDocument{}, &cd.Error{Code: "disconnected", Message: "Selected host is disconnected"}
+}
+
+func (u offlineBackend) ChangeCodeDiagnosticDocument(context.Context, cd.Context, string, int64, string) (engine.CodeDiagnosticsDocument, error) {
+	return engine.CodeDiagnosticsDocument{}, &cd.Error{Code: "disconnected", Message: "Selected host is disconnected"}
+}
+
+func (u offlineBackend) SaveCodeDiagnosticDocument(context.Context, cd.Context, string, int64, string) (engine.CodeDiagnosticsDocument, error) {
+	return engine.CodeDiagnosticsDocument{}, &cd.Error{Code: "disconnected", Message: "Selected host is disconnected"}
+}
+
+func (u offlineBackend) CloseCodeDiagnosticDocument(context.Context, cd.Context, string) (engine.CodeDiagnosticsDocument, error) {
+	return engine.CodeDiagnosticsDocument{}, &cd.Error{Code: "disconnected", Message: "Selected host is disconnected"}
+}
