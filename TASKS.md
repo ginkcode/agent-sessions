@@ -262,13 +262,18 @@ gated on the M8-08 named-pipe credential channel.
 
 ## Follow-up — Go to File code diagnostics (proposed)
 
-Progress: **19/28 complete**. CD-01…CD-08, CD-10…CD-16 and CD-18…CD-21 are ✅ done; CD-09 is ⛔ blocked on authenticated remote identity activation; CD-17 is 🟡 partial/blocked (non-GUI QA preparation only; Stage 1 HOLD); CD-22 is 🟡 partial (gopls spike/adapter seam with automated tests; no production route or manual QA, so not counted); CD-23 is 🟡 partial/blocked (TypeScript adapter seam, contained discovery and synthetic tests; no host-approved LSP server verified, not counted); CD-24 is 🟡 partial/blocked (Svelte adapter seam, ownership policy and synthetic tests; no Svelte language server verified, not counted); CD-25 is 🟡 partial (revision reconciliation and fake-session guards; external rename/delete reconciliation incomplete, not counted); CD-26 is 🟡 partial (deterministic fake lifecycle integration; live retention/ownership/status gaps and manual UI smoke remain, not counted); CD-27 is 🟡 partial/blocked ([live QA matrix](docs/plan/code-diagnostics-live-qa.md), focused fake preflight only; every live cell blocked/untested, Stage 2 HOLD, not counted); CD-28 is ⬜ not started. CD-16 proves deterministic automated seams only, not native CD-17 QA or production remote activation.
+Progress: **19/28 complete**. CD-01…CD-08, CD-10…CD-16 and CD-18…CD-21 are ✅ done; CD-09 is ⛔ blocked on authenticated remote identity activation; CD-17 is 🟡 partial/blocked (non-GUI QA preparation only; Stage 1 HOLD); CD-22 is 🟡 partial (gopls spike/adapter seam with automated tests; no production route or manual QA, so not counted); CD-23 is 🟡 partial/blocked (TypeScript adapter seam, contained discovery and synthetic tests; no host-approved LSP server verified, not counted); CD-24 is 🟡 partial/blocked (Svelte adapter seam, ownership policy and synthetic tests; no Svelte language server verified, not counted); CD-25 is 🟡 partial (revision reconciliation and fake-session guards; external rename/delete reconciliation incomplete, not counted); CD-26 is 🟡 partial (deterministic fake lifecycle integration; live retention/ownership/status gaps and manual UI smoke remain, not counted); CD-27 is 🟡 partial/blocked ([live QA matrix](docs/plan/code-diagnostics-live-qa.md), focused fake preflight only; every live cell blocked/untested, Stage 2 HOLD, not counted); CD-28 is ⛔ blocked: Step 1 release prerequisites are unmet (both gates HOLD), no dependency exception granted; no automation implemented/enabled, off by default. CD-16 proves deterministic automated seams only, not native CD-17 QA or production remote activation.
 CD-10 explicitly proceeded locally against committed RPC contracts/tests; this dependency exception does not complete CD-09 or activate production remotes.
 No user-facing diagnostics capability is enabled yet. Detailed estimates, dependencies,
 contracts, and acceptance criteria are in
 [docs/plan/code-diagnostics.md](docs/plan/code-diagnostics.md). Individual task
 briefs and acceptance checklists are in [docs/tasks](docs/tasks/README.md).
 These follow-up tasks are not included in the historical milestone totals above.
+Actual CD totals: **28 = 19 complete + 7 partial + 2 blocked + 0 not started**
+(partial: CD-17, CD-22…CD-27; blocked: CD-09, CD-28).
+See the [≤4h remaining-work backlog](docs/tasks/code-diagnostics-remaining.md) for
+safe independent coding versus approval/tool/environment blockers; no installs,
+activation or automation are authorized by that split.
 
 | IDs | St | Scope | Release gate |
 |---|---|---|---|
@@ -291,14 +296,15 @@ These follow-up tasks are not included in the historical milestone totals above.
 | [CD-17](docs/tasks/CD-17.md) | 🟡 | Partial/blocked: non-GUI inventory/build/runtime preflight and [blocked QA matrix](docs/plan/code-diagnostics-qa.md) | Stage 1 HOLD; native checks unperformed; macOS link preflight failed; CD-09 remotes blocked |
 | [CD-18](docs/tasks/CD-18.md) | ✅ | Bounded LSP Content-Length stdio transport: framing, correlation, cancel/timeout, queues, close, fake-server tests; [evidence](docs/tasks/CD-18.md#evidence-2026-10-22) | Transport only: no process start, adapters or trust bypass; Stage1 HOLD/CD-17 and CD-09 do not block it |
 | [CD-19](docs/tasks/CD-19.md) | ✅ | Safe LSP session lifecycle: trust/known-dir gate, initialize/initialized, UTF-16/sync negotiation, deny-by-default server requests, idle grace/limits, shutdown/kill, capped restarts; [evidence](docs/tasks/CD-19.md#evidence-2026-10-22) | Fake server/process/clock only: no adapters, document sync or live capability; file watchers rejected (`unwatched`); Stage1 HOLD/CD-17 and CD-09 exceptions do not block local lifecycle |
+| [CD-20](docs/tasks/CD-20.md) | ✅ | Bounded versioned live-document operations across Backend/App/RPC | Automated transport/contract evidence only; no production live activation |
+| [CD-21](docs/tasks/CD-21.md) | ✅ | Frontend displayed-document lifecycle bridge | Automated fake API/store evidence; inert without unadvertised live capability |
 | [CD-22](docs/tasks/CD-22.md) | 🟡 | gopls v0.24.0 spike/decision ([doc](docs/plan/code-diagnostics-gopls.md)), contained Go workspace detection, availability, publishDiagnostics normalization and version guards; fixtures + fake-server tests | Partial: not wired to a production route, `liveCodeDiagnostics` still unadvertised, no manual draft QA |
 | [CD-23](docs/tasks/CD-23.md) | 🟡 | TypeScript adapter seam, package discovery, ownership, availability, shared normalizer; [doc](docs/plan/code-diagnostics-typescript.md) | Partial/blocked: no approved LSP server installed (observed only vtsls 0.3.0 in Zed's private cache, unversioned pushes); synthetic fake-server tests; not wired, `liveCodeDiagnostics` unadvertised |
 | [CD-24](docs/tasks/CD-24.md) | 🟡 | Svelte LS adapter seam, package detection, Svelte/TS ownership; [doc](docs/plan/code-diagnostics-svelte.md) | Partial/blocked: none verified (no svelte-language-server found on PATH, project or Zed cache); synthetic tests; not wired, `liveCodeDiagnostics` unadvertised |
 | [CD-25](docs/tasks/CD-25.md) | 🟡 | Reopen/refresh/pre-check saved revision reconciliation; draft/undo preservation; fake-session idle/publication guards; explicit unwatched stale fallback | Partial: external rename/delete discovery and production wiring incomplete; no manual QA |
 | [CD-26](docs/tasks/CD-26.md) | 🟡 | Deterministic framed fake-server lifecycle and real frontend store integration | Partial: live retention/ownership/status gaps, exhaustive cleanup and manual UI smoke remain; not production integration |
 | [CD-27](docs/tasks/CD-27.md) | 🟡 | Partial/blocked: focused fake preflight and [live QA matrix](docs/plan/code-diagnostics-live-qa.md); no real-server/native/remote runs or measurements | Stage 2 HOLD; production wiring/consumers, identity/bounds/status, approved tools and native/remote prerequisites remain; not counted |
-| CD-27 | ⬜ | Real-server QA | Stage 2: live opened-file diagnostics for approved projects |
-| CD-28 | ⬜ | Opt-in automatic project checks on open/save | Stage 3: background project coverage without blocking the dialog |
+| [CD-28](docs/tasks/CD-28.md) | ⛔ | Blocked: release prerequisite review only; all acceptance unchecked | [Stage 1 HOLD](docs/plan/code-diagnostics-qa.md#release-decision-and-remaining-work) and [Stage 2 HOLD](docs/plan/code-diagnostics-live-qa.md#release-decision); no dependency exception; automation absent/off-default |
 
 **Critical path to the MVP:**
 

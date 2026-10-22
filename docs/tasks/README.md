@@ -18,13 +18,24 @@ CD-19: safe LSP session lifecycle, fake server/process/clock only;
 CD-20: bounded versioned document operations across backend transports;
 CD-21: frontend document lifecycle bridge, automated tests only).
 CD-09 remains blocked on authenticated production remote identity activation;
-CD-17 is partial/blocked: [non-GUI preflight and blocked native matrix](../plan/code-diagnostics-qa.md), Stage 1 HOLD; CD-21 (frontend document lifecycle bridge) is complete with automated tests only; CD-22 (gopls adapter) is partial: spike/adapter seam with automated tests, no production route or manual QA ([decision doc](../plan/code-diagnostics-gopls.md)); CD-23 (TypeScript adapter) is partial/blocked: adapter seam and synthetic tests, no host-approved LSP server verified ([doc](../plan/code-diagnostics-typescript.md)); CD-24 (Svelte adapter) is partial/blocked: adapter seam, ownership policy and synthetic tests, no Svelte language server verified ([doc](../plan/code-diagnostics-svelte.md)); CD-25 is partial (read-only revision reconciliation and fake-session guards; external rename/delete reconciliation and production wiring incomplete, not counted); CD-26 is partial ([deterministic fake lifecycle integration and blockers](CD-26.md); live retention/ownership/status gaps and manual UI smoke remain, not counted); CD-27 is partial/blocked ([live QA matrix](../plan/code-diagnostics-live-qa.md), focused fake preflight only; all live cells blocked/untested, Stage 2 HOLD, not counted); CD-28 is not started. CD-16 is automated coverage, not native CD-17 QA. CD-10 used an explicit dependency exception against
+CD-17 is partial/blocked: [non-GUI preflight and blocked native matrix](../plan/code-diagnostics-qa.md), Stage 1 HOLD; CD-21 (frontend document lifecycle bridge) is complete with automated tests only; CD-22 (gopls adapter) is partial: spike/adapter seam with automated tests, no production route or manual QA ([decision doc](../plan/code-diagnostics-gopls.md)); CD-23 (TypeScript adapter) is partial/blocked: adapter seam and synthetic tests, no host-approved LSP server verified ([doc](../plan/code-diagnostics-typescript.md)); CD-24 (Svelte adapter) is partial/blocked: adapter seam, ownership policy and synthetic tests, no Svelte language server verified ([doc](../plan/code-diagnostics-svelte.md)); CD-25 is partial (read-only revision reconciliation and fake-session guards; external rename/delete reconciliation and production wiring incomplete, not counted); CD-26 is partial ([deterministic fake lifecycle integration and blockers](CD-26.md); live retention/ownership/status gaps and manual UI smoke remain, not counted); CD-27 is partial/blocked ([live QA matrix](../plan/code-diagnostics-live-qa.md), focused fake preflight only; all live cells blocked/untested, Stage 2 HOLD, not counted); CD-28 is blocked: Step 1 prerequisites unmet, both release gates HOLD, no dependency exception; no automation implemented/enabled, off by default. CD-16 is automated coverage, not native CD-17 QA. CD-10 used an explicit dependency exception against
 committed RPC contracts/tests, not remote activation. Local controls are wired;
 production remote diagnostics are not enabled. Manual keyboard/focus QA is not claimed. The authoritative wire contract is
 [contract v1](../plan/code-diagnostics-contract.md). See [the implementation plan](../plan/code-diagnostics.md) for shared
 behavior, architecture, trust rules, and release criteria, and
 [the task tracker](../../TASKS.md#follow-up--go-to-file-code-diagnostics-proposed)
 for feature status.
+
+## Remaining work and totals
+
+[Actionable remaining-work backlog](code-diagnostics-remaining.md) splits CD-22…CD-26
+acceptance gaps into ≤4h packages, followed by tool/native gates and automation last.
+It distinguishes independent offline coding from approval/tool/environment blockers;
+no installs, activation or dependency exception are authorized.
+
+Actual parent totals: **28 tasks = 19 complete + 7 partial + 2 blocked + 0 not started**.
+The partial parents are CD-17 and CD-22…CD-27 (including partial/blocked QA/tool work);
+the blocked parents are CD-09 and CD-28. Packages do not change the denominator.
 
 ## How to use these briefs
 
@@ -117,7 +128,7 @@ not a promise that the entire workspace has been checked.
 
 | Task | Detail | Estimate |
 |---|---|---|
-| [CD-28](CD-28.md) | Opt-in background project checks on open/save | 4 h |
+| [CD-28](CD-28.md) ⛔ Blocked | Both release gates HOLD; no dependency exception; automation absent/off-default, all acceptance unchecked | 4 h |
 
 Additional languages and checker adapters require separately scoped tasks after
 feedback from the first two stages; they are not included in CD-28.
