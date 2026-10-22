@@ -1,7 +1,9 @@
 # Go to File — project code diagnostics
 
-Status: foundation work started. CD-01 is complete (contract and tested fixtures);
-CD-02…CD-28 are not started. No user-facing diagnostics capability is enabled.
+Status: foundation work started. CD-01 and CD-02 are complete (contract fixtures,
+backend trust/grants and contained paths): **2/28 complete**. CD-03…CD-28 are not
+started. No user-facing diagnostics capability is enabled. Trust policy and
+approval copy: [CD-02 addendum](code-diagnostics-trust.md).
 
 Authoritative shared contracts: [code-diagnostics-contract.md](code-diagnostics-contract.md).
 Operation names and wire semantics there supersede provisional examples below.

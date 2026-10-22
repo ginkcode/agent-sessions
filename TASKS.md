@@ -262,7 +262,7 @@ gated on the M8-08 named-pipe credential channel.
 
 ## Follow-up — Go to File code diagnostics (proposed)
 
-Progress: **1/28 complete**. CD-01 is ✅ done; CD-02…CD-28 are ⬜ not started.
+Progress: **2/28 complete**. CD-01 and CD-02 are ✅ done; CD-03…CD-28 are ⬜ not started.
 No user-facing diagnostics capability is enabled yet. Detailed estimates, dependencies,
 contracts, and acceptance criteria are in
 [docs/plan/code-diagnostics.md](docs/plan/code-diagnostics.md). Individual task
@@ -272,7 +272,8 @@ These follow-up tasks are not included in the historical milestone totals above.
 | IDs | St | Scope | Release gate |
 |---|---|---|---|
 | [CD-01](docs/tasks/CD-01.md) | ✅ | Authoritative contract v1, synthetic fixtures, validation/round-trip tests | Full Go suite, targeted race tests, and package lint pass |
-| CD-02…CD-10 | ⬜ | Project trust, checker execution/adapters, backend/RPC, frontend store | Authorized, bounded, host-local checks with race-safe result delivery |
+| CD-02 | ✅ | Backend project trust, grants, revocation and contained paths | [Trust policy and approval copy](docs/plan/code-diagnostics-trust.md); focused race tests |
+| CD-03…CD-10 | ⬜ | Checker execution/adapters, backend/RPC, frontend store | Authorized, bounded, host-local checks with race-safe result delivery |
 | CD-11…CD-17 | ⬜ | Approval/check controls, Problems panel, tree badges, viewer/editor markers, integration tests and QA | Stage 1: explicit project checks; no automatic tool execution on open |
 | CD-18…CD-27 | ⬜ | LSP transport/lifecycle, document sync, Go/TypeScript/Svelte adapters, external-change reconciliation and QA | Stage 2: live opened-file diagnostics for approved projects |
 | CD-28 | ⬜ | Opt-in automatic project checks on open/save | Stage 3: background project coverage without blocking the dialog |
