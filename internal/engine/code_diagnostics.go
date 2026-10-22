@@ -58,6 +58,8 @@ type diagnosticsOwner struct {
 	stop         chan struct{}
 	done         chan struct{}
 	workers      sync.WaitGroup
+	// tick replaces the 25ms event pump ticker only for injected fixtures.
+	tick <-chan time.Time
 }
 
 func diagnosticError(code, message string) error { return &cd.Error{Code: code, Message: message} }
@@ -104,13 +106,29 @@ func (e *Engine) diagnostics(ctx context.Context) (*diagnosticsOwner, error) {
 	if roots.Config == "" {
 		roots, _ = paths.Default()
 	}
-	host, err := localDiagnosticsIdentity(roots.Config)
-	if err != nil {
-		return nil, err
-	}
-	owner, err := newDiagnosticsOwner(roots.Config, host)
-	if err != nil {
-		return nil, err
+	var (
+		host  string
+		owner *diagnosticsOwner
+		err   error
+	)
+	if in := e.liveInjection; in != nil {
+		host = in.Host
+		if host == "" {
+			if host, err = localDiagnosticsIdentity(roots.Config); err != nil {
+				return nil, err
+			}
+		}
+		if owner, err = newDiagnosticsOwnerWithLive(roots.Config, host, in.Discover, in.Session); err != nil {
+			return nil, err
+		}
+		owner.tick = in.Tick
+	} else {
+		if host, err = localDiagnosticsIdentity(roots.Config); err != nil {
+			return nil, err
+		}
+		if owner, err = newDiagnosticsOwner(roots.Config, host); err != nil {
+			return nil, err
+		}
 	}
 	e.codeDiagnostics = owner
 	go owner.events(e)
@@ -119,13 +137,17 @@ func (e *Engine) diagnostics(ctx context.Context) (*diagnosticsOwner, error) {
 
 func (o *diagnosticsOwner) events(e *Engine) {
 	defer close(o.done)
-	ticker := time.NewTicker(25 * time.Millisecond)
-	defer ticker.Stop()
+	ticks := o.tick
+	if ticks == nil {
+		ticker := time.NewTicker(25 * time.Millisecond)
+		defer ticker.Stop()
+		ticks = ticker.C
+	}
 	for {
 		select {
 		case <-o.stop:
 			return
-		case <-ticker.C:
+		case <-ticks:
 			if o.live != nil {
 				o.live.Refresh()
 			}

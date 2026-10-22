@@ -1,0 +1,2185 @@
+{
+ "host": "ssh:37173cacd228a5a23934a24b28d58a6b2ce6a6371beb40895bc1d1438831eb5d",
+ "root": "/private/var/folders/2n/kw94cjxs0qj_s00vcg118jzh0000gn/T/TestRouteRecordFrontendFixture1242098997/001",
+ "steps": [
+  {
+   "name": "attach",
+   "response": {
+    "project": {
+     "hostId": "ssh:37173cacd228a5a23934a24b28d58a6b2ce6a6371beb40895bc1d1438831eb5d",
+     "root": "/private/var/folders/2n/kw94cjxs0qj_s00vcg118jzh0000gn/T/TestRouteRecordFrontendFixture1242098997/001"
+    },
+    "context": {
+     "connectionId": "6c201722a4426e1ea5032bd09f6cca1c",
+     "attachmentId": "36ccfec989e3f59284289df1b4c3c902",
+     "generation": "2a36f55a7c62aea50ea98f03dd7b7c19"
+    },
+    "snapshot": {
+     "contractVersion": 1,
+     "context": {
+      "connectionId": "6c201722a4426e1ea5032bd09f6cca1c",
+      "attachmentId": "36ccfec989e3f59284289df1b4c3c902",
+      "generation": "2a36f55a7c62aea50ea98f03dd7b7c19"
+     },
+     "sequence": 1,
+     "approval": {
+      "state": "required"
+     },
+     "providers": [
+      {
+       "providerId": "go-vet",
+       "availability": "unsupported",
+       "phase": "idle",
+       "coverage": {
+        "kind": "savedProject",
+        "roots": [],
+        "partial": true,
+        "externalChanges": "unwatched"
+       },
+       "freshness": "uncertain",
+       "truncated": false
+      },
+      {
+       "providerId": "gopls",
+       "availability": "approvalRequired",
+       "phase": "idle",
+       "coverage": {
+        "kind": "openedDocuments",
+        "roots": [
+         ""
+        ],
+        "partial": true,
+        "externalChanges": "unwatched"
+       },
+       "freshness": "uncertain",
+       "truncated": false
+      },
+      {
+       "providerId": "svelte-check",
+       "availability": "unsupported",
+       "phase": "idle",
+       "coverage": {
+        "kind": "savedProject",
+        "roots": [],
+        "partial": true,
+        "externalChanges": "unwatched"
+       },
+       "freshness": "uncertain",
+       "truncated": false
+      },
+      {
+       "providerId": "typescript",
+       "availability": "approvalRequired",
+       "phase": "idle",
+       "coverage": {
+        "kind": "openedDocuments",
+        "roots": [
+         ""
+        ],
+        "partial": true,
+        "externalChanges": "unwatched"
+       },
+       "freshness": "uncertain",
+       "truncated": false
+      }
+     ],
+     "resultSets": [],
+     "proposal": {
+      "fingerprint": "sha256-v1:9a0e590c2f1dcf6d774c76f8d44ac3fd3bdb4a790a4e53e984a07c9e65078067",
+      "tools": [
+       {
+        "providerId": "gopls",
+        "executable": "/private/var/folders/2n/kw94cjxs0qj_s00vcg118jzh0000gn/T/TestRouteRecordFrontendFixture1242098997/001/gopls-bin",
+        "configPaths": []
+       },
+       {
+        "providerId": "typescript",
+        "executable": "/private/var/folders/2n/kw94cjxs0qj_s00vcg118jzh0000gn/T/TestRouteRecordFrontendFixture1242098997/001/ts-bin",
+        "configPaths": []
+       }
+      ]
+     }
+    }
+   },
+   "events": [
+    {
+     "contractVersion": 1,
+     "context": {
+      "connectionId": "6c201722a4426e1ea5032bd09f6cca1c",
+      "attachmentId": "36ccfec989e3f59284289df1b4c3c902",
+      "generation": "2a36f55a7c62aea50ea98f03dd7b7c19"
+     },
+     "sequence": 1,
+     "updateId": "539cc93f69940f9610c9cd4311d3cda2",
+     "partIndex": 0,
+     "partCount": 1,
+     "snapshot": {
+      "contractVersion": 1,
+      "context": {
+       "connectionId": "6c201722a4426e1ea5032bd09f6cca1c",
+       "attachmentId": "36ccfec989e3f59284289df1b4c3c902",
+       "generation": "2a36f55a7c62aea50ea98f03dd7b7c19"
+      },
+      "sequence": 1,
+      "approval": {
+       "state": "required"
+      },
+      "providers": [
+       {
+        "providerId": "go-vet",
+        "availability": "unsupported",
+        "phase": "idle",
+        "coverage": {
+         "kind": "savedProject",
+         "roots": [],
+         "partial": true,
+         "externalChanges": "unwatched"
+        },
+        "freshness": "uncertain",
+        "truncated": false
+       },
+       {
+        "providerId": "gopls",
+        "availability": "approvalRequired",
+        "phase": "idle",
+        "coverage": {
+         "kind": "openedDocuments",
+         "roots": [
+          ""
+         ],
+         "partial": true,
+         "externalChanges": "unwatched"
+        },
+        "freshness": "uncertain",
+        "truncated": false
+       },
+       {
+        "providerId": "svelte-check",
+        "availability": "unsupported",
+        "phase": "idle",
+        "coverage": {
+         "kind": "savedProject",
+         "roots": [],
+         "partial": true,
+         "externalChanges": "unwatched"
+        },
+        "freshness": "uncertain",
+        "truncated": false
+       },
+       {
+        "providerId": "typescript",
+        "availability": "approvalRequired",
+        "phase": "idle",
+        "coverage": {
+         "kind": "openedDocuments",
+         "roots": [
+          ""
+         ],
+         "partial": true,
+         "externalChanges": "unwatched"
+        },
+        "freshness": "uncertain",
+        "truncated": false
+       }
+      ],
+      "resultSets": [],
+      "proposal": {
+       "fingerprint": "sha256-v1:9a0e590c2f1dcf6d774c76f8d44ac3fd3bdb4a790a4e53e984a07c9e65078067",
+       "tools": [
+        {
+         "providerId": "gopls",
+         "executable": "/private/var/folders/2n/kw94cjxs0qj_s00vcg118jzh0000gn/T/TestRouteRecordFrontendFixture1242098997/001/gopls-bin",
+         "configPaths": []
+        },
+        {
+         "providerId": "typescript",
+         "executable": "/private/var/folders/2n/kw94cjxs0qj_s00vcg118jzh0000gn/T/TestRouteRecordFrontendFixture1242098997/001/ts-bin",
+         "configPaths": []
+        }
+       ]
+      }
+     }
+    }
+   ]
+  },
+  {
+   "name": "openDenied",
+   "error": "approvalRequired",
+   "events": []
+  },
+  {
+   "name": "approve",
+   "response": {
+    "contractVersion": 1,
+    "context": {
+     "connectionId": "6c201722a4426e1ea5032bd09f6cca1c",
+     "attachmentId": "36ccfec989e3f59284289df1b4c3c902",
+     "generation": "2a36f55a7c62aea50ea98f03dd7b7c19"
+    },
+    "sequence": 2,
+    "approval": {
+     "state": "approved",
+     "mode": "session",
+     "fingerprint": "sha256-v1:9a0e590c2f1dcf6d774c76f8d44ac3fd3bdb4a790a4e53e984a07c9e65078067"
+    },
+    "providers": [
+     {
+      "providerId": "go-vet",
+      "availability": "unsupported",
+      "phase": "idle",
+      "coverage": {
+       "kind": "savedProject",
+       "roots": [],
+       "partial": true,
+       "externalChanges": "unwatched"
+      },
+      "freshness": "uncertain",
+      "truncated": false
+     },
+     {
+      "providerId": "gopls",
+      "availability": "available",
+      "phase": "idle",
+      "coverage": {
+       "kind": "openedDocuments",
+       "roots": [
+        ""
+       ],
+       "partial": true,
+       "externalChanges": "unwatched"
+      },
+      "freshness": "uncertain",
+      "truncated": false
+     },
+     {
+      "providerId": "svelte-check",
+      "availability": "unsupported",
+      "phase": "idle",
+      "coverage": {
+       "kind": "savedProject",
+       "roots": [],
+       "partial": true,
+       "externalChanges": "unwatched"
+      },
+      "freshness": "uncertain",
+      "truncated": false
+     },
+     {
+      "providerId": "typescript",
+      "availability": "available",
+      "phase": "idle",
+      "coverage": {
+       "kind": "openedDocuments",
+       "roots": [
+        ""
+       ],
+       "partial": true,
+       "externalChanges": "unwatched"
+      },
+      "freshness": "uncertain",
+      "truncated": false
+     }
+    ],
+    "resultSets": [],
+    "proposal": {
+     "fingerprint": "sha256-v1:9a0e590c2f1dcf6d774c76f8d44ac3fd3bdb4a790a4e53e984a07c9e65078067",
+     "tools": [
+      {
+       "providerId": "gopls",
+       "executable": "/private/var/folders/2n/kw94cjxs0qj_s00vcg118jzh0000gn/T/TestRouteRecordFrontendFixture1242098997/001/gopls-bin",
+       "configPaths": []
+      },
+      {
+       "providerId": "typescript",
+       "executable": "/private/var/folders/2n/kw94cjxs0qj_s00vcg118jzh0000gn/T/TestRouteRecordFrontendFixture1242098997/001/ts-bin",
+       "configPaths": []
+      }
+     ]
+    }
+   },
+   "events": [
+    {
+     "contractVersion": 1,
+     "context": {
+      "connectionId": "6c201722a4426e1ea5032bd09f6cca1c",
+      "attachmentId": "36ccfec989e3f59284289df1b4c3c902",
+      "generation": "2a36f55a7c62aea50ea98f03dd7b7c19"
+     },
+     "sequence": 2,
+     "updateId": "470ba1690b9c5b3e64883b19589d25e4",
+     "partIndex": 0,
+     "partCount": 1,
+     "snapshot": {
+      "contractVersion": 1,
+      "context": {
+       "connectionId": "6c201722a4426e1ea5032bd09f6cca1c",
+       "attachmentId": "36ccfec989e3f59284289df1b4c3c902",
+       "generation": "2a36f55a7c62aea50ea98f03dd7b7c19"
+      },
+      "sequence": 2,
+      "approval": {
+       "state": "approved",
+       "mode": "session",
+       "fingerprint": "sha256-v1:9a0e590c2f1dcf6d774c76f8d44ac3fd3bdb4a790a4e53e984a07c9e65078067"
+      },
+      "providers": [
+       {
+        "providerId": "go-vet",
+        "availability": "unsupported",
+        "phase": "idle",
+        "coverage": {
+         "kind": "savedProject",
+         "roots": [],
+         "partial": true,
+         "externalChanges": "unwatched"
+        },
+        "freshness": "uncertain",
+        "truncated": false
+       },
+       {
+        "providerId": "gopls",
+        "availability": "available",
+        "phase": "idle",
+        "coverage": {
+         "kind": "openedDocuments",
+         "roots": [
+          ""
+         ],
+         "partial": true,
+         "externalChanges": "unwatched"
+        },
+        "freshness": "uncertain",
+        "truncated": false
+       },
+       {
+        "providerId": "svelte-check",
+        "availability": "unsupported",
+        "phase": "idle",
+        "coverage": {
+         "kind": "savedProject",
+         "roots": [],
+         "partial": true,
+         "externalChanges": "unwatched"
+        },
+        "freshness": "uncertain",
+        "truncated": false
+       },
+       {
+        "providerId": "typescript",
+        "availability": "available",
+        "phase": "idle",
+        "coverage": {
+         "kind": "openedDocuments",
+         "roots": [
+          ""
+         ],
+         "partial": true,
+         "externalChanges": "unwatched"
+        },
+        "freshness": "uncertain",
+        "truncated": false
+       }
+      ],
+      "resultSets": [],
+      "proposal": {
+       "fingerprint": "sha256-v1:9a0e590c2f1dcf6d774c76f8d44ac3fd3bdb4a790a4e53e984a07c9e65078067",
+       "tools": [
+        {
+         "providerId": "gopls",
+         "executable": "/private/var/folders/2n/kw94cjxs0qj_s00vcg118jzh0000gn/T/TestRouteRecordFrontendFixture1242098997/001/gopls-bin",
+         "configPaths": []
+        },
+        {
+         "providerId": "typescript",
+         "executable": "/private/var/folders/2n/kw94cjxs0qj_s00vcg118jzh0000gn/T/TestRouteRecordFrontendFixture1242098997/001/ts-bin",
+         "configPaths": []
+        }
+       ]
+      }
+     }
+    }
+   ]
+  },
+  {
+   "name": "open",
+   "response": {
+    "context": {
+     "connectionId": "6c201722a4426e1ea5032bd09f6cca1c",
+     "attachmentId": "36ccfec989e3f59284289df1b4c3c902",
+     "generation": "2a36f55a7c62aea50ea98f03dd7b7c19"
+    },
+    "documentId": "da",
+    "version": 1
+   },
+   "events": [
+    {
+     "contractVersion": 1,
+     "context": {
+      "connectionId": "6c201722a4426e1ea5032bd09f6cca1c",
+      "attachmentId": "36ccfec989e3f59284289df1b4c3c902",
+      "generation": "2a36f55a7c62aea50ea98f03dd7b7c19"
+     },
+     "sequence": 3,
+     "updateId": "76b47a6c739ecc2e1c92cd0e222e5867",
+     "partIndex": 0,
+     "partCount": 1,
+     "snapshot": {
+      "contractVersion": 1,
+      "context": {
+       "connectionId": "6c201722a4426e1ea5032bd09f6cca1c",
+       "attachmentId": "36ccfec989e3f59284289df1b4c3c902",
+       "generation": "2a36f55a7c62aea50ea98f03dd7b7c19"
+      },
+      "sequence": 3,
+      "approval": {
+       "state": "approved",
+       "mode": "session",
+       "fingerprint": "sha256-v1:9a0e590c2f1dcf6d774c76f8d44ac3fd3bdb4a790a4e53e984a07c9e65078067"
+      },
+      "providers": [
+       {
+        "providerId": "go-vet",
+        "availability": "unsupported",
+        "phase": "idle",
+        "coverage": {
+         "kind": "savedProject",
+         "roots": [],
+         "partial": true,
+         "externalChanges": "unwatched"
+        },
+        "freshness": "uncertain",
+        "truncated": false
+       },
+       {
+        "providerId": "gopls",
+        "availability": "available",
+        "phase": "idle",
+        "coverage": {
+         "kind": "openedDocuments",
+         "roots": [
+          ""
+         ],
+         "partial": true,
+         "externalChanges": "unwatched"
+        },
+        "freshness": "uncertain",
+        "truncated": false,
+        "notice": "Diagnostics cover opened documents only; external changes are unwatched."
+       },
+       {
+        "providerId": "svelte-check",
+        "availability": "unsupported",
+        "phase": "idle",
+        "coverage": {
+         "kind": "savedProject",
+         "roots": [],
+         "partial": true,
+         "externalChanges": "unwatched"
+        },
+        "freshness": "uncertain",
+        "truncated": false
+       },
+       {
+        "providerId": "typescript",
+        "availability": "available",
+        "phase": "idle",
+        "coverage": {
+         "kind": "openedDocuments",
+         "roots": [
+          ""
+         ],
+         "partial": true,
+         "externalChanges": "unwatched"
+        },
+        "freshness": "uncertain",
+        "truncated": false
+       }
+      ],
+      "resultSets": [],
+      "proposal": {
+       "fingerprint": "sha256-v1:9a0e590c2f1dcf6d774c76f8d44ac3fd3bdb4a790a4e53e984a07c9e65078067",
+       "tools": [
+        {
+         "providerId": "gopls",
+         "executable": "/private/var/folders/2n/kw94cjxs0qj_s00vcg118jzh0000gn/T/TestRouteRecordFrontendFixture1242098997/001/gopls-bin",
+         "configPaths": []
+        },
+        {
+         "providerId": "typescript",
+         "executable": "/private/var/folders/2n/kw94cjxs0qj_s00vcg118jzh0000gn/T/TestRouteRecordFrontendFixture1242098997/001/ts-bin",
+         "configPaths": []
+        }
+       ]
+      }
+     }
+    }
+   ]
+  },
+  {
+   "name": "openSecond",
+   "events": [
+    {
+     "contractVersion": 1,
+     "context": {
+      "connectionId": "6c201722a4426e1ea5032bd09f6cca1c",
+      "attachmentId": "36ccfec989e3f59284289df1b4c3c902",
+      "generation": "2a36f55a7c62aea50ea98f03dd7b7c19"
+     },
+     "sequence": 4,
+     "updateId": "61ff95313087617037af05cca7806b6e",
+     "partIndex": 0,
+     "partCount": 1,
+     "snapshot": {
+      "contractVersion": 1,
+      "context": {
+       "connectionId": "6c201722a4426e1ea5032bd09f6cca1c",
+       "attachmentId": "36ccfec989e3f59284289df1b4c3c902",
+       "generation": "2a36f55a7c62aea50ea98f03dd7b7c19"
+      },
+      "sequence": 4,
+      "approval": {
+       "state": "approved",
+       "mode": "session",
+       "fingerprint": "sha256-v1:9a0e590c2f1dcf6d774c76f8d44ac3fd3bdb4a790a4e53e984a07c9e65078067"
+      },
+      "providers": [
+       {
+        "providerId": "go-vet",
+        "availability": "unsupported",
+        "phase": "idle",
+        "coverage": {
+         "kind": "savedProject",
+         "roots": [],
+         "partial": true,
+         "externalChanges": "unwatched"
+        },
+        "freshness": "uncertain",
+        "truncated": false
+       },
+       {
+        "providerId": "gopls",
+        "availability": "available",
+        "phase": "idle",
+        "coverage": {
+         "kind": "openedDocuments",
+         "roots": [
+          ""
+         ],
+         "partial": true,
+         "externalChanges": "unwatched"
+        },
+        "freshness": "uncertain",
+        "truncated": false,
+        "notice": "Diagnostics cover opened documents only; external changes are unwatched."
+       },
+       {
+        "providerId": "svelte-check",
+        "availability": "unsupported",
+        "phase": "idle",
+        "coverage": {
+         "kind": "savedProject",
+         "roots": [],
+         "partial": true,
+         "externalChanges": "unwatched"
+        },
+        "freshness": "uncertain",
+        "truncated": false
+       },
+       {
+        "providerId": "typescript",
+        "availability": "available",
+        "phase": "idle",
+        "coverage": {
+         "kind": "openedDocuments",
+         "roots": [
+          ""
+         ],
+         "partial": true,
+         "externalChanges": "unwatched"
+        },
+        "freshness": "uncertain",
+        "truncated": false,
+        "notice": "Diagnostics cover opened documents only; external changes are unwatched."
+       }
+      ],
+      "resultSets": [],
+      "proposal": {
+       "fingerprint": "sha256-v1:9a0e590c2f1dcf6d774c76f8d44ac3fd3bdb4a790a4e53e984a07c9e65078067",
+       "tools": [
+        {
+         "providerId": "gopls",
+         "executable": "/private/var/folders/2n/kw94cjxs0qj_s00vcg118jzh0000gn/T/TestRouteRecordFrontendFixture1242098997/001/gopls-bin",
+         "configPaths": []
+        },
+        {
+         "providerId": "typescript",
+         "executable": "/private/var/folders/2n/kw94cjxs0qj_s00vcg118jzh0000gn/T/TestRouteRecordFrontendFixture1242098997/001/ts-bin",
+         "configPaths": []
+        }
+       ]
+      }
+     }
+    }
+   ]
+  },
+  {
+   "name": "pushV1",
+   "events": [
+    {
+     "contractVersion": 1,
+     "context": {
+      "connectionId": "6c201722a4426e1ea5032bd09f6cca1c",
+      "attachmentId": "36ccfec989e3f59284289df1b4c3c902",
+      "generation": "2a36f55a7c62aea50ea98f03dd7b7c19"
+     },
+     "sequence": 5,
+     "updateId": "d6d13cdb1e5bdca4349578c0f9697819",
+     "partIndex": 0,
+     "partCount": 1,
+     "snapshot": {
+      "contractVersion": 1,
+      "context": {
+       "connectionId": "6c201722a4426e1ea5032bd09f6cca1c",
+       "attachmentId": "36ccfec989e3f59284289df1b4c3c902",
+       "generation": "2a36f55a7c62aea50ea98f03dd7b7c19"
+      },
+      "sequence": 5,
+      "approval": {
+       "state": "approved",
+       "mode": "session",
+       "fingerprint": "sha256-v1:9a0e590c2f1dcf6d774c76f8d44ac3fd3bdb4a790a4e53e984a07c9e65078067"
+      },
+      "providers": [
+       {
+        "providerId": "go-vet",
+        "availability": "unsupported",
+        "phase": "idle",
+        "coverage": {
+         "kind": "savedProject",
+         "roots": [],
+         "partial": true,
+         "externalChanges": "unwatched"
+        },
+        "freshness": "uncertain",
+        "truncated": false
+       },
+       {
+        "providerId": "gopls",
+        "availability": "available",
+        "phase": "idle",
+        "coverage": {
+         "kind": "openedDocuments",
+         "roots": [
+          ""
+         ],
+         "partial": true,
+         "externalChanges": "unwatched"
+        },
+        "freshness": "uncertain",
+        "truncated": false,
+        "notice": "Diagnostics cover opened documents only; external changes are unwatched."
+       },
+       {
+        "providerId": "svelte-check",
+        "availability": "unsupported",
+        "phase": "idle",
+        "coverage": {
+         "kind": "savedProject",
+         "roots": [],
+         "partial": true,
+         "externalChanges": "unwatched"
+        },
+        "freshness": "uncertain",
+        "truncated": false
+       },
+       {
+        "providerId": "typescript",
+        "availability": "available",
+        "phase": "idle",
+        "coverage": {
+         "kind": "openedDocuments",
+         "roots": [
+          ""
+         ],
+         "partial": true,
+         "externalChanges": "unwatched"
+        },
+        "freshness": "uncertain",
+        "truncated": false,
+        "notice": "Diagnostics cover opened documents only; external changes are unwatched."
+       }
+      ],
+      "resultSets": [
+       {
+        "providerId": "gopls",
+        "origin": "lsp",
+        "scope": {
+         "kind": "document",
+         "path": "a.go",
+         "documentId": "da"
+        },
+        "diagnostics": [
+         {
+          "path": "a.go",
+          "severity": "error",
+          "message": "\u003cscript\u003e\u0026😀",
+          "source": "gopls/fake",
+          "freshness": "current",
+          "basis": {
+           "kind": "document",
+           "documentId": "da",
+           "version": 1
+          },
+          "range": {
+           "start": {
+            "line": 0,
+            "character": 1
+           },
+           "end": {
+            "line": 0,
+            "character": 3
+           }
+          }
+         }
+        ]
+       }
+      ],
+      "proposal": {
+       "fingerprint": "sha256-v1:9a0e590c2f1dcf6d774c76f8d44ac3fd3bdb4a790a4e53e984a07c9e65078067",
+       "tools": [
+        {
+         "providerId": "gopls",
+         "executable": "/private/var/folders/2n/kw94cjxs0qj_s00vcg118jzh0000gn/T/TestRouteRecordFrontendFixture1242098997/001/gopls-bin",
+         "configPaths": []
+        },
+        {
+         "providerId": "typescript",
+         "executable": "/private/var/folders/2n/kw94cjxs0qj_s00vcg118jzh0000gn/T/TestRouteRecordFrontendFixture1242098997/001/ts-bin",
+         "configPaths": []
+        }
+       ]
+      }
+     }
+    },
+    {
+     "contractVersion": 1,
+     "context": {
+      "connectionId": "6c201722a4426e1ea5032bd09f6cca1c",
+      "attachmentId": "36ccfec989e3f59284289df1b4c3c902",
+      "generation": "2a36f55a7c62aea50ea98f03dd7b7c19"
+     },
+     "sequence": 6,
+     "updateId": "7d4e36d056954f8cdf95cfb129d59ec8",
+     "partIndex": 0,
+     "partCount": 1,
+     "snapshot": {
+      "contractVersion": 1,
+      "context": {
+       "connectionId": "6c201722a4426e1ea5032bd09f6cca1c",
+       "attachmentId": "36ccfec989e3f59284289df1b4c3c902",
+       "generation": "2a36f55a7c62aea50ea98f03dd7b7c19"
+      },
+      "sequence": 6,
+      "approval": {
+       "state": "approved",
+       "mode": "session",
+       "fingerprint": "sha256-v1:9a0e590c2f1dcf6d774c76f8d44ac3fd3bdb4a790a4e53e984a07c9e65078067"
+      },
+      "providers": [
+       {
+        "providerId": "go-vet",
+        "availability": "unsupported",
+        "phase": "idle",
+        "coverage": {
+         "kind": "savedProject",
+         "roots": [],
+         "partial": true,
+         "externalChanges": "unwatched"
+        },
+        "freshness": "uncertain",
+        "truncated": false
+       },
+       {
+        "providerId": "gopls",
+        "availability": "available",
+        "phase": "idle",
+        "coverage": {
+         "kind": "openedDocuments",
+         "roots": [
+          ""
+         ],
+         "partial": true,
+         "externalChanges": "unwatched"
+        },
+        "freshness": "uncertain",
+        "truncated": false,
+        "notice": "Diagnostics cover opened documents only; external changes are unwatched."
+       },
+       {
+        "providerId": "svelte-check",
+        "availability": "unsupported",
+        "phase": "idle",
+        "coverage": {
+         "kind": "savedProject",
+         "roots": [],
+         "partial": true,
+         "externalChanges": "unwatched"
+        },
+        "freshness": "uncertain",
+        "truncated": false
+       },
+       {
+        "providerId": "typescript",
+        "availability": "available",
+        "phase": "idle",
+        "coverage": {
+         "kind": "openedDocuments",
+         "roots": [
+          ""
+         ],
+         "partial": true,
+         "externalChanges": "unwatched"
+        },
+        "freshness": "uncertain",
+        "truncated": false,
+        "notice": "Some live findings were omitted, shortened or could not be verified; results are partial"
+       }
+      ],
+      "resultSets": [
+       {
+        "providerId": "gopls",
+        "origin": "lsp",
+        "scope": {
+         "kind": "document",
+         "path": "a.go",
+         "documentId": "da"
+        },
+        "diagnostics": [
+         {
+          "path": "a.go",
+          "severity": "error",
+          "message": "\u003cscript\u003e\u0026😀",
+          "source": "gopls/fake",
+          "freshness": "current",
+          "basis": {
+           "kind": "document",
+           "documentId": "da",
+           "version": 1
+          },
+          "range": {
+           "start": {
+            "line": 0,
+            "character": 1
+           },
+           "end": {
+            "line": 0,
+            "character": 3
+           }
+          }
+         }
+        ]
+       },
+       {
+        "providerId": "typescript",
+        "origin": "lsp",
+        "scope": {
+         "kind": "document",
+         "path": "b.ts",
+         "documentId": "db"
+        },
+        "diagnostics": [
+         {
+          "path": "b.ts",
+          "severity": "error",
+          "message": "ts finding",
+          "source": "typescript/fake",
+          "freshness": "current",
+          "basis": {
+           "kind": "document",
+           "documentId": "db",
+           "version": 1
+          },
+          "locationIssue": "invalidRange"
+         }
+        ]
+       }
+      ],
+      "proposal": {
+       "fingerprint": "sha256-v1:9a0e590c2f1dcf6d774c76f8d44ac3fd3bdb4a790a4e53e984a07c9e65078067",
+       "tools": [
+        {
+         "providerId": "gopls",
+         "executable": "/private/var/folders/2n/kw94cjxs0qj_s00vcg118jzh0000gn/T/TestRouteRecordFrontendFixture1242098997/001/gopls-bin",
+         "configPaths": []
+        },
+        {
+         "providerId": "typescript",
+         "executable": "/private/var/folders/2n/kw94cjxs0qj_s00vcg118jzh0000gn/T/TestRouteRecordFrontendFixture1242098997/001/ts-bin",
+         "configPaths": []
+        }
+       ]
+      }
+     }
+    }
+   ]
+  },
+  {
+   "name": "change",
+   "response": {
+    "context": {
+     "connectionId": "6c201722a4426e1ea5032bd09f6cca1c",
+     "attachmentId": "36ccfec989e3f59284289df1b4c3c902",
+     "generation": "2a36f55a7c62aea50ea98f03dd7b7c19"
+    },
+    "documentId": "da",
+    "version": 3
+   },
+   "events": []
+  },
+  {
+   "name": "pushLateThenV2",
+   "events": [
+    {
+     "contractVersion": 1,
+     "context": {
+      "connectionId": "6c201722a4426e1ea5032bd09f6cca1c",
+      "attachmentId": "36ccfec989e3f59284289df1b4c3c902",
+      "generation": "2a36f55a7c62aea50ea98f03dd7b7c19"
+     },
+     "sequence": 7,
+     "updateId": "404419a1e0ede0a59db618341dc8649f",
+     "partIndex": 0,
+     "partCount": 1,
+     "snapshot": {
+      "contractVersion": 1,
+      "context": {
+       "connectionId": "6c201722a4426e1ea5032bd09f6cca1c",
+       "attachmentId": "36ccfec989e3f59284289df1b4c3c902",
+       "generation": "2a36f55a7c62aea50ea98f03dd7b7c19"
+      },
+      "sequence": 7,
+      "approval": {
+       "state": "approved",
+       "mode": "session",
+       "fingerprint": "sha256-v1:9a0e590c2f1dcf6d774c76f8d44ac3fd3bdb4a790a4e53e984a07c9e65078067"
+      },
+      "providers": [
+       {
+        "providerId": "go-vet",
+        "availability": "unsupported",
+        "phase": "idle",
+        "coverage": {
+         "kind": "savedProject",
+         "roots": [],
+         "partial": true,
+         "externalChanges": "unwatched"
+        },
+        "freshness": "uncertain",
+        "truncated": false
+       },
+       {
+        "providerId": "gopls",
+        "availability": "available",
+        "phase": "idle",
+        "coverage": {
+         "kind": "openedDocuments",
+         "roots": [
+          ""
+         ],
+         "partial": true,
+         "externalChanges": "unwatched"
+        },
+        "freshness": "uncertain",
+        "truncated": false,
+        "notice": "Diagnostics cover opened documents only; external changes are unwatched."
+       },
+       {
+        "providerId": "svelte-check",
+        "availability": "unsupported",
+        "phase": "idle",
+        "coverage": {
+         "kind": "savedProject",
+         "roots": [],
+         "partial": true,
+         "externalChanges": "unwatched"
+        },
+        "freshness": "uncertain",
+        "truncated": false
+       },
+       {
+        "providerId": "typescript",
+        "availability": "available",
+        "phase": "idle",
+        "coverage": {
+         "kind": "openedDocuments",
+         "roots": [
+          ""
+         ],
+         "partial": true,
+         "externalChanges": "unwatched"
+        },
+        "freshness": "uncertain",
+        "truncated": false,
+        "notice": "Some live findings were omitted, shortened or could not be verified; results are partial"
+       }
+      ],
+      "resultSets": [
+       {
+        "providerId": "gopls",
+        "origin": "lsp",
+        "scope": {
+         "kind": "document",
+         "path": "a.go",
+         "documentId": "da"
+        },
+        "diagnostics": [
+         {
+          "path": "a.go",
+          "severity": "error",
+          "message": "\u003cscript\u003e\u0026😀 v2",
+          "source": "gopls/fake",
+          "freshness": "current",
+          "basis": {
+           "kind": "document",
+           "documentId": "da",
+           "version": 3
+          },
+          "range": {
+           "start": {
+            "line": 0,
+            "character": 1
+           },
+           "end": {
+            "line": 0,
+            "character": 3
+           }
+          }
+         }
+        ]
+       },
+       {
+        "providerId": "typescript",
+        "origin": "lsp",
+        "scope": {
+         "kind": "document",
+         "path": "b.ts",
+         "documentId": "db"
+        },
+        "diagnostics": [
+         {
+          "path": "b.ts",
+          "severity": "error",
+          "message": "ts finding",
+          "source": "typescript/fake",
+          "freshness": "current",
+          "basis": {
+           "kind": "document",
+           "documentId": "db",
+           "version": 1
+          },
+          "locationIssue": "invalidRange"
+         }
+        ]
+       }
+      ],
+      "proposal": {
+       "fingerprint": "sha256-v1:9a0e590c2f1dcf6d774c76f8d44ac3fd3bdb4a790a4e53e984a07c9e65078067",
+       "tools": [
+        {
+         "providerId": "gopls",
+         "executable": "/private/var/folders/2n/kw94cjxs0qj_s00vcg118jzh0000gn/T/TestRouteRecordFrontendFixture1242098997/001/gopls-bin",
+         "configPaths": []
+        },
+        {
+         "providerId": "typescript",
+         "executable": "/private/var/folders/2n/kw94cjxs0qj_s00vcg118jzh0000gn/T/TestRouteRecordFrontendFixture1242098997/001/ts-bin",
+         "configPaths": []
+        }
+       ]
+      }
+     }
+    }
+   ]
+  },
+  {
+   "name": "pushUnversioned",
+   "events": [
+    {
+     "contractVersion": 1,
+     "context": {
+      "connectionId": "6c201722a4426e1ea5032bd09f6cca1c",
+      "attachmentId": "36ccfec989e3f59284289df1b4c3c902",
+      "generation": "2a36f55a7c62aea50ea98f03dd7b7c19"
+     },
+     "sequence": 8,
+     "updateId": "bd2ac4e89b24e2aeef3a2b155e9837c5",
+     "partIndex": 0,
+     "partCount": 1,
+     "snapshot": {
+      "contractVersion": 1,
+      "context": {
+       "connectionId": "6c201722a4426e1ea5032bd09f6cca1c",
+       "attachmentId": "36ccfec989e3f59284289df1b4c3c902",
+       "generation": "2a36f55a7c62aea50ea98f03dd7b7c19"
+      },
+      "sequence": 8,
+      "approval": {
+       "state": "approved",
+       "mode": "session",
+       "fingerprint": "sha256-v1:9a0e590c2f1dcf6d774c76f8d44ac3fd3bdb4a790a4e53e984a07c9e65078067"
+      },
+      "providers": [
+       {
+        "providerId": "go-vet",
+        "availability": "unsupported",
+        "phase": "idle",
+        "coverage": {
+         "kind": "savedProject",
+         "roots": [],
+         "partial": true,
+         "externalChanges": "unwatched"
+        },
+        "freshness": "uncertain",
+        "truncated": false
+       },
+       {
+        "providerId": "gopls",
+        "availability": "available",
+        "phase": "idle",
+        "coverage": {
+         "kind": "openedDocuments",
+         "roots": [
+          ""
+         ],
+         "partial": true,
+         "externalChanges": "unwatched"
+        },
+        "freshness": "uncertain",
+        "truncated": false,
+        "notice": "Diagnostics cover opened documents only; external changes are unwatched."
+       },
+       {
+        "providerId": "svelte-check",
+        "availability": "unsupported",
+        "phase": "idle",
+        "coverage": {
+         "kind": "savedProject",
+         "roots": [],
+         "partial": true,
+         "externalChanges": "unwatched"
+        },
+        "freshness": "uncertain",
+        "truncated": false
+       },
+       {
+        "providerId": "typescript",
+        "availability": "available",
+        "phase": "idle",
+        "coverage": {
+         "kind": "openedDocuments",
+         "roots": [
+          ""
+         ],
+         "partial": true,
+         "externalChanges": "unwatched"
+        },
+        "freshness": "uncertain",
+        "truncated": false,
+        "notice": "Some live findings were omitted, shortened or could not be verified; results are partial"
+       }
+      ],
+      "resultSets": [
+       {
+        "providerId": "gopls",
+        "origin": "lsp",
+        "scope": {
+         "kind": "document",
+         "path": "a.go",
+         "documentId": "da"
+        },
+        "diagnostics": [
+         {
+          "path": "a.go",
+          "severity": "error",
+          "message": "unversioned",
+          "source": "gopls/fake",
+          "freshness": "uncertain",
+          "basis": {
+           "kind": "document",
+           "documentId": "da"
+          }
+         }
+        ]
+       },
+       {
+        "providerId": "typescript",
+        "origin": "lsp",
+        "scope": {
+         "kind": "document",
+         "path": "b.ts",
+         "documentId": "db"
+        },
+        "diagnostics": [
+         {
+          "path": "b.ts",
+          "severity": "error",
+          "message": "ts finding",
+          "source": "typescript/fake",
+          "freshness": "current",
+          "basis": {
+           "kind": "document",
+           "documentId": "db",
+           "version": 1
+          },
+          "locationIssue": "invalidRange"
+         }
+        ]
+       }
+      ],
+      "proposal": {
+       "fingerprint": "sha256-v1:9a0e590c2f1dcf6d774c76f8d44ac3fd3bdb4a790a4e53e984a07c9e65078067",
+       "tools": [
+        {
+         "providerId": "gopls",
+         "executable": "/private/var/folders/2n/kw94cjxs0qj_s00vcg118jzh0000gn/T/TestRouteRecordFrontendFixture1242098997/001/gopls-bin",
+         "configPaths": []
+        },
+        {
+         "providerId": "typescript",
+         "executable": "/private/var/folders/2n/kw94cjxs0qj_s00vcg118jzh0000gn/T/TestRouteRecordFrontendFixture1242098997/001/ts-bin",
+         "configPaths": []
+        }
+       ]
+      }
+     }
+    }
+   ]
+  },
+  {
+   "name": "emptyClear",
+   "events": [
+    {
+     "contractVersion": 1,
+     "context": {
+      "connectionId": "6c201722a4426e1ea5032bd09f6cca1c",
+      "attachmentId": "36ccfec989e3f59284289df1b4c3c902",
+      "generation": "2a36f55a7c62aea50ea98f03dd7b7c19"
+     },
+     "sequence": 9,
+     "updateId": "0e495b88e16012186afd4670071ed01b",
+     "partIndex": 0,
+     "partCount": 1,
+     "snapshot": {
+      "contractVersion": 1,
+      "context": {
+       "connectionId": "6c201722a4426e1ea5032bd09f6cca1c",
+       "attachmentId": "36ccfec989e3f59284289df1b4c3c902",
+       "generation": "2a36f55a7c62aea50ea98f03dd7b7c19"
+      },
+      "sequence": 9,
+      "approval": {
+       "state": "approved",
+       "mode": "session",
+       "fingerprint": "sha256-v1:9a0e590c2f1dcf6d774c76f8d44ac3fd3bdb4a790a4e53e984a07c9e65078067"
+      },
+      "providers": [
+       {
+        "providerId": "go-vet",
+        "availability": "unsupported",
+        "phase": "idle",
+        "coverage": {
+         "kind": "savedProject",
+         "roots": [],
+         "partial": true,
+         "externalChanges": "unwatched"
+        },
+        "freshness": "uncertain",
+        "truncated": false
+       },
+       {
+        "providerId": "gopls",
+        "availability": "available",
+        "phase": "idle",
+        "coverage": {
+         "kind": "openedDocuments",
+         "roots": [
+          ""
+         ],
+         "partial": true,
+         "externalChanges": "unwatched"
+        },
+        "freshness": "uncertain",
+        "truncated": false,
+        "notice": "Diagnostics cover opened documents only; external changes are unwatched."
+       },
+       {
+        "providerId": "svelte-check",
+        "availability": "unsupported",
+        "phase": "idle",
+        "coverage": {
+         "kind": "savedProject",
+         "roots": [],
+         "partial": true,
+         "externalChanges": "unwatched"
+        },
+        "freshness": "uncertain",
+        "truncated": false
+       },
+       {
+        "providerId": "typescript",
+        "availability": "available",
+        "phase": "idle",
+        "coverage": {
+         "kind": "openedDocuments",
+         "roots": [
+          ""
+         ],
+         "partial": true,
+         "externalChanges": "unwatched"
+        },
+        "freshness": "uncertain",
+        "truncated": false,
+        "notice": "Some live findings were omitted, shortened or could not be verified; results are partial"
+       }
+      ],
+      "resultSets": [
+       {
+        "providerId": "gopls",
+        "origin": "lsp",
+        "scope": {
+         "kind": "document",
+         "path": "a.go",
+         "documentId": "da"
+        },
+        "diagnostics": []
+       },
+       {
+        "providerId": "typescript",
+        "origin": "lsp",
+        "scope": {
+         "kind": "document",
+         "path": "b.ts",
+         "documentId": "db"
+        },
+        "diagnostics": [
+         {
+          "path": "b.ts",
+          "severity": "error",
+          "message": "ts finding",
+          "source": "typescript/fake",
+          "freshness": "current",
+          "basis": {
+           "kind": "document",
+           "documentId": "db",
+           "version": 1
+          },
+          "locationIssue": "invalidRange"
+         }
+        ]
+       }
+      ],
+      "proposal": {
+       "fingerprint": "sha256-v1:9a0e590c2f1dcf6d774c76f8d44ac3fd3bdb4a790a4e53e984a07c9e65078067",
+       "tools": [
+        {
+         "providerId": "gopls",
+         "executable": "/private/var/folders/2n/kw94cjxs0qj_s00vcg118jzh0000gn/T/TestRouteRecordFrontendFixture1242098997/001/gopls-bin",
+         "configPaths": []
+        },
+        {
+         "providerId": "typescript",
+         "executable": "/private/var/folders/2n/kw94cjxs0qj_s00vcg118jzh0000gn/T/TestRouteRecordFrontendFixture1242098997/001/ts-bin",
+         "configPaths": []
+        }
+       ]
+      }
+     }
+    }
+   ]
+  },
+  {
+   "name": "pushTruncated",
+   "events": [
+    {
+     "contractVersion": 1,
+     "context": {
+      "connectionId": "6c201722a4426e1ea5032bd09f6cca1c",
+      "attachmentId": "36ccfec989e3f59284289df1b4c3c902",
+      "generation": "2a36f55a7c62aea50ea98f03dd7b7c19"
+     },
+     "sequence": 10,
+     "updateId": "147f88d548c7ac4404055e968667883f",
+     "partIndex": 0,
+     "partCount": 1,
+     "snapshot": {
+      "contractVersion": 1,
+      "context": {
+       "connectionId": "6c201722a4426e1ea5032bd09f6cca1c",
+       "attachmentId": "36ccfec989e3f59284289df1b4c3c902",
+       "generation": "2a36f55a7c62aea50ea98f03dd7b7c19"
+      },
+      "sequence": 10,
+      "approval": {
+       "state": "approved",
+       "mode": "session",
+       "fingerprint": "sha256-v1:9a0e590c2f1dcf6d774c76f8d44ac3fd3bdb4a790a4e53e984a07c9e65078067"
+      },
+      "providers": [
+       {
+        "providerId": "go-vet",
+        "availability": "unsupported",
+        "phase": "idle",
+        "coverage": {
+         "kind": "savedProject",
+         "roots": [],
+         "partial": true,
+         "externalChanges": "unwatched"
+        },
+        "freshness": "uncertain",
+        "truncated": false
+       },
+       {
+        "providerId": "gopls",
+        "availability": "available",
+        "phase": "idle",
+        "coverage": {
+         "kind": "openedDocuments",
+         "roots": [
+          ""
+         ],
+         "partial": true,
+         "externalChanges": "unwatched"
+        },
+        "freshness": "uncertain",
+        "truncated": false,
+        "notice": "Diagnostics cover opened documents only; external changes are unwatched."
+       },
+       {
+        "providerId": "svelte-check",
+        "availability": "unsupported",
+        "phase": "idle",
+        "coverage": {
+         "kind": "savedProject",
+         "roots": [],
+         "partial": true,
+         "externalChanges": "unwatched"
+        },
+        "freshness": "uncertain",
+        "truncated": false
+       },
+       {
+        "providerId": "typescript",
+        "availability": "available",
+        "phase": "idle",
+        "coverage": {
+         "kind": "openedDocuments",
+         "roots": [
+          ""
+         ],
+         "partial": true,
+         "externalChanges": "unwatched"
+        },
+        "freshness": "uncertain",
+        "truncated": true,
+        "notice": "Some live findings were omitted, shortened or could not be verified; results are partial"
+       }
+      ],
+      "resultSets": [
+       {
+        "providerId": "gopls",
+        "origin": "lsp",
+        "scope": {
+         "kind": "document",
+         "path": "a.go",
+         "documentId": "da"
+        },
+        "diagnostics": []
+       },
+       {
+        "providerId": "typescript",
+        "origin": "lsp",
+        "scope": {
+         "kind": "document",
+         "path": "b.ts",
+         "documentId": "db"
+        },
+        "diagnostics": [
+         {
+          "path": "b.ts",
+          "severity": "error",
+          "message": "mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm",
+          "source": "typescript/fake",
+          "freshness": "current",
+          "basis": {
+           "kind": "document",
+           "documentId": "db",
+           "version": 1
+          },
+          "locationIssue": "invalidRange"
+         }
+        ]
+       }
+      ],
+      "proposal": {
+       "fingerprint": "sha256-v1:9a0e590c2f1dcf6d774c76f8d44ac3fd3bdb4a790a4e53e984a07c9e65078067",
+       "tools": [
+        {
+         "providerId": "gopls",
+         "executable": "/private/var/folders/2n/kw94cjxs0qj_s00vcg118jzh0000gn/T/TestRouteRecordFrontendFixture1242098997/001/gopls-bin",
+         "configPaths": []
+        },
+        {
+         "providerId": "typescript",
+         "executable": "/private/var/folders/2n/kw94cjxs0qj_s00vcg118jzh0000gn/T/TestRouteRecordFrontendFixture1242098997/001/ts-bin",
+         "configPaths": []
+        }
+       ]
+      }
+     }
+    },
+    {
+     "contractVersion": 1,
+     "context": {
+      "connectionId": "6c201722a4426e1ea5032bd09f6cca1c",
+      "attachmentId": "36ccfec989e3f59284289df1b4c3c902",
+      "generation": "2a36f55a7c62aea50ea98f03dd7b7c19"
+     },
+     "sequence": 11,
+     "updateId": "0f526785ad6f41ab7c90c367e9120972",
+     "partIndex": 0,
+     "partCount": 1,
+     "snapshot": {
+      "contractVersion": 1,
+      "context": {
+       "connectionId": "6c201722a4426e1ea5032bd09f6cca1c",
+       "attachmentId": "36ccfec989e3f59284289df1b4c3c902",
+       "generation": "2a36f55a7c62aea50ea98f03dd7b7c19"
+      },
+      "sequence": 11,
+      "approval": {
+       "state": "approved",
+       "mode": "session",
+       "fingerprint": "sha256-v1:9a0e590c2f1dcf6d774c76f8d44ac3fd3bdb4a790a4e53e984a07c9e65078067"
+      },
+      "providers": [
+       {
+        "providerId": "go-vet",
+        "availability": "unsupported",
+        "phase": "idle",
+        "coverage": {
+         "kind": "savedProject",
+         "roots": [],
+         "partial": true,
+         "externalChanges": "unwatched"
+        },
+        "freshness": "uncertain",
+        "truncated": false
+       },
+       {
+        "providerId": "gopls",
+        "availability": "available",
+        "phase": "idle",
+        "coverage": {
+         "kind": "openedDocuments",
+         "roots": [
+          ""
+         ],
+         "partial": true,
+         "externalChanges": "unwatched"
+        },
+        "freshness": "uncertain",
+        "truncated": false,
+        "notice": "Diagnostics cover opened documents only; external changes are unwatched."
+       },
+       {
+        "providerId": "svelte-check",
+        "availability": "unsupported",
+        "phase": "idle",
+        "coverage": {
+         "kind": "savedProject",
+         "roots": [],
+         "partial": true,
+         "externalChanges": "unwatched"
+        },
+        "freshness": "uncertain",
+        "truncated": false
+       },
+       {
+        "providerId": "typescript",
+        "availability": "available",
+        "phase": "idle",
+        "coverage": {
+         "kind": "openedDocuments",
+         "roots": [
+          ""
+         ],
+         "partial": true,
+         "externalChanges": "unwatched"
+        },
+        "freshness": "uncertain",
+        "truncated": true,
+        "notice": "Some TypeScript diagnostics could not be verified; results are partial."
+       }
+      ],
+      "resultSets": [
+       {
+        "providerId": "gopls",
+        "origin": "lsp",
+        "scope": {
+         "kind": "document",
+         "path": "a.go",
+         "documentId": "da"
+        },
+        "diagnostics": []
+       },
+       {
+        "providerId": "typescript",
+        "origin": "lsp",
+        "scope": {
+         "kind": "document",
+         "path": "b.ts",
+         "documentId": "db"
+        },
+        "diagnostics": [
+         {
+          "path": "b.ts",
+          "severity": "error",
+          "message": "mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm",
+          "source": "typescript/fake",
+          "freshness": "current",
+          "basis": {
+           "kind": "document",
+           "documentId": "db",
+           "version": 1
+          },
+          "locationIssue": "invalidRange"
+         }
+        ]
+       }
+      ],
+      "proposal": {
+       "fingerprint": "sha256-v1:9a0e590c2f1dcf6d774c76f8d44ac3fd3bdb4a790a4e53e984a07c9e65078067",
+       "tools": [
+        {
+         "providerId": "gopls",
+         "executable": "/private/var/folders/2n/kw94cjxs0qj_s00vcg118jzh0000gn/T/TestRouteRecordFrontendFixture1242098997/001/gopls-bin",
+         "configPaths": []
+        },
+        {
+         "providerId": "typescript",
+         "executable": "/private/var/folders/2n/kw94cjxs0qj_s00vcg118jzh0000gn/T/TestRouteRecordFrontendFixture1242098997/001/ts-bin",
+         "configPaths": []
+        }
+       ]
+      }
+     }
+    }
+   ]
+  },
+  {
+   "name": "invalidate",
+   "response": {
+    "contractVersion": 1,
+    "context": {
+     "connectionId": "6c201722a4426e1ea5032bd09f6cca1c",
+     "attachmentId": "36ccfec989e3f59284289df1b4c3c902",
+     "generation": "2a36f55a7c62aea50ea98f03dd7b7c19"
+    },
+    "sequence": 12,
+    "approval": {
+     "state": "approved",
+     "mode": "session",
+     "fingerprint": "sha256-v1:9a0e590c2f1dcf6d774c76f8d44ac3fd3bdb4a790a4e53e984a07c9e65078067"
+    },
+    "providers": [
+     {
+      "providerId": "go-vet",
+      "availability": "unsupported",
+      "phase": "idle",
+      "coverage": {
+       "kind": "savedProject",
+       "roots": [],
+       "partial": true,
+       "externalChanges": "unwatched"
+      },
+      "freshness": "uncertain",
+      "truncated": false
+     },
+     {
+      "providerId": "gopls",
+      "availability": "available",
+      "phase": "idle",
+      "coverage": {
+       "kind": "openedDocuments",
+       "roots": [
+        ""
+       ],
+       "partial": true,
+       "externalChanges": "unwatched"
+      },
+      "freshness": "uncertain",
+      "truncated": false,
+      "notice": "Diagnostics cover opened documents only; external changes are unwatched."
+     },
+     {
+      "providerId": "svelte-check",
+      "availability": "unsupported",
+      "phase": "idle",
+      "coverage": {
+       "kind": "savedProject",
+       "roots": [],
+       "partial": true,
+       "externalChanges": "unwatched"
+      },
+      "freshness": "uncertain",
+      "truncated": false
+     },
+     {
+      "providerId": "typescript",
+      "availability": "available",
+      "phase": "idle",
+      "coverage": {
+       "kind": "openedDocuments",
+       "roots": [
+        ""
+       ],
+       "partial": true,
+       "externalChanges": "unwatched"
+      },
+      "freshness": "uncertain",
+      "truncated": true,
+      "notice": "Some TypeScript diagnostics could not be verified; results are partial."
+     }
+    ],
+    "resultSets": [
+     {
+      "providerId": "gopls",
+      "origin": "lsp",
+      "scope": {
+       "kind": "document",
+       "path": "a.go",
+       "documentId": "da"
+      },
+      "diagnostics": []
+     }
+    ],
+    "proposal": {
+     "fingerprint": "sha256-v1:9a0e590c2f1dcf6d774c76f8d44ac3fd3bdb4a790a4e53e984a07c9e65078067",
+     "tools": [
+      {
+       "providerId": "gopls",
+       "executable": "/private/var/folders/2n/kw94cjxs0qj_s00vcg118jzh0000gn/T/TestRouteRecordFrontendFixture1242098997/001/gopls-bin",
+       "configPaths": []
+      },
+      {
+       "providerId": "typescript",
+       "executable": "/private/var/folders/2n/kw94cjxs0qj_s00vcg118jzh0000gn/T/TestRouteRecordFrontendFixture1242098997/001/ts-bin",
+       "configPaths": []
+      }
+     ]
+    }
+   },
+   "events": [
+    {
+     "contractVersion": 1,
+     "context": {
+      "connectionId": "6c201722a4426e1ea5032bd09f6cca1c",
+      "attachmentId": "36ccfec989e3f59284289df1b4c3c902",
+      "generation": "2a36f55a7c62aea50ea98f03dd7b7c19"
+     },
+     "sequence": 12,
+     "updateId": "60264497866755ca77e457656ff9840f",
+     "partIndex": 0,
+     "partCount": 1,
+     "snapshot": {
+      "contractVersion": 1,
+      "context": {
+       "connectionId": "6c201722a4426e1ea5032bd09f6cca1c",
+       "attachmentId": "36ccfec989e3f59284289df1b4c3c902",
+       "generation": "2a36f55a7c62aea50ea98f03dd7b7c19"
+      },
+      "sequence": 12,
+      "approval": {
+       "state": "approved",
+       "mode": "session",
+       "fingerprint": "sha256-v1:9a0e590c2f1dcf6d774c76f8d44ac3fd3bdb4a790a4e53e984a07c9e65078067"
+      },
+      "providers": [
+       {
+        "providerId": "go-vet",
+        "availability": "unsupported",
+        "phase": "idle",
+        "coverage": {
+         "kind": "savedProject",
+         "roots": [],
+         "partial": true,
+         "externalChanges": "unwatched"
+        },
+        "freshness": "uncertain",
+        "truncated": false
+       },
+       {
+        "providerId": "gopls",
+        "availability": "available",
+        "phase": "idle",
+        "coverage": {
+         "kind": "openedDocuments",
+         "roots": [
+          ""
+         ],
+         "partial": true,
+         "externalChanges": "unwatched"
+        },
+        "freshness": "uncertain",
+        "truncated": false,
+        "notice": "Diagnostics cover opened documents only; external changes are unwatched."
+       },
+       {
+        "providerId": "svelte-check",
+        "availability": "unsupported",
+        "phase": "idle",
+        "coverage": {
+         "kind": "savedProject",
+         "roots": [],
+         "partial": true,
+         "externalChanges": "unwatched"
+        },
+        "freshness": "uncertain",
+        "truncated": false
+       },
+       {
+        "providerId": "typescript",
+        "availability": "available",
+        "phase": "idle",
+        "coverage": {
+         "kind": "openedDocuments",
+         "roots": [
+          ""
+         ],
+         "partial": true,
+         "externalChanges": "unwatched"
+        },
+        "freshness": "uncertain",
+        "truncated": true,
+        "notice": "Some TypeScript diagnostics could not be verified; results are partial."
+       }
+      ],
+      "resultSets": [
+       {
+        "providerId": "gopls",
+        "origin": "lsp",
+        "scope": {
+         "kind": "document",
+         "path": "a.go",
+         "documentId": "da"
+        },
+        "diagnostics": []
+       }
+      ],
+      "proposal": {
+       "fingerprint": "sha256-v1:9a0e590c2f1dcf6d774c76f8d44ac3fd3bdb4a790a4e53e984a07c9e65078067",
+       "tools": [
+        {
+         "providerId": "gopls",
+         "executable": "/private/var/folders/2n/kw94cjxs0qj_s00vcg118jzh0000gn/T/TestRouteRecordFrontendFixture1242098997/001/gopls-bin",
+         "configPaths": []
+        },
+        {
+         "providerId": "typescript",
+         "executable": "/private/var/folders/2n/kw94cjxs0qj_s00vcg118jzh0000gn/T/TestRouteRecordFrontendFixture1242098997/001/ts-bin",
+         "configPaths": []
+        }
+       ]
+      }
+     }
+    }
+   ]
+  },
+  {
+   "name": "pushBeforeCrash",
+   "events": [
+    {
+     "contractVersion": 1,
+     "context": {
+      "connectionId": "6c201722a4426e1ea5032bd09f6cca1c",
+      "attachmentId": "36ccfec989e3f59284289df1b4c3c902",
+      "generation": "2a36f55a7c62aea50ea98f03dd7b7c19"
+     },
+     "sequence": 13,
+     "updateId": "6bc2e73e43adb8d900b170b1840a28bc",
+     "partIndex": 0,
+     "partCount": 1,
+     "snapshot": {
+      "contractVersion": 1,
+      "context": {
+       "connectionId": "6c201722a4426e1ea5032bd09f6cca1c",
+       "attachmentId": "36ccfec989e3f59284289df1b4c3c902",
+       "generation": "2a36f55a7c62aea50ea98f03dd7b7c19"
+      },
+      "sequence": 13,
+      "approval": {
+       "state": "approved",
+       "mode": "session",
+       "fingerprint": "sha256-v1:9a0e590c2f1dcf6d774c76f8d44ac3fd3bdb4a790a4e53e984a07c9e65078067"
+      },
+      "providers": [
+       {
+        "providerId": "go-vet",
+        "availability": "unsupported",
+        "phase": "idle",
+        "coverage": {
+         "kind": "savedProject",
+         "roots": [],
+         "partial": true,
+         "externalChanges": "unwatched"
+        },
+        "freshness": "uncertain",
+        "truncated": false
+       },
+       {
+        "providerId": "gopls",
+        "availability": "available",
+        "phase": "idle",
+        "coverage": {
+         "kind": "openedDocuments",
+         "roots": [
+          ""
+         ],
+         "partial": true,
+         "externalChanges": "unwatched"
+        },
+        "freshness": "uncertain",
+        "truncated": false,
+        "notice": "Diagnostics cover opened documents only; external changes are unwatched."
+       },
+       {
+        "providerId": "svelte-check",
+        "availability": "unsupported",
+        "phase": "idle",
+        "coverage": {
+         "kind": "savedProject",
+         "roots": [],
+         "partial": true,
+         "externalChanges": "unwatched"
+        },
+        "freshness": "uncertain",
+        "truncated": false
+       },
+       {
+        "providerId": "typescript",
+        "availability": "available",
+        "phase": "idle",
+        "coverage": {
+         "kind": "openedDocuments",
+         "roots": [
+          ""
+         ],
+         "partial": true,
+         "externalChanges": "unwatched"
+        },
+        "freshness": "uncertain",
+        "truncated": true,
+        "notice": "Some TypeScript diagnostics could not be verified; results are partial."
+       }
+      ],
+      "resultSets": [
+       {
+        "providerId": "gopls",
+        "origin": "lsp",
+        "scope": {
+         "kind": "document",
+         "path": "a.go",
+         "documentId": "da"
+        },
+        "diagnostics": [
+         {
+          "path": "a.go",
+          "severity": "error",
+          "message": "before crash",
+          "source": "gopls/fake",
+          "freshness": "current",
+          "basis": {
+           "kind": "document",
+           "documentId": "da",
+           "version": 3
+          },
+          "range": {
+           "start": {
+            "line": 0,
+            "character": 1
+           },
+           "end": {
+            "line": 0,
+            "character": 3
+           }
+          }
+         }
+        ]
+       }
+      ],
+      "proposal": {
+       "fingerprint": "sha256-v1:9a0e590c2f1dcf6d774c76f8d44ac3fd3bdb4a790a4e53e984a07c9e65078067",
+       "tools": [
+        {
+         "providerId": "gopls",
+         "executable": "/private/var/folders/2n/kw94cjxs0qj_s00vcg118jzh0000gn/T/TestRouteRecordFrontendFixture1242098997/001/gopls-bin",
+         "configPaths": []
+        },
+        {
+         "providerId": "typescript",
+         "executable": "/private/var/folders/2n/kw94cjxs0qj_s00vcg118jzh0000gn/T/TestRouteRecordFrontendFixture1242098997/001/ts-bin",
+         "configPaths": []
+        }
+       ]
+      }
+     }
+    }
+   ]
+  },
+  {
+   "name": "crash",
+   "events": [
+    {
+     "contractVersion": 1,
+     "context": {
+      "connectionId": "6c201722a4426e1ea5032bd09f6cca1c",
+      "attachmentId": "36ccfec989e3f59284289df1b4c3c902",
+      "generation": "2a36f55a7c62aea50ea98f03dd7b7c19"
+     },
+     "sequence": 14,
+     "updateId": "06f915361533ec7d8251ac521ea7e120",
+     "partIndex": 0,
+     "partCount": 1,
+     "snapshot": {
+      "contractVersion": 1,
+      "context": {
+       "connectionId": "6c201722a4426e1ea5032bd09f6cca1c",
+       "attachmentId": "36ccfec989e3f59284289df1b4c3c902",
+       "generation": "2a36f55a7c62aea50ea98f03dd7b7c19"
+      },
+      "sequence": 14,
+      "approval": {
+       "state": "approved",
+       "mode": "session",
+       "fingerprint": "sha256-v1:9a0e590c2f1dcf6d774c76f8d44ac3fd3bdb4a790a4e53e984a07c9e65078067"
+      },
+      "providers": [
+       {
+        "providerId": "go-vet",
+        "availability": "unsupported",
+        "phase": "idle",
+        "coverage": {
+         "kind": "savedProject",
+         "roots": [],
+         "partial": true,
+         "externalChanges": "unwatched"
+        },
+        "freshness": "uncertain",
+        "truncated": false
+       },
+       {
+        "providerId": "gopls",
+        "availability": "available",
+        "phase": "failed",
+        "coverage": {
+         "kind": "openedDocuments",
+         "roots": [
+          ""
+         ],
+         "partial": true,
+         "externalChanges": "unwatched"
+        },
+        "freshness": "stale",
+        "truncated": false,
+        "notice": "Language session failed; retained findings are stale. Reopen after explicit session recovery.",
+        "failure": {
+         "code": "disconnected",
+         "message": "Language session is unavailable"
+        }
+       },
+       {
+        "providerId": "svelte-check",
+        "availability": "unsupported",
+        "phase": "idle",
+        "coverage": {
+         "kind": "savedProject",
+         "roots": [],
+         "partial": true,
+         "externalChanges": "unwatched"
+        },
+        "freshness": "uncertain",
+        "truncated": false
+       },
+       {
+        "providerId": "typescript",
+        "availability": "available",
+        "phase": "idle",
+        "coverage": {
+         "kind": "openedDocuments",
+         "roots": [
+          ""
+         ],
+         "partial": true,
+         "externalChanges": "unwatched"
+        },
+        "freshness": "uncertain",
+        "truncated": true,
+        "notice": "Some TypeScript diagnostics could not be verified; results are partial."
+       }
+      ],
+      "resultSets": [
+       {
+        "providerId": "gopls",
+        "origin": "lsp",
+        "scope": {
+         "kind": "document",
+         "path": "a.go",
+         "documentId": "da"
+        },
+        "diagnostics": [
+         {
+          "path": "a.go",
+          "severity": "error",
+          "message": "before crash",
+          "source": "gopls/fake",
+          "freshness": "stale",
+          "basis": {
+           "kind": "document",
+           "documentId": "da",
+           "version": 3
+          },
+          "range": {
+           "start": {
+            "line": 0,
+            "character": 1
+           },
+           "end": {
+            "line": 0,
+            "character": 3
+           }
+          }
+         }
+        ]
+       }
+      ],
+      "proposal": {
+       "fingerprint": "sha256-v1:9a0e590c2f1dcf6d774c76f8d44ac3fd3bdb4a790a4e53e984a07c9e65078067",
+       "tools": [
+        {
+         "providerId": "gopls",
+         "executable": "/private/var/folders/2n/kw94cjxs0qj_s00vcg118jzh0000gn/T/TestRouteRecordFrontendFixture1242098997/001/gopls-bin",
+         "configPaths": []
+        },
+        {
+         "providerId": "typescript",
+         "executable": "/private/var/folders/2n/kw94cjxs0qj_s00vcg118jzh0000gn/T/TestRouteRecordFrontendFixture1242098997/001/ts-bin",
+         "configPaths": []
+        }
+       ]
+      }
+     }
+    }
+   ]
+  }
+ ]
+}

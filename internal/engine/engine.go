@@ -37,6 +37,8 @@ type Engine struct {
 	events          *CatalogBus
 	emitter         Emitter
 	codeDiagnostics *diagnosticsOwner
+	// liveInjection is set only by tests/fixtures; production never sets it.
+	liveInjection *LiveCodeDiagnosticsInjection
 
 	manageMu       sync.Mutex
 	manage         *manage.Manager
