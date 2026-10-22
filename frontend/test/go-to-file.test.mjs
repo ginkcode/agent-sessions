@@ -20,6 +20,7 @@ const dialog = await loadServerComponent(new URL('../GoToFileDialog.svelte', bas
   ["import FileViewer from './go-to-file/FileViewer.svelte';", 'const FileViewer = () => {};'],
   ["import FilePrompt from './go-to-file/FilePrompt.svelte';", 'const FilePrompt = () => {};'],
   ["import RenamePrompt from './go-to-file/RenamePrompt.svelte';", 'const RenamePrompt = () => {};'],
+  ["import NewFolderPrompt from './go-to-file/NewFolderPrompt.svelte';", 'const NewFolderPrompt = () => {};'],
   ["import { fileActions } from '../../stores/fileActions.svelte';", 'const fileActions = {};'],
   ["import { tabShortcut } from '../../tabActions';", lib('../../../tabActions.ts')],
   ["'svelte'", JSON.stringify(import.meta.resolve('svelte'))],
@@ -79,6 +80,14 @@ function classTag(html, tag, name) {
   return [...html.matchAll(new RegExp(`<${tag}\\b[^>]*>`, 'g'))]
     .find(([text]) => new RegExp(`class="[^"]*\\b${name}\\b`).test(text))?.[0];
 }
+
+test('picker renders explicit empty directories even when there are no files', async () => {
+  const html = await renderPicker({ listing: { files: [], directories: ['empty', 'empty/nested'] }, expanded: new Set(['empty']) });
+  assert.match(html, /aria-label="Project files"/);
+  assert.match(html, />empty<\/span>/);
+  assert.match(html, />nested<\/span>/);
+  assert.doesNotMatch(html, /This directory has no files/);
+});
 
 test('picker tree renders git statuses, deleted paths and the selected file', async () => {
   const html = await renderPicker({

@@ -15,6 +15,8 @@
   import FilePrompt from './go-to-file/FilePrompt.svelte';
   import RenamePrompt from './go-to-file/RenamePrompt.svelte';
   let renamePath = $state<string | null>(null);
+  import NewFolderPrompt from './go-to-file/NewFolderPrompt.svelte';
+  let newFolderPath = $state<string | null>(null);
   import { fileActions } from '../../stores/fileActions.svelte';
   import { keyHandled } from '../../fullscreen';
   import { tabShortcut } from '../../tabActions';
@@ -90,12 +92,12 @@
         if (!await copyToClipboard(value)) throw new Error('Could not write to the clipboard.');
         toast.show({ title: 'Path copied', body: value });
       } else if (action === 'reveal') {
-        await api.revealFile(dir, path);
+        await api.revealFile(dir, path || '.');
       } else if (action === 'copy') {
-        await api.copyFile(dir, path);
-        toast.show({ title: 'Copied', body: `${path} is ready to paste in your file manager.` });
+        await api.copyFile(dir, path || '.');
+        toast.show({ title: 'Copied', body: `${path || dir} is ready to paste in your file manager.` });
       } else {
-        const saved = await api.downloadFile(dir, path);
+        const saved = await api.downloadFile(dir, path || '.');
         if (saved) toast.show({ title: 'Downloaded', body: saved });
       }
     } catch (err) {
@@ -125,6 +127,14 @@
     }
   }
 
+  async function deleteItem(path: string, directory: boolean) {
+    try {
+      if (await fileActions.delete(path, directory)) toast.show({ title: 'Deleted permanently', body: path });
+    } catch (err) {
+      toast.show({ title: 'Could not delete item', body: err instanceof Error ? err.message : String(err), tone: 'error' });
+    }
+  }
+
   let contextItems = $derived.by((): ContextMenuItem[] => {
     if (!context) return [];
     const { path, directory } = context;
@@ -137,11 +147,23 @@
       title: link.blockedReason || (remote ? 'Choose a local file to upload into this directory' : 'Choose a local file to copy into this directory'),
       onSelect: () => void addFile(path),
     });
+    if (directory) items.push({
+      label: 'New Folder…',
+      disabled: disabled || Boolean(link.blockedReason || files.renameUncertain || files.deleteUncertain),
+      title: files.deleteUncertain || files.renameUncertain || link.blockedReason || 'Create a folder in this directory',
+      onSelect: () => { newFolderPath = path; },
+    });
     if (path) items.push({
       label: 'Rename…',
-      disabled: disabled || Boolean(link.blockedReason) || Boolean(files.renameUncertain),
-      title: files.renameUncertain || link.blockedReason || 'Rename without losing open drafts',
+      disabled: disabled || Boolean(link.blockedReason) || Boolean(files.renameUncertain || files.deleteUncertain),
+      title: files.deleteUncertain || files.renameUncertain || link.blockedReason || 'Rename without losing open drafts',
       onSelect: () => { renamePath = path; },
+    });
+    if (path) items.push({
+      label: 'Delete…',
+      disabled: disabled || Boolean(link.blockedReason || files.renameUncertain || files.deleteUncertain),
+      title: files.deleteUncertain || files.renameUncertain || link.blockedReason || 'Permanently delete this item',
+      onSelect: () => void deleteItem(path, directory),
     });
     if (!remote) items.push({ label: 'Reveal', disabled, onSelect: () => void fileAction('reveal', path) });
     items.push({
@@ -149,15 +171,13 @@
       title: remote && directory ? 'Download this directory as a ZIP archive' : undefined,
       onSelect: () => void fileAction(remote ? 'download' : 'copy', path),
     });
-    items.push(
-      { label: 'Copy Path', disabled: actionBusy, onSelect: () => void fileAction('absolute', path) },
-      { label: 'Copy Relative Path', disabled: actionBusy, onSelect: () => void fileAction('relative', path) },
-    );
+    items.push({ label: 'Copy Path', disabled: actionBusy, onSelect: () => void fileAction('absolute', path) });
+    if (path) items.push({ label: 'Copy Relative Path', disabled: actionBusy, onSelect: () => void fileAction('relative', path) });
     return items;
   });
 
   function close() {
-    if (fileActions.busy || fileActions.quitting || renamePath !== null) return;
+    if (fileActions.busy || fileActions.quitting || renamePath !== null || newFolderPath !== null) return;
     presentation = false;
     fileTabs?.closeContext();
     context = null;
@@ -178,7 +198,7 @@
 </script>
 
 <svelte:window onkeydown={(e) => {
-  if (!files.open || fileActions.busy || fileActions.quitting || renamePath !== null) return;
+  if (!files.open || fileActions.busy || fileActions.quitting || renamePath !== null || newFolderPath !== null) return;
   if (e.ctrlKey && e.shiftKey && !e.metaKey && !e.altKey && e.code === 'KeyL') {
     e.preventDefault();
     e.stopPropagation();
@@ -206,6 +226,9 @@
 <FilePrompt />
 {#if renamePath !== null}
   <RenamePrompt path={renamePath} onClose={() => (renamePath = null)} />
+{/if}
+{#if newFolderPath !== null}
+  <NewFolderPrompt path={newFolderPath} onClose={() => (newFolderPath = null)} />
 {/if}
 
 <!-- Keep the viewer mounted so preview preferences and tab scroll positions survive closing. -->

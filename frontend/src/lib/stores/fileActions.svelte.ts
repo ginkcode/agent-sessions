@@ -36,12 +36,44 @@ export class FileActions {
     return true;
   }
 
+  /** Keep project/host transitions serialized with directory creation. */
+  async createDirectory(path: string, name: string): Promise<void> {
+    if (this.busy || this.quitting) throw new Error('Another file action is in progress.');
+    this.busy = true;
+    try { await files.createDirectory(path, name); }
+    finally { this.busy = false; }
+  }
+
   /** Shares the close/host-transition lock; dirty drafts are moved, not saved or discarded. */
   async rename(path: string, name: string): Promise<void> {
     if (this.busy || this.quitting) throw new Error('Another file action is in progress.');
     this.busy = true;
     try { await files.rename(path, name); }
     finally { this.busy = false; }
+  }
+
+  /** One irreversible decision; drafts are disposed only after confirmed success. */
+  async delete(path: string, directory: boolean): Promise<boolean> {
+    if (this.busy || this.quitting) throw new Error('Another file action is in progress.');
+    this.busy = true;
+    const dir = files.dir;
+    const context = files.contextVersion;
+    try {
+      if (!dir || !path) throw new Error('Choose a non-root file or directory to delete.');
+      const affected = files.tabs.filter(t => t.path === path || t.path.startsWith(path + '/'));
+      if (affected.some(t => t.edit?.saving || t.edit?.uncertain)) {
+        throw new Error('Wait for pending saves to finish and resolve unknown save outcomes before deleting.');
+      }
+      const dirty = affected.filter(tabHasUnsaved).length;
+      const warning = dirty ? `\n${dirty} affected unsaved draft${dirty === 1 ? '' : 's'} will be permanently discarded after successful deletion.` : '';
+      const decision = await filePrompt.ask(directory ? 'Permanently delete directory?' : 'Permanently delete file?',
+        `Permanently delete ${directory ? 'directory' : 'file'} “${path}”${directory ? ' and all its contents recursively' : ''}? This cannot be undone and does not move anything to the Trash.${warning}`,
+        [{ value: 'delete', label: 'Delete permanently', danger: true }]);
+      if (decision !== 'delete') return false;
+      if (files.dir !== dir || files.contextVersion !== context) throw new Error('The project or connection changed. Delete was cancelled.');
+      await files.delete(path);
+      return true;
+    } finally { this.busy = false; }
   }
 
   async closeTabs(paths: string[]): Promise<boolean> {

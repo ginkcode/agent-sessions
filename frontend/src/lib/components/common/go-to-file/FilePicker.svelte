@@ -31,7 +31,7 @@
   let changedCount = $derived(status ? Object.keys(status).length : 0);
   // Deleted files stay listed, struck through, while git status shows.
   let paths = $derived(withDeleted(files.listing?.files ?? [], status));
-  let tree = $derived(buildFileTree(paths));
+  let tree = $derived(buildFileTree(paths, files.listing?.directories));
   // Ignored files (such as .env) stay out of the tree but can be searched.
   let ignored = $derived(new Set(files.listing?.ignored ?? []));
   let matches = $derived(query.trim() ? searchFiles(paths, files.listing?.ignored, query) : []);
@@ -148,7 +148,7 @@
     spellcheck="false"
   />
 
-  <div class="picker-list" bind:this={resultsEl}>
+  <div class="picker-list" role="region" aria-label="Project file browser" bind:this={resultsEl} oncontextmenu={(e) => { if (!query.trim()) onContext(e, '', true); }}>
     {#if files.loadingList}
       <div class="state"><LoadingSpinner size={16} label="Listing files…" /> Listing files…</div>
     {:else if files.listError}
@@ -184,7 +184,7 @@
           {/each}
         </ul>
       {/if}
-    {:else if paths.length === 0}
+    {:else if tree.length === 0}
       <div class="state">This directory has no files.</div>
     {:else}
       <ul class="tree-list" role="tree" aria-label="Project files">{@render treeRows(tree, 0)}</ul>

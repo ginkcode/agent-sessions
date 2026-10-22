@@ -14,8 +14,8 @@ export interface FileTreeNode {
   children?: FileTreeNode[];
 }
 
-/** Builds the folder tree from a list of file paths. */
-export function buildFileTree(paths: string[]): FileTreeNode[] {
+/** Builds the folder tree from files and optional explicit (including empty) directories. */
+export function buildFileTree(paths: string[], directories: string[] = []): FileTreeNode[] {
   const root: FileTreeNode = { name: '', path: '', children: [] };
   const folders = new Map<string, FileTreeNode>([['', root]]);
   for (const path of paths) {
@@ -32,6 +32,21 @@ export function buildFileTree(paths: string[]): FileTreeNode[] {
       parent = folder;
     }
     parent.children!.push({ name: parts[parts.length - 1], path });
+  }
+  for (const path of directories) {
+    if (!path) continue;
+    const parts = path.split('/');
+    let parent = root;
+    for (let i = 0; i < parts.length; i++) {
+      const dir = parts.slice(0, i + 1).join('/');
+      let folder = folders.get(dir);
+      if (!folder) {
+        folder = { name: parts[i], path: dir, children: [] };
+        folders.set(dir, folder);
+        parent.children!.push(folder);
+      }
+      parent = folder;
+    }
   }
   const sort = (nodes: FileTreeNode[]) => {
     nodes.sort((a, b) => Number(!a.children) - Number(!b.children) || a.name.localeCompare(b.name));

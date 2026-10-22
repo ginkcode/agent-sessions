@@ -45,7 +45,7 @@ func (p EditPolicy) check(root, rel string, create bool) error {
 	return p.checkTarget(root, rel, create, false)
 }
 
-// checkTarget permits directory leaves only for rename; editing still requires regular files.
+// checkTarget permits directory leaves for rename/delete; editing still requires regular files.
 func (p EditPolicy) checkTarget(root, rel string, create, directory bool) error {
 	if editHasParentComponent(rel) || !filepath.IsLocal(rel) || filepath.Clean(rel) == "." {
 		return ErrOutsideRoot

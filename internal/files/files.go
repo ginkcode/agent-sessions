@@ -46,9 +46,11 @@ var ErrOutsideRoot = errors.New("path is outside the directory")
 // Listing is the files of a directory, as slash-separated paths relative to
 // it, sorted.
 type Listing struct {
-	Root      string   `json:"root"`
-	Files     []string `json:"files"`
-	Truncated bool     `json:"truncated,omitempty"`
+	Root  string   `json:"root"`
+	Files []string `json:"files"`
+	// Directories includes empty folders, as sorted slash-separated relative paths.
+	Directories []string `json:"directories,omitempty"`
+	Truncated   bool     `json:"truncated,omitempty"`
 	// Git reports that the list came from git, so ignored files are left out.
 	Git bool `json:"git,omitempty"`
 	// Status is the git status of each changed file, by path: see the
@@ -136,6 +138,12 @@ func List(ctx context.Context, root string) (Listing, error) {
 			out.Files, out.Truncated = out.Files[:MaxFiles], true
 		}
 		out.Ignored = gitIgnored(ctx, root, MaxFiles-len(out.Files))
+		directories, truncated, err := gitDirectories(ctx, root)
+		if err != nil {
+			return Listing{}, err
+		}
+		out.Directories = directories
+		out.Truncated = out.Truncated || truncated
 		return out, nil
 	}
 	return walk(ctx, root)
@@ -334,19 +342,23 @@ func walk(ctx context.Context, root string) (Listing, error) {
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			return ctxErr
 		}
-		if d.IsDir() {
-			if p != root && skipDirs[d.Name()] {
-				return fs.SkipDir
-			}
+		if p == root {
 			return nil
 		}
-		if len(out.Files) >= MaxFiles {
+		if d.IsDir() && skipDirs[d.Name()] {
+			return fs.SkipDir
+		}
+		if len(out.Files)+len(out.Directories) >= MaxFiles {
 			out.Truncated = true
 			return errFull
 		}
 		rel, err := filepath.Rel(root, p)
 		if err == nil {
-			out.Files = append(out.Files, filepath.ToSlash(rel))
+			if d.IsDir() {
+				out.Directories = append(out.Directories, filepath.ToSlash(rel))
+			} else {
+				out.Files = append(out.Files, filepath.ToSlash(rel))
+			}
 		}
 		return nil
 	})

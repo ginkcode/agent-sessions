@@ -249,6 +249,8 @@ export interface FileListing {
   root: string;
   /** Slash-separated paths relative to root, sorted. */
   files: string[];
+  /** Explicit directories, including empty ones; older servers may omit this. */
+  directories?: string[];
   truncated?: boolean;
   /** The list came from git, so ignored files are left out. */
   git?: boolean;

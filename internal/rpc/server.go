@@ -467,6 +467,20 @@ func (s *Server) dispatch(ctx context.Context, req Request) (any, error) {
 		}
 		return backend.ResolveTerminalFile(ctx, p.Dir, p.Path)
 
+	case "deleteFile":
+		var p DeleteFileParams
+		if err := json.Unmarshal(req.Params, &p); err != nil {
+			return nil, &ResponseError{Code: CodeInvalidParams, Message: err.Error()}
+		}
+		return nil, backend.DeleteFile(ctx, p.Dir, p.Path)
+
+	case "createDirectory":
+		var p CreateDirectoryParams
+		if err := json.Unmarshal(req.Params, &p); err != nil {
+			return nil, &ResponseError{Code: CodeInvalidParams, Message: err.Error()}
+		}
+		return nil, backend.CreateDirectory(ctx, p.Dir, p.Path, p.Name)
+
 	case "renameFile":
 		var p RenameFileParams
 		if err := json.Unmarshal(req.Params, &p); err != nil {

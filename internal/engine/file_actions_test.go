@@ -20,6 +20,15 @@ func TestFileActionAuthorizationAndStaging(t *testing.T) {
 	catalog.Reset([]model.SessionMeta{{CWD: root}})
 	e := &Engine{svc: NewService(catalog, nil), cacheDirOverride: cache}
 	ctx := context.Background()
+	// Blank-space context actions send '.' to select the authorized project root.
+	resolved, err := e.ResolveFile(ctx, root, ".")
+	if err != nil {
+		t.Fatal(err)
+	}
+	realRoot, err := filepath.EvalSymlinks(root)
+	if err != nil || resolved != realRoot {
+		t.Fatalf("root resolution: %q, want %q: %v", resolved, realRoot, err)
+	}
 	if _, err := e.ResolveFile(ctx, cache, "."); !errors.Is(err, ErrUnknownDirectory) {
 		t.Fatalf("authorization: %v", err)
 	}

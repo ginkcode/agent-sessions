@@ -124,7 +124,9 @@ export interface BackendAPI {
   copyFile(dir: string, path: string): Promise<void>;
   downloadFile(dir: string, path: string): Promise<string>;
   addFile(dir: string, path: string, host: string): Promise<boolean>;
+  createDirectory(dir: string, path: string, name: string, host: string): Promise<void>;
   renameFile(dir: string, path: string, name: string, host: string): Promise<void>;
+  deleteFile(dir: string, path: string, host: string): Promise<void>;
   terminalFonts(): Promise<string[]>;
   listPortForwards(): Promise<PortForwardState>;
   savePortForward(rule: PortForwardRequest): Promise<PortForwardState>;
@@ -218,7 +220,9 @@ interface WailsAppBinding {
   CopyFile(dir: string, path: string): Promise<void>;
   DownloadFile(dir: string, path: string): Promise<string>;
   AddFile(dir: string, path: string, host: string): Promise<boolean>;
+  CreateDirectory(dir: string, path: string, name: string, host: string): Promise<void>;
   RenameFile(dir: string, path: string, name: string, host: string): Promise<void>;
+  DeleteFile(dir: string, path: string, host: string): Promise<void>;
   TerminalFonts(): Promise<string[]>;
   ListPortForwards(): Promise<PortForwardState>;
   SavePortForward(rule: PortForwardRequest): Promise<PortForwardState>;
@@ -626,8 +630,16 @@ class WailsBackendAPI implements BackendAPI {
     }
   }
 
+  async createDirectory(dir: string, path: string, name: string, host: string): Promise<void> {
+    try { await this.binding.CreateDirectory(dir, path, name, host); } catch (e) { throw normalizeError(e); }
+  }
+
   async renameFile(dir: string, path: string, name: string, host: string): Promise<void> {
     try { await this.binding.RenameFile(dir, path, name, host); } catch (e) { throw normalizeError(e); }
+  }
+
+  async deleteFile(dir: string, path: string, host: string): Promise<void> {
+    try { await this.binding.DeleteFile(dir, path, host); } catch (e) { throw normalizeError(e); }
   }
 
   async downloadFile(dir: string, path: string): Promise<string> {

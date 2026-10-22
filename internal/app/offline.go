@@ -90,8 +90,12 @@ func (b offlineBackend) PrepareFileDownload(context.Context, string, string, str
 	return files.Download{}, b.err()
 }
 
-func (b offlineBackend) AddFile(context.Context, string, string, string) error    { return b.err() }
+func (b offlineBackend) AddFile(context.Context, string, string, string) error { return b.err() }
+func (b offlineBackend) CreateDirectory(context.Context, string, string, string) error {
+	return b.err()
+}
 func (b offlineBackend) RenameFile(context.Context, string, string, string) error { return b.err() }
+func (b offlineBackend) DeleteFile(context.Context, string, string) error         { return b.err() }
 func (b offlineBackend) CommitFileUpload(context.Context, string, string, string) error {
 	return b.err()
 }
