@@ -1,0 +1,655 @@
+[
+  {
+    "id": "go-version",
+    "tool": "go",
+    "platform": "darwin/arm64",
+    "provenance": "observed",
+    "argv": [
+      "/installed/go/bin/go",
+      "version"
+    ],
+    "cwd": "/fixture",
+    "exitCode": 0,
+    "stdout": "go version go1.26.8 darwin/arm64\n",
+    "stderr": "",
+    "expected": "version",
+    "versions": {
+      "go": "1.26.8",
+      "node": "22.23.2",
+      "svelte": "4.7.6",
+      "typescript": "5.9.3",
+      "compiler": "5.57.1"
+    },
+    "sanitization": "Synthetic source only; roots replaced with /fixture and /installed; machine timestamps replaced with 1700000000000.",
+    "files": {}
+  },
+  {
+    "id": "node-version",
+    "tool": "node",
+    "platform": "darwin/arm64",
+    "provenance": "observed",
+    "argv": [
+      "/installed/node/bin/node",
+      "--version"
+    ],
+    "cwd": "/fixture",
+    "exitCode": 0,
+    "stdout": "v22.23.2\n",
+    "stderr": "",
+    "expected": "version",
+    "versions": {
+      "go": "1.26.8",
+      "node": "22.23.2",
+      "svelte": "4.7.6",
+      "typescript": "5.9.3",
+      "compiler": "5.57.1"
+    },
+    "sanitization": "Synthetic source only; roots replaced with /fixture and /installed; machine timestamps replaced with 1700000000000.",
+    "files": {}
+  },
+  {
+    "id": "svelte-version",
+    "tool": "svelte",
+    "platform": "darwin/arm64",
+    "provenance": "observed",
+    "argv": [
+      "/installed/node/bin/node",
+      "/installed/node_modules/svelte-check/bin/svelte-check",
+      "--version"
+    ],
+    "cwd": "/fixture",
+    "exitCode": 0,
+    "stdout": "svelte-check, 4.7.6\n",
+    "stderr": "",
+    "expected": "version",
+    "versions": {
+      "go": "1.26.8",
+      "node": "22.23.2",
+      "svelte": "4.7.6",
+      "typescript": "5.9.3",
+      "compiler": "5.57.1"
+    },
+    "sanitization": "Synthetic source only; roots replaced with /fixture and /installed; machine timestamps replaced with 1700000000000.",
+    "files": {}
+  },
+  {
+    "id": "svelte-help",
+    "tool": "svelte",
+    "platform": "darwin/arm64",
+    "provenance": "observed",
+    "argv": [
+      "/installed/node/bin/node",
+      "/installed/node_modules/svelte-check/bin/svelte-check",
+      "--help"
+    ],
+    "cwd": "/fixture",
+    "exitCode": 0,
+    "stdout": "\n  Usage\n    $ svelte-check [options]\n\n  Options\n    --workspace                Path to your workspace. All subdirectories except node_modules and those listed in `--ignore` are checked. Defaults to current working directory.\n    --output                   What output format to use. Options are human, human-verbose, machine, machine-verbose.\n    --watch                    Will not exit after one pass but keep watching files for changes and rerun diagnostics  (default false)\n    --preserveWatchOutput      Do not clear the screen in watch mode  (default false)\n    --incremental              Use incremental checks with a disk cache of svelte2tsx outputs. Requires writing transpiled Svelte files to disk (.svelte-kit if available, else .svelte-check)  (default false)\n    --tsgo                     Use tsgo for TypeScript diagnostics. Requires writing transpiled Svelte files to disk (.svelte-kit if available, else .svelte-check)  (default false)\n    --tsgo-experimental-api    Use tsgo for TypeScript diagnostics with the experimental API. Cannot be used with --incremental. Experimental feature, might break without warning.  (default false)\n    --tsconfig                 Pass a path to a tsconfig or jsconfig file. The path can be relative to the workspace path or absolute. Doing this means that only files matched by the files/include/exclude pattern of the config file are diagnosed. It also means that errors from TypeScript and JavaScript files are reported. When not given, searches for the next upper tsconfig/jsconfig in the workspace path.\n    --config                   Pass a path to a svelte.config or vite.config file. The path can be relative to the workspace path or absolute. Use this when your config file has a non-standard name or location. If there are any Svelte config files below this config file, they will be ignored.\n    --no-tsconfig              Use this if you only want to check the Svelte files found in the current directory and below and ignore any JS/TS files (they will not be type-checked)  (default false)\n    --ignore                   Only has an effect when using `--no-tsconfig` option. Files/folders to ignore - relative to workspace root, comma-separated, inside quotes. Example: `--ignore \"dist,build\"`\n    --fail-on-warnings         Will also exit with error code when there are warnings  (default false)\n    --compiler-warnings        A list of Svelte compiler warning codes. Each entry defines whether that warning should be ignored or treated as an error. Warnings are comma-separated, between warning code and error level is a colon; all inside quotes. Example: `--compiler-warnings \"css-unused-selector:ignore,unused-export-let:error\"`\n    --diagnostic-sources       A list of diagnostic sources which should run diagnostics on your code. Possible values are `js` (includes TS), `svelte`, `css`. Comma-separated, inside quotes. By default all are active. Example: `--diagnostic-sources \"js,svelte\"`\n    --threshold                Filters the diagnostics to display. `error` will output only errors while `warning` will output warnings and errors.  (default warning)\n    --color                    Force enabling of color output  (default false)\n    --no-color                 Force disabling of color output  (default false)\n    -v, --version              Displays current version\n    -h, --help                 Displays this message\n\n",
+    "stderr": "",
+    "expected": "help",
+    "versions": {
+      "go": "1.26.8",
+      "node": "22.23.2",
+      "svelte": "4.7.6",
+      "typescript": "5.9.3",
+      "compiler": "5.57.1"
+    },
+    "sanitization": "Synthetic source only; roots replaced with /fixture and /installed; machine timestamps replaced with 1700000000000.",
+    "files": {}
+  },
+  {
+    "id": "go-clean",
+    "tool": "go",
+    "platform": "darwin/arm64",
+    "provenance": "observed",
+    "argv": [
+      "/installed/go/bin/go",
+      "vet",
+      "-json",
+      "./..."
+    ],
+    "cwd": "/fixture/go clean",
+    "exitCode": 0,
+    "stdout": "{}\n",
+    "stderr": "",
+    "expected": "empty",
+    "versions": {
+      "go": "1.26.8",
+      "node": "22.23.2",
+      "svelte": "4.7.6",
+      "typescript": "5.9.3",
+      "compiler": "5.57.1"
+    },
+    "sanitization": "Synthetic source only; roots replaced with /fixture and /installed; machine timestamps replaced with 1700000000000.",
+    "files": {
+      "go.mod": "module example.invalid/sample\n\ngo 1.26.8\n",
+      "main.go": "package sample\r\nfunc Good() {}\r\n"
+    }
+  },
+  {
+    "id": "go-findings",
+    "tool": "go",
+    "platform": "darwin/arm64",
+    "provenance": "observed",
+    "argv": [
+      "/installed/go/bin/go",
+      "vet",
+      "-json",
+      "./..."
+    ],
+    "cwd": "/fixture/go findings",
+    "exitCode": 0,
+    "stdout": "{\n\t\"example.invalid/sample\": {\n\t\t\"printf\": [\n\t\t\t{\n\t\t\t\t\"posn\": \"/fixture/go findings/first file.go:3:40\",\n\t\t\t\t\"end\": \"/fixture/go findings/first file.go:3:42\",\n\t\t\t\t\"message\": \"fmt.Printf format %d has arg \\\"x\\\" of wrong type string\"\n\t\t\t},\n\t\t\t{\n\t\t\t\t\"posn\": \"/fixture/go findings/second.go:3:30\",\n\t\t\t\t\"end\": \"/fixture/go findings/second.go:3:32\",\n\t\t\t\t\"message\": \"fmt.Printf format %s has arg 42 of wrong type int\"\n\t\t\t}\n\t\t]\n\t}\n}\n",
+    "stderr": "",
+    "expected": "findings",
+    "versions": {
+      "go": "1.26.8",
+      "node": "22.23.2",
+      "svelte": "4.7.6",
+      "typescript": "5.9.3",
+      "compiler": "5.57.1"
+    },
+    "sanitization": "Synthetic source only; roots replaced with /fixture and /installed; machine timestamps replaced with 1700000000000.",
+    "files": {
+      "first file.go": "package sample\r\nimport \"fmt\"\r\nfunc Bad() { _ = \"é😀\"; fmt.Printf(\"%d\", \"x\") }\r\n",
+      "go.mod": "module example.invalid/sample\n\ngo 1.26.8\n",
+      "second.go": "package sample\r\nimport \"fmt\"\r\nfunc AlsoBad() { fmt.Printf(\"%s\", 42) }\r\n"
+    }
+  },
+  {
+    "id": "go-text-findings",
+    "tool": "go",
+    "platform": "darwin/arm64",
+    "provenance": "observed",
+    "argv": [
+      "/installed/go/bin/go",
+      "vet",
+      "./..."
+    ],
+    "cwd": "/fixture/go findings",
+    "exitCode": 1,
+    "stdout": "",
+    "stderr": "first file.go:3:40: fmt.Printf format %d has arg \"x\" of wrong type string\nsecond.go:3:30: fmt.Printf format %s has arg 42 of wrong type int\n",
+    "expected": "findings",
+    "versions": {
+      "go": "1.26.8",
+      "node": "22.23.2",
+      "svelte": "4.7.6",
+      "typescript": "5.9.3",
+      "compiler": "5.57.1"
+    },
+    "sanitization": "Synthetic source only; roots replaced with /fixture and /installed; machine timestamps replaced with 1700000000000.",
+    "files": {
+      "first file.go": "package sample\r\nimport \"fmt\"\r\nfunc Bad() { _ = \"é😀\"; fmt.Printf(\"%d\", \"x\") }\r\n",
+      "go.mod": "module example.invalid/sample\n\ngo 1.26.8\n",
+      "second.go": "package sample\r\nimport \"fmt\"\r\nfunc AlsoBad() { fmt.Printf(\"%s\", 42) }\r\n"
+    }
+  },
+  {
+    "id": "go-build-failure",
+    "tool": "go",
+    "platform": "darwin/arm64",
+    "provenance": "observed",
+    "argv": [
+      "/installed/go/bin/go",
+      "vet",
+      "-json",
+      "./..."
+    ],
+    "cwd": "/fixture/go build-failure",
+    "exitCode": 1,
+    "stdout": "",
+    "stderr": "# example.invalid/sample\nvet: ./main.go:2:17: undefined: missing\n",
+    "expected": "failure",
+    "versions": {
+      "go": "1.26.8",
+      "node": "22.23.2",
+      "svelte": "4.7.6",
+      "typescript": "5.9.3",
+      "compiler": "5.57.1"
+    },
+    "sanitization": "Synthetic source only; roots replaced with /fixture and /installed; machine timestamps replaced with 1700000000000.",
+    "files": {
+      "go.mod": "module example.invalid/sample\n\ngo 1.26.8\n",
+      "main.go": "package sample\r\nfunc Broken() { missing() }\r\n"
+    }
+  },
+  {
+    "id": "go-missing-dependency",
+    "tool": "go",
+    "platform": "darwin/arm64",
+    "provenance": "observed",
+    "argv": [
+      "/installed/go/bin/go",
+      "vet",
+      "-json",
+      "./..."
+    ],
+    "cwd": "/fixture/go missing-dependency",
+    "exitCode": 1,
+    "stdout": "",
+    "stderr": "main.go:2:8: no required module provides package example.invalid/missing; to add it:\n\tgo get example.invalid/missing\n",
+    "expected": "failure",
+    "versions": {
+      "go": "1.26.8",
+      "node": "22.23.2",
+      "svelte": "4.7.6",
+      "typescript": "5.9.3",
+      "compiler": "5.57.1"
+    },
+    "sanitization": "Synthetic source only; roots replaced with /fixture and /installed; machine timestamps replaced with 1700000000000.",
+    "files": {
+      "go.mod": "module example.invalid/sample\n\ngo 1.26.8\n",
+      "main.go": "package sample\r\nimport _ \"example.invalid/missing\"\r\n"
+    }
+  },
+  {
+    "id": "svelte-clean",
+    "tool": "svelte",
+    "platform": "darwin/arm64",
+    "provenance": "observed",
+    "argv": [
+      "/installed/node/bin/node",
+      "/installed/node_modules/svelte-check/bin/svelte-check",
+      "--tsconfig",
+      "./tsconfig.json",
+      "--output",
+      "machine-verbose"
+    ],
+    "cwd": "/fixture/svelte clean",
+    "exitCode": 0,
+    "stdout": "1700000000000 START \"/fixture/svelte clean\"\n1700000000000 COMPLETED 141 FILES 0 ERRORS 0 WARNINGS 0 FILES_WITH_PROBLEMS\n",
+    "stderr": "",
+    "expected": "empty",
+    "versions": {
+      "go": "1.26.8",
+      "node": "22.23.2",
+      "svelte": "4.7.6",
+      "typescript": "5.9.3",
+      "compiler": "5.57.1"
+    },
+    "sanitization": "Synthetic source only; roots replaced with /fixture and /installed; machine timestamps replaced with 1700000000000.",
+    "files": {
+      "Good.svelte": "<p>ok</p>\r\n",
+      "package.json": "{\"type\":\"module\"}",
+      "tsconfig.json": "{\"compilerOptions\":{\"target\":\"ESNext\",\"moduleResolution\":\"bundler\",\"module\":\"ESNext\",\"strict\":true,\"skipLibCheck\":true},\"include\":[\"**/*.svelte\",\"**/*.ts\"]}"
+    }
+  },
+  {
+    "id": "svelte-warning",
+    "tool": "svelte",
+    "platform": "darwin/arm64",
+    "provenance": "observed",
+    "argv": [
+      "/installed/node/bin/node",
+      "/installed/node_modules/svelte-check/bin/svelte-check",
+      "--tsconfig",
+      "./tsconfig.json",
+      "--output",
+      "machine-verbose"
+    ],
+    "cwd": "/fixture/svelte warning",
+    "exitCode": 0,
+    "stdout": "1700000000000 START \"/fixture/svelte warning\"\n1700000000000 {\"type\":\"WARNING\",\"filename\":\"Warning.svelte\",\"start\":{\"line\":0,\"character\":0},\"end\":{\"line\":0,\"character\":17},\"message\":\"`<img>` element should have an alt attribute\\nhttps://svelte.dev/e/a11y_missing_attribute\",\"code\":\"a11y_missing_attribute\",\"codeDescription\":{\"href\":\"https://svelte.dev/docs/svelte/compiler-warnings#a11y_missing_attribute\"},\"source\":\"svelte\"}\n1700000000000 COMPLETED 141 FILES 0 ERRORS 1 WARNINGS 1 FILES_WITH_PROBLEMS\n",
+    "stderr": "",
+    "expected": "findings",
+    "versions": {
+      "go": "1.26.8",
+      "node": "22.23.2",
+      "svelte": "4.7.6",
+      "typescript": "5.9.3",
+      "compiler": "5.57.1"
+    },
+    "sanitization": "Synthetic source only; roots replaced with /fixture and /installed; machine timestamps replaced with 1700000000000.",
+    "files": {
+      "Warning.svelte": "<img src=\"a.png\">\r\n",
+      "package.json": "{\"type\":\"module\"}",
+      "tsconfig.json": "{\"compilerOptions\":{\"target\":\"ESNext\",\"moduleResolution\":\"bundler\",\"module\":\"ESNext\",\"strict\":true,\"skipLibCheck\":true},\"include\":[\"**/*.svelte\",\"**/*.ts\"]}"
+    }
+  },
+  {
+    "id": "svelte-findings",
+    "tool": "svelte",
+    "platform": "darwin/arm64",
+    "provenance": "observed",
+    "argv": [
+      "/installed/node/bin/node",
+      "/installed/node_modules/svelte-check/bin/svelte-check",
+      "--tsconfig",
+      "./tsconfig.json",
+      "--output",
+      "machine-verbose"
+    ],
+    "cwd": "/fixture/svelte findings",
+    "exitCode": 1,
+    "stdout": "1700000000000 START \"/fixture/svelte findings\"\n1700000000000 {\"type\":\"WARNING\",\"filename\":\"First file.svelte\",\"start\":{\"line\":4,\"character\":0},\"end\":{\"line\":4,\"character\":17},\"message\":\"`<img>` element should have an alt attribute\\nhttps://svelte.dev/e/a11y_missing_attribute\",\"code\":\"a11y_missing_attribute\",\"codeDescription\":{\"href\":\"https://svelte.dev/docs/svelte/compiler-warnings#a11y_missing_attribute\"},\"source\":\"svelte\"}\n1700000000000 {\"type\":\"ERROR\",\"filename\":\"First file.svelte\",\"start\":{\"line\":1,\"character\":4},\"end\":{\"line\":1,\"character\":5},\"message\":\"Type 'string' is not assignable to type 'number'.\",\"code\":2322,\"source\":\"ts\"}\n1700000000000 {\"type\":\"ERROR\",\"filename\":\"First file.svelte\",\"start\":{\"line\":3,\"character\":11},\"end\":{\"line\":3,\"character\":18},\"message\":\"Cannot find name 'missing'.\",\"code\":2304,\"source\":\"ts\"}\n1700000000000 {\"type\":\"ERROR\",\"filename\":\"Other.ts\",\"start\":{\"line\":0,\"character\":13},\"end\":{\"line\":0,\"character\":14},\"message\":\"Type 'string' is not assignable to type 'number'.\",\"code\":2322}\n1700000000000 COMPLETED 142 FILES 3 ERRORS 1 WARNINGS 2 FILES_WITH_PROBLEMS\n",
+    "stderr": "",
+    "expected": "findings",
+    "versions": {
+      "go": "1.26.8",
+      "node": "22.23.2",
+      "svelte": "4.7.6",
+      "typescript": "5.9.3",
+      "compiler": "5.57.1"
+    },
+    "sanitization": "Synthetic source only; roots replaced with /fixture and /installed; machine timestamps replaced with 1700000000000.",
+    "files": {
+      "First file.svelte": "<script lang=\"ts\">\r\nlet x: number = \"wrong\";\r\n</script>\r\n<p>{\"é😀\"}{missing}</p>\r\n<img src=\"a.png\">\r\n",
+      "Other.ts": "export const n: number = \"bad\";\r\n",
+      "package.json": "{\"type\":\"module\"}",
+      "tsconfig.json": "{\"compilerOptions\":{\"target\":\"ESNext\",\"moduleResolution\":\"bundler\",\"module\":\"ESNext\",\"strict\":true,\"skipLibCheck\":true},\"include\":[\"**/*.svelte\",\"**/*.ts\"]}"
+    }
+  },
+  {
+    "id": "svelte-machine-findings",
+    "tool": "svelte",
+    "platform": "darwin/arm64",
+    "provenance": "observed",
+    "argv": [
+      "/installed/node/bin/node",
+      "/installed/node_modules/svelte-check/bin/svelte-check",
+      "--tsconfig",
+      "./tsconfig.json",
+      "--output",
+      "machine"
+    ],
+    "cwd": "/fixture/svelte findings",
+    "exitCode": 1,
+    "stdout": "1700000000000 START \"/fixture/svelte findings\"\n1700000000000 WARNING \"First file.svelte\" 5:1 \"`<img>` element should have an alt attribute\\nhttps://svelte.dev/e/a11y_missing_attribute\"\n1700000000000 ERROR \"First file.svelte\" 2:5 \"Type 'string' is not assignable to type 'number'.\"\n1700000000000 ERROR \"First file.svelte\" 4:12 \"Cannot find name 'missing'.\"\n1700000000000 ERROR \"Other.ts\" 1:14 \"Type 'string' is not assignable to type 'number'.\"\n1700000000000 COMPLETED 142 FILES 3 ERRORS 1 WARNINGS 2 FILES_WITH_PROBLEMS\n",
+    "stderr": "",
+    "expected": "findings",
+    "versions": {
+      "go": "1.26.8",
+      "node": "22.23.2",
+      "svelte": "4.7.6",
+      "typescript": "5.9.3",
+      "compiler": "5.57.1"
+    },
+    "sanitization": "Synthetic source only; roots replaced with /fixture and /installed; machine timestamps replaced with 1700000000000.",
+    "files": {
+      "First file.svelte": "<script lang=\"ts\">\r\nlet x: number = \"wrong\";\r\n</script>\r\n<p>{\"é😀\"}{missing}</p>\r\n<img src=\"a.png\">\r\n",
+      "Other.ts": "export const n: number = \"bad\";\r\n",
+      "package.json": "{\"type\":\"module\"}",
+      "tsconfig.json": "{\"compilerOptions\":{\"target\":\"ESNext\",\"moduleResolution\":\"bundler\",\"module\":\"ESNext\",\"strict\":true,\"skipLibCheck\":true},\"include\":[\"**/*.svelte\",\"**/*.ts\"]}"
+    }
+  },
+  {
+    "id": "svelte-config-failure",
+    "tool": "svelte",
+    "platform": "darwin/arm64",
+    "provenance": "observed",
+    "argv": [
+      "/installed/node/bin/node",
+      "/installed/node_modules/svelte-check/bin/svelte-check",
+      "--tsconfig",
+      "./tsconfig.json",
+      "--output",
+      "machine-verbose"
+    ],
+    "cwd": "/fixture/svelte config-failure",
+    "exitCode": 1,
+    "stdout": "1700000000000 START \"/fixture/svelte config-failure\"\n1700000000000 {\"type\":\"ERROR\",\"filename\":\"tsconfig.json\",\"start\":{\"line\":0,\"character\":2},\"end\":{\"line\":0,\"character\":8},\"message\":\"Property assignment expected.\",\"code\":1136}\n1700000000000 COMPLETED 1 FILES 1 ERRORS 0 WARNINGS 1 FILES_WITH_PROBLEMS\n",
+    "stderr": "",
+    "expected": "failure",
+    "versions": {
+      "go": "1.26.8",
+      "node": "22.23.2",
+      "svelte": "4.7.6",
+      "typescript": "5.9.3",
+      "compiler": "5.57.1"
+    },
+    "sanitization": "Synthetic source only; roots replaced with /fixture and /installed; machine timestamps replaced with 1700000000000.",
+    "files": {
+      "Bad.svelte": "<p>ok</p>\r\n",
+      "package.json": "{\"type\":\"module\"}",
+      "tsconfig.json": "{ broken"
+    }
+  },
+  {
+    "id": "svelte-svelte-config-failure",
+    "tool": "svelte",
+    "platform": "darwin/arm64",
+    "provenance": "observed",
+    "argv": [
+      "/installed/node/bin/node",
+      "/installed/node_modules/svelte-check/bin/svelte-check",
+      "--tsconfig",
+      "./tsconfig.json",
+      "--output",
+      "machine-verbose"
+    ],
+    "cwd": "/fixture/svelte svelte-config-failure",
+    "exitCode": 1,
+    "stdout": "1700000000000 START \"/fixture/svelte svelte-config-failure\"\n1700000000000 {\"type\":\"ERROR\",\"filename\":\"Bad.svelte\",\"start\":{\"line\":0,\"character\":0},\"end\":{\"line\":0,\"character\":5},\"message\":\"Error in svelte.config.js\\n\\nError: synthetic config failure\",\"source\":\"svelte\"}\n1700000000000 COMPLETED 141 FILES 1 ERRORS 0 WARNINGS 1 FILES_WITH_PROBLEMS\n",
+    "stderr": "Error while loading config at  /fixture/svelte svelte-config-failure/svelte.config.js\nError: synthetic config failure\n    at file:///fixture/svelte%20svelte-config-failure/svelte.config.js:1:7\n    at ModuleJob.run (node:internal/modules/esm/module_job:343:25)\n    at async onImport.tracePromise.__proto__ (node:internal/modules/esm/loader:681:26)\n    at async loadSvelteConfig (/installed/node_modules/@sveltejs/load-config/dist/src/index.js:173:25)\n    at async loadConfigFromDirectory (/installed/node_modules/@sveltejs/load-config/dist/src/index.js:110:13)\n    at async loadConfigUncached (/installed/node_modules/@sveltejs/load-config/dist/src/index.js:70:24)\n    at async ConfigLoader.loadConfig (/installed/node_modules/svelte-check/dist/src/index.js:34211:24)\n",
+    "expected": "failure",
+    "versions": {
+      "go": "1.26.8",
+      "node": "22.23.2",
+      "svelte": "4.7.6",
+      "typescript": "5.9.3",
+      "compiler": "5.57.1"
+    },
+    "sanitization": "Synthetic source only; roots replaced with /fixture and /installed; machine timestamps replaced with 1700000000000.",
+    "files": {
+      "Bad.svelte": "<p>ok</p>\r\n",
+      "package.json": "{\"type\":\"module\"}",
+      "svelte.config.js": "throw new Error(\"synthetic config failure\");\n",
+      "tsconfig.json": "{\"compilerOptions\":{\"target\":\"ESNext\",\"moduleResolution\":\"bundler\",\"module\":\"ESNext\",\"strict\":true,\"skipLibCheck\":true},\"include\":[\"**/*.svelte\",\"**/*.ts\"]}"
+    }
+  },
+  {
+    "id": "svelte-missing-entry",
+    "tool": "node",
+    "platform": "darwin/arm64",
+    "provenance": "observed",
+    "argv": [
+      "/installed/node/bin/node",
+      "/fixture/absent/svelte-check.js"
+    ],
+    "cwd": "/fixture",
+    "exitCode": 1,
+    "stdout": "",
+    "stderr": "node:internal/modules/cjs/loader:1433\n  throw err;\n  ^\n\nError: Cannot find module '/fixture/absent/svelte-check.js'\n    at Function._resolveFilename (node:internal/modules/cjs/loader:1430:15)\n    at defaultResolveImpl (node:internal/modules/cjs/loader:1040:19)\n    at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1045:22)\n    at Function._load (node:internal/modules/cjs/loader:1216:25)\n    at wrapModuleLoad (node:internal/modules/cjs/loader:254:19)\n    at Function.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:171:5)\n    at node:internal/main/run_main_module:36:49 {\n  code: 'MODULE_NOT_FOUND',\n  requireStack: []\n}\n\nNode.js v22.23.2\n",
+    "expected": "failure",
+    "versions": {
+      "go": "1.26.8",
+      "node": "22.23.2",
+      "svelte": "4.7.6",
+      "typescript": "5.9.3",
+      "compiler": "5.57.1"
+    },
+    "sanitization": "Synthetic source only; roots replaced with /fixture and /installed; machine timestamps replaced with 1700000000000.",
+    "files": {}
+  },
+  {
+    "id": "go-multiple-packages",
+    "tool": "go",
+    "platform": "darwin/arm64",
+    "provenance": "observed",
+    "argv": [
+      "/installed/go/bin/go",
+      "vet",
+      "-json",
+      "./..."
+    ],
+    "cwd": "/fixture/go multi",
+    "exitCode": 0,
+    "stdout": "{\n\t\"example.invalid/multi/one\": {\n\t\t\"printf\": [\n\t\t\t{\n\t\t\t\t\"posn\": \"/fixture/go multi/one/main.go:3:26\",\n\t\t\t\t\"end\": \"/fixture/go multi/one/main.go:3:28\",\n\t\t\t\t\"message\": \"fmt.Printf format %d has arg \\\"x\\\" of wrong type string\"\n\t\t\t}\n\t\t]\n\t}\n}\n{\n\t\"example.invalid/multi/two\": {\n\t\t\"printf\": [\n\t\t\t{\n\t\t\t\t\"posn\": \"/fixture/go multi/two/main.go:3:26\",\n\t\t\t\t\"end\": \"/fixture/go multi/two/main.go:3:28\",\n\t\t\t\t\"message\": \"fmt.Printf format %d has arg \\\"x\\\" of wrong type string\"\n\t\t\t}\n\t\t]\n\t}\n}\n",
+    "stderr": "",
+    "expected": "findings",
+    "versions": {
+      "go": "1.26.8",
+      "node": "22.23.2",
+      "svelte": "4.7.6",
+      "typescript": "5.9.3",
+      "compiler": "5.57.1"
+    },
+    "sanitization": "Synthetic source only; roots replaced with /fixture and /installed; machine timestamps replaced with 1700000000000.",
+    "files": {
+      "go.mod": "module example.invalid/multi\n\ngo 1.26.8\n",
+      "one/main.go": "package one\nimport \"fmt\"\nfunc Bad() { fmt.Printf(\"%d\", \"x\") }\n",
+      "two/main.go": "package two\nimport \"fmt\"\nfunc Bad() { fmt.Printf(\"%d\", \"x\") }\n"
+    }
+  },
+  {
+    "id": "svelte-missing-config-dependency",
+    "tool": "svelte",
+    "platform": "darwin/arm64",
+    "provenance": "observed",
+    "argv": [
+      "/installed/node/bin/node",
+      "/installed/node_modules/svelte-check/bin/svelte-check",
+      "--tsconfig",
+      "./tsconfig.json",
+      "--output",
+      "machine-verbose"
+    ],
+    "cwd": "/fixture/svelte missing-dependency",
+    "exitCode": 1,
+    "stdout": "1700000000000 START \"/fixture/svelte missing-dependency\"\n1700000000000 {\"type\":\"ERROR\",\"filename\":\"tsconfig.json\",\"start\":{\"line\":0,\"character\":11},\"end\":{\"line\":0,\"character\":55},\"message\":\"File 'nonexistent-synthetic-config/tsconfig.json' not found.\",\"code\":6053}\n1700000000000 COMPLETED 1 FILES 1 ERRORS 0 WARNINGS 1 FILES_WITH_PROBLEMS\n",
+    "stderr": "",
+    "expected": "failure",
+    "versions": {
+      "go": "1.26.8",
+      "node": "22.23.2",
+      "svelte": "4.7.6",
+      "typescript": "5.9.3",
+      "compiler": "5.57.1"
+    },
+    "sanitization": "Synthetic source only; roots replaced with /fixture and /installed; machine timestamps replaced with 1700000000000.",
+    "files": {
+      "Good.svelte": "<p>ok</p>\n",
+      "package.json": "{\"type\":\"module\"}",
+      "tsconfig.json": "{\"extends\":\"nonexistent-synthetic-config/tsconfig.json\",\"include\":[\"*.svelte\"]}"
+    }
+  },
+  {
+    "id": "go-truncated",
+    "tool": "go",
+    "platform": "darwin/arm64",
+    "provenance": "synthetic-mutation",
+    "argv": [
+      "/installed/go/bin/go",
+      "vet",
+      "-json",
+      "./..."
+    ],
+    "cwd": "/fixture/go findings",
+    "exitCode": 0,
+    "stdout": "{\n",
+    "stderr": "",
+    "expected": "reject",
+    "versions": {
+      "go": "1.26.8",
+      "node": "22.23.2",
+      "svelte": "4.7.6",
+      "typescript": "5.9.3",
+      "compiler": "5.57.1"
+    },
+    "sanitization": "Synthetic source only; roots replaced with /fixture and /installed; machine timestamps replaced with 1700000000000.",
+    "files": {
+      "first file.go": "package sample\r\nimport \"fmt\"\r\nfunc Bad() { _ = \"é😀\"; fmt.Printf(\"%d\", \"x\") }\r\n",
+      "go.mod": "module example.invalid/sample\n\ngo 1.26.8\n",
+      "second.go": "package sample\r\nimport \"fmt\"\r\nfunc AlsoBad() { fmt.Printf(\"%s\", 42) }\r\n"
+    }
+  },
+  {
+    "id": "svelte-malformed",
+    "tool": "svelte",
+    "platform": "darwin/arm64",
+    "provenance": "synthetic-mutation",
+    "argv": [
+      "/installed/node/bin/node",
+      "/installed/node_modules/svelte-check/bin/svelte-check",
+      "--tsconfig",
+      "./tsconfig.json",
+      "--output",
+      "machine-verbose"
+    ],
+    "cwd": "/fixture/svelte findings",
+    "exitCode": 1,
+    "stdout": "1700000000000 {broken}\n",
+    "stderr": "",
+    "expected": "reject",
+    "versions": {
+      "go": "1.26.8",
+      "node": "22.23.2",
+      "svelte": "4.7.6",
+      "typescript": "5.9.3",
+      "compiler": "5.57.1"
+    },
+    "sanitization": "Synthetic source only; roots replaced with /fixture and /installed; machine timestamps replaced with 1700000000000.",
+    "files": {
+      "First file.svelte": "<script lang=\"ts\">\r\nlet x: number = \"wrong\";\r\n</script>\r\n<p>{\"é😀\"}{missing}</p>\r\n<img src=\"a.png\">\r\n",
+      "Other.ts": "export const n: number = \"bad\";\r\n",
+      "package.json": "{\"type\":\"module\"}",
+      "tsconfig.json": "{\"compilerOptions\":{\"target\":\"ESNext\",\"moduleResolution\":\"bundler\",\"module\":\"ESNext\",\"strict\":true,\"skipLibCheck\":true},\"include\":[\"**/*.svelte\",\"**/*.ts\"]}"
+    }
+  },
+  {
+    "id": "svelte-no-summary",
+    "tool": "svelte",
+    "platform": "darwin/arm64",
+    "provenance": "synthetic-mutation",
+    "argv": [
+      "/installed/node/bin/node",
+      "/installed/node_modules/svelte-check/bin/svelte-check",
+      "--tsconfig",
+      "./tsconfig.json",
+      "--output",
+      "machine-verbose"
+    ],
+    "cwd": "/fixture/svelte findings",
+    "exitCode": 1,
+    "stdout": "1700000000000 START \"/fixture/svelte findings\"\n1700000000000 {\"type\":\"WARNING\",\"filename\":\"First file.svelte\",\"start\":{\"line\":4,\"character\":0},\"end\":{\"line\":4,\"character\":17},\"message\":\"`<img>` element should have an alt attribute\\nhttps://svelte.dev/e/a11y_missing_attribute\",\"code\":\"a11y_missing_attribute\",\"codeDescription\":{\"href\":\"https://svelte.dev/docs/svelte/compiler-warnings#a11y_missing_attribute\"},\"source\":\"svelte\"}\n1700000000000 {\"type\":\"ERROR\",\"filename\":\"First file.svelte\",\"start\":{\"line\":1,\"character\":4},\"end\":{\"line\":1,\"character\":5},\"message\":\"Type 'string' is not assignable to type 'number'.\",\"code\":2322,\"source\":\"ts\"}\n1700000000000 {\"type\":\"ERROR\",\"filename\":\"First file.svelte\",\"start\":{\"line\":3,\"character\":11},\"end\":{\"line\":3,\"character\":18},\"message\":\"Cannot find name 'missing'.\",\"code\":2304,\"source\":\"ts\"}\n1700000000000 {\"type\":\"ERROR\",\"filename\":\"Other.ts\",\"start\":{\"line\":0,\"character\":13},\"end\":{\"line\":0,\"character\":14},\"message\":\"Type 'string' is not assignable to type 'number'.\",\"code\":2322}\n",
+    "stderr": "",
+    "expected": "reject",
+    "versions": {
+      "go": "1.26.8",
+      "node": "22.23.2",
+      "svelte": "4.7.6",
+      "typescript": "5.9.3",
+      "compiler": "5.57.1"
+    },
+    "sanitization": "Synthetic source only; roots replaced with /fixture and /installed; machine timestamps replaced with 1700000000000.",
+    "files": {
+      "First file.svelte": "<script lang=\"ts\">\r\nlet x: number = \"wrong\";\r\n</script>\r\n<p>{\"é😀\"}{missing}</p>\r\n<img src=\"a.png\">\r\n",
+      "Other.ts": "export const n: number = \"bad\";\r\n",
+      "package.json": "{\"type\":\"module\"}",
+      "tsconfig.json": "{\"compilerOptions\":{\"target\":\"ESNext\",\"moduleResolution\":\"bundler\",\"module\":\"ESNext\",\"strict\":true,\"skipLibCheck\":true},\"include\":[\"**/*.svelte\",\"**/*.ts\"]}"
+    }
+  },
+  {
+    "id": "svelte-file-level",
+    "tool": "svelte",
+    "platform": "darwin/arm64",
+    "provenance": "synthetic-mutation",
+    "argv": [
+      "/installed/node/bin/node",
+      "/installed/node_modules/svelte-check/bin/svelte-check",
+      "--tsconfig",
+      "./tsconfig.json",
+      "--output",
+      "machine-verbose"
+    ],
+    "cwd": "/fixture/svelte warning",
+    "exitCode": 0,
+    "stdout": "1700000000000 START \"/fixture/svelte warning\"\n1700000000000 {\"type\": \"WARNING\", \"filename\": \"Warning.svelte\", \"message\": \"`<img>` element should have an alt attribute\\nhttps://svelte.dev/e/a11y_missing_attribute\", \"code\": \"a11y_missing_attribute\", \"codeDescription\": {\"href\": \"https://svelte.dev/docs/svelte/compiler-warnings#a11y_missing_attribute\"}, \"source\": \"svelte\"}\n1700000000000 COMPLETED 141 FILES 0 ERRORS 1 WARNINGS 1 FILES_WITH_PROBLEMS\n",
+    "stderr": "",
+    "expected": "file-level",
+    "versions": {
+      "go": "1.26.8",
+      "node": "22.23.2",
+      "svelte": "4.7.6",
+      "typescript": "5.9.3",
+      "compiler": "5.57.1"
+    },
+    "sanitization": "Synthetic source only; roots replaced with /fixture and /installed; machine timestamps replaced with 1700000000000.",
+    "files": {
+      "Warning.svelte": "<img src=\"a.png\">\r\n",
+      "package.json": "{\"type\":\"module\"}",
+      "tsconfig.json": "{\"compilerOptions\":{\"target\":\"ESNext\",\"moduleResolution\":\"bundler\",\"module\":\"ESNext\",\"strict\":true,\"skipLibCheck\":true},\"include\":[\"**/*.svelte\",\"**/*.ts\"]}"
+    }
+  }
+]

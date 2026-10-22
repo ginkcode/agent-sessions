@@ -1,10 +1,11 @@
 # Go to File — project code diagnostics
 
-Status: foundation work started. CD-01, CD-02 and CD-03 are complete (contract
-fixtures, backend trust/grants, contained paths and bounded checker supervisor):
-**3/28 complete**. CD-04…CD-28 are not started. No user-facing diagnostics capability
+Status: foundation work started. CD-01 through CD-04 are complete (contract
+fixtures, backend trust/grants, contained paths, bounded checker supervisor and
+installed-checker format spikes): **4/28 complete**. CD-05…CD-28 are not started. No user-facing diagnostics capability
 is enabled. Trust policy and approval copy: [CD-02 addendum](code-diagnostics-trust.md).
 Execution semantics: [CD-03 supervisor](code-diagnostics-supervisor.md).
+Version/invocation evidence and limitations: [CD-04 spike](code-diagnostics-checkers.md).
 
 Authoritative shared contracts: [code-diagnostics-contract.md](code-diagnostics-contract.md).
 Operation names and wire semantics there supersede provisional examples below.
@@ -237,7 +238,7 @@ part of the approval warning, not a guarantee the app can enforce.
 
 ## Task breakdown
 
-CD-01 is complete; all other tasks are not started. Estimates include focused automated tests; each task
+CD-01…CD-04 are complete; CD-05…CD-28 are not started. Estimates include focused automated tests; each task
 is at most four developer hours. Re-estimate adapter spikes before committing
 to server-version support. Split tasks that exceed four hours before coding.
 The [TASKS.md](../../TASKS.md) feature section tracks these IDs and status.

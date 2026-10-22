@@ -309,8 +309,10 @@ state-machine tests at their own seams (CD-07/CD-09/CD-10/CD-16/CD-26).
 - CD-02 resolved: [trust addendum](code-diagnostics-trust.md) defines stable host/root
   policy, persistence/fingerprint schema, ownership, cancellation seam and approval
   copy. Authenticated transport identity acquisition/wiring remains CD-08/CD-09.
-- CD-04: supported go vet/svelte-check formats/versions, executable probes,
-  Windows launchers, exit-code interpretation and snapshot-verification evidence.
+- CD-04 resolved the initial narrow format/version targets in the
+  [checker spike](code-diagnostics-checkers.md): executable probes, direct-launch
+  policy, exit interpretation and explicit snapshot/platform evidence limitations.
+  Production adapters and native Windows/Linux verification remain downstream.
 - CD-18/CD-19: LSP frame/request limits, safe handler details and restart caps
   (must fit these outer budgets; do not advertise unimplemented capabilities).
 - CD-22…CD-24: actual supported LSP versions/wrappers, push publication/version
