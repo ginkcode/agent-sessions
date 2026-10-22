@@ -52,11 +52,13 @@ type Notification struct {
 
 // Capabilities indicates the features supported on the remote host.
 type Capabilities struct {
-	Trash  bool `json:"trash"`
-	Manage bool `json:"manage"`
-	Export bool `json:"export"`
-	Import bool `json:"import"`
-	Search bool `json:"search"`
+	CodeDiagnostics     bool `json:"codeDiagnostics,omitempty"`
+	LiveCodeDiagnostics bool `json:"liveCodeDiagnostics,omitempty"`
+	Trash               bool `json:"trash"`
+	Manage              bool `json:"manage"`
+	Export              bool `json:"export"`
+	Import              bool `json:"import"`
+	Search              bool `json:"search"`
 	// SaveFile: the file viewer may save edited files. Older servers leave
 	// it false, and their files stay read-only.
 	SaveFile bool `json:"saveFile,omitempty"`
@@ -77,10 +79,11 @@ type InitializeRequest struct {
 
 // InitializeResult is returned by the server on successful handshake.
 type InitializeResult struct {
-	ProtocolVersion int          `json:"protocolVersion"`
-	AppVersion      string       `json:"appVersion"`
-	Capabilities    Capabilities `json:"capabilities"`
-	Roots           paths.Roots  `json:"roots"`
+	CodeDiagnosticsHostID string       `json:"codeDiagnosticsHostId,omitempty"`
+	ProtocolVersion       int          `json:"protocolVersion"`
+	AppVersion            string       `json:"appVersion"`
+	Capabilities          Capabilities `json:"capabilities"`
+	Roots                 paths.Roots  `json:"roots"`
 }
 
 // CancelParams configures the $/cancelRequest notification.

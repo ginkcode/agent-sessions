@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	cd "github.com/ginkcode/agent-sessions/internal/codediagnostics"
 	"github.com/ginkcode/agent-sessions/internal/engine"
 	"github.com/ginkcode/agent-sessions/internal/launch"
 	"github.com/ginkcode/agent-sessions/internal/model"
@@ -41,16 +42,22 @@ type Server struct {
 	closeOnce   sync.Once
 	closed      chan struct{}
 	idleTimeout time.Duration
+	diagnostics diagnosticsRPC
+	rawW        io.Writer
+	rawR        io.Reader
 }
 
 // NewServer wraps a backend with JSON-RPC stdio transport.
 func NewServer(backend engine.Backend, r io.Reader, w io.Writer) *Server {
 	return &Server{
-		backend:   backend,
-		reader:    NewFrameReader(r),
-		writer:    NewFrameWriter(w),
-		cancelReg: NewCancelRegistry(),
-		closed:    make(chan struct{}),
+		backend:     backend,
+		rawW:        w,
+		rawR:        r,
+		diagnostics: diagnosticsRPC{owned: map[string]cd.Context{}, queue: make(chan Notification, 64), pendingUpdates: map[string]map[string]int{}},
+		reader:      NewFrameReader(r),
+		writer:      NewFrameWriter(w),
+		cancelReg:   NewCancelRegistry(),
+		closed:      make(chan struct{}),
 	}
 }
 
@@ -74,6 +81,9 @@ func (s *Server) SetIdleTimeout(d time.Duration) {
 
 // Notify sends a JSON-RPC notification to the client.
 func (s *Server) Notify(method string, payload any) error {
+	if method == engine.CodeDiagnosticsUpdatedEvent {
+		return s.notifyDiagnostics(payload)
+	}
 	data, err := json.Marshal(payload)
 	if err != nil {
 		return err
@@ -91,8 +101,11 @@ func (s *Server) Serve(parent context.Context) error {
 	ctx, cancel := context.WithCancel(parent)
 	defer func() {
 		cancel()
+		_ = s.Close()
 		s.handlers.Wait()
+		s.expireDiagnostics()
 	}()
+	go s.diagnosticsWriter(ctx)
 
 	// Reads run apart from the loop so the idle timer and ctx can end Serve
 	// while a read is blocked on a client that went silent.
@@ -308,11 +321,13 @@ func (s *Server) initialize(serveCtx context.Context, req Request, starter Start
 		roots, _ = paths.Default()
 	}
 
+	host := s.initializeDiagnostics(serveCtx, &caps)
 	return InitializeResult{
-		ProtocolVersion: ProtocolVersion,
-		AppVersion:      version.Current(),
-		Capabilities:    caps,
-		Roots:           roots,
+		CodeDiagnosticsHostID: host,
+		ProtocolVersion:       ProtocolVersion,
+		AppVersion:            version.Current(),
+		Capabilities:          caps,
+		Roots:                 roots,
 	}, nil
 }
 
@@ -331,6 +346,9 @@ func (s *Server) handleRequest(parentCtx context.Context, req Request) {
 	} else {
 		res, err = s.dispatch(callCtx, req)
 	}
+	if err == nil {
+		err = boundDiagnosticsResult(res)
+	}
 	if err != nil {
 		_ = s.sendError(req.ID, ToRPCError(err))
 		return
@@ -346,6 +364,8 @@ func (s *Server) dispatch(ctx context.Context, req Request) (any, error) {
 		return nil, &ResponseError{Code: CodeInvalidRequest, Message: "server not initialized; call initialize first"}
 	}
 	switch req.Method {
+	case "attachCodeDiagnostics", "detachCodeDiagnostics", "getCodeDiagnosticsSnapshot", "approveCodeDiagnostics", "revokeCodeDiagnostics", "runCodeDiagnostics", "cancelCodeDiagnostics":
+		return s.dispatchDiagnostics(ctx, req)
 	case "ping":
 		var p PingParams
 		if len(req.Params) > 0 {
@@ -711,6 +731,12 @@ func terminalScript(backend engine.Backend, method string, panel bool, build fun
 func (s *Server) Close() error {
 	s.closeOnce.Do(func() {
 		close(s.closed)
+		if c, ok := s.rawW.(io.Closer); ok {
+			_ = c.Close()
+		}
+		if c, ok := s.rawR.(io.Closer); ok {
+			_ = c.Close()
+		}
 	})
 	return nil
 }

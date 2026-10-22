@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 
+	cd "github.com/ginkcode/agent-sessions/internal/codediagnostics"
 	"github.com/ginkcode/agent-sessions/internal/engine"
 	"github.com/ginkcode/agent-sessions/internal/files"
 )
@@ -78,6 +79,10 @@ func (e *ResponseError) Error() string {
 func ToRPCError(err error) *ResponseError {
 	if err == nil {
 		return nil
+	}
+	var diagnostic *cd.Error
+	if errors.As(err, &diagnostic) {
+		return &ResponseError{Code: CodeAppError, Message: diagnostic.Message, Data: &ErrorData{Code: diagnostic.Code}}
 	}
 	var rpcErr *ResponseError
 	if errors.As(err, &rpcErr) {

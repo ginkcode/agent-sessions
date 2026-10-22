@@ -416,7 +416,13 @@ func (c *connection) dialLoop(ctx context.Context, gen uint64, alias string, dia
 			Host:         alias,
 			Generation:   gen,
 			Capabilities: caps,
-			AppVersion:   appVer,
+			HostID: func() string {
+				if res := sess.InitializeResult(); res != nil {
+					return res.CodeDiagnosticsHostID
+				}
+				return ""
+			}(),
+			AppVersion: appVer,
 		}
 		c.mu.Unlock()
 		c.emit()

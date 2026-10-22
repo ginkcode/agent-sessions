@@ -9,6 +9,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	cd "github.com/ginkcode/agent-sessions/internal/codediagnostics"
 	"github.com/ginkcode/agent-sessions/internal/engine"
 	"github.com/ginkcode/agent-sessions/internal/files"
 	"github.com/ginkcode/agent-sessions/internal/index"
@@ -25,34 +26,41 @@ type NotificationHandler func(method string, params json.RawMessage)
 
 // Client implements engine.Backend by forwarding requests over a JSON-RPC 2.0 transport.
 type Client struct {
-	engine.UnsupportedCodeDiagnostics // CD-09: replace with negotiated RPC methods.
-	rawR                              io.Reader
-	rawW                              io.Writer
-	reader                            *FrameReader
-	writer                            *FrameWriter
-	seq                               int64
-	mu                                sync.Mutex
-	pending                           map[string]chan *Response
-	handlers                          []NotificationHandler
-	emitter                           engine.Emitter
-	closed                            bool
-	done                              chan struct{}
-	closeErr                          error
+	rawR     io.Reader
+	rawW     io.Writer
+	reader   *FrameReader
+	writer   *FrameWriter
+	seq      int64
+	mu       sync.Mutex
+	pending  map[string]chan *Response
+	handlers []NotificationHandler
+	emitter  engine.Emitter
+	closed   bool
+	done     chan struct{}
+	closeErr error
 
-	caps   Capabilities
-	roots  paths.Roots
-	appVer string
+	cdHost       string
+	cdOwned      map[string]cd.Context
+	cdSequences  map[string]int64
+	cdEarly      []json.RawMessage
+	cdEarlyBytes int
+	cdAttaching  int
+	caps         Capabilities
+	roots        paths.Roots
+	appVer       string
 }
 
 // NewClient creates a new RPC client over r and w and starts reading frames in a background goroutine.
 func NewClient(r io.Reader, w io.Writer) *Client {
 	c := &Client{
-		rawR:    r,
-		rawW:    w,
-		reader:  NewFrameReader(r),
-		writer:  NewFrameWriter(w),
-		pending: make(map[string]chan *Response),
-		done:    make(chan struct{}),
+		rawR:        r,
+		rawW:        w,
+		reader:      NewFrameReader(r),
+		writer:      NewFrameWriter(w),
+		cdOwned:     make(map[string]cd.Context),
+		cdSequences: make(map[string]int64),
+		pending:     make(map[string]chan *Response),
+		done:        make(chan struct{}),
 	}
 	go c.readLoop()
 	return c
@@ -69,6 +77,7 @@ func (c *Client) Initialize(ctx context.Context, req InitializeRequest) (*Initia
 	}
 	c.mu.Lock()
 	c.caps = res.Capabilities
+	c.cdHost = res.CodeDiagnosticsHostID
 	c.roots = res.Roots
 	c.appVer = res.AppVersion
 	c.mu.Unlock()
@@ -111,6 +120,11 @@ func (c *Client) SetEmitter(emitter engine.Emitter) {
 }
 
 func (c *Client) handleNotification(method string, params json.RawMessage) {
+	if method == engine.CodeDiagnosticsUpdatedEvent {
+		if _, ok := c.diagnosticsNotification(params); !ok {
+			return
+		}
+	}
 	c.mu.Lock()
 	handlers := append([]NotificationHandler(nil), c.handlers...)
 	emitter := c.emitter
@@ -122,6 +136,11 @@ func (c *Client) handleNotification(method string, params json.RawMessage) {
 
 	if emitter != nil {
 		switch method {
+		case engine.CodeDiagnosticsUpdatedEvent:
+			var ev cd.Event
+			if json.Unmarshal(params, &ev) == nil {
+				emitter.Emit(method, ev)
+			}
 		case NotificationCatalogChanged:
 			var ev engine.CatalogChanged
 			if err := json.Unmarshal(params, &ev); err == nil {
