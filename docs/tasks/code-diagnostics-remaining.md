@@ -1,6 +1,6 @@
 # Code diagnostics — remaining-work split
 
-Date: 2026-10-22. **Planned, not implemented.** Parent progress remains **19/28**:
+Date: 2026-10-22. **R01 audit complete; R02–R20 not started.** Parent progress remains **19/28**:
 19 complete, 7 partial (CD-17, CD-22…CD-27), 2 blocked (CD-09, CD-28), 0 untouched
 not-started tasks. Partial/blocked parents are not counted complete. These package
 IDs subdivide remaining acceptance work; they do not add to the 28-task denominator.
@@ -9,7 +9,10 @@ This supplies the follow-up split required by [CD-22](CD-22.md#not-met--not-clai
 and the [task split rules](README.md#how-to-use-these-briefs). Each estimate includes
 focused tests/evidence and is **≤4 developer hours**. Re-estimate/split before coding
 if a package exceeds its cap; never omit acceptance to fit. Full regression and
-native evidence have separate packages. All packages below are **not started**.
+native evidence have separate packages. **R01 is complete (audit/decision only); R02–R20
+are not started.** The [R01 ownership audit](../plan/code-diagnostics-ownership-audit.md)
+is authoritative for R02/R03 ownership and conservative reused-URI freshness policy;
+its exposed bugs are not implemented fixes or passing regression claims.
 
 ## Execution boundaries
 
@@ -30,7 +33,7 @@ native evidence have separate packages. All packages below are **not started**.
 
 | ID / parent | Est. | Prerequisite / boundary | Work and verifiable exit |
 |---|---|---|---|
-| R01 / CD-22, CD-24, CD-26 | 3 h | Code; first | Audit manager `lsp` hardcoding, adapter/provider/session/document keys and close/reopen ownership. Record one ownership map and regression schedules, including two providers and same URI/version late pushes; agree conservative freshness policy before R02/R03. |
+| R01 / CD-22, CD-24, CD-26 | 3 h | **Complete 2026-10-22; audit only** | [Ownership map, code-trace evidence, R02/R03 policy and deterministic schedules](../plan/code-diagnostics-ownership-audit.md). Concrete identity loss and same URI/version late-push false freshness exposed; no fixes/activation claimed. |
 | R02 / CD-22…CD-24, CD-26 | 4 h | R01; Code | Thread concrete provider identity through publication, snapshots/events and independent empty replacement. Fake concurrent checker + Go/TS/Svelte cases prove one provider cannot clear/relabel another; do not broad-deduplicate attribution. |
 | R03 / CD-25, CD-26 | 4 h | R01; Code | Fix/document close/reopen same-server URI/version ambiguity (wire lacks documentId); use a provable isolation strategy or retain uncertainty/no marker. Deterministic delayed version-1, crash/retry, revoke and generation cases must never falsely certify fresh results. |
 | R04 / CD-22…CD-24 | 4 h | R01/R02; Code | Add production discovery/trust resolver seam: bounded contained roots, host-local fixed executable/argv, current known-directory + fingerprint grants, independent missing/unsupported status. Fake launch asserts zero starts before trust, no parent promotion/config evaluation/install fallback. No real tool execution or capability activation. |
