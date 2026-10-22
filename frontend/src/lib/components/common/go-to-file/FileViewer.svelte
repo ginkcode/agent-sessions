@@ -754,6 +754,11 @@
           text={edit.draft}
           path={activeTab.path}
           version={edit.version}
+          diagnostics={{ tab: activeTab, path: activeTab.path,
+            context: JSON.stringify(navigationIdentity()),
+            findings: codeDiagnostics.project && codeDiagnostics.directory === files.dir ? codeDiagnostics.findings : [],
+            dirty: Boolean(edit.dirty || edit.uncertain || edit.conflict), revision: edit.revision,
+            current: codeDiagnostics.status === 'ready' && !codeDiagnostics.revoking && !blocked && !frozen && !files.loadingFile }}
           wrap={files.wrap}
           disabled={frozen}
           selection={selectedLines}

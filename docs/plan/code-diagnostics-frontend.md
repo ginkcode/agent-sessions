@@ -1,4 +1,18 @@
-# Code diagnostics frontend (CD-10 / CD-11 / CD-12 / CD-13 / CD-14)
+# Code diagnostics frontend (CD-10 / CD-11 / CD-12 / CD-13 / CD-14 / CD-15)
+
+## CD-15 editor lint
+
+Overall progress is **14/28** (CD-01…CD-08 + CD-10…CD-15); CD-09 remains blocked.
+The editor-only lazy runtime uses `@codemirror/lint` state effects and CD-14's
+verified saved-range projection. Dirty/conflicted/uncertain drafts and invalid,
+stale or document-basis findings never receive saved markers. Every document
+transaction (including undo) clears markers immediately; current revision-bound
+props must reapply. Cache restoration sanitizes lint state before display without
+losing history, selection or scroll. No diagnostic changes edit text or save files.
+
+412 frontend tests pass; check/build pass with existing warnings. Native tooltip,
+gutter, keyboard/screen-reader and theme QA remain CD-17. See
+[CD-15 evidence](../tasks/CD-15.md#completion-evidence). No next task started.
 
 ## CD-14 source indicators
 

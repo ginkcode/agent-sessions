@@ -10,13 +10,13 @@
   import type { FileEditorController, FileEditorOptions } from '../../../fileEditor';
   import { filePrompt } from '../../../stores/filePrompt.svelte';
 
-  let { id, text, path, version, wrap, disabled = false, position, onposition, selection, onselection, onchange, onsave }: FileEditorOptions = $props();
+  let { id, text, path, version, wrap, disabled = false, diagnostics, position, onposition, selection, onselection, onchange, onsave }: FileEditorOptions = $props();
   let host: HTMLDivElement;
   let editor = $state<FileEditorController>();
   let error = $state('');
 
   function options(): FileEditorOptions {
-    return { id, text, path, version, wrap, disabled, position, onposition, selection, onselection, onchange, onsave };
+    return { id, text, path, version, wrap, disabled, diagnostics, position, onposition, selection, onselection, onchange, onsave };
   }
 
   onMount(() => {

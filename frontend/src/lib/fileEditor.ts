@@ -1,4 +1,7 @@
 import { Compartment, EditorState, StateField, type Extension } from '@codemirror/state';
+import { lintGutter, lintKeymap, setDiagnostics, setDiagnosticsEffect, type Diagnostic } from '@codemirror/lint';
+import { projectSourceDiagnostics } from './sourceDiagnostics';
+import type { AttributedCodeDiagnostic } from './codeDiagnostics';
 import { EditorView, drawSelection, highlightActiveLine, keymap, lineNumbers } from '@codemirror/view';
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands';
 import { LanguageDescription, indentOnInput, indentUnit } from '@codemirror/language';
@@ -20,6 +23,8 @@ export interface FileEditorOptions {
   version: number;
   wrap: boolean;
   disabled?: boolean;
+  /** Context-bound snapshot supplied anew by the viewer, never cached as an owner. */
+  diagnostics?: { tab: object; path: string; context: string; findings: AttributedCodeDiagnostic[]; dirty: boolean; revision?: string; current: boolean };
   position?: FilePosition;
   selection?: FileLineSelection;
   onselection?: (selection: FileLineSelection) => void;
@@ -72,6 +77,7 @@ const theme = EditorView.theme({
   '&.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground, &.cm-focused .cm-content ::selection': {
     backgroundColor: 'color-mix(in srgb, var(--accent-color) 30%, transparent)',
   },
+  '.cm-tooltip': { backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)', border: '1px solid var(--border-color)' },
   '.cm-panels': { backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)' },
   '& .cm-panels-bottom': { borderTop: '1px solid var(--border-color)' },
   '& .cm-panels-top': { borderBottom: '1px solid var(--border-color)' },
@@ -149,16 +155,42 @@ function lineSelection(text: string, selection: FileLineSelection) {
   return { anchor: line(selection.anchor).from, head: line(selection.head).from };
 }
 
+/** Convert against the actual LF-normalized EditorState document, sharing the
+ * source viewer's provider fallback, freshness and strict UTF-16 validation. */
+export function editorDiagnostics(state: EditorState, options: FileEditorOptions): Diagnostic[] {
+  const input = options.diagnostics;
+  if (!input || input.tab !== options.id || input.path !== options.path || !input.context || options.text.replace(/\r\n/g, '\n') !== state.doc.toString()) return [];
+  return projectSourceDiagnostics(state.doc.toString(), input.findings.filter(f => f.diagnostic.path === options.path), input, input.current)
+    .messages.flatMap(({ finding, notice }) => {
+      if (notice) return [];
+      const d = finding.diagnostic;
+      const offsets = rangeOffsets(state.doc.toString(), d.range!);
+      return offsets ? [{ from: offsets.anchor, to: offsets.head,
+        severity: d.severity === 'information' ? 'info' as const : d.severity,
+        source: [d.source || finding.entries.map(e => e.providerId).join(', '), d.code].filter(Boolean).join(' '),
+        message: d.message }] : [];
+    });
+}
+
+// Clearing in the same transaction prevents even one frame of automatically
+// mapped saved markers. Undo is a document change too, not freshness evidence.
+const clearSavedMarkers = EditorState.transactionExtender.of(tr => tr.docChanged
+  ? { effects: setDiagnosticsEffect.of([]) } : null);
+function withDiagnostics(state: EditorState, options: FileEditorOptions): EditorState {
+  return state.update(setDiagnostics(state, editorDiagnostics(state, options))).state;
+}
+
 function freshState(options: FileEditorOptions): EditorState {
   return EditorState.create({
     doc: options.text,
     selection: options.selection ? lineSelection(options.text, options.selection) : undefined,
     extensions: [
       lineNumbers(), history(), drawSelection(), highlightActiveLine(), indentOnInput(),
+      lintGutter(), clearSavedMarkers,
       search(), theme, indentUnit.of(detectIndent(options.text)), EditorState.tabSize.of(4),
       wrapping.of(options.wrap ? EditorView.lineWrapping : []),
       editing.of(editable(options.disabled)), language.of([]), coloring.of([]),
-      keymap.of([indentWithTab, ...defaultKeymap, ...historyKeymap, ...searchKeymap]),
+      keymap.of([indentWithTab, ...defaultKeymap, ...historyKeymap, ...searchKeymap, ...lintKeymap]),
       EditorView.updateListener.of(update => {
         if (update.docChanged) owners.get(update.view)?.onchange(update.state.doc.toString());
       }),
@@ -211,7 +243,7 @@ export function createFileEditor(parent: HTMLElement, initial: FileEditorOptions
   let scrollRequest = 0;
   const cached = tabs.get(options.id);
   const reuse = cached?.version === options.version && cached.state.doc.toString() === options.text;
-  const view = new EditorView({ parent, state: reuse ? cached.state : freshState(options) });
+  const view = new EditorView({ parent, state: withDiagnostics(reuse ? cached.state : freshState(options), options) });
   owners.set(view, options);
   // Capture also covers the search panel: its own keymap otherwise closes the
   // panel before a bubbling parent handler can recognize and consume Escape.
@@ -302,11 +334,12 @@ export function createFileEditor(parent: HTMLElement, initial: FileEditorOptions
       if (reset) {
         const saved = changedTab ? tabs.get(options.id) : undefined;
         const valid = saved?.version === options.version && saved.state.doc.toString() === options.text;
-        view.setState(valid ? saved.state : freshState(options));
+        view.setState(withDiagnostics(valid ? saved.state : freshState(options), options));
         if (options.position) restorePosition(options.position);
         else restore(valid ? saved.top : 0, valid ? saved.left : 0);
       }
       configure();
+      view.dispatch(setDiagnostics(view.state, editorDiagnostics(view.state, options)));
       if (reset || changedPath) setLanguage();
     },
     revealRange(range: CodeDiagnosticRange): boolean {

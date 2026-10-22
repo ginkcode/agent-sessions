@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { compile } from 'svelte/compiler';
 import ts from 'typescript';
 import { EditorState } from '@codemirror/state';
+import { forEachDiagnostic, diagnosticCount } from '@codemirror/lint';
 import { EditorView } from '@codemirror/view';
 import { undo, redo, undoDepth, indentMore, insertNewlineAndIndent } from '@codemirror/commands';
 import { language, indentUnit } from '@codemirror/language';
@@ -117,7 +118,8 @@ async function loadEditorModule() {
   // (including the lazily imported languages) to the same files the test uses.
   source = source.replace(/'(@(?:codemirror|lezer)\/[a-z-]+)'/g, (_, name) => JSON.stringify(import.meta.resolve(name)));
   source = source.replace("'./fullscreen'", JSON.stringify(new URL('fullscreen.ts', EDITOR_URL).href));
-  source = source.replace("'./problemNavigation'", JSON.stringify(new URL('problemNavigation.ts', EDITOR_URL).href));
+  source = source.replace("'./sourceDiagnostics'", JSON.stringify(new URL('sourceDiagnostics.ts', EDITOR_URL).href));
+  source = source.replace("'./problemNavigation'",  JSON.stringify(new URL('problemNavigation.ts', EDITOR_URL).href));
   source = source.replace("'./files'", JSON.stringify(new URL('files.ts', EDITOR_URL).href));
   source = source.replace("'./codeHighlight'", JSON.stringify(new URL('codeHighlight.ts', EDITOR_URL).href));
   source = source.replace("'@replit/codemirror-lang-svelte'", JSON.stringify(import.meta.resolve('@replit/codemirror-lang-svelte')));
@@ -131,6 +133,82 @@ async function loadEditorModule() {
 const { createFileEditor } = await loadEditorModule();
 
 const isMac = /Mac|iPhone|iPad/.test(globalThis.navigator?.platform ?? '');
+
+function lintInput(id, ranges = [{ start: { line: 0, character: 1 }, end: { line: 0, character: 3 } }]) {
+  return { tab: id, path: 'x.txt', context: 'host/root/generation', current: true, dirty: false, revision: 'r1',
+    findings: ranges.map(range => {
+      const diagnostic = { path: 'x.txt', range, severity: 'information', source: '<checker>', code: 'C1', message: '<img onerror=evil>', freshness: 'current', basis: { kind: 'saved', revision: 'r1' } };
+      return { diagnostic, entries: [{ providerId: 'checker', diagnostic }] };
+    }) };
+}
+
+test('lint uses shared verified ranges against LF state, plain attribution and exclusive UTF16 endpoints', () => {
+  const id = {}, diagnostics = lintInput(id, [
+    { start: { line: 0, character: 1 }, end: { line: 1, character: 1 } },
+    { start: { line: 2, character: 0 }, end: { line: 2, character: 0 } },
+    { start: { line: 0, character: 2 }, end: { line: 0, character: 3 } },
+    undefined,
+  ]);
+  const { view, editor, options, calls } = mount({ id, text: '\t😀e\u0301\r\nβ\r\n', path: 'x.txt', diagnostics });
+  const actual = [];
+  forEachDiagnostic(view.state, (d, from, to) => actual.push([from, to, d.severity, d.source, d.message]));
+  // EditorState normalizes CRLF; columns remain UTF16, never visual tab widths.
+  assert.deepEqual(actual, [[1, 7, 'info', '<checker> C1', '<img onerror=evil>'], [8, 8, 'info', '<checker> C1', '<img onerror=evil>']]);
+  assert.deepEqual(calls.changes, []);
+  editor.destroy();
+});
+
+test('lint rejects stale, uncertain, document and invalid ranges but uses verified provider fallback', () => {
+  const id = {}, diagnostics = lintInput(id);
+  const base = diagnostics.findings[0];
+  for (const change of [{ freshness: 'stale' }, { freshness: 'uncertain' }, { basis: { kind: 'document', documentId: 'd' } }, { locationIssue: 'invalidRange' }, { range: { start: { line: -1, character: 0 }, end: { line: 0, character: 9 } } }]) {
+    const diagnostic = { ...base.diagnostic, ...change };
+    const findings = [{ diagnostic, entries: [{ providerId: 'checker', diagnostic }] }];
+    const mounted = mount({ id, text: 'a😀z', path: 'x.txt', diagnostics: { ...diagnostics, findings } });
+    assert.equal(diagnosticCount(mounted.view.state), 0);
+    mounted.editor.destroy();
+  }
+  const diagnostic = { ...base.diagnostic, freshness: 'stale' };
+  const mounted = mount({ id, text: 'a😀z', path: 'x.txt', diagnostics: { ...diagnostics, findings: [{ diagnostic, entries: [{ providerId: 'stale', diagnostic }, ...base.entries] }] } });
+  assert.equal(diagnosticCount(mounted.view.state), 1);
+  mounted.editor.update({ ...mounted.options, diagnostics: undefined });
+  assert.equal(diagnosticCount(mounted.view.state), 0, 'revocation clears an already visible marker');
+  mounted.editor.destroy();
+});
+
+test('lint clears in edit/undo transactions and diagnostic updates preserve history, selection, scroll and owners', () => {
+  const id = {}, diagnostics = lintInput(id);
+  const first = mount({ id, text: 'a😀z', path: 'x.txt', diagnostics });
+  const { editor, view, options, calls } = first;
+  assert.equal(diagnosticCount(view.state), 1);
+  type(view, '!');
+  assert.equal(diagnosticCount(view.state), 0, 'no mapped saved marker even before reactive props');
+  undo(view);
+  assert.equal(diagnosticCount(view.state), 0, 'undo is not disk freshness proof');
+  const depth = undoDepth(view.state), selection = view.state.selection;
+  view.scrollDOM.scrollTop = 80;
+  editor.update({ ...options, diagnostics: { ...diagnostics, dirty: true } });
+  assert.equal(diagnosticCount(view.state), 0);
+  editor.update({ ...options, diagnostics });
+  assert.equal(diagnosticCount(view.state), 1, 'verified clean revision can reapply');
+  assert.equal(undoDepth(view.state), depth);
+  assert.equal(view.state.selection, selection);
+  assert.equal(view.scrollDOM.scrollTop, 80);
+  assert.equal(calls.changes.length, 2);
+  assert.equal(calls.saves, 0);
+  editor.destroy();
+  for (const change of [{ current: false }, { findings: [] }, { revision: 'r2' }, { tab: {} }, { path: 'other' }, { context: '' }, { dirty: true }]) {
+    const remount = mount({ ...options, diagnostics: { ...diagnostics, ...change } });
+    assert.equal(diagnosticCount(remount.view.state), 0, JSON.stringify(change));
+    remount.editor.destroy();
+  }
+  const remount = mount(options);
+  assert.equal(diagnosticCount(remount.view.state), 1);
+  remount.editor.destroy();
+  const count = remount.view.dispatches;
+  remount.editor.update({ ...options, diagnostics: { ...diagnostics, findings: [] } });
+  assert.equal(remount.view.dispatches, count);
+});
 
 function key(k, mods = {}) {
   const { mod = false, alt = false, shift = false, prevented = false } = mods;
@@ -607,6 +685,13 @@ test('FileEditor component reaches fileEditor/CodeMirror only through a dynamic 
   assert.ok(specs.length > 0, 'import scan found nothing; regex out of date?');
   for (const spec of specs) assert.doesNotMatch(spec, /fileEditor|@codemirror/);
   assert.match(client, /import\(\s*['"]\.\.\/\.\.\/\.\.\/fileEditor['"]\s*\)/);
+  assert.match(source, /diagnostics, position/);
+  assert.match(source, /createFileEditor\(host, options\(\)\)/, 'lazy resolution reads latest props, not a captured snapshot');
+  assert.match(source, /if \(!disposed\)/);
+  const viewer = readFileSync(new URL('lib/components/common/go-to-file/FileViewer.svelte', SRC), 'utf8');
+  assert.match(viewer, /diagnostics=\{\{ tab: activeTab, path: activeTab.path/);
+  assert.match(viewer, /!codeDiagnostics.revoking/);
+  assert.match(viewer, /edit.dirty \|\| edit.uncertain \|\| edit.conflict/);
 });
 
 test('no other source file statically pulls CodeMirror or fileEditor into the main bundle', () => {
