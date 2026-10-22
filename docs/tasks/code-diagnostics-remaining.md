@@ -14,6 +14,12 @@ is complete (offline ownership seams/tests); R03 is complete (offline conservati
 is authoritative for R02/R03 ownership and conservative reused-URI freshness policy;
 its exposed bugs are not implemented fixes or passing regression claims.
 
+**UX note (2026-10-23):** the Go to File diagnostics UI was simplified to a compact
+bottom status with disclosed details and settings, and file names now turn red for
+any severity ([evidence](../plan/code-diagnostics-frontend.md#compact-go-to-file-status-ux-simplification-2026-10-23)).
+This is a layout change only. It completes no R-package or parent task, progress
+stays **19/28**, and native QA remains CD-17.
+
 ## Execution boundaries
 
 - **Code** means safe independent, offline coding/fake tests against existing seams

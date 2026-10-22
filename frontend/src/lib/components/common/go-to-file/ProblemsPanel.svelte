@@ -1,18 +1,31 @@
 <script lang="ts">
-  import { tick } from 'svelte';
+  import { tick, type Snippet } from 'svelte';
   import { codeDiagnostics as checks } from '../../../stores/codeDiagnostics.svelte';
   import { diagnosticKey, type CodeDiagnostic } from '../../../codeDiagnostics';
   import { orderedProblems, problemSeverities, problemKey, stepProblem } from '../../../problemNavigation';
-  let { onnavigate, blocked = false, expanded = $bindable(false) }: { onnavigate: (diagnostic: CodeDiagnostic) => void; blocked?: boolean; expanded?: boolean } = $props();
+  import { codeCheckSummary, toggleDisclosure } from '../../../codeCheckSummary';
+  // Every dialog opening mounts this collapsed: details and settings are never remembered.
+  let { onnavigate, blocked = false, expanded = $bindable(false), settingsOpen = $bindable(false), settings }: {
+    onnavigate: (diagnostic: CodeDiagnostic) => void; blocked?: boolean; expanded?: boolean; settingsOpen?: boolean;
+    /** Approval, setup and run controls, rendered only once disclosed. */
+    settings?: Snippet;
+  } = $props();
+  const uid = $props.id();
+  const regionId = `code-check-details-${uid}`, settingsId = `code-check-settings-${uid}`;
   let enabled = $state<string[]>([...problemSeverities]);
   let collapsed = $state<string[]>([]);
   let selected = $state<string>();
   let region = $state<HTMLElement>();
   let toggle: HTMLButtonElement;
-  let rows = $derived(orderedProblems(checks.findings, enabled));
+  let summary = $derived(codeCheckSummary(checks));
+  let findings = $derived(checks.findings ?? []);
+  let rows = $derived(orderedProblems(findings, enabled));
   let paths = $derived([...new Set(rows.map(f => f.diagnostic.path))]);
   let visible = $derived(rows.filter(f => !collapsed.includes(f.diagnostic.path)));
   let ownedFocus = false;
+  function toggleDetails() {
+    ({ expanded, settingsOpen } = toggleDisclosure({ expanded, settingsOpen }, summary, findings.length));
+  }
   function activate(d: CodeDiagnostic) { selected = diagnosticKey(d); if (!blocked) onnavigate(d); }
   async function step(direction: number) {
     const next = stepProblem(rows, selected, direction);
@@ -22,56 +35,99 @@
     await tick();
     Array.from(region?.querySelectorAll<HTMLButtonElement>('[data-problem-key]') ?? []).find(el => el.dataset.problemKey === selected)?.focus();
   }
-  // A removed/filtered row gives focus to the surviving first row or panel toggle.
+  // A removed/filtered row gives focus to the surviving first row or the status button.
   $effect(() => {
     if (selected && !visible.some(f => diagnosticKey(f.diagnostic) === selected)) {
       selected = visible[0] ? diagnosticKey(visible[0].diagnostic) : undefined;
       if (ownedFocus) void tick().then(() => { (region?.querySelector<HTMLButtonElement>('[data-problem-key]') ?? toggle)?.focus(); });
     }
   });
+  const line = (d: CodeDiagnostic) => d.range ? `${d.range.start.line + 1}:${d.range.start.character + 1}–${d.range.end.line + 1}:${d.range.end.character + 1}` : 'File-level';
 </script>
 
-<section class="problems" aria-label="Problems">
-  <button bind:this={toggle} type="button" aria-expanded={expanded} onclick={() => expanded = !expanded}>Problems ({checks.findings.length})</button>
-  {#if expanded}
-    <div class="filters">
-      {#each problemSeverities as severity}
-        <label><input type="checkbox" checked={enabled.includes(severity)} onchange={() => enabled = enabled.includes(severity) ? enabled.filter(s => s !== severity) : [...enabled, severity]} />{severity}</label>
-      {/each}
-      <button type="button" disabled={!rows.length || blocked} onclick={() => step(-1)}>Previous problem</button>
-      <button type="button" disabled={!rows.length || blocked} onclick={() => step(1)}>Next problem</button>
-    </div>
-    {#if checks.partial || checks.truncated}<p>Partial coverage{checks.truncated ? ' · results truncated' : ''}; retained findings are not a complete check.</p>{/if}
-    <p>Reported locations (saved files or synchronized documents) · Next/previous wrap through the filtered set, including collapsed groups. ↑/↓ in the list navigate.</p>
-    <!-- Native buttons own activation; this group only delegates arrow navigation. -->
-    <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-    <div class="results" bind:this={region} role="group" aria-label="Problems by file"
-      onfocusin={() => ownedFocus = true} onfocusout={() => ownedFocus = false}
-      onkeydown={(event) => { if (!blocked) problemKey(event, step); }}>
-      {#if !rows.length}<p>{checks.findings.length ? 'No problems match the severity filters.' : 'No reported problems.'}</p>{/if}
-      {#each paths as path (path)}
-        <button type="button" aria-expanded={!collapsed.includes(path)} onclick={() => collapsed = collapsed.includes(path) ? collapsed.filter(p => p !== path) : [...collapsed, path]}>{path}</button>
-        {#if !collapsed.includes(path)}
-          {#each rows.filter(f => f.diagnostic.path === path) as finding (diagnosticKey(finding.diagnostic))}
-            {@const d = finding.diagnostic}
-            <button type="button" class="problem" data-problem-key={diagnosticKey(d)} aria-pressed={selected === diagnosticKey(d)} disabled={blocked} onclick={() => activate(d)}>
-              <strong>{d.severity}</strong> {d.message} {d.code ?? ''}
-              <span>{d.range ? `${d.range.start.line + 1}:${d.range.start.character + 1}–${d.range.end.line + 1}:${d.range.end.character + 1}` : 'File-level'} · {finding.entries.map(e => `${e.diagnostic.source} (${e.providerId}) · ${e.diagnostic.freshness}`).sort().join(', ')}</span>
-            </button>
-          {/each}
+<section class="problems" aria-label="Code checks">
+  <div class="status-bar">
+    <button bind:this={toggle} type="button" class="status tone-{summary.tone}" aria-expanded={expanded} aria-controls={regionId}
+      title={summary.title} aria-busy={checks.status === 'attaching' || !!checks.running}
+      onclick={toggleDetails}>
+      <span class="chevron" class:open={expanded} aria-hidden="true">▸</span>
+      <span class="dot" aria-hidden="true"></span>
+      <span role="status" aria-live="polite">{summary.text}</span>
+    </button>
+  </div>
+  <div id={regionId} class="details" role="region" aria-label="Code check details" hidden={!expanded}>
+    {#if expanded}
+      <div class="toolbar">
+        {#each problemSeverities as severity}
+          <label><input type="checkbox" checked={enabled.includes(severity)} onchange={() => enabled = enabled.includes(severity) ? enabled.filter(s => s !== severity) : [...enabled, severity]} />{severity}</label>
+        {/each}
+        <button type="button" disabled={!rows.length || blocked} onclick={() => step(-1)}>Previous problem</button>
+        <button type="button" disabled={!rows.length || blocked} onclick={() => step(1)}>Next problem</button>
+        {#if settings}
+          <button type="button" class="settings-toggle" class:attention={summary.needsSettings} aria-expanded={settingsOpen} aria-controls={settingsId}
+            onclick={() => settingsOpen = !settingsOpen}>{summary.needsSettings ? 'Set up code checks' : 'Settings'}</button>
         {/if}
-      {/each}
-    </div>
-  {/if}
+      </div>
+      {#if settings}
+        <div id={settingsId} class="settings" hidden={!settingsOpen}>
+          {#if settingsOpen}{@render settings()}{/if}
+        </div>
+      {/if}
+      {#if checks.partial || checks.truncated}<p class="note">Partial coverage{checks.truncated ? ' · results truncated' : ''}; retained findings are not a complete check.</p>{/if}
+      <!-- Native buttons own activation; this group only delegates arrow navigation. -->
+      <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+      <div class="results" bind:this={region} role="group" aria-label="Problems by file"
+        title="↑/↓ move between problems; next/previous wrap through the filtered set."
+        onfocusin={() => ownedFocus = true} onfocusout={() => ownedFocus = false}
+        onkeydown={(event) => { if (!blocked) problemKey(event, step); }}>
+        {#if !rows.length}<p class="note">{findings.length ? 'No problems match the severity filters.' : 'No problems reported.'}</p>{/if}
+        {#each paths as path (path)}
+          <button type="button" class="file" aria-expanded={!collapsed.includes(path)} onclick={() => collapsed = collapsed.includes(path) ? collapsed.filter(p => p !== path) : [...collapsed, path]}>{path}</button>
+          {#if !collapsed.includes(path)}
+            {#each rows.filter(f => f.diagnostic.path === path) as finding (diagnosticKey(finding.diagnostic))}
+              {@const d = finding.diagnostic}
+              <button type="button" class="problem" data-problem-key={diagnosticKey(d)} aria-pressed={selected === diagnosticKey(d)} disabled={blocked} onclick={() => activate(d)}
+                title={finding.entries.map(e => `${e.diagnostic.source} (${e.providerId}) · ${e.diagnostic.freshness}`).sort().join(', ')}>
+                <strong class="sev-{d.severity}">{d.severity}</strong> {d.message} {d.code ?? ''}
+                <span>{line(d)} · {finding.entries.map(e => `${e.diagnostic.source} (${e.providerId}) · ${e.diagnostic.freshness}`).sort().join(', ')}</span>
+              </button>
+            {/each}
+          {/if}
+        {/each}
+      </div>
+    {/if}
+  </div>
 </section>
 <style>
-  .problems { border-top: 1px solid var(--border-color); padding: 6px 12px; font-size: 12px; }
-  .filters { display: flex; flex-wrap: wrap; gap: 12px; margin: 6px 0; }
-  .results { overflow: auto; max-height: 220px; }
-  button { text-align: left; padding: 4px; color: var(--text-primary); cursor: pointer; }
+  .problems { border-top: 1px solid var(--border-color); font-size: 12px; background: var(--bg-secondary); }
+  .status-bar { display: flex; align-items: center; padding: 0 8px; min-height: 24px; }
+  .status { display: inline-flex; align-items: center; gap: 6px; padding: 2px 6px; border-radius: 4px; color: var(--text-secondary); white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+  .status:hover { background: var(--hover-bg); color: var(--text-primary); }
+  .chevron { display: inline-block; font-size: 0.7rem; transition: transform 0.1s; }
+  .chevron.open { transform: rotate(90deg); }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text-muted); flex-shrink: 0; }
+  .tone-error .dot { background: #f85149; } .tone-error { color: #f85149; }
+  .tone-warning .dot { background: #d29922; }
+  .tone-info .dot { background: var(--accent-color); }
+  .tone-attention .dot { background: #d29922; }
+  :global(:root:not([data-theme='dark'])) .tone-error, :global(:root:not([data-theme='dark'])) .sev-error { color: #cf222e; }
+  .details { border-top: 1px solid var(--border-color); padding: 4px 12px 6px; max-height: 38vh; overflow: auto; background: var(--bg-primary); }
+  .details[hidden] { display: none; }
+  .toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 2px 0 4px; }
+  .settings-toggle { margin-left: auto; }
+  .settings-toggle.attention { color: var(--accent-color); }
+  .settings { border: 1px solid var(--border-color); border-radius: 4px; margin: 4px 0; }
+  .settings[hidden] { display: none; }
+  .results { overflow: auto; }
+  button { text-align: left; padding: 4px; color: var(--text-primary); cursor: pointer; border-radius: 4px; }
+  .status { color: var(--text-secondary); }
+  .tone-error.status { color: #f85149; }
   button:focus-visible { outline: 2px solid var(--accent-color); }
   button:disabled { opacity: .5; }
+  .file { font-family: var(--font-mono); }
   .problem { display: block; width: 100%; padding-left: 18px; overflow-wrap: anywhere; }
   .problem[aria-pressed='true'] { background: var(--active-bg); }
-  span, p { color: var(--text-secondary); } span { display: block; }
+  .sev-error { color: #f85149; } .sev-warning { color: #d29922; }
+  .problem span, .note { color: var(--text-secondary); } .problem span { display: block; }
+  .note { margin: 4px 0; }
 </style>

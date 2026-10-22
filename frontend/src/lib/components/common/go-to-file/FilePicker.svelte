@@ -13,6 +13,7 @@
   import type { GitStatus } from '../../../types';
   import LoadingSpinner from '../LoadingSpinner.svelte';
   import FileIcon from '../FileIcon.svelte';
+  import { issueCounts } from '../../../codeCheckSummary';
 
   interface Props {
     input?: HTMLInputElement | undefined;
@@ -30,6 +31,8 @@
     checks.partial ? 'partial coverage' : '',
     checks.truncated ? 'diagnostics truncated' : '',
   ].filter(Boolean).join(' · '));
+  // Any reported severity marks a file name red; folders get a subtle tint.
+  let issues = $derived(issueCounts(checks.findings ?? []));
   let activeIndex = $state(0);
   let resultsEl: HTMLElement | undefined = $state();
 
@@ -87,11 +90,22 @@
     }
   }
 
+  function rowTitle(path: string, st?: GitStatus, isIgnored = false) {
+    const n = issues.files.get(path);
+    return [path, st ? STATUS_LABELS[st] : '', isIgnored ? 'Ignored by .gitignore' : '', n ? `${n} reported code ${n === 1 ? 'issue' : 'issues'}` : ''].filter(Boolean).join(' · ');
+  }
+
   function splitPath(path: string): { name: string; dir: string } {
     const at = path.lastIndexOf('/');
     return { name: path.slice(at + 1), dir: at >= 0 ? path.slice(0, at) : '' };
   }
 </script>
+
+<!-- Error/warning badges carry their own label; other severities need text too. -->
+{#snippet issueNote(path: string)}
+  {@const c = checks.pathCounts.files.get(path)}
+  {#if issues.files.has(path) && !(c && (c.error || c.warning))}<span class="sr-only">, has reported code issues</span>{/if}
+{/snippet}
 
 {#snippet treeRows(nodes: FileTreeNode[], depth: number)}
   {#each nodes as node (node.path)}
@@ -107,7 +121,7 @@
         >
           <span class="chevron" class:open={files.expanded.has(node.path)}>▸</span>
           <FileIcon path={node.path} folder expanded={files.expanded.has(node.path)} />
-          <span class="tree-name git-{folders.get(node.path) ?? 'none'}">{node.name}</span>
+          <span class="tree-name git-{folders.get(node.path) ?? 'none'}" class:folder-issue={issues.folders.has(node.path)}>{node.name}</span>
           <DiagnosticBadge counts={checks.pathCounts.folders.get(node.path)} context={diagnosticContext} />
           {#if folders.has(node.path)}
             <span class="git-dot git-{folders.get(node.path)}" title="Holds changed files">●</span>
@@ -125,13 +139,14 @@
           class="tree-row file"
           class:selected={files.selected === node.path}
           style:padding-left="{8 + depth * 14 + 14}px"
-          title={st ? `${node.path} · ${STATUS_LABELS[st]}` : node.path}
+          title={rowTitle(node.path, st)}
           onclick={() => onPick(node.path)}
           ondblclick={() => onPick(node.path, true)}
           oncontextmenu={(e) => onContext(e, node.path, false)}
         >
           <FileIcon path={node.path} />
-          <span class="tree-name git-{st ?? 'none'}">{node.name}</span>
+          <span class="tree-name git-{st ?? 'none'}" class:has-issue={issues.files.has(node.path)}>{node.name}</span>
+          {@render issueNote(node.path)}
           <DiagnosticBadge counts={checks.pathCounts.files.get(node.path)} context={diagnosticContext} />
           {#if st}<span class="git-letter git-{st}">{st}</span>{/if}
         </button>
@@ -178,7 +193,7 @@
               class="match"
               class:active={i === activeIndex}
               class:ignored={ignored.has(path)}
-              title={ignored.has(path) ? `${path} · Ignored by .gitignore` : path}
+              title={rowTitle(path, undefined, ignored.has(path))}
               onclick={() => onPick(path)}
               ondblclick={() => onPick(path, true)}
               oncontextmenu={(e) => onContext(e, path, false)}
@@ -186,7 +201,8 @@
               onkeydown={() => {}}
             >
               <FileIcon {path} />
-              <span class="match-name git-{st ?? 'none'}">{parts.name}</span>
+              <span class="match-name git-{st ?? 'none'}" class:has-issue={issues.files.has(path)}>{parts.name}</span>
+              {@render issueNote(path)}
               {#if parts.dir}<span class="match-dir">{parts.dir}</span>{/if}
               <DiagnosticBadge counts={checks.pathCounts.files.get(path)} context={diagnosticContext} />
               {#if st}<span class="git-letter git-{st}" title={STATUS_LABELS[st]}>{st}</span>{/if}
@@ -343,6 +359,31 @@
   }
   .git-C {
     color: #db61a2;
+  }
+  /* Any reported code issue: red file name, above Git colours (the letter keeps Git). */
+  .tree-name.has-issue,
+  .match-name.has-issue,
+  .tree-row.selected .tree-name.has-issue {
+    color: #f85149;
+  }
+  .tree-name.folder-issue {
+    text-decoration: underline dotted color-mix(in srgb, #f85149 60%, transparent);
+    text-underline-offset: 3px;
+  }
+  :global(:root:not([data-theme='dark'])) .tree-name.has-issue,
+  :global(:root:not([data-theme='dark'])) .match-name.has-issue {
+    color: #cf222e;
+  }
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
   }
   /* Only the deleted file is struck through, not the folders holding it. */
   .tree-row.file .tree-name.git-D,

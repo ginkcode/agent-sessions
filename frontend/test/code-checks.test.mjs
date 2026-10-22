@@ -50,13 +50,19 @@ test('approved check/cancel/retry rules and prompt locks reflect store selectors
   assert.equal(revoking[0].disabled, true);
 });
 
-test('zero counts never promise full coverage; provider availability and freshness stay independent', async () => {
+test('settings never promise full coverage; provider availability and freshness stay independent', async () => {
   for (const availability of ['approvalRequired', 'available', 'missingTool', 'unsupported', 'disabled']) {
     const html = await render({ partial: true, truncated: true, providers: [{ ...provider, availability, phase: 'canceled', freshness: 'stale', coverage: { ...provider.coverage, partial: true } }] });
-    for (const text of ['No reported problems', 'reported findings', 'partial coverage', 'truncated', 'stale', 'unopened-file coverage stale', 'Check canceled']) assert.ok(html.includes(text));
-    assert.doesNotMatch(html, /all clean/i);
+    for (const text of ['partial coverage', 'truncated', 'stale', 'unopened-file coverage stale', 'Check canceled', 'no complete-coverage claim']) assert.ok(html.includes(text), text);
+    assert.doesNotMatch(html, /all clean|No problems reported/i);
     if (availability !== 'available') assert.doesNotMatch(html, />Check Project</);
   }
-  const html = await render({ counts: { error: 2, warning: 3 } });
-  assert.match(html, /2 errors · 3 warnings/); assert.doesNotMatch(html, /No reported problems/);
+});
+
+test('settings keep raw host identity and proposal hash inside a collapsed technical disclosure', async () => {
+  const html = await render({ approved: false, snapshot: { approval: { state: 'required' }, proposal: { fingerprint: 'sha256:abc', tools: [] } } });
+  const technical = html.slice(html.indexOf('Technical details'));
+  assert.ok(technical.includes('local:actual') && technical.includes('sha256:abc'));
+  assert.doesNotMatch(html.slice(0, html.indexOf('Technical details')), /local:actual|sha256:abc/);
+  assert.doesNotMatch(html, /<details[^>]*open[^>]*>\s*<summary[^>]*>Technical/);
 });

@@ -145,7 +145,7 @@ const checksComponent = await loadServerComponent(new URL('../src/lib/components
 const problemsComponent = await loadServerComponent(new URL('../src/lib/components/common/go-to-file/ProblemsPanel.svelte', import.meta.url), [
   ["'svelte'", JSON.stringify(import.meta.resolve('svelte'))],
   ["import { codeDiagnostics as checks } from '../../../stores/codeDiagnostics.svelte';", fixtureStore('checks')],
-  ["'../../../codeDiagnostics'", lib('codeDiagnostics')], ["'../../../problemNavigation'", lib('problemNavigation')],
+  ["'../../../codeDiagnostics'", lib('codeDiagnostics')], ["'../../../problemNavigation'", lib('problemNavigation')], ["'../../../codeCheckSummary'", lib('codeCheckSummary')],
 ]);
 
 test('R08 provider crash/truncation propagates through actual store, panel, counts and marker projections', async () => {

@@ -32,6 +32,7 @@
   let renamePath = $state<string | null>(null);
   import NewFolderPrompt from './go-to-file/NewFolderPrompt.svelte';
   let newFolderPath = $state<string | null>(null);
+  let checksBlocked = $derived(!!link.blockedReason || fileActions.busy || fileActions.quitting || renamePath !== null || newFolderPath !== null);
   import { fileActions } from '../../stores/fileActions.svelte';
   import { keyHandled } from '../../fullscreen';
   import { tabShortcut } from '../../tabActions';
@@ -288,9 +289,6 @@
       {/if}
       <button type="button" class="close-button" aria-label="Close" title="Close" onclick={close}>×</button>
     </header>
-    {#if files.open && !presentation}
-      <CodeChecks blocked={!!link.blockedReason || fileActions.busy || fileActions.quitting || renamePath !== null || newFolderPath !== null} />
-    {/if}
     <div class="body">
       <FilePicker bind:this={picker} bind:input {presentation} onPick={pick} onContext={openContext} />
       <FileViewer bind:this={viewer} bind:presentation bind:presentationFontSize>
@@ -300,7 +298,12 @@
       </FileViewer>
     </div>
     {#if files.open && !presentation}
-      <ProblemsPanel onnavigate={(diagnostic) => viewer?.navigateProblem(diagnostic)} blocked={!!link.blockedReason || fileActions.busy || fileActions.quitting || renamePath !== null || newFolderPath !== null} />
+      <!-- Compact status only; details, approval and setup stay behind disclosure. -->
+      <ProblemsPanel onnavigate={(diagnostic) => viewer?.navigateProblem(diagnostic)} blocked={checksBlocked}>
+        {#snippet settings()}
+          <CodeChecks blocked={checksBlocked} />
+        {/snippet}
+      </ProblemsPanel>
     {/if}
   </div>
 </div>

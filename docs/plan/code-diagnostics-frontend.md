@@ -1,5 +1,55 @@
 # Code diagnostics frontend (CD-10 / CD-11 / CD-12 / CD-13 / CD-14 / CD-15)
 
+## Compact Go to File status (UX simplification, 2026-10-23)
+
+This change came from user feedback: the always-visible Code Checks/setup text at
+the top of Go to File took up most of the dialog. It changes only the layout. Store,
+backend, trust, managed-install and live gating are unchanged, and the overall
+progress stays at **19/28** with no task counted as done.
+
+- **No top panel.** `GoToFileDialog` no longer mounts `CodeChecks` above the body.
+  The only diagnostics UI by default is a single bottom status button in
+  `ProblemsPanel` (`aria-expanded`, `aria-controls` → details region, a polite
+  `role="status"` label). Each dialog mount starts collapsed, so no open state is
+  remembered.
+- **Concise status** (`codeCheckSummary.ts`): error/warning/info counts, or a short
+  state such as "Code checks starting…", "Checking…", "Code checks: approval
+  needed", "Code checks unavailable", "Code checks disconnected" or "No checker
+  available". "No problems reported" appears only when the project is approved, the
+  attachment is ready and a checker is available, and it gets "(partial)" when
+  coverage is partial. The tooltip covers scope and caveats (project only, includes
+  unlisted files, partial or truncated) and never shows host identities.
+- **Progressive disclosure.** Clicking the status shows the issue list (severity
+  filters, previous/next, file groups) and a separate **Settings** /
+  **Set up code checks** toggle, which has its own `aria-expanded`. That toggle
+  mounts `CodeChecks`, which now holds approval, run, cancel, revoke, retry,
+  live-document recovery and the optional gopls setup inside a collapsed `<details>`
+  that opens only while a proposal or installation is active. When there is nothing
+  to list and approval or setup is needed, opening the status also reveals the
+  settings. Every approve or install still takes its own button press, and an
+  installation still needs a reviewed proposal. Raw host IDs and proposal
+  fingerprints appear only under a collapsed **Technical details**; the install
+  proposal still names the target host identity next to the Install button.
+- **Red file names.** A file name in the tree and in search results turns red for
+  a finding of *any* severity, including hint and information (`issueCounts`). This
+  also applies to the selected row. The Git class and Git letter stay, and the row
+  tooltip adds "N reported code issue(s)". Hint and information rows also get
+  screen-reader text, because the error/warning badge labels only itself. Folders
+  above a file with findings get a subtle dotted red underline. Existing
+  error/warning badges and counts are unchanged.
+
+Evidence: `frontend/test/code-check-status.test.mjs` (default markup has no verbose
+top panel or host hash, the status sits below the body with collapsed and
+controlled semantics, concise counts, settings appear only when disclosed, no
+automatic approval or install, no false clean claim in unavailable, off, unapproved,
+disconnected or failed states, and red names in the tree, the selected row and
+search for non-error severities). Existing CodeChecks, managed-tools, integration
+and Problems tests were adapted. Validation: **466/466 frontend tests**, `npm run
+check` 0 errors (existing tsconfig warning), build passed (existing chunk advisory;
+the lazy `fileEditor` chunk is kept), `git diff --check` clean. These are
+server-rendered markup and pure-state checks only. Native paint, focus, theme and
+screen-reader verification is still CD-17, and no native GUI run is claimed.
+
 ## CD-15 editor lint
 
 Overall progress is **14/28** (CD-01…CD-08 + CD-10…CD-15); CD-09 remains blocked.

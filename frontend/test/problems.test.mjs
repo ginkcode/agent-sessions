@@ -46,6 +46,7 @@ const panel = await loadServerComponent(panelURL, [
   ["import { codeDiagnostics as checks } from '../../../stores/codeDiagnostics.svelte';", fixtureStore('checks')],
   ["'../../../codeDiagnostics'", JSON.stringify(new URL('../src/lib/codeDiagnostics.ts', import.meta.url).href)],
   ["'../../../problemNavigation'", JSON.stringify(new URL('../src/lib/problemNavigation.ts', import.meta.url).href)],
+  ["'../../../codeCheckSummary'", JSON.stringify(new URL('../src/lib/codeCheckSummary.ts', import.meta.url).href)],
 ]);
 test('expanded panel groups and escapes attributed file-level and stale findings', async () => {
   const findings = [finding(diagnostic()), finding(diagnostic({ path: 'z.ts', range: undefined, severity: 'hint', freshness: 'stale' }))];
@@ -56,7 +57,7 @@ test('expanded panel groups and escapes attributed file-level and stale findings
 
 test('panel is collapsed initially and exposes count without executable content', async () => {
   const html = await renderWithFixture(panel, { checks: { findings: [finding(diagnostic())] } }, { onnavigate() {} });
-  assert.match(html, /Problems \(1\)/); assert.match(html, /aria-expanded="false"/); assert.doesNotMatch(html, /<script>/);
+  assert.match(html, /role="status"[^>]*>1 error</); assert.match(html, /aria-expanded="false"/); assert.doesNotMatch(html, /<script>|attack/);
 });
 
 // Execute the actual viewer navigation block against the real FilesStore, with

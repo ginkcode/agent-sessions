@@ -15,13 +15,13 @@ const checks = ["import { codeDiagnostics as checks } from '../../../stores/code
 const controls = await loadServerComponent(new URL('CodeChecks.svelte', base), [checks]);
 const panel = await loadServerComponent(new URL('ProblemsPanel.svelte', base), [checks,
   ["'svelte'", JSON.stringify(import.meta.resolve('svelte'))],
-  ["'../../../codeDiagnostics'", lib('codeDiagnostics')], ["'../../../problemNavigation'", lib('problemNavigation')]]);
+  ["'../../../codeDiagnostics'", lib('codeDiagnostics')], ["'../../../problemNavigation'", lib('problemNavigation')], ["'../../../codeCheckSummary'", lib('codeCheckSummary')]]);
 const badge = await loadServerComponent(new URL('DiagnosticBadge.svelte', base), [["'../../../codeDiagnosticCounts'", lib('codeDiagnosticCounts')]]);
 globalThis.__stage1Badge = badge.default;
 const picker = await loadServerComponent(new URL('FilePicker.svelte', base), [checks,
   ["import { files } from '../../../stores/files.svelte';", fixtureStore('files')],
   ["import DiagnosticBadge from './DiagnosticBadge.svelte';", 'const DiagnosticBadge = globalThis.__stage1Badge;'],
-  ["'../../../files'", lib('files')],
+  ["'../../../files'", lib('files')], ["'../../../codeCheckSummary'", lib('codeCheckSummary')],
   ["import FileIcon from '../FileIcon.svelte';", 'const FileIcon = () => {};'],
   ["import LoadingSpinner from '../LoadingSpinner.svelte';", 'const LoadingSpinner = () => {};']]);
 const source = await loadServerComponent(new URL('SourceView.svelte', base), [
@@ -54,10 +54,9 @@ test('real store drives controls, panel, picker and source through independent r
     assert.equal(store.countsUnder('src'), count);
     const fixtures = { checks: store, files: { wrap: false, expanded: new Set(['src']), listing: { files: ['src/unopened.go'] } } };
     const html = await renderWithFixture(controls, fixtures);
-    assert.match(html, count ? /1 error/ : /No reported problems/);
     assert.match(html, /svelte/);
     const problems = await renderWithFixture(panel, fixtures, { expanded: true, onnavigate() {} });
-    assert.match(problems, new RegExp(`Problems \\(${count}\\)`));
+    assert.match(problems, count ? /role="status"[^>]*>1 error · partial</ : /role="status"[^>]*>No problems reported \(partial\)</);
     const tree = await renderWithFixture(picker, fixtures, { onPick() {}, onContext() {} });
     assert.equal((tree.match(/class="diagnostic-badge/g) ?? []).length, count ? 2 : 0);
     const findings = store.findings.filter(f => f.diagnostic.path === diagnostic.path);
