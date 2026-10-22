@@ -21,7 +21,10 @@ type (
 		End   Position `json:"end"`
 	}
 	SavedBasis struct {
-		Kind string `json:"kind"`
+		Kind       string `json:"kind"`
+		Revision   string `json:"revision,omitempty"`
+		DocumentID string `json:"documentId,omitempty"`
+		Version    *int64 `json:"version,omitempty"`
 	}
 	Diagnostic struct {
 		Path          string     `json:"path"`

@@ -229,7 +229,7 @@ func (s *Supervisor) Submit(ctx context.Context, root AuthorizedRoot, tools []To
 	}
 	key := runKey{root.Project(), c.ProviderID}
 	old := s.latest[key]
-	if old != nil && !old.finished && !supersede {
+	if old != nil && !old.finished && old.ctx.Err() == nil && !supersede {
 		if old.command.Policy() == c.Policy() && old.lease.fingerprint == lease.fingerprint && old.ctx.Err() == nil {
 			return old, nil
 		}

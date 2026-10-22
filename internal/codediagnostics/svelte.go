@@ -249,6 +249,11 @@ func walkContained(root AuthorizedRoot, visit func(string) error, partial *bool)
 }
 
 func (p *SveltePlan) Run(ctx context.Context, s *Supervisor, runID string) CheckerResult {
+	return p.RunApproved(ctx, s, runID, p.Tools())
+}
+
+// RunApproved uses the attachment-wide tool proposal for lease identity.
+func (p *SveltePlan) RunApproved(ctx context.Context, s *Supervisor, runID string, approved []ToolInput) CheckerResult {
 	out := CheckerResult{Diagnostics: []Diagnostic{}, Roots: slices.Clone(p.packages), Partial: p.partial, Availability: "available", Phase: "idle", Freshness: "uncertain", Notice: "Svelte check covers tsconfig-selected saved files only; dependencies and excluded scopes are not fully attested. External changes are unwatched."}
 	fail := func(code string) CheckerResult {
 		out.Replace = false
@@ -281,7 +286,7 @@ func (p *SveltePlan) Run(ctx context.Context, s *Supervisor, runID string) Check
 	}
 	var runs []*Run
 	for i, c := range p.commands {
-		r, err := s.Submit(ctx, p.root, p.tools, c, fmt.Sprintf("%s-%d", runID, i), false)
+		r, err := s.Submit(ctx, p.root, approved, c, fmt.Sprintf("%s-%d", runID, i), false)
 		if err != nil {
 			var e *Error
 			if errors.As(err, &e) {

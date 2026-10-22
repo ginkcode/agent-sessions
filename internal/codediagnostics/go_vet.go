@@ -205,6 +205,11 @@ type CheckerResult struct {
 }
 
 func (p *GoVetPlan) Run(ctx context.Context, s *Supervisor, runID string) CheckerResult {
+	return p.RunApproved(ctx, s, runID, p.Tools())
+}
+
+// RunApproved uses the attachment-wide tool proposal for lease identity.
+func (p *GoVetPlan) RunApproved(ctx context.Context, s *Supervisor, runID string, approved []ToolInput) CheckerResult {
 	out := CheckerResult{Diagnostics: []Diagnostic{}, Roots: slices.Clone(p.modules), Partial: p.partial, Availability: "available", Phase: "idle", Freshness: "uncertain", Notice: "Go vet checks saved, build-selected packages only; workspace mode and cgo are disabled. External changes are unwatched."}
 	fail := func(code string) CheckerResult {
 		out.Replace = false
@@ -235,7 +240,7 @@ func (p *GoVetPlan) Run(ctx context.Context, s *Supervisor, runID string) Checke
 	}
 	runs := []*Run{}
 	for i, c := range p.commands {
-		r, err := s.Submit(ctx, p.root, p.tools, c, fmt.Sprintf("%s-%d", runID, i), false)
+		r, err := s.Submit(ctx, p.root, approved, c, fmt.Sprintf("%s-%d", runID, i), false)
 		if err != nil {
 			var e *Error
 			if errors.As(err, &e) {
