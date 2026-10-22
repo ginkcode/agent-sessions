@@ -1,6 +1,6 @@
 # Implementation task details
 
-Task briefs for **Go to File code diagnostics**. **Progress: 15/28 complete**
+Task briefs for **Go to File code diagnostics**. **Progress: 16/28 complete**
 (CD-01: contract and tested fixtures; CD-02: backend trust and path policy;
 CD-03: bounded checker supervisor; CD-04: installed-checker format evidence;
 CD-05: contained Go vet adapter; CD-06: contained Svelte adapter and tested conservative outcomes;
@@ -12,9 +12,10 @@ CD-12: grouped/filtered Problems and guarded draft-safe UTF-16 source/editor nav
 CD-13: shared exact-deduplication file/tree badges and component ancestor counts;
 CD-14: verified source gutter/range indicators and plain-text file/stale messages;
 CD-15: lazy CodeMirror lint with verified saved ranges and draft/cache freshness guards;
-CD-16: deterministic checker/manager/RPC and real-store controls/panel/picker/source/editor integration evidence).
+CD-16: deterministic checker/manager/RPC and real-store controls/panel/picker/source/editor integration evidence;
+CD-18: bounded LSP stdio transport, fake-server tests only).
 CD-09 remains blocked on authenticated production remote identity activation;
-CD-17 is partial/blocked: [non-GUI preflight and blocked native matrix](../plan/code-diagnostics-qa.md), Stage 1 HOLD; CD-18…CD-28 are not started. CD-16 is automated coverage, not native CD-17 QA. CD-10 used an explicit dependency exception against
+CD-17 is partial/blocked: [non-GUI preflight and blocked native matrix](../plan/code-diagnostics-qa.md), Stage 1 HOLD; CD-19…CD-28 are not started. CD-16 is automated coverage, not native CD-17 QA. CD-10 used an explicit dependency exception against
 committed RPC contracts/tests, not remote activation. Local controls are wired;
 production remote diagnostics are not enabled. Manual keyboard/focus QA is not claimed. The authoritative wire contract is
 [contract v1](../plan/code-diagnostics-contract.md). See [the implementation plan](../plan/code-diagnostics.md) for shared
@@ -98,7 +99,7 @@ not a promise that the entire workspace has been checked.
 
 | Task | Detail | Estimate |
 |---|---|---|
-| [CD-18](CD-18.md) | Bounded LSP stdio transport | 4 h |
+| [CD-18](CD-18.md) | ✅ Bounded LSP stdio transport (fake-server evidence; transport only) | 4 h |
 | [CD-19](CD-19.md) | LSP protocol and process lifecycle | 4 h |
 | [CD-20](CD-20.md) | Document operations across backend transports | 4 h |
 | [CD-21](CD-21.md) | Frontend document lifecycle bridge | 4 h |
