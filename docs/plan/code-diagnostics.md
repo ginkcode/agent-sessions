@@ -1,13 +1,13 @@
 # Go to File — project code diagnostics
 
-Status: **14/28 complete**: CD-01…CD-08 and CD-10…CD-15 are complete (contract,
-backend trust/checkers/manager, Engine/App bindings, frontend API/store, local approval/check/status controls, draft-safe Problems navigation, shared file/tree diagnostic badges and verified source indicators/messages).
+Status: **15/28 complete**: CD-01…CD-08 and CD-10…CD-16 are complete (contract,
+backend trust/checkers/manager, Engine/App bindings, frontend API/store, local approval/check/status controls, draft-safe Problems navigation, shared file/tree diagnostic badges, verified source/editor indicators and deterministic Stage 1 integration tests).
 CD-09 RPC contracts/tests are committed, but authenticated production SSH/WSL
 identity activation remains **blocked**. CD-10 proceeded locally with an explicit
 dependency exception; it does not complete CD-09 or activate remotes.
-CD-16…CD-28 are not started. Local dialog controls are wired with asynchronous
+CD-17 is **partial / blocked**: [non-GUI preflight and blocked native QA matrix](code-diagnostics-qa.md), with **Stage 1 HOLD**; CD-18…CD-28 are not started. Local dialog controls are wired with asynchronous
 identity/capability discovery; unsupported remotes expose status only, never execution controls.
-Manual keyboard/focus QA has not been performed.
+Manual keyboard/focus QA and all CD-17 native matrix checks have not been performed.
 Frontend policy/evidence: [CD-10](code-diagnostics-frontend.md). Trust policy and approval copy: [CD-02 addendum](code-diagnostics-trust.md).
 Execution semantics: [CD-03 supervisor](code-diagnostics-supervisor.md).
 Version/invocation evidence and limitations: [CD-04 spike](code-diagnostics-checkers.md).
@@ -271,7 +271,7 @@ Individual implementation briefs, test cases, and acceptance checklists are in
 | CD-14 | 1 | ✅ Verified source gutter/range indicators and plain-text file/stale messages tested (409 frontend tests; native paint/layout QA deferred) | 4 h | CD-10 |
 | CD-15 | 1 | ✅ Lazy CodeMirror lint, shared verified UTF-16 ranges, cached-tab and draft freshness guards (412 tests; check/build passed; native QA deferred) | 4 h | CD-10 |
 | CD-16 | 1 | Integration tests for findings/empty/failure/cancel, dirty drafts, output caps, and stale event races | 4 h | CD-05…CD-15 |
-| CD-17 | 1 | Manual local/SSH/WSL and Windows/macOS/Linux QA; document limitations and release gate | 4 h | CD-16 |
+| CD-17 | 1 | 🟡 Partial/blocked: [non-GUI preflight and unperformed native matrix](code-diagnostics-qa.md); Stage 1 HOLD | 4 h | CD-16 |
 | CD-18 | 2 | Bounded LSP stdio transport with framing/request/cancel tests using a fake server | 4 h | CD-07 |
 | CD-19 | 2 | LSP initialization, sync negotiation, safe request handling, shutdown/restart/idle lifecycle | 4 h | CD-18 |
 | CD-20 | 2 | Versioned document open/change/save/close operations across Backend/App/RPC, capability and size tests | 4 h | CD-09, CD-19 |

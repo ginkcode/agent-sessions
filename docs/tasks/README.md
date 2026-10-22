@@ -14,7 +14,7 @@ CD-14: verified source gutter/range indicators and plain-text file/stale message
 CD-15: lazy CodeMirror lint with verified saved ranges and draft/cache freshness guards;
 CD-16: deterministic checker/manager/RPC and real-store controls/panel/picker/source/editor integration evidence).
 CD-09 remains blocked on authenticated production remote identity activation;
-CD-17…CD-28 are not started. CD-16 is automated coverage, not native CD-17 QA. CD-10 used an explicit dependency exception against
+CD-17 is partial/blocked: [non-GUI preflight and blocked native matrix](../plan/code-diagnostics-qa.md), Stage 1 HOLD; CD-18…CD-28 are not started. CD-16 is automated coverage, not native CD-17 QA. CD-10 used an explicit dependency exception against
 committed RPC contracts/tests, not remote activation. Local controls are wired;
 production remote diagnostics are not enabled. Manual keyboard/focus QA is not claimed. The authoritative wire contract is
 [contract v1](../plan/code-diagnostics-contract.md). See [the implementation plan](../plan/code-diagnostics.md) for shared
@@ -89,7 +89,7 @@ action. It does **not** automatically execute tools when the dialog opens.
 | [CD-14](CD-14.md) | ✅ Verified source gutter/range indicators and file/stale messages; native paint/layout QA deferred | 4 h |
 | [CD-15](CD-15.md) | ✅ Lazy CodeMirror lint, verified ranges and draft/cache freshness guards; native QA deferred | 4 h |
 | [CD-16](CD-16.md) | ✅ Deterministic Stage 1 integration regressions; remote identity blocked, native QA not claimed | 4 h |
-| [CD-17](CD-17.md) | Cross-host/platform QA and Stage 1 gate | 4 h |
+| [CD-17](CD-17.md) | 🟡 Partial/blocked — non-GUI QA preparation only; native matrix unperformed, Stage 1 HOLD | 4 h |
 
 ## Stage 2 — Live opened-file diagnostics
 
