@@ -48,6 +48,15 @@ export class CodeDiagnosticsStore {
   private liveCapable = false;
   private listeners = new Set<() => void>();
   private reconcileFiles: () => Promise<void> = async () => {};
+  private liveRevision = $state(0);
+  private readLiveBasis: (path: string) => LiveDocumentBasis | undefined = () => undefined;
+  /** Bridge-owned protocol identity only; never text or editor state. */
+  setLiveBasis(read: (path: string) => LiveDocumentBasis | undefined): void { this.readLiveBasis = read; }
+  liveChanged(): void { this.liveRevision++; }
+  liveBasis(path: string): LiveDocumentBasis | undefined {
+    this.liveRevision;
+    return this.liveAttachment ? this.readLiveBasis(path) : undefined;
+  }
   /** Read-only files-store reconciliation; no discovery or language-server startup. */
   setReconciler(reconcile: () => Promise<void>): void { this.reconcileFiles = reconcile; }
 

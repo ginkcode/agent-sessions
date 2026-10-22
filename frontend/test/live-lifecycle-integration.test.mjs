@@ -1,6 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { fixtureStore, loadServerModule } from './helpers.mjs';
+import { fixtureStore, loadServerModule, loadServerComponent, renderWithFixture } from './helpers.mjs';
+import { projectSourceDiagnostics } from '../src/lib/sourceDiagnostics.ts';
+import { problemLocation } from '../src/lib/problemNavigation.ts';
+import { editorDiagnostics } from '../src/lib/fileEditor.ts';
+import { EditorState } from '@codemirror/state';
 import { LiveDocumentBridge } from '../src/lib/liveDocuments.ts';
 
 const lib = name => JSON.stringify(new URL(`../src/lib/${name}.ts`, import.meta.url).href);
@@ -38,6 +42,8 @@ async function harness(live = true) {
   };
   const files = new FilesStore(), checks = new CodeDiagnosticsStore(api, () => 0);
   const bridge = new LiveDocumentBridge({ api, store: checks, source: () => ({ dir: files.dir, documents: files.displayedDocuments() }), newId: () => `d${++id}`, timers: { set(fn) { timers.set(fn, fn); return fn; }, clear(fn) { timers.delete(fn); } } });
+  checks.setLiveBasis(path => bridge.basis(path));
+  bridge.onChange(() => checks.liveChanged());
   files.observe(bridge);
   const off = checks.onLifecycle(() => bridge.sync());
   await files.show('/p');
@@ -83,6 +89,52 @@ test('real files + diagnostics stores: freshness, attribution, save, close and h
   late({ contractVersion: 1, context, sequence: 999 });
   assert.equal(h.checks.status, 'disconnected');
   assert.equal(h.calls.at(-1)[0], 'save');
+  h.off(); await h.checks.detach();
+});
+
+test('R07 real store source/component/editor projection and navigation require the displayed live identity', async () => {
+  const component = await loadServerComponent(new URL('../src/lib/components/common/go-to-file/SourceView.svelte', import.meta.url), [
+    ["import { files } from '../../../stores/files.svelte';", fixtureStore('files')],
+    ["'../../../fileSelection'", lib('fileSelection')], ["'../../../sourceDiagnostics'", lib('sourceDiagnostics')],
+  ]);
+  const h = await harness();
+  h.files.openFile('a.go', { keep: true }); await tick();
+  h.files.startEditing('a.go');
+  h.files.updateDraft('a.go', 'a😀\nb\n'); await h.flush();
+  const tab = h.files.activeTab, edit = tab.edit, version = edit.version;
+  function projection(expected) {
+    const basis = { dirty: true, revision: edit.revision, live: h.checks.liveBasis(tab.path) };
+    const p = projectSourceDiagnostics(edit.draft, h.checks.findings, basis, h.checks.status === 'ready');
+    assert.equal(p.segments.length, expected);
+    const options = { id: tab, path: tab.path, text: edit.draft, diagnostics: { tab, path: tab.path, context: 'fixture', findings: h.checks.findings, ...basis, current: h.checks.status === 'ready' } };
+    assert.equal(editorDiagnostics(EditorState.create({ doc: edit.draft }), options).length, expected);
+    if (h.checks.findings.length) assert.equal(!problemLocation(h.checks.findings[0].diagnostic, basis), !!expected);
+    assert.equal(edit.version, version);
+    return p;
+  }
+  h.emit();
+  const p = projection(1);
+  const html = await renderWithFixture(component, { files: { wrap: false } }, { rows: [{ kind: 'line', index: 0 }], plainLines: ['a😀'], htmlLines: null, showDiff: false, diagnostics: p });
+  assert.match(html, /has-diagnostics/);
+  assert.doesNotMatch(html, /<script>/);
+  const live = h.checks.liveBasis('a.go');
+  h.emit(live.version, 'another-document'); projection(0);
+  h.emit(live.version - 1); projection(0);
+  h.emit(live.version + 1); projection(0);
+  h.emit(null); projection(0);
+  h.emit(); projection(1);
+  assert.equal(h.checks.liveBasis('other.go'), undefined);
+  // Wrong URI remains panel-only even with a valid document ID/version.
+  const wrongPath = h.checks.findings.map(f => ({ ...f, diagnostic: { ...f.diagnostic, path: 'other.go' } }));
+  assert.equal(editorDiagnostics(EditorState.create({ doc: edit.draft }), { id: tab, path: 'a.go', diagnostics: { tab, path: 'a.go', findings: wrongPath, dirty: true, live, current: true } }).length, 0);
+  h.files.updateDraft(tab, 'a😀\nnew\n'); projection(0); // immediate, before debounce
+  h.emit(); projection(0);
+  await h.flush(); h.emit(); projection(1);
+  h.checks.revoking = true; // pending revoke suppresses basis before its async reply
+  assert.equal(h.checks.liveBasis('a.go'), undefined);
+  projection(0);
+  h.checks.disconnect(); projection(0);
+  assert.equal(edit.draft, 'a😀\nnew\n');
   h.off(); await h.checks.detach();
 });
 

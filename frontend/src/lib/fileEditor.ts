@@ -1,7 +1,7 @@
 import { Compartment, EditorState, StateField, type Extension } from '@codemirror/state';
 import { lintGutter, lintKeymap, setDiagnostics, setDiagnosticsEffect, type Diagnostic } from '@codemirror/lint';
 import { projectSourceDiagnostics } from './sourceDiagnostics';
-import type { AttributedCodeDiagnostic } from './codeDiagnostics';
+import type { AttributedCodeDiagnostic, LiveDocumentBasis } from './codeDiagnostics';
 import { EditorView, drawSelection, highlightActiveLine, keymap, lineNumbers } from '@codemirror/view';
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands';
 import { LanguageDescription, indentOnInput, indentUnit } from '@codemirror/language';
@@ -24,7 +24,7 @@ export interface FileEditorOptions {
   wrap: boolean;
   disabled?: boolean;
   /** Context-bound snapshot supplied anew by the viewer, never cached as an owner. */
-  diagnostics?: { tab: object; path: string; context: string; findings: AttributedCodeDiagnostic[]; dirty: boolean; revision?: string; current: boolean };
+  diagnostics?: { tab: object; path: string; context: string; findings: AttributedCodeDiagnostic[]; dirty: boolean; revision?: string; live?: LiveDocumentBasis; current: boolean };
   position?: FilePosition;
   selection?: FileLineSelection;
   onselection?: (selection: FileLineSelection) => void;

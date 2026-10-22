@@ -1,17 +1,17 @@
-import { inlineCodeDiagnostic, type AttributedCodeDiagnostic } from './codeDiagnostics';
-import { problemLocation, rangeOffsets } from './problemNavigation';
+import type { AttributedCodeDiagnostic } from './codeDiagnostics';
+import { problemLocation, rangeOffsets, type DiagnosticDisplayBasis } from './problemNavigation';
 
 export interface SourceDiagnosticSegment { line: number; start: number; end: number; finding: number }
 export interface SourceDiagnosticMessage { finding: AttributedCodeDiagnostic; notice: string }
 export interface SourceDiagnosticProjection { messages: SourceDiagnosticMessage[]; segments: SourceDiagnosticSegment[]; text?: string }
 
-/** Project only verified saved ranges. Ends are exclusive; zero-width and empty
+/** Project verified saved or current versioned live ranges. Ends are exclusive; zero-width and empty
  * lines retain a gutter location without inventing source characters. */
-export function projectSourceDiagnostics(text: string, findings: AttributedCodeDiagnostic[], saved: { dirty: boolean; revision?: string }, current = true): SourceDiagnosticProjection {
+export function projectSourceDiagnostics(text: string, findings: AttributedCodeDiagnostic[], saved: DiagnosticDisplayBasis, current = true): SourceDiagnosticProjection {
   const lines = text.split(/\r\n|\n/);
   const segments: SourceDiagnosticSegment[] = [];
   const messages = findings.map(f => {
-    const eligible = current && f.entries.find(e => inlineCodeDiagnostic(e.diagnostic, saved));
+    const eligible = current && f.entries.find(e => !problemLocation(e.diagnostic, saved));
     const finding = eligible ? { ...f, diagnostic: eligible.diagnostic } : f;
     const d = finding.diagnostic;
     let notice = current ? problemLocation(d, saved) : 'Stale or uncertain results; source location is not verified.';

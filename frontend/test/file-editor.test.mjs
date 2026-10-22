@@ -216,6 +216,29 @@ test('lint rejects stale, uncertain, document and invalid ranges but uses verifi
   mounted.editor.destroy();
 });
 
+test('live markers use confirmed displayed identity and clear on typing without resetting cached history', () => {
+  const id = {}, diagnostics = lintInput(id);
+  const diagnostic = { ...diagnostics.findings[0].diagnostic, basis: { kind: 'document', documentId: 'doc', version: 2 } };
+  diagnostics.findings = [{ diagnostic, entries: [{ providerId: 'gopls', diagnostic }] }];
+  diagnostics.dirty = true;
+  diagnostics.live = { documentId: 'doc', version: 2, synced: true };
+  const mounted = mount({ id, text: 'a😀z', path: 'x.txt', diagnostics });
+  assert.equal(diagnosticCount(mounted.view.state), 1);
+  mounted.view.dispatch({ changes: { from: 4, insert: '!' } });
+  assert.equal(diagnosticCount(mounted.view.state), 0);
+  const depth = undoDepth(mounted.view.state);
+  for (const live of [undefined, { documentId: 'other', version: 2, synced: true }, { documentId: 'doc', version: 1, synced: true }, { documentId: 'doc', version: 2, synced: false }]) {
+    mounted.editor.update({ ...mounted.options, text: 'a😀z!', diagnostics: { ...diagnostics, live } });
+    assert.equal(diagnosticCount(mounted.view.state), 0);
+    assert.equal(undoDepth(mounted.view.state), depth);
+  }
+  mounted.editor.destroy();
+  const remount = mount({ ...mounted.options, text: 'a😀z!', diagnostics: { ...diagnostics, live: undefined } });
+  assert.equal(diagnosticCount(remount.view.state), 0);
+  assert.equal(undoDepth(remount.view.state), depth);
+  remount.editor.destroy();
+});
+
 test('lint clears in edit/undo transactions and diagnostic updates preserve history, selection, scroll and owners', () => {
   const id = {}, diagnostics = lintInput(id);
   const first = mount({ id, text: 'a😀z', path: 'x.txt', diagnostics });

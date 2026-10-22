@@ -27,6 +27,17 @@ test('projection uses UTF16 exclusive ends across CRLF, tabs, combining marks an
   }
 });
 
+test('versioned live ranges share UTF16 multiline/EOF validation without upgrading saved or uncertain data', () => {
+  const basis = { dirty: true, revision: 'r1', live: { documentId: 'doc', version: 3, synced: true } };
+  const live = r => finding(r, { basis: { kind: 'document', documentId: 'doc', version: 3 } });
+  const p = projectSourceDiagnostics('a😀\n\n', [live(range(0, 1, 2, 0)), live(range(2, 0)), finding(range(0, 0))], basis);
+  assert.deepEqual(p.segments, [{ line: 0, start: 1, end: 3, finding: 0 }, { line: 1, start: 0, end: 0, finding: 0 }, { line: 2, start: 0, end: 0, finding: 1 }]);
+  for (const changes of [{ freshness: 'uncertain' }, { basis: { kind: 'document', documentId: 'doc' } }, { basis: { kind: 'document', documentId: 'old', version: 3 } }]) {
+    assert.equal(projectSourceDiagnostics('a😀\n\n', [finding(range(0, 1), changes)], basis).segments.length, 0);
+  }
+  assert.equal(projectSourceDiagnostics('a😀', [live(range(0, 2))], basis).segments.length, 0);
+});
+
 test('invalid endpoints never clamp or throw; file-level/stale/unverified/drafts are message-only', () => {
   const invalid = [range(-1, 0), range(0, 2), range(0, 0, 2, 0), range(0, 4, 0, 1), range(0, NaN), range(0, 0.5), { start: null, end: null }];
   for (const r of invalid) {

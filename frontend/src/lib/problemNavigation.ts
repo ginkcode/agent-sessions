@@ -1,5 +1,7 @@
 import type { AttributedCodeDiagnostic, CodeDiagnostic, CodeDiagnosticRange } from './codeDiagnostics';
-import { diagnosticKey } from './codeDiagnostics';
+import { diagnosticKey, liveDocumentEligibility, type LiveDocumentBasis } from './codeDiagnostics';
+
+export interface DiagnosticDisplayBasis { dirty: boolean; revision?: string; live?: LiveDocumentBasis }
 
 export const problemSeverities = ['error', 'warning', 'information', 'hint'] as const;
 const compare = (a: string, b: string) => a < b ? -1 : a > b ? 1 : 0;
@@ -46,9 +48,10 @@ export function rangeOffsets(text: string, range: CodeDiagnosticRange): { anchor
   const anchor = offset(range.start), head = offset(range.end);
   return anchor === undefined || head === undefined || head < anchor ? undefined : { anchor, head };
 }
-export function problemLocation(d: CodeDiagnostic, saved: { dirty: boolean; revision?: string }): string {
+export function problemLocation(d: CodeDiagnostic, saved: DiagnosticDisplayBasis): string {
   if (!d.range || d.locationIssue) return 'File-level finding; no valid source range.';
-  if (d.basis.kind !== 'saved') return 'Document location is not available in this saved-file viewer.';
+  if (d.basis.kind === 'document') return saved.live && liveDocumentEligibility(d, saved.live) === 'current'
+    ? '' : 'Document location is stale or unverified; location remains in Problems only.';
   if (saved.dirty) return 'Saved-file location is stale over this unsaved draft; location remains in Problems only.';
   if (d.freshness !== 'current' || !saved.revision || d.basis.revision !== saved.revision) return 'Saved-file location is stale or unverified; location remains in Problems only.';
   return '';

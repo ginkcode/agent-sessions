@@ -32,7 +32,7 @@ const viewer = await loadServerComponent(VIEWER_URL, [
   ["import { fileActions } from '../../../stores/fileActions.svelte';", fixtureStore('fileActions')],
   ["'../../../fileEditing'", lib('../../../fileEditing.ts')],
   ["'../../../fullscreen'", lib('../../../fullscreen.ts')],
-  ["import { codeDiagnostics } from '../../../stores/codeDiagnostics.svelte';", 'const codeDiagnostics = {};'],
+  ["import { codeDiagnostics } from '../../../stores/codeDiagnostics.svelte';", 'const codeDiagnostics = { liveBasis: () => undefined };'],
   ["'../../../problemNavigation'", lib('../../../problemNavigation.ts')],
   ["'../../../sourceDiagnostics'", lib('../../../sourceDiagnostics.ts')],
   ["'../../../fileSelection'", lib('../../../fileSelection.ts')],

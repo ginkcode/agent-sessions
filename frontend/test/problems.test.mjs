@@ -73,7 +73,7 @@ function viewerHarness(files) {
   const js = ts.transpileModule(block.replace('export function', 'function').replace('let previewOn = $state(false)', 'let previewOn = $state(true)'), { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText;
   const ticks = [], reveals = [];
   let effect;
-  const ctx = { ...navigation, files, codeDiagnostics: { status: 'ready', snapshot: { context: { generation: '1' } } }, link: { dataHost: undefined }, frozen: false, blocked: false, highlightPending: false,
+  const ctx = { ...navigation, files, codeDiagnostics: { directory: files.dir, liveBasis: () => undefined, status: 'ready', snapshot: { context: { generation: '1' } } }, link: { dataHost: undefined }, frozen: false, blocked: false, highlightPending: false,
     fileStatus: p => files.listing?.status?.[p], pendingAnchor: null, presentation: true,
     get text() { return files.content?.text ?? ''; }, get editing() { return !!files.activeTab?.edit?.editing; },
     get showPreview() { return control.preview(); }, get showDiff() { return files.diff; },
@@ -107,6 +107,26 @@ test('actual viewer async navigation keeps dirty preview and existing editor, sw
   assert.equal(draft.edit.draft, 'unsaved😀'); assert.equal(files.tabs.includes(draft), true);
   const kept = files.activeTab; h.navigateProblem(diagnostic({ path: 'next.md' })); assert.equal(files.activeTab, kept);
   h.effect(); files.selectTab('draft.md'); await h.flush(); assert.equal(h.reveals.length, 1);
+  delete globalThis.__problemFixture;
+});
+
+test('actual viewer live navigation rechecks document/version/sync after the render boundary', async () => {
+  globalThis.__problemFixture = { api: { listFiles: async () => ({ files: [] }), readFile: async (_, path) => content(path) } };
+  const files = new FilesStore(); await files.show('/p');
+  files.openFile('a.go'); await Promise.resolve(); await Promise.resolve();
+  files.startEditing('a.go'); const tab = files.activeTab; files.updateDraft(tab, 'a😀draft\nβx');
+  const h = viewerHarness(files);
+  let live = { documentId: 'doc', version: 2, synced: true };
+  h.ctx.codeDiagnostics.liveBasis = path => path === 'a.go' ? live : undefined;
+  const d = diagnostic({ path: 'a.go', basis: { kind: 'document', documentId: 'doc', version: 2 } });
+  h.navigateProblem(d); h.effect(); await h.flush(); assert.equal(h.reveals.length, 1);
+  for (const basis of [{ documentId: 'old', version: 2 }, { documentId: 'doc', version: 1 }, { documentId: 'doc' }]) {
+    h.navigateProblem({ ...d, basis: { kind: 'document', ...basis } }); h.effect(); await h.flush();
+    assert.equal(h.reveals.length, 1);
+  }
+  h.navigateProblem(d); h.effect(); live = { ...live, synced: false }; await h.flush();
+  assert.equal(h.reveals.length, 1, 'typing while mounting cannot select an old range');
+  assert.equal(tab.edit.draft, 'a😀draft\nβx');
   delete globalThis.__problemFixture;
 });
 

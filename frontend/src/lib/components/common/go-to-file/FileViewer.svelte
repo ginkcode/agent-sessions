@@ -99,6 +99,10 @@
     return { dir: files.dir, host: link.dataHost, version: files.contextVersion,
       context: JSON.stringify([codeDiagnostics.project, codeDiagnostics.snapshot?.context, codeDiagnostics.status]) };
   }
+  function navigationLocation(diagnostic: CodeDiagnostic, tab: NonNullable<typeof files.activeTab>) {
+    if (codeDiagnostics.status !== 'ready' || codeDiagnostics.revoking || codeDiagnostics.directory !== files.dir || blocked) return 'Source location is stale or unverified; location remains in Problems only.';
+    return problemLocation(diagnostic, { dirty: Boolean(tab.edit?.dirty || tab.edit?.uncertain || tab.edit?.conflict), revision: tab.edit?.revision ?? tab.content?.revision, live: codeDiagnostics.liveBasis(tab.path) });
+  }
   export function navigateProblem(diagnostic: CodeDiagnostic) {
     navigation = null;
     if (!problemPath(diagnostic.path) || !files.dir || frozen || blocked) {
@@ -126,7 +130,7 @@
       navigation = null; return;
     }
     const tab = files.activeTab!;
-    const reason = problemLocation(request.diagnostic, { dirty: Boolean(tab.edit?.dirty || tab.edit?.uncertain || tab.edit?.conflict), revision: tab.edit?.revision ?? tab.content?.revision });
+    const reason = navigationLocation(request.diagnostic, tab);
     if (reason) { navigationNotice = reason; navigation = null; return; }
     const range = request.diagnostic.range!;
     const source = tab.edit?.editing ? tab.edit.draft : text;
@@ -141,11 +145,11 @@
     untrack(() => { void tick().then(() => {
       if (!valid() || showPreview || showDiff || frozen || (!editing && highlightPending)) return;
       // A draft may have changed while the source/editor was mounting.
-      if (problemLocation(request.diagnostic, { dirty: Boolean(tab.edit?.dirty || tab.edit?.uncertain || tab.edit?.conflict), revision: tab.edit?.revision ?? tab.content?.revision })) {
-        navigationNotice = 'Saved-file location is stale over this draft; location remains in Problems only.';
+      if (navigationLocation(request.diagnostic, tab)) {
+        navigationNotice = 'Source location is stale over this draft; location remains in Problems only.';
         navigation = null; return;
       }
-      const editorValid = () => valid() && !frozen && !problemLocation(request.diagnostic, { dirty: Boolean(tab.edit?.dirty || tab.edit?.uncertain || tab.edit?.conflict), revision: tab.edit?.revision ?? tab.content?.revision });
+      const editorValid = () => valid() && !frozen && !navigationLocation(request.diagnostic, tab);
       const shown = editing ? editor?.revealRange(range, editorValid) : codeScroll && revealSourceRange(codeScroll, range);
       if (shown) navigation = null;
     }); });
@@ -302,8 +306,8 @@
   let sourceDiagnostics = $derived(projectSourceDiagnostics(text,
     codeDiagnostics.project && codeDiagnostics.directory === files.dir && !blocked && !files.loadingFile && !showDiff && !showPreview && !blameOpen
       ? codeDiagnostics.findings.filter(f => f.diagnostic.path === files.selected) : [],
-    { dirty: Boolean(edit?.dirty || edit?.uncertain || edit?.conflict), revision: edit?.revision ?? files.content?.revision },
-    codeDiagnostics.status === 'ready' && !highlightPending));
+    { dirty: Boolean(edit?.dirty || edit?.uncertain || edit?.conflict), revision: edit?.revision ?? files.content?.revision, live: files.selected ? codeDiagnostics.liveBasis(files.selected) : undefined },
+    codeDiagnostics.status === 'ready' && !codeDiagnostics.revoking && !highlightPending));
   let rows: DiffRow[] = $derived(
     showDiff
       ? diffRows(changes, plainLines.length)
@@ -757,7 +761,7 @@
           diagnostics={{ tab: activeTab, path: activeTab.path,
             context: JSON.stringify(navigationIdentity()),
             findings: codeDiagnostics.project && codeDiagnostics.directory === files.dir ? codeDiagnostics.findings : [],
-            dirty: Boolean(edit.dirty || edit.uncertain || edit.conflict), revision: edit.revision,
+            dirty: Boolean(edit.dirty || edit.uncertain || edit.conflict), revision: edit.revision, live: codeDiagnostics.liveBasis(activeTab.path),
             current: codeDiagnostics.status === 'ready' && !codeDiagnostics.revoking && !blocked && !frozen && !files.loadingFile }}
           wrap={files.wrap}
           disabled={frozen}
