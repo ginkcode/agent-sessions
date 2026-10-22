@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { paintSourceDiagnostics, type SourceDiagnosticProjection } from '../../../sourceDiagnostics';
   import { files } from '../../../stores/files.svelte';
   import type { DiffRow } from '../../../files';
   import { includesFileLine, type FileLineSelection } from '../../../fileSelection';
@@ -13,7 +14,9 @@
     codeEl = $bindable<HTMLElement | undefined>(),
     selection,
     onselectline,
+    diagnostics = { messages: [], segments: [] },
   }: {
+    diagnostics?: SourceDiagnosticProjection;
     rows: DiffRow[];
     htmlLines: string[] | null;
     plainLines: string[];
@@ -24,6 +27,27 @@
     selection?: FileLineSelection;
     onselectline?: (line: number, extend: boolean) => void;
   } = $props();
+
+  const messageId = $props.id();
+  let messagesEl: HTMLDetailsElement | undefined = $state();
+  function selectDiagnosticLine(line: number, extend: boolean) {
+    onselectline?.(line, extend);
+    if (lineMessages.has(line - 1) && messagesEl) messagesEl.open = true;
+  }
+  let activeDiagnostics = $derived(showDiff ? { messages: [], segments: [] } : diagnostics);
+  let lineMessages = $derived.by(() => {
+    const map = new Map<number, number[]>();
+    for (const s of activeDiagnostics.segments) {
+      const indexes = map.get(s.line) ?? [];
+      if (!indexes.includes(s.finding)) indexes.push(s.finding);
+      map.set(s.line, indexes);
+    }
+    return map;
+  });
+  $effect(() => {
+    htmlLines; plainLines; rows;
+    if (codeEl) return paintSourceDiagnostics(codeEl, activeDiagnostics, 'source-diagnostic');
+  });
 
   // Delegate text clicks without turning code into buttons or interfering
   // with native drag-to-select. Gutter buttons remain keyboard accessible.
@@ -50,6 +74,22 @@
   };
 </script>
 
+{#if activeDiagnostics.messages.length}
+  <details class="diagnostic-messages" bind:this={messagesEl}>
+    <summary>Source diagnostics ({activeDiagnostics.messages.length})</summary>
+    <ul>
+      {#each activeDiagnostics.messages as message, i}
+        <li id={`${messageId}-${i}`}>
+          <strong>{message.finding.diagnostic.severity}</strong>
+          · {message.finding.entries.map(e => `${e.diagnostic.source} (${e.providerId}) · ${e.diagnostic.freshness} · ${e.diagnostic.basis.kind}`).join('; ')}
+          {#if message.finding.diagnostic.code} · {message.finding.diagnostic.code}{/if}
+          : {message.finding.diagnostic.message}
+          {#if message.notice}<span> — {message.notice}</span>{/if}
+        </li>
+      {/each}
+    </ul>
+  </details>
+{/if}
 <div class="code source file-source" use:lineClicks bind:this={codeEl} class:wrap={files.wrap} class:diff={showDiff} style:font-size={presentation ? `${presentationFontSize}px` : undefined} style:--digits={String(htmlLines?.length ?? plainLines.length).length}>
   {#snippet lineNumber(row: DiffRow)}
     {#if row.kind === 'removed'}
@@ -58,9 +98,11 @@
       <button type="button" class="ln line-select mark-{showDiff ? 'none' : row.mark ?? 'none'}"
         class:sign={showDiff && row.mark} class:added={showDiff && row.mark}
         class:selected={includesFileLine(selection, row.index + 1)}
-        aria-label={`Select line ${row.index + 1}`} aria-pressed={includesFileLine(selection, row.index + 1)}
+        class:has-diagnostics={lineMessages.has(row.index)}
+        aria-describedby={lineMessages.get(row.index)?.map(i => `${messageId}-${i}`).join(' ')}
+        aria-label={`Select line ${row.index + 1}${lineMessages.has(row.index) ? '; diagnostics: ' + lineMessages.get(row.index)!.map(i => activeDiagnostics.messages[i].finding.diagnostic.severity).join(', ') + '; activate to show messages' : ''}`} aria-pressed={includesFileLine(selection, row.index + 1)}
         title={`${row.mark ? MARK_LABELS[row.mark] + ' · ' : ''}Click to select line; Shift-click to select range`}
-        onclick={(event) => onselectline?.(row.index + 1, event.shiftKey)}
+        onclick={(event) => selectDiagnosticLine(row.index + 1, event.shiftKey)}
       >{showDiff && row.mark ? '+' : row.index + 1}</button>
     {/if}
   {/snippet}
@@ -94,6 +136,13 @@
 </div>
 
 <style>
+  .diagnostic-messages { padding: 6px 12px; font: inherit; overflow-wrap: anywhere; }
+  .diagnostic-messages li { white-space: pre-wrap; }
+  .ln.has-diagnostics { text-decoration: underline dotted; font-weight: bold; }
+  :global(::highlight(source-diagnostic-error)) { text-decoration: underline wavy #d1242f; }
+  :global(::highlight(source-diagnostic-warning)) { text-decoration: underline wavy #9a6700; }
+  :global(::highlight(source-diagnostic-information)) { text-decoration: underline dotted #2f81f7; }
+  :global(::highlight(source-diagnostic-hint)) { text-decoration: underline dotted #8250df; }
   /* Changed lines: a bar at the gutter's right edge, as in VS Code. A
      triangle-ish marker on the line border shows where lines were removed. */
   .ln.mark-added {

@@ -11,6 +11,7 @@ type Assembly = { parts: Map<number, CodeDiagnosticsUpdate>; bytes: number; time
 /** Owns results only. No editor imports, source text, drafts, tabs or persistence. */
 export class CodeDiagnosticsStore {
   project = $state.raw<CodeDiagnosticsProject | undefined>(undefined);
+  directory = $state<string | undefined>(undefined);
   snapshot = $state.raw<CodeDiagnosticsSnapshot | undefined>(undefined);
   status = $state<'detached' | 'attaching' | 'ready' | 'unsupported' | 'resyncing' | 'disconnected' | 'error'>('detached');
   error = $state<CodeDiagnosticsError | undefined>(undefined);
@@ -86,6 +87,7 @@ export class CodeDiagnosticsStore {
     this.lifetime++; this.context = undefined;
     this.off?.(); this.offConnection?.(); this.off = this.offConnection = undefined;
     this.clearBuffers(); this.recovering = false; this.attempts = 0;
+    this.directory = undefined;
     this.project = undefined; this.snapshot = undefined; this.status = 'detached'; this.error = undefined;
     this.pending = undefined; this.revoking = false; this.pendingRuns = [];
     if (c) { try { await this.backend.detachCodeDiagnostics(c, host); } catch { /* Never retry mutations across a connection change. */ } }
@@ -128,6 +130,7 @@ export class CodeDiagnosticsStore {
         return;
       }
       if (attachment.project.hostId !== this.host || !sameContext(attachment.context, attachment.snapshot.context)) throw new CodeDiagnosticsError('staleContext', 'Attachment identity mismatch');
+      this.directory = dir;
       this.project = attachment.project; this.context = attachment.context;
       if (!this.commit(attachment.snapshot, true)) throw new CodeDiagnosticsError('resyncRequired', 'Invalid attachment snapshot');
       const early = this.early; this.early = []; this.earlyBytes = 0;

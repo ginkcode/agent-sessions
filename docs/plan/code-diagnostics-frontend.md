@@ -1,4 +1,20 @@
-# Code diagnostics frontend (CD-10 / CD-11 / CD-12 / CD-13)
+# Code diagnostics frontend (CD-10 / CD-11 / CD-12 / CD-13 / CD-14)
+
+## CD-14 source indicators
+
+Overall progress is **13/28** (CD-01…CD-08 + CD-10…CD-14); CD-09 remains blocked.
+Verified clean saved revisions alone receive UTF-16 source overlays. A pure projection
+rejects invalid coordinates, preserves overlapping/exclusive/empty/EOF locations,
+and keeps file-level, stale and uncertain findings as attributed plain text messages.
+CSS Highlights walk verified source text nodes without altering escaped syntax HTML,
+find offsets or selection. Accessible gutter labels coexist with Git/line selection;
+keyboard activation opens messages. Unsupported WebViews retain gutters/messages.
+Diff, blame, rendered previews and images never receive source overlays. Directory,
+active-path and attachment gates prevent cross-file markers; empty replacement clears.
+No CodeMirror static imports. See [CD-14 evidence](../tasks/CD-14.md#completion-evidence).
+Validation: **409/409 frontend tests**, check 0 errors (existing configuration warning),
+build passed with existing chunk advisory and lazy editor chunk. Native paint/theme,
+wrap/layout, focus and screen-reader QA remains CD-17; no next task started.
 
 ## CD-13 tree counts
 

@@ -1,6 +1,6 @@
 # Implementation task details
 
-Task briefs for **Go to File code diagnostics**. **Progress: 12/28 complete**
+Task briefs for **Go to File code diagnostics**. **Progress: 13/28 complete**
 (CD-01: contract and tested fixtures; CD-02: backend trust and path policy;
 CD-03: bounded checker supervisor; CD-04: installed-checker format evidence;
 CD-05: contained Go vet adapter; CD-06: contained Svelte adapter and tested conservative outcomes;
@@ -9,9 +9,10 @@ CD-08: Engine/App bindings, owned metadata discovery and offline routing;
 CD-10: standalone frontend API/store with atomic reconciliation and mock race tests;
 CD-11: local dialog approval, explicit check controls and honest status/coverage;
 CD-12: grouped/filtered Problems and guarded draft-safe UTF-16 source/editor navigation;
-CD-13: shared exact-deduplication file/tree badges and component ancestor counts).
+CD-13: shared exact-deduplication file/tree badges and component ancestor counts;
+CD-14: verified source gutter/range indicators and plain-text file/stale messages).
 CD-09 remains blocked on authenticated production remote identity activation;
-CD-14…CD-28 are not started. CD-10 used an explicit dependency exception against
+CD-15…CD-28 are not started. CD-10 used an explicit dependency exception against
 committed RPC contracts/tests, not remote activation. Local controls are wired;
 production remote diagnostics are not enabled. Manual keyboard/focus QA is not claimed. The authoritative wire contract is
 [contract v1](../plan/code-diagnostics-contract.md). See [the implementation plan](../plan/code-diagnostics.md) for shared
@@ -83,7 +84,7 @@ action. It does **not** automatically execute tools when the dialog opens.
 | [CD-11](CD-11.md) | ✅ Local approval, explicit check/cancel/retry controls, honest summary/coverage; remote CD-09 blocked | 3 h |
 | [CD-12](CD-12.md) | ✅ Problems panel and draft-safe UTF-16 range navigation; native QA deferred | 4 h |
 | [CD-13](CD-13.md) | ✅ Shared exact-deduplication file/tree badges and ancestor counts; native layout QA deferred | 3 h |
-| [CD-14](CD-14.md) | Read-only source-view diagnostics | 4 h |
+| [CD-14](CD-14.md) | ✅ Verified source gutter/range indicators and file/stale messages; native paint/layout QA deferred | 4 h |
 | [CD-15](CD-15.md) | CodeMirror lint integration | 4 h |
 | [CD-16](CD-16.md) | Project-check integration regression tests | 4 h |
 | [CD-17](CD-17.md) | Cross-host/platform QA and Stage 1 gate | 4 h |

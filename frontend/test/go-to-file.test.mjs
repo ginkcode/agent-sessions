@@ -52,6 +52,7 @@ const [picker, tabs, source] = await Promise.all([
     ["import ContextMenu from '../ContextMenu.svelte';", 'const ContextMenu = () => {};'],
   ]),
   loadServerComponent(new URL('SourceView.svelte', base), [store,
+    ["'../../../sourceDiagnostics'", lib('../../../sourceDiagnostics.ts')],
     ["'../../../fileSelection'", JSON.stringify(new URL('../src/lib/fileSelection.ts', import.meta.url).href)],
   ]),
 ]);

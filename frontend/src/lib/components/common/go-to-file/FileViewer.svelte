@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onDestroy, tick, untrack, type Snippet } from 'svelte';
+  import { projectSourceDiagnostics } from '../../../sourceDiagnostics';
   import { codeDiagnostics } from '../../../stores/codeDiagnostics.svelte';
   import type { CodeDiagnostic } from '../../../codeDiagnostics';
   import { problemPath, problemLocation, rangeOffsets, revealSourceRange, matchesProblemNavigation, type ProblemNavigationRequest } from '../../../problemNavigation';
@@ -289,7 +290,7 @@
   // One entry per line, so a wrapped line keeps its number beside it.
   // Highlighted lines are HTML; plain ones are text.
   let htmlLines = $derived(html !== null ? splitHighlightedLines(html) : null);
-  let plainLines = $derived(text ? splitLines(text) : []);
+  let plainLines = $derived(textContent ? splitLines(text) : []);
   let changes = $derived(
     files.selected ? fileChanges(status?.[files.selected], files.content?.changes, plainLines.length) : undefined
   );
@@ -298,6 +299,11 @@
   let hasChanges = $derived(Boolean(changes?.length));
   // Git markers describe the saved file, so the diff never shows over a draft.
   let showDiff = $derived(files.diff && hasChanges && !editing);
+  let sourceDiagnostics = $derived(projectSourceDiagnostics(text,
+    codeDiagnostics.project && codeDiagnostics.directory === files.dir && !blocked && !files.loadingFile && !showDiff && !showPreview && !blameOpen
+      ? codeDiagnostics.findings.filter(f => f.diagnostic.path === files.selected) : [],
+    { dirty: Boolean(edit?.dirty || edit?.uncertain || edit?.conflict), revision: edit?.revision ?? files.content?.revision },
+    codeDiagnostics.status === 'ready' && !highlightPending));
   let rows: DiffRow[] = $derived(
     showDiff
       ? diffRows(changes, plainLines.length)
@@ -879,7 +885,7 @@
         {:else if showSvg}
           {@render imageView()}
         {:else}
-        <SourceView {rows} {htmlLines} {plainLines} {showDiff} {presentation} {presentationFontSize} selection={selectedLines} onselectline={selectLine} bind:codeEl={find.codeEl} />
+        <SourceView diagnostics={sourceDiagnostics} {rows} {htmlLines} {plainLines} {showDiff} {presentation} {presentationFontSize} selection={selectedLines} onselectline={selectLine} bind:codeEl={find.codeEl} />
         {/if}
       </div>
       </div>

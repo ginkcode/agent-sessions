@@ -1,11 +1,11 @@
 # Go to File — project code diagnostics
 
-Status: **12/28 complete**: CD-01…CD-08 and CD-10…CD-13 are complete (contract,
-backend trust/checkers/manager, Engine/App bindings, frontend API/store, local approval/check/status controls, draft-safe Problems navigation and shared file/tree diagnostic badges).
+Status: **13/28 complete**: CD-01…CD-08 and CD-10…CD-14 are complete (contract,
+backend trust/checkers/manager, Engine/App bindings, frontend API/store, local approval/check/status controls, draft-safe Problems navigation, shared file/tree diagnostic badges and verified source indicators/messages).
 CD-09 RPC contracts/tests are committed, but authenticated production SSH/WSL
 identity activation remains **blocked**. CD-10 proceeded locally with an explicit
 dependency exception; it does not complete CD-09 or activate remotes.
-CD-14…CD-28 are not started. Local dialog controls are wired with asynchronous
+CD-15…CD-28 are not started. Local dialog controls are wired with asynchronous
 identity/capability discovery; unsupported remotes expose status only, never execution controls.
 Manual keyboard/focus QA has not been performed.
 Frontend policy/evidence: [CD-10](code-diagnostics-frontend.md). Trust policy and approval copy: [CD-02 addendum](code-diagnostics-trust.md).
@@ -246,7 +246,7 @@ part of the approval warning, not a guarantee the app can enforce.
 
 ## Task breakdown
 
-CD-01…CD-08 and CD-10…CD-13 are complete; CD-09 is blocked on production remote identity activation; CD-14…CD-28 are not started. CD-10's local contract/test dependency exception is explicit above. Estimates include focused automated tests; each task
+CD-01…CD-08 and CD-10…CD-14 are complete; CD-09 is blocked on production remote identity activation; CD-15…CD-28 are not started. CD-10's local contract/test dependency exception is explicit above. Estimates include focused automated tests; each task
 is at most four developer hours. Re-estimate adapter spikes before committing
 to server-version support. Split tasks that exceed four hours before coding.
 The [TASKS.md](../../TASKS.md) feature section tracks these IDs and status.
@@ -268,7 +268,7 @@ Individual implementation briefs, test cases, and acceptance checklists are in
 | CD-11 ✅ | 1 | Local approval controls, Check/Cancel/Retry, provider availability, summary and coverage status | 3 h | CD-10 |
 | CD-12 | 1 | ✅ Problems panel with grouping/filtering, keyboard access, and range navigation preserving drafts | 4 h | CD-10 |
 | CD-13 | 1 | ✅ Tree badges/folder totals and shared exact-deduplication semantics tested (403 frontend tests; native QA deferred) | 3 h | CD-10 |
-| CD-14 | 1 | Source-view gutter/range indicators and plain-text messages, including file-level and stale findings | 4 h | CD-10 |
+| CD-14 | 1 | ✅ Verified source gutter/range indicators and plain-text file/stale messages tested (409 frontend tests; native paint/layout QA deferred) | 4 h | CD-10 |
 | CD-15 | 1 | CodeMirror lint integration, range conversion, cached-tab behavior, and draft freshness guards | 4 h | CD-10 |
 | CD-16 | 1 | Integration tests for findings/empty/failure/cancel, dirty drafts, output caps, and stale event races | 4 h | CD-05…CD-15 |
 | CD-17 | 1 | Manual local/SSH/WSL and Windows/macOS/Linux QA; document limitations and release gate | 4 h | CD-16 |

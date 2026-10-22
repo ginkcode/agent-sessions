@@ -31,6 +31,7 @@ export function problemPath(path: string): boolean {
 /** JS strings, DOM text offsets and CodeMirror offsets all count UTF-16 units.
  * CRLF is one line break; never silently clamp an invalid saved-file range. */
 export function rangeOffsets(text: string, range: CodeDiagnosticRange): { anchor: number; head: number } | undefined {
+  if (!range?.start || !range?.end) return undefined;
   const lines = text.split(/\r\n|\n/);
   const offset = (p: { line: number; character: number }) => {
     if (!Number.isSafeInteger(p.line) || !Number.isSafeInteger(p.character) || p.line < 0 || p.line >= lines.length || p.character < 0 || p.character > lines[p.line].length) return undefined;
