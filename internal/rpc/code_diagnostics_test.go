@@ -28,10 +28,11 @@ func (f *rpcChecker) RunApproved(ctx context.Context, _ *cd.Supervisor, _ string
 
 type diagnosticsBackend struct {
 	*mockBackend
-	m    *cd.Manager
-	root cd.AuthorizedRoot
-	fake *rpcChecker
-	host string
+	m             *cd.Manager
+	root          cd.AuthorizedRoot
+	fake          *rpcChecker
+	host          string
+	registrations []cd.Registration // optional Stage 1 integration adapters
 }
 
 func (b *diagnosticsBackend) RemoteCodeDiagnosticsHostID(context.Context) (string, error) {
@@ -42,7 +43,11 @@ func (b *diagnosticsBackend) AttachCodeDiagnostics(_ context.Context, dir string
 	if dir != b.root.Project().Root {
 		return engine.CodeDiagnosticsAttachment{}, cdError("unauthorized", "Unknown directory")
 	}
-	s, e := b.m.Attach(b.root, v, []cd.Registration{{ProviderID: "test", Availability: "available", Adapter: b.fake}})
+	registrations := b.registrations
+	if registrations == nil {
+		registrations = []cd.Registration{{ProviderID: "test", Availability: "available", Adapter: b.fake}}
+	}
+	s, e := b.m.Attach(b.root, v, registrations)
 	return engine.CodeDiagnosticsAttachment{Project: b.root.Project(), Context: s.Context, Snapshot: s}, e
 }
 

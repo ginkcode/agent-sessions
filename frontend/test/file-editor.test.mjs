@@ -13,7 +13,8 @@ import { searchPanelOpen } from '@codemirror/search';
 import { javascriptLanguage, jsxLanguage, tsxLanguage, typescriptLanguage } from '@codemirror/lang-javascript';
 import { jsonLanguage } from '@codemirror/lang-json';
 import { yamlLanguage } from '@codemirror/lang-yaml';
-import { loadServerComponent } from './helpers.mjs';
+import { loadServerComponent, loadServerModule } from './helpers.mjs';
+import { projectSourceDiagnostics } from '../src/lib/sourceDiagnostics.ts';
 
 const SRC = new URL('../src/', import.meta.url);
 const EDITOR_URL = new URL('lib/fileEditor.ts', SRC);
@@ -141,6 +142,45 @@ function lintInput(id, ranges = [{ start: { line: 0, character: 1 }, end: { line
       return { diagnostic, entries: [{ providerId: 'checker', diagnostic }] };
     }) };
 }
+
+test('Stage 1 real store eligible set agrees with editor lint and source across empty, stale and uncertain draft updates', async () => {
+  const lib = name => JSON.stringify(new URL(`../src/lib/${name}.ts`, import.meta.url).href);
+  const { CodeDiagnosticsStore } = await loadServerModule(new URL('../src/lib/stores/codeDiagnostics.svelte.ts', import.meta.url), [
+    ["import { api } from '../api';", 'const api = {};'], ["import { epoch } from '../link';", 'const epoch = () => 0;'],
+    ["'../codeDiagnostics'", lib('codeDiagnostics')], ["'../codeDiagnosticCounts'", lib('codeDiagnosticCounts')],
+  ]);
+  const id = {}, input = lintInput(id), context = { connectionId: 'c', attachmentId: 'a', generation: 'g' };
+  const d = input.findings[0].diagnostic;
+  let emit;
+  const snapshot = { contractVersion: 1, context, sequence: 0, approval: { state: 'approved' }, providers: [], resultSets: ['a', 'b'].map(providerId => ({ providerId, origin: 'checker', scope: { kind: 'project' }, diagnostics: [{ ...d, source: providerId }] })) };
+  const store = new CodeDiagnosticsStore({
+    onEvent(name, fn) { if (name === 'codeDiagnostics:updated') emit = fn; return () => {}; },
+    async attachCodeDiagnostics() { return { project: { hostId: 'host', root: '/p' }, context, snapshot }; },
+    async detachCodeDiagnostics() { return { context }; },
+  }, () => 0);
+  await store.attach('/p', { phase: 'local', hostId: 'host', generation: 0, capabilities: { codeDiagnostics: true } });
+  const mounted = mount({ id, path: 'x.txt', text: 'a😀z\r\n' });
+  const before = mounted.view.state.doc.toString();
+  const depth = undoDepth(mounted.view.state);
+  for (const [sequence, mode] of ['findings', 'dirty', 'uncertain', 'stale', 'empty'].entries()) {
+    const next = structuredClone(snapshot); next.sequence = sequence + 1;
+    if (mode === 'stale') next.resultSets.forEach(s => s.diagnostics.forEach(d => d.freshness = 'stale'));
+    if (mode === 'empty') next.resultSets.forEach(s => s.diagnostics = []);
+    emit({ contractVersion: 1, context, sequence: next.sequence, updateId: `u${sequence}`, partIndex: 0, partCount: 1, snapshot: next });
+    // FileViewer collapses dirty/uncertain/conflict to the same overlay guard.
+    const dirty = mode === 'dirty' || mode === 'uncertain';
+    mounted.editor.update({ ...mounted.options, diagnostics: { ...input, dirty, findings: store.findings } });
+    const expected = mode === 'findings' ? 1 : 0;
+    assert.equal(diagnosticCount(mounted.view.state), expected);
+    assert.equal(store.inline('x.txt', { dirty, revision: 'r1' }).length, expected);
+    assert.equal(projectSourceDiagnostics('a😀z\r\n', store.findings, { dirty, revision: 'r1' }).segments.length, expected);
+    assert.equal(store.findings.length, mode === 'empty' ? 0 : 1);
+    assert.equal(mounted.view.state.doc.toString(), before);
+    assert.equal(undoDepth(mounted.view.state), depth);
+    assert.deepEqual(mounted.calls.changes, []);
+  }
+  mounted.editor.destroy(); await store.detach();
+});
 
 test('lint uses shared verified ranges against LF state, plain attribution and exclusive UTF16 endpoints', () => {
   const id = {}, diagnostics = lintInput(id, [

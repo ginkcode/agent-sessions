@@ -262,7 +262,7 @@ gated on the M8-08 named-pipe credential channel.
 
 ## Follow-up — Go to File code diagnostics (proposed)
 
-Progress: **14/28 complete**. CD-01…CD-08 and CD-10…CD-15 are ✅ done; CD-09 is ⛔ blocked on authenticated remote identity activation; CD-16…CD-28 are ⬜ not started.
+Progress: **15/28 complete**. CD-01…CD-08 and CD-10…CD-16 are ✅ done; CD-09 is ⛔ blocked on authenticated remote identity activation; CD-17…CD-28 are ⬜ not started. CD-16 proves deterministic automated seams only, not native CD-17 QA or production remote activation.
 CD-10 explicitly proceeded locally against committed RPC contracts/tests; this dependency exception does not complete CD-09 or activate production remotes.
 No user-facing diagnostics capability is enabled yet. Detailed estimates, dependencies,
 contracts, and acceptance criteria are in
@@ -287,7 +287,8 @@ These follow-up tasks are not included in the historical milestone totals above.
 | [CD-13](docs/tasks/CD-13.md) | ✅ | Shared exact-deduplication file/tree badges and ancestor totals | Stage 1; 403 frontend tests, check/build passed; native layout QA deferred |
 | [CD-14](docs/tasks/CD-14.md) | ✅ | Verified source gutter/range indicators and plain-text file/stale messages | Stage 1; 409 frontend tests, check/build passed; native paint/layout QA deferred |
 | [CD-15](docs/tasks/CD-15.md) | ✅ | Lazy CodeMirror lint, verified saved ranges, draft/cache freshness guards | 412 frontend tests; check/build passed; native tooltip/gutter QA deferred |
-| CD-16…CD-17 | ⬜ | Integration tests and QA | Stage 1: explicit project checks; no automatic tool execution on open |
+| CD-16 | ✅ | Deterministic checker→manager→RPC and real-store/view/editor integration regressions; [evidence](docs/tasks/CD-16.md#automated-evidence-2026-10-22) | Automated Stage 1 gate only; CD-09 remote identity remains blocked |
+| CD-17 | ⬜ | Cross-host/platform native QA | No native focus/layout/paint or real-tool QA claimed by CD-16 |
 | CD-18…CD-27 | ⬜ | LSP transport/lifecycle, document sync, Go/TypeScript/Svelte adapters, external-change reconciliation and QA | Stage 2: live opened-file diagnostics for approved projects |
 | CD-28 | ⬜ | Opt-in automatic project checks on open/save | Stage 3: background project coverage without blocking the dialog |
 
