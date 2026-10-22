@@ -47,6 +47,8 @@ func (c *captured) param(i int) map[string]any {
 func TestSessionDocumentsAgainstFakeServer(t *testing.T) {
 	e := newEnv(t, SessionOptions{})
 	root, cfg := e.project()
+	cfg.ProviderID = goplsProviderID
+	e.approve(root, cfg)
 	got := &captured{}
 	e.script = func(f *fakeSrv) {
 		for {

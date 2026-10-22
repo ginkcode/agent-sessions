@@ -484,7 +484,7 @@ func parseLSPRange(raw json.RawMessage) (Range, bool) {
 
 // goplsSink is the Manager seam (PublishPathDiagnostics).
 type goplsSink interface {
-	PublishPathDiagnostics(project Project, generation, path string, version *int64, diagnostics []Diagnostic) error
+	PublishPathDiagnostics(project Project, providerID, generation, path string, version *int64, diagnostics []Diagnostic) error
 }
 
 // GoplsBridge turns session notifications into document-set replacements. Set
@@ -523,7 +523,7 @@ func (b *GoplsBridge) Handle(n SessionNotification) {
 		b.note(partialGoNotice)
 		return
 	}
-	if err := b.sink.PublishPathDiagnostics(n.Project, n.Generation, pub.Path, pub.Version, pub.Diagnostics); err != nil {
+	if err := b.sink.PublishPathDiagnostics(n.Project, n.ProviderID, n.Generation, pub.Path, pub.Version, pub.Diagnostics); err != nil {
 		// A closed/never-opened document or a late generation is expected
 		// and must stay silent; anything else is partial coverage.
 		var e *Error

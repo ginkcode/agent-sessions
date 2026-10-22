@@ -440,7 +440,7 @@ func (b *SvelteBridge) Handle(n SessionNotification) {
 	if owner, _ := DocumentOwner(pub.Path); owner != svelteLSProviderID {
 		return // TypeScript-owned and config files never enter the Svelte set
 	}
-	if err := b.sink.PublishPathDiagnostics(n.Project, n.Generation, pub.Path, pub.Version, pub.Diagnostics); err != nil {
+	if err := b.sink.PublishPathDiagnostics(n.Project, n.ProviderID, n.Generation, pub.Path, pub.Version, pub.Diagnostics); err != nil {
 		var e *Error
 		if !errors.As(err, &e) || (e.Code != "notFound" && e.Code != "staleContext" && e.Code != "unsupported") {
 			b.note(partialSvelteNotice)

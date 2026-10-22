@@ -42,6 +42,7 @@ type DocumentChange struct {
 type DocumentStep struct {
 	Root       AuthorizedRoot
 	Generation string
+	Owner      DocumentOwnerIdentity
 	Kind       string // open, change, save, close
 	Path       string
 	Version    int64
@@ -59,7 +60,34 @@ type DocumentProvider interface {
 	Apply(ctx context.Context, step DocumentStep) error
 }
 
+// DocumentOwnerIdentity is backend-resolved, never client or diagnostic input.
+// Policy binds the exact fixed server configuration, independently of generation.
+type DocumentOwnerIdentity struct {
+	ProviderID string
+	Policy     string
+}
+
+// OwnedDocumentProvider augments the legacy synchronization seam. Live operations
+// fail closed without it: a generation alone cannot establish provider ownership.
+type OwnedDocumentProvider interface {
+	DocumentProvider
+	OwnerSession(root AuthorizedRoot, path string) (DocumentOwnerIdentity, string, ServerCapabilities, error)
+}
+
+func (m *Manager) documentSession(root AuthorizedRoot, path string) (DocumentOwnerIdentity, string, ServerCapabilities, error) {
+	p, ok := m.provider.(OwnedDocumentProvider)
+	if !ok {
+		return DocumentOwnerIdentity{}, "", ServerCapabilities{}, failure("unsupported", "Concrete document ownership is unavailable")
+	}
+	owner, generation, caps, err := p.OwnerSession(root, path)
+	if err == nil && (!bounded(owner.ProviderID, 256) || owner.ProviderID == "lsp" || !bounded(owner.Policy, 4096) || !bounded(generation, 256)) {
+		err = failure("unsupported", "Concrete document ownership is unavailable")
+	}
+	return owner, generation, caps, err
+}
+
 type documentState struct {
+	owner      DocumentOwnerIdentity
 	path       string
 	version    int64
 	text       string // bounded mirror of the displayed text; never persisted or logged
@@ -78,7 +106,7 @@ func (m *Manager) SetDocumentProvider(p DocumentProvider) {
 }
 
 func (m *Manager) docStep(ctx context.Context, a *attachment, d *documentState, step DocumentStep) error {
-	step.Root, step.Path = a.root, d.path
+	step.Root, step.Path, step.Owner = a.root, d.path, d.owner
 	cctx, cancel := context.WithTimeout(ctx, documentIOTimeout)
 	defer cancel()
 	return m.provider.Apply(cctx, step)
@@ -138,11 +166,11 @@ func (m *Manager) OpenDocument(ctx context.Context, c Context, path, documentID 
 	if _, err = a.root.ResolvePath(a.root.Project().HostID, path); err != nil {
 		return DocumentReceipt{}, err
 	}
-	generation, _, err := m.provider.Session(a.root, path)
+	owner, generation, _, err := m.documentSession(a.root, path)
 	if err != nil {
 		return DocumentReceipt{}, err
 	}
-	d := &documentState{path: path, version: 1, text: text, generation: generation, revision: revision}
+	d := &documentState{owner: owner, path: path, version: 1, text: text, generation: generation, revision: revision}
 	if err = m.docStep(ctx, a, d, DocumentStep{Generation: generation, Kind: "open", Version: 1, Text: text}); err != nil {
 		return DocumentReceipt{}, err
 	}
@@ -203,7 +231,11 @@ func (m *Manager) ChangeDocument(ctx context.Context, c Context, documentID stri
 		}
 		return DocumentReceipt{Context: c, DocumentID: documentID, Version: version}, nil
 	}
-	generation, caps, err := m.provider.Session(a.root, d.path)
+	owner, generation, caps, err := m.documentSession(a.root, d.path)
+	if err == nil && owner != d.owner {
+		d.broken = true
+		err = failure("resyncRequired", "Document owner changed; document must be reopened")
+	}
 	if err != nil {
 		d.broken = true
 		return DocumentReceipt{}, err
@@ -253,7 +285,11 @@ func (m *Manager) SaveDocument(ctx context.Context, c Context, documentID string
 	if savedVersion != d.version {
 		return DocumentReceipt{}, failure("resyncRequired", "Saved snapshot is older than the live document")
 	}
-	generation, caps, err := m.provider.Session(a.root, d.path)
+	owner, generation, caps, err := m.documentSession(a.root, d.path)
+	if err == nil && owner != d.owner {
+		d.broken = true
+		err = failure("resyncRequired", "Document owner changed; document must be reopened")
+	}
 	if err != nil {
 		return DocumentReceipt{}, err
 	}
@@ -336,7 +372,7 @@ func (m *Manager) releaseDocuments(a *attachment) {
 	steps := []DocumentStep{}
 	for id, d := range a.docs {
 		if m.provider != nil && !d.broken {
-			steps = append(steps, DocumentStep{Root: a.root, Path: d.path, Generation: d.generation, Kind: "close", Version: d.version})
+			steps = append(steps, DocumentStep{Root: a.root, Path: d.path, Owner: d.owner, Generation: d.generation, Kind: "close", Version: d.version})
 		}
 		m.dropDocument(a, id)
 	}
@@ -354,8 +390,9 @@ func (m *Manager) releaseDocuments(a *attachment) {
 }
 
 // PublishDocumentResults replaces exactly one open document's LSP set (empty
-// included). The identity, path, session generation and version must match the
-// current lifecycle, so a closed/reopened ID or late publication is rejected.
+// included). The explicit identity, bound owner/policy, session generation and
+// version must match. This does not resolve reused-URI ambiguity on the adapter
+// path route (R03); an explicit old ID is rejected, not rebound.
 // Unversioned publications stay uncertain and panel-only; ranges are validated
 // against the mirrored text and invalid ones become file-level findings.
 func (m *Manager) PublishDocumentResults(c Context, documentID, generation string, version *int64, diagnostics []Diagnostic) error {
@@ -365,14 +402,19 @@ func (m *Manager) PublishDocumentResults(c Context, documentID, generation strin
 	if err != nil {
 		return err
 	}
-	return m.publishLocked(a, d, documentID, generation, version, diagnostics)
+	// Compatibility for explicit lifecycle callers: derive the owner only from the
+	// bound backend lifecycle, never from a finding's Source. Adapters must use
+	// PublishPathDiagnostics with their concrete notification provenance.
+	return m.publishLocked(a, d, documentID, d.owner.ProviderID, generation, version, diagnostics)
 }
 
 // PublishPathDiagnostics is the adapter seam: it finds the open document of the
-// attachment owning project by path, then applies the same guards as
-// PublishDocumentResults. A path with no open document (closed, never opened) is
-// notFound, so a late server publication can never create state.
-func (m *Manager) PublishPathDiagnostics(project Project, generation, path string, version *int64, diagnostics []Diagnostic) error {
+// attachment owning project by path, then verifies the concrete session-envelope
+// provider against the bound owner before any replacement. This is a backend-only
+// seam; providerID must never come from a client or Diagnostic.Source. A path with
+// no open document (closed, never opened) is notFound, so a late server publication
+// can never create state.
+func (m *Manager) PublishPathDiagnostics(project Project, providerID, generation, path string, version *int64, diagnostics []Diagnostic) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.closed {
@@ -387,7 +429,7 @@ func (m *Manager) PublishPathDiagnostics(project Project, generation, path strin
 		}
 		for id, d := range a.docs {
 			if d.path == path {
-				return m.publishLocked(a, d, id, generation, version, diagnostics)
+				return m.publishLocked(a, d, id, providerID, generation, version, diagnostics)
 			}
 		}
 		return failure("notFound", "Document is not open")
@@ -395,11 +437,14 @@ func (m *Manager) PublishPathDiagnostics(project Project, generation, path strin
 	return failure("staleContext", "Diagnostics attachment is no longer current")
 }
 
-func (m *Manager) publishLocked(a *attachment, d *documentState, documentID, generation string, version *int64, diagnostics []Diagnostic) error {
+func (m *Manager) publishLocked(a *attachment, d *documentState, documentID, providerID, generation string, version *int64, diagnostics []Diagnostic) error {
+	if providerID != d.owner.ProviderID {
+		return failure("staleContext", "Publication provider does not own this document")
+	}
 	// The document mirror can outlive an idle-evicted/disconnected session.
 	// A matching historical generation alone is not proof that it is still live.
-	current, _, err := m.provider.Session(a.root, d.path)
-	if err != nil || current != generation {
+	owner, current, _, err := m.documentSession(a.root, d.path)
+	if err != nil || owner != d.owner || current != generation {
 		return failure("staleContext", "Language session is no longer current")
 	}
 	if generation != d.generation || d.broken || (version != nil && *version != d.version) {
@@ -442,10 +487,10 @@ func (m *Manager) publishLocked(a *attachment, d *documentState, documentID, gen
 		}
 		out = append(out, in)
 	}
-	set := ResultSet{ProviderID: "lsp", Origin: "lsp", Scope: Scope{Kind: "document", Path: d.path, DocumentID: documentID}, Diagnostics: out}
+	set := ResultSet{ProviderID: providerID, Origin: "lsp", Scope: Scope{Kind: "document", Path: d.path, DocumentID: documentID}, Diagnostics: out}
 	replaced := false
 	for i := range a.snapshot.ResultSets {
-		if s := a.snapshot.ResultSets[i]; s.Origin == "lsp" && s.Scope.DocumentID == documentID {
+		if s := a.snapshot.ResultSets[i]; s.ProviderID == set.ProviderID && s.Origin == set.Origin && s.Scope == set.Scope {
 			a.snapshot.ResultSets[i], replaced = set, true
 		}
 	}

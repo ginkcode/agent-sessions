@@ -25,6 +25,11 @@ func (f *fakeDocs) Session(AuthorizedRoot, string) (string, ServerCapabilities, 
 	return f.gen, f.caps, f.err
 }
 
+func (f *fakeDocs) OwnerSession(root AuthorizedRoot, path string) (DocumentOwnerIdentity, string, ServerCapabilities, error) {
+	gen, caps, err := f.Session(root, path)
+	return DocumentOwnerIdentity{goplsProviderID, "fake-policy"}, gen, caps, err
+}
+
 func (f *fakeDocs) Apply(_ context.Context, s DocumentStep) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()

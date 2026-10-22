@@ -43,6 +43,19 @@ func (d SessionDocuments) server(root AuthorizedRoot, path string) (DocumentServ
 	return server, s, nil
 }
 
+// OwnerSession preserves the resolver's concrete provider and exact policy.
+func (d SessionDocuments) OwnerSession(root AuthorizedRoot, path string) (DocumentOwnerIdentity, string, ServerCapabilities, error) {
+	server, s, err := d.server(root, path)
+	if err != nil {
+		return DocumentOwnerIdentity{}, "", ServerCapabilities{}, err
+	}
+	info := s.info()
+	if info.Phase == phaseStarting {
+		return DocumentOwnerIdentity{}, "", ServerCapabilities{}, failure("busy", "Language session is starting")
+	}
+	return DocumentOwnerIdentity{server.Config.ProviderID, server.Config.Policy()}, s.generation, info.Capabilities, nil
+}
+
 // Session reports the current generation and negotiated capabilities.
 func (d SessionDocuments) Session(root AuthorizedRoot, path string) (string, ServerCapabilities, error) {
 	_, s, err := d.server(root, path)
@@ -75,7 +88,7 @@ func (d SessionDocuments) Apply(ctx context.Context, step DocumentStep) error {
 	if err != nil {
 		return err
 	}
-	if s.generation != step.Generation || !s.current() {
+	if s.generation != step.Generation || !s.current() || step.Owner != (DocumentOwnerIdentity{server.Config.ProviderID, server.Config.Policy()}) {
 		return failure("staleContext", "Language session generation changed")
 	}
 	target, err := step.Root.ResolvePath(step.Root.Project().HostID, step.Path)

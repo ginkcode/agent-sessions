@@ -382,7 +382,7 @@ func (b *TSBridge) Handle(n SessionNotification) {
 	if _, owned := TSLanguageID(pub.Path); !owned {
 		return
 	}
-	if err := b.sink.PublishPathDiagnostics(n.Project, n.Generation, pub.Path, pub.Version, pub.Diagnostics); err != nil {
+	if err := b.sink.PublishPathDiagnostics(n.Project, n.ProviderID, n.Generation, pub.Path, pub.Version, pub.Diagnostics); err != nil {
 		var e *Error
 		if !errors.As(err, &e) || (e.Code != "notFound" && e.Code != "staleContext" && e.Code != "unsupported") {
 			b.note(partialTSNotice)

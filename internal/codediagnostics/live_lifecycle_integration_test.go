@@ -122,7 +122,7 @@ func TestLiveLifecycleFramedReplacementAndGuards(t *testing.T) {
 	}
 	// Wrong host/root/session generation and unknown document cannot clear a set.
 	for _, project := range []Project{{HostID: "other", Root: x.root.Project().Root}, {HostID: x.root.Project().HostID, Root: "/other"}} {
-		if err := x.owner.PublishPathDiagnostics(project, x.mgr.Info(x.root, x.cfg).Generation, "a.go", nil, nil); errCode(err) != "staleContext" {
+		if err := x.owner.PublishPathDiagnostics(project, goplsProviderID, x.mgr.Info(x.root, x.cfg).Generation, "a.go", nil, nil); errCode(err) != "staleContext" {
 			t.Fatal(err)
 		}
 	}

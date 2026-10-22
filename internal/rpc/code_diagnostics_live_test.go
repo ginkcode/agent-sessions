@@ -44,6 +44,11 @@ func (r *rpcSession) Session(cd.AuthorizedRoot, string) (string, cd.ServerCapabi
 	return "g", cd.ServerCapabilities{OpenClose: true, Change: 2, Save: true}, nil
 }
 
+func (r *rpcSession) OwnerSession(root cd.AuthorizedRoot, path string) (cd.DocumentOwnerIdentity, string, cd.ServerCapabilities, error) {
+	gen, caps, err := r.Session(root, path)
+	return cd.DocumentOwnerIdentity{ProviderID: "gopls", Policy: "fake-policy"}, gen, caps, err
+}
+
 func (r *rpcSession) Apply(_ context.Context, s cd.DocumentStep) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
