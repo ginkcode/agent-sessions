@@ -420,7 +420,12 @@ func (m *Manager) publishLocked(a *attachment, d *documentState, documentID, gen
 		}
 		in.Message = strings.Clone(shorten(in.Message, 8192))
 		in.Basis = SavedBasis{Kind: "document", DocumentID: documentID, Version: version}
-		in.Freshness, in.LocationIssue = "uncertain", ""
+		in.Freshness = "uncertain"
+		// Preserve the adapter's explicit invalid-range explanation for file-level
+		// findings; malformed server coordinates must not silently lose context.
+		if in.LocationIssue != "invalidRange" {
+			in.LocationIssue = ""
+		}
 		if version != nil {
 			in.Freshness = "current"
 		}
