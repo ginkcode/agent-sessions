@@ -1,11 +1,12 @@
 # Go to File — project code diagnostics
 
-Status: foundation work started. CD-01 through CD-07 are complete (contract
-fixtures, backend trust/grants, contained paths, bounded checker supervisor,
-installed-checker format spikes, contained Go vet/Svelte adapters and headless
-result lifecycle manager): **7/28 complete**.
-CD-08…CD-28 are not started. No user-facing diagnostics capability
-is enabled. Trust policy and approval copy: [CD-02 addendum](code-diagnostics-trust.md).
+Status: **9/28 complete**: CD-01…CD-08 and CD-10 are complete (contract,
+backend trust/checkers/manager, Engine/App bindings and standalone frontend API/store).
+CD-09 RPC contracts/tests are committed, but authenticated production SSH/WSL
+identity activation remains **blocked**. CD-10 proceeded locally with an explicit
+dependency exception; it does not complete CD-09 or activate remotes.
+CD-11…CD-28 are not started. No user-facing diagnostics capability is enabled.
+Frontend policy/evidence: [CD-10](code-diagnostics-frontend.md). Trust policy and approval copy: [CD-02 addendum](code-diagnostics-trust.md).
 Execution semantics: [CD-03 supervisor](code-diagnostics-supervisor.md).
 Version/invocation evidence and limitations: [CD-04 spike](code-diagnostics-checkers.md).
 Go adapter policy and validation: [CD-05 evidence](code-diagnostics-go-vet.md).
@@ -243,7 +244,7 @@ part of the approval warning, not a guarantee the app can enforce.
 
 ## Task breakdown
 
-CD-01…CD-07 are complete; CD-08…CD-28 are not started. Estimates include focused automated tests; each task
+CD-01…CD-08 and CD-10 are complete; CD-09 is blocked on production remote identity activation; CD-11…CD-28 are not started. CD-10's local contract/test dependency exception is explicit above. Estimates include focused automated tests; each task
 is at most four developer hours. Re-estimate adapter spikes before committing
 to server-version support. Split tasks that exceed four hours before coding.
 The [TASKS.md](../../TASKS.md) feature section tracks these IDs and status.

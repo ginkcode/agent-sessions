@@ -635,6 +635,9 @@ export interface BlameLine {
 }
 
 export interface HostCapabilities {
+  /** Optional Stage 1 support. Live remains false until Stage 2. */
+  codeDiagnostics?: boolean;
+  liveCodeDiagnostics?: boolean;
   /** Absent on older servers; editing requires an explicit true. */
   saveFile?: boolean;
   /** Absent on older servers; per-line blame requires an explicit true. */
@@ -647,6 +650,8 @@ export interface HostCapabilities {
 }
 
 export interface ConnectionState {
+  /** Stable authenticated backend identity, not the host picker label. */
+  hostId?: string;
   phase: ConnectionPhase;
   host?: string;
   generation: number;

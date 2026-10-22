@@ -1,3 +1,4 @@
+import { MockCodeDiagnostics } from './codeDiagnostics';
 import { validatePortForward, type PortForwardRequest, type PortForwardState, type PortForwardRule } from '../portForward';
 import type {
   GroupMode,
@@ -147,7 +148,8 @@ function mockMessageSearchText(message: Message): { text: string; kind: SearchHi
   return { text: tools.join('\n'), kind: 'tool' };
 }
 
-export class MockBackendAPI {
+export class MockBackendAPI extends MockCodeDiagnostics {
+  constructor() { super((name, event) => this.emit(name, event)); }
   private sessions: SessionMeta[] = [...mockSessions];
   private messages: Record<string, typeof mockMessages[string]> = { ...mockMessages };
   private settings: ManageSettings = { enabled: false, allowPermanentDelete: false, prunePromptHistory: false };
@@ -163,8 +165,11 @@ export class MockBackendAPI {
   ];
   private connState: ConnectionState = {
     phase: 'local',
+    hostId: 'mock:local',
     generation: 0,
     capabilities: {
+      codeDiagnostics: true,
+      liveCodeDiagnostics: false,
       trash: true,
       manage: true,
       export: true,
@@ -1372,9 +1377,12 @@ export class MockBackendAPI {
     this.connState.generation++;
     this.connState = {
       phase: 'local',
+      hostId: 'mock:local',
       host: undefined,
       generation: this.connState.generation,
       capabilities: {
+        codeDiagnostics: true,
+        liveCodeDiagnostics: false,
         trash: true,
         manage: true,
         export: true,

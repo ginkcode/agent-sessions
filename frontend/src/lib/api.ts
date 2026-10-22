@@ -1,3 +1,5 @@
+import type { CodeDiagnosticsAPI, CodeDiagnosticsContext, CodeDiagnosticsRun, CodeDiagnosticsAttachment, CodeDiagnosticsSnapshot, CodeDiagnosticsAck, CodeDiagnosticsRuns } from './codeDiagnostics';
+import { CodeDiagnosticsError, codeDiagnosticsError } from './codeDiagnostics';
 import type { PortForwardRequest, PortForwardState } from './portForward';
 import type { TerminalFileTarget } from './terminalFileOpen';
 import type {
@@ -50,7 +52,7 @@ import type {
 import { MockBackendAPI } from './mock/mockApi';
 import { epoch, guardEpoch } from './link';
 
-export interface BackendAPI {
+export interface BackendAPI extends CodeDiagnosticsAPI {
   listGroups(mode: GroupMode, filter?: FilterOpts): Promise<GroupNode[]>;
   listSessions(groupKey: string, filter?: FilterOpts, sort?: SortOpts): Promise<SessionMeta[]>;
   agentCounts(filter?: FilterOpts): Promise<Record<string, number>>;
@@ -176,6 +178,13 @@ export interface BackendAPI {
 }
 
 interface WailsAppBinding {
+  AttachCodeDiagnostics?: CodeDiagnosticsAPI['attachCodeDiagnostics'];
+  DetachCodeDiagnostics?: CodeDiagnosticsAPI['detachCodeDiagnostics'];
+  GetCodeDiagnosticsSnapshot?: CodeDiagnosticsAPI['getCodeDiagnosticsSnapshot'];
+  ApproveCodeDiagnostics?: CodeDiagnosticsAPI['approveCodeDiagnostics'];
+  RevokeCodeDiagnostics?: CodeDiagnosticsAPI['revokeCodeDiagnostics'];
+  RunCodeDiagnostics?: CodeDiagnosticsAPI['runCodeDiagnostics'];
+  CancelCodeDiagnostics?: CodeDiagnosticsAPI['cancelCodeDiagnostics'];
   ListGroups(mode: string, filter: FilterOpts): Promise<GroupNode[]>;
   ListSessions(groupKey: string, filter: FilterOpts, sort: SortOpts): Promise<SessionMeta[]>;
   AgentCounts(filter: FilterOpts): Promise<Record<string, number>>;
@@ -274,6 +283,38 @@ function normalizeError(err: unknown): Error {
 }
 
 class WailsBackendAPI implements BackendAPI {
+  private async diagnosticsCall<T>(call: (() => Promise<T>) | undefined): Promise<T> {
+    if (!call) throw new CodeDiagnosticsError('unsupported', 'Code diagnostics are unavailable on this backend');
+    try { return await call(); } catch (e) { throw codeDiagnosticsError(e); }
+  }
+  attachCodeDiagnostics(dir: string, version: 1, host: string): Promise<CodeDiagnosticsAttachment> {
+    const b = this.binding;
+    return this.diagnosticsCall(b.AttachCodeDiagnostics && (() => b.AttachCodeDiagnostics!(dir, version, host)));
+  }
+  detachCodeDiagnostics(c: CodeDiagnosticsContext, host: string): Promise<CodeDiagnosticsAck> {
+    const b = this.binding;
+    return this.diagnosticsCall(b.DetachCodeDiagnostics && (() => b.DetachCodeDiagnostics!(c, host)));
+  }
+  getCodeDiagnosticsSnapshot(c: CodeDiagnosticsContext, host: string): Promise<CodeDiagnosticsSnapshot> {
+    const b = this.binding;
+    return this.diagnosticsCall(b.GetCodeDiagnosticsSnapshot && (() => b.GetCodeDiagnosticsSnapshot!(c, host)));
+  }
+  approveCodeDiagnostics(c: CodeDiagnosticsContext, mode: 'session' | 'persistent', fingerprint: string, host: string): Promise<CodeDiagnosticsSnapshot> {
+    const b = this.binding;
+    return this.diagnosticsCall(b.ApproveCodeDiagnostics && (() => b.ApproveCodeDiagnostics!(c, mode, fingerprint, host)));
+  }
+  revokeCodeDiagnostics(c: CodeDiagnosticsContext, host: string): Promise<CodeDiagnosticsSnapshot> {
+    const b = this.binding;
+    return this.diagnosticsCall(b.RevokeCodeDiagnostics && (() => b.RevokeCodeDiagnostics!(c, host)));
+  }
+  runCodeDiagnostics(c: CodeDiagnosticsContext, ids: string[] | undefined, host: string): Promise<CodeDiagnosticsRuns> {
+    const b = this.binding;
+    return this.diagnosticsCall(b.RunCodeDiagnostics && (() => b.RunCodeDiagnostics!(c, ids, host)));
+  }
+  cancelCodeDiagnostics(c: CodeDiagnosticsContext, runs: CodeDiagnosticsRun[], host: string): Promise<CodeDiagnosticsAck> {
+    const b = this.binding;
+    return this.diagnosticsCall(b.CancelCodeDiagnostics && (() => b.CancelCodeDiagnostics!(c, runs, host)));
+  }
   private get binding(): WailsAppBinding {
     const b = (window as any).go?.app?.App;
     if (!b) {

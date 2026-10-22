@@ -1,0 +1,216 @@
+import { api } from '../api';
+import { epoch } from '../link';
+import type { BackendAPI } from '../api';
+import type { ConnectionState } from '../types';
+import type { CodeDiagnosticsContext, CodeDiagnosticsProject, CodeDiagnosticsSnapshot, CodeDiagnosticsUpdate, CodeDiagnosticsRun } from '../codeDiagnostics';
+import { CODE_DIAGNOSTICS_EVENT, CODE_DIAGNOSTICS_LIMITS as limits, CodeDiagnosticsError, codeDiagnosticsError, sameAttachment, sameContext, encodedBytes, resultSetKey, groupCodeDiagnostics, inlineCodeDiagnostic } from '../codeDiagnostics';
+
+type Assembly = { parts: Map<number, CodeDiagnosticsUpdate>; bytes: number; timer: ReturnType<typeof setTimeout> };
+
+/** Owns results only. No editor imports, source text, drafts, tabs or persistence. */
+export class CodeDiagnosticsStore {
+  project = $state.raw<CodeDiagnosticsProject | undefined>(undefined);
+  snapshot = $state.raw<CodeDiagnosticsSnapshot | undefined>(undefined);
+  status = $state<'detached' | 'attaching' | 'ready' | 'unsupported' | 'resyncing' | 'disconnected' | 'error'>('detached');
+  error = $state<CodeDiagnosticsError | undefined>(undefined);
+  private context?: CodeDiagnosticsContext;
+  private lifetime = 0;
+  private startedEpoch = 0;
+  private off?: () => void;
+  private offConnection?: () => void;
+  private assemblies = new Map<string, Assembly>();
+  private early: CodeDiagnosticsUpdate[] = [];
+  private earlyBytes = 0;
+  private earlyOverflow = false;
+  private recovering = false;
+  private attempts = 0;
+  private host = '';
+  private retiredGenerations = new Set<string>();
+
+  constructor(private backend: BackendAPI = api, private currentEpoch: () => number = epoch) {}
+
+  get resultSets() { return this.snapshot?.resultSets ?? []; }
+  get providers() { return this.snapshot?.providers ?? []; }
+  get findings() { return groupCodeDiagnostics(this.resultSets); }
+  get partial() { return this.status !== 'ready' || this.providers.some(p => p.coverage.partial); }
+  get truncated() { return this.providers.some(p => p.truncated); }
+  get counts() {
+    const counts = { error: 0, warning: 0 };
+    for (const { diagnostic } of this.findings) if (diagnostic.severity === 'error' || diagnostic.severity === 'warning') counts[diagnostic.severity]++;
+    return counts;
+  }
+  countsUnder(path: string) {
+    const prefix = path ? path + '/' : '';
+    return this.findings.filter(f => (f.diagnostic.path === path || f.diagnostic.path.startsWith(prefix)) && ['error', 'warning'].includes(f.diagnostic.severity)).length;
+  }
+  inline(path: string, saved: { dirty: boolean; revision?: string }) {
+    if (this.status !== 'ready') return [];
+    return this.findings.flatMap(f => {
+      const eligible = f.entries.find(e => e.diagnostic.path === path && inlineCodeDiagnostic(e.diagnostic, saved));
+      return eligible ? [{ ...f, diagnostic: eligible.diagnostic }] : [];
+    });
+  }
+  private active(lifetime = this.lifetime) { return lifetime === this.lifetime && this.startedEpoch === this.currentEpoch(); }
+  private clearBuffers() {
+    for (const a of this.assemblies.values()) clearTimeout(a.timer);
+    this.assemblies.clear();
+    this.early = []; this.earlyBytes = 0;
+  }
+  private stale(disconnected = false) {
+    if (!this.snapshot) return;
+    this.snapshot = { ...this.snapshot, providers: this.providers.map(p => ({ ...p, freshness: 'stale', ...(disconnected ? { phase: 'disconnected' as const } : {}) })), resultSets: this.resultSets.map(s => ({ ...s, diagnostics: s.diagnostics.map(d => ({ ...d, freshness: 'stale' })) })) };
+  }
+  /** Hide/replacement invalidates ownership before asynchronous detach. */
+  async detach() {
+    const c = this.context, host = this.host;
+    this.lifetime++; this.context = undefined;
+    this.off?.(); this.offConnection?.(); this.off = this.offConnection = undefined;
+    this.clearBuffers(); this.recovering = false; this.attempts = 0;
+    this.project = undefined; this.snapshot = undefined; this.status = 'detached'; this.error = undefined;
+    if (c) { try { await this.backend.detachCodeDiagnostics(c, host); } catch { /* Never retry mutations across a connection change. */ } }
+  }
+  hide() { return this.detach(); }
+  /** Called on any route change/drop; retained findings are explicitly stale. */
+  disconnect() {
+    this.lifetime++; this.context = undefined;
+    this.off?.(); this.offConnection?.(); this.off = this.offConnection = undefined;
+    this.clearBuffers(); this.recovering = false;
+    this.status = 'disconnected'; this.stale(true);
+  }
+  async attach(dir: string, connection: ConnectionState) {
+    // Invalidate synchronously, but do not make rendering wait for old detach.
+    void this.detach();
+    this.startedEpoch = this.currentEpoch();
+    const life = this.lifetime;
+    if (!connection.capabilities.codeDiagnostics || !connection.hostId || !['local', 'connected'].includes(connection.phase)) {
+      this.status = 'unsupported'; return;
+    }
+    this.host = connection.hostId; this.status = 'attaching'; this.earlyOverflow = false; this.retiredGenerations.clear();
+    this.off = this.backend.onEvent(CODE_DIAGNOSTICS_EVENT, (event: CodeDiagnosticsUpdate) => {
+      if (!this.active(life)) return;
+      if (!this.context) {
+        const bytes = encodedBytes(event);
+        const updateIds = new Set(this.early.map(e => e.updateId));
+        updateIds.add(event.updateId);
+        if (updateIds.size > limits.updates || bytes > limits.partBytes || this.early.length >= limits.parts * limits.updates || this.earlyBytes + bytes > limits.bufferBytes) { this.earlyOverflow = true; this.early = []; this.earlyBytes = 0; return; }
+        if (!this.earlyOverflow) { this.early.push(structuredClone(event)); this.earlyBytes += bytes; }
+      } else this.receive(event);
+    });
+    this.offConnection = this.backend.onEvent('connection:state', (next: ConnectionState) => {
+      if (next.generation !== connection.generation || next.phase !== connection.phase || next.host !== connection.host || (next.hostId && next.hostId !== this.host)) this.disconnect();
+    });
+    try {
+      const attachment = await this.backend.attachCodeDiagnostics(dir, 1, this.host);
+      if (!this.active(life)) {
+        if (this.startedEpoch === this.currentEpoch()) void this.backend.detachCodeDiagnostics(attachment.context, attachment.project.hostId).catch(() => {});
+        return;
+      }
+      if (attachment.project.hostId !== this.host || !sameContext(attachment.context, attachment.snapshot.context)) throw new CodeDiagnosticsError('staleContext', 'Attachment identity mismatch');
+      this.project = attachment.project; this.context = attachment.context;
+      if (!this.commit(attachment.snapshot, true)) throw new CodeDiagnosticsError('resyncRequired', 'Invalid attachment snapshot');
+      const early = this.early; this.early = []; this.earlyBytes = 0;
+      for (const event of early) this.receive(event);
+      if (this.earlyOverflow) this.resync();
+    } catch (e) { if (this.active(life)) this.fail(e); }
+  }
+  private fail(e: unknown) {
+    this.error = codeDiagnosticsError(e);
+    if (this.error.code === 'disconnected' || this.error.code === 'staleContext') { this.disconnect(); return; }
+    this.status = this.error.code === 'unsupported' ? 'unsupported' : 'error'; this.stale();
+  }
+  private validSnapshot(s: CodeDiagnosticsSnapshot) {
+    return !!s && s.contractVersion === 1 && !!s.context && !!s.approval && Number.isSafeInteger(s.sequence) && s.sequence >= 0 && Array.isArray(s.providers) && s.providers.length <= 32 && Array.isArray(s.resultSets) && s.resultSets.every(r => Array.isArray(r.diagnostics)) && s.resultSets.reduce((n, r) => n + r.diagnostics.length, 0) <= limits.findings && encodedBytes(s) <= limits.snapshotBytes;
+  }
+  private commit(s: CodeDiagnosticsSnapshot, initial = false, revoke = false): boolean {
+    if (!this.context || !this.validSnapshot(s) || !sameAttachment(this.context, s.context)) return false;
+    if (!initial && this.snapshot && s.sequence <= this.snapshot.sequence) return false;
+    if (!sameContext(this.context, s.context)) {
+      if (!revoke || s.approval.state !== 'revoked' || this.retiredGenerations.has(s.context.generation)) return false;
+      this.retiredGenerations.add(this.context.generation);
+      this.context = s.context; this.clearBuffers();
+    }
+    // Run acknowledgements never install result sets: sequence-ordered full snapshots
+    // are authoritative, including retained old-run sets on failure/cancellation.
+    this.snapshot = structuredClone(s); this.status = 'ready'; this.error = undefined;
+    this.pruneAssemblies(s.sequence);
+    return true;
+  }
+  private pruneAssemblies(sequence: number) {
+    for (const [key, assembly] of this.assemblies) {
+      const first = assembly.parts.values().next().value;
+      if (first && first.sequence <= sequence) { clearTimeout(assembly.timer); this.assemblies.delete(key); }
+    }
+  }
+  private receive(event: CodeDiagnosticsUpdate) {
+    if (!this.context || !event?.context || !sameAttachment(this.context, event.context)) return;
+    if (event.sequence <= (this.snapshot?.sequence ?? -1)) return;
+    const newGeneration = !sameContext(this.context, event.context);
+    if (newGeneration && (event.snapshot?.approval.state !== 'revoked' || this.retiredGenerations.has(event.context.generation))) return;
+    if (event.contractVersion !== 1 || !Number.isSafeInteger(event.sequence) || !Number.isSafeInteger(event.partCount) || event.partCount < 1 || event.partCount > limits.parts || !Number.isSafeInteger(event.partIndex) || event.partIndex < 0 || event.partIndex >= event.partCount || !event.updateId || !sameContext(event.context, event.snapshot.context) || event.sequence !== event.snapshot.sequence) { this.resync(); return; }
+    const bytes = encodedBytes(event);
+    if (bytes > limits.partBytes || (!newGeneration && event.sequence !== (this.snapshot?.sequence ?? -1) + 1)) { this.resync(); return; }
+    const key = event.updateId;
+    let assembly = this.assemblies.get(key);
+    if (!assembly) {
+      if (this.assemblies.size >= limits.updates) { this.resync(); return; }
+      const life = this.lifetime;
+      assembly = { parts: new Map(), bytes: 0, timer: setTimeout(() => { if (this.active(life)) this.resync(); }, limits.timeout) };
+      this.assemblies.set(key, assembly);
+    }
+    const first = assembly.parts.values().next().value;
+    const metadata = (e: CodeDiagnosticsUpdate) => JSON.stringify([e.contractVersion, e.context, e.sequence, e.partCount, { ...e.snapshot, resultSets: [] }]);
+    if (first && metadata(first) !== metadata(event)) { this.resync(); return; }
+    const duplicate = assembly.parts.get(event.partIndex);
+    if (duplicate) { if (JSON.stringify(duplicate) !== JSON.stringify(event)) this.resync(); return; }
+    const total = [...this.assemblies.values()].reduce((n, a) => n + a.bytes, 0);
+    if (total + bytes > limits.bufferBytes) { this.resync(); return; }
+    assembly.parts.set(event.partIndex, structuredClone(event)); assembly.bytes += bytes;
+    if (assembly.parts.size !== event.partCount) return;
+    const sets = new Map<string, CodeDiagnosticsSnapshot['resultSets'][number]>();
+    for (let i = 0; i < event.partCount; i++) for (const set of assembly.parts.get(i)!.snapshot.resultSets) {
+      const key = resultSetKey(set), previous = sets.get(key);
+      if (previous) previous.diagnostics.push(...set.diagnostics);
+      else sets.set(key, structuredClone(set));
+    }
+    clearTimeout(assembly.timer); this.assemblies.delete(key);
+    if (!this.commit({ ...event.snapshot, resultSets: [...sets.values()] }, false, newGeneration)) this.resync();
+  }
+  private resync() {
+    this.clearBuffers(); this.stale();
+    if (!this.context) return;
+    this.status = 'resyncing';
+    if (this.recovering) return;
+    if (this.attempts >= limits.retries) { this.status = 'error'; this.error = new CodeDiagnosticsError('resyncRequired', 'Diagnostics recovery exhausted; retry explicitly'); return; }
+    this.recovering = true; this.attempts++;
+    const life = this.lifetime, c = this.context;
+    void this.backend.getCodeDiagnosticsSnapshot(c, this.host).then(s => {
+      if (!this.active(life) || !this.context || !sameContext(c, this.context)) return;
+      if (!sameContext(c, s.context) || !this.validSnapshot(s)) throw new CodeDiagnosticsError('resyncRequired', 'Invalid recovery snapshot');
+      this.commit(s);
+      // An equal authoritative snapshot also resolves uncertainty.
+      if (this.snapshot && s.sequence >= this.snapshot.sequence) { this.snapshot = structuredClone(s); this.status = 'ready'; this.error = undefined; }
+    }).catch(e => { if (this.active(life)) this.fail(e); }).finally(() => { if (this.active(life)) this.recovering = false; });
+  }
+  /** Explicit recovery starts a fresh bounded retry budget, never replays mutations. */
+  refresh() { this.attempts = 0; this.resync(); }
+  private async action<T>(operation: (c: CodeDiagnosticsContext, host: string) => Promise<T>, apply?: (value: T) => void) {
+    if (!this.context || !this.active()) throw new CodeDiagnosticsError('staleContext', 'Attach diagnostics again');
+    const life = this.lifetime, c = this.context;
+    try {
+      const value = await operation(c, this.host);
+      if (this.active(life) && this.context && sameContext(c, this.context)) apply?.(value);
+      return value;
+    } catch (e) { if (this.active(life)) this.fail(e); throw e; }
+  }
+  approve(mode: 'session' | 'persistent', fingerprint = this.snapshot?.proposal?.fingerprint ?? '') {
+    return this.action((c, h) => this.backend.approveCodeDiagnostics(c, mode, fingerprint, h), s => { this.commit(s); });
+  }
+  revoke() { return this.action((c, h) => this.backend.revokeCodeDiagnostics(c, h), s => { this.commit(s, false, true); }); }
+  run(providerIds?: string[]) { return this.action((c, h) => this.backend.runCodeDiagnostics(c, providerIds, h)); }
+  retry(providerId: string) { return this.run([providerId]); }
+  cancel(runs: CodeDiagnosticsRun[] = this.providers.flatMap(p => p.runId && ['starting', 'checking'].includes(p.phase) ? [{ providerId: p.providerId, runId: p.runId }] : [])) {
+    return this.action((c, h) => this.backend.cancelCodeDiagnostics(c, runs, h));
+  }
+}
+
+export const codeDiagnostics = new CodeDiagnosticsStore();
