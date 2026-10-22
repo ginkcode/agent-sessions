@@ -1,0 +1,24 @@
+{
+  "contractVersion": 1,
+  "context": {"connectionId": "connection-synthetic", "attachmentId": "attachment-synthetic", "generation": "generation-synthetic"},
+  "sequence": 9007199254740991,
+  "approval": {"state": "approved", "mode": "session", "fingerprint": "fingerprint-synthetic"},
+  "providers": [
+    {"providerId": "checker-a", "availability": "available", "phase": "idle", "coverage": {"kind": "savedProject", "roots": [""], "partial": false, "externalChanges": "unwatched"}, "freshness": "stale", "truncated": false, "runId": "run-a"},
+    {"providerId": "checker-b", "availability": "available", "phase": "idle", "coverage": {"kind": "savedProject", "roots": ["src"], "partial": true, "externalChanges": "reconciled"}, "freshness": "current", "truncated": true, "runId": "run-b", "notice": "Synthetic bounded prefix."},
+    {"providerId": "lsp-synthetic", "availability": "available", "phase": "idle", "coverage": {"kind": "openedDocuments", "roots": ["src"], "partial": true, "externalChanges": "watching"}, "freshness": "current", "truncated": false}
+  ],
+  "resultSets": [
+    {"providerId": "checker-a", "origin": "checker", "scope": {"kind": "project"}, "runId": "run-a", "diagnostics": [
+      {"path": "src/example.txt", "severity": "error", "message": "Synthetic shared finding <&>.", "source": "tool-a", "code": "101", "freshness": "stale", "basis": {"kind": "saved", "revision": "saved-old"}},
+      {"path": "src/example.txt", "severity": "warning", "message": "Synthetic invalid tool location.", "source": "tool-a", "freshness": "uncertain", "basis": {"kind": "saved"}, "locationIssue": "invalidRange"}
+    ]},
+    {"providerId": "checker-b", "origin": "checker", "scope": {"kind": "project"}, "runId": "run-b", "diagnostics": [
+      {"path": "src/example.txt", "severity": "error", "message": "Synthetic shared finding <&>.", "source": "tool-b", "code": "101", "freshness": "current", "basis": {"kind": "saved", "revision": "saved-current"}}
+    ]},
+    {"providerId": "lsp-synthetic", "origin": "lsp", "scope": {"kind": "document", "path": "src/example.txt", "documentId": "document-synthetic"}, "diagnostics": [
+      {"path": "src/example.txt", "range": {"start": {"line": 0, "character": 1}, "end": {"line": 0, "character": 3}}, "severity": "information", "message": "Synthetic emoji span.", "source": "language-synthetic", "freshness": "current", "basis": {"kind": "document", "documentId": "document-synthetic", "version": 1}},
+      {"path": "src/example.txt", "range": {"start": {"line": 1, "character": 1}, "end": {"line": 1, "character": 1}}, "severity": "hint", "message": "Synthetic zero-width hint.", "source": "language-synthetic", "freshness": "uncertain", "basis": {"kind": "document", "documentId": "document-synthetic"}}
+    ]}
+  ]
+}

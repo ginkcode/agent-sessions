@@ -260,6 +260,23 @@ gated on the M8-08 named-pipe credential channel.
 | M8 Windows support | 13 | 62 | 2 | 9 | 2 |
 | **Total** | **135** | **≈ 430 h** | **66** | **27** | **42** |
 
+## Follow-up — Go to File code diagnostics (proposed)
+
+Progress: **1/28 complete**. CD-01 is ✅ done; CD-02…CD-28 are ⬜ not started.
+No user-facing diagnostics capability is enabled yet. Detailed estimates, dependencies,
+contracts, and acceptance criteria are in
+[docs/plan/code-diagnostics.md](docs/plan/code-diagnostics.md). Individual task
+briefs and acceptance checklists are in [docs/tasks](docs/tasks/README.md).
+These follow-up tasks are not included in the historical milestone totals above.
+
+| IDs | St | Scope | Release gate |
+|---|---|---|---|
+| [CD-01](docs/tasks/CD-01.md) | ✅ | Authoritative contract v1, synthetic fixtures, validation/round-trip tests | Full Go suite, targeted race tests, and package lint pass |
+| CD-02…CD-10 | ⬜ | Project trust, checker execution/adapters, backend/RPC, frontend store | Authorized, bounded, host-local checks with race-safe result delivery |
+| CD-11…CD-17 | ⬜ | Approval/check controls, Problems panel, tree badges, viewer/editor markers, integration tests and QA | Stage 1: explicit project checks; no automatic tool execution on open |
+| CD-18…CD-27 | ⬜ | LSP transport/lifecycle, document sync, Go/TypeScript/Svelte adapters, external-change reconciliation and QA | Stage 2: live opened-file diagnostics for approved projects |
+| CD-28 | ⬜ | Opt-in automatic project checks on open/save | Stage 3: background project coverage without blocking the dialog |
+
 **Critical path to the MVP:**
 
 M0-01 → M0-02 → M0-03 → M0-07 → M0-08 → M0-09 → M0-10 → M1-13 → M1-16 → M1-20 → M1-24 → M1-28

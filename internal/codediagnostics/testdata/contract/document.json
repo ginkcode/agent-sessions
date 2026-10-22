@@ -1,0 +1,8 @@
+{
+  "path": "src/example.txt",
+  "documentId": "document-synthetic",
+  "version": 1,
+  "text": "a😀\tZ\r\nbé\r\n",
+  "utf16LineLengths": [5, 2, 0],
+  "emojiRange": {"start": {"line": 0, "character": 1}, "end": {"line": 0, "character": 3}}
+}

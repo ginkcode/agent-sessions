@@ -1,0 +1,12 @@
+{
+  "contractVersion": 1,
+  "context": {"connectionId": "connection-synthetic", "attachmentId": "attachment-synthetic", "generation": "generation-synthetic"},
+  "sequence": 0,
+  "approval": {"state": "approved", "mode": "session", "fingerprint": "fingerprint-synthetic"},
+  "providers": [
+    {"providerId": "checker-a", "availability": "available", "phase": "idle", "coverage": {"kind": "savedProject", "roots": [""], "partial": false, "externalChanges": "unwatched"}, "freshness": "current", "truncated": false, "runId": "run-empty"}
+  ],
+  "resultSets": [
+    {"providerId": "checker-a", "origin": "checker", "scope": {"kind": "project"}, "runId": "run-empty", "diagnostics": []}
+  ]
+}

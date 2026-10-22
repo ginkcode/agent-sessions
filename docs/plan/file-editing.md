@@ -29,6 +29,10 @@ Out of scope: new files, rename/delete, Save As, autosave, disk-backed draft
 recovery, merge editor, filesystem watching, LSP/autocomplete, formatting, and
 diagnostics. Binary/image/oversized files remain read-only.
 
+Follow-up scope: [code-diagnostics.md](code-diagnostics.md) proposes project
+checks and live language-server diagnostics as a separate staged feature. The
+exclusions above describe this editing release, not that follow-up.
+
 Drafts stay in memory, not local storage or another persistent cache: project
 files may contain secrets. Normal close/quit must be guarded, but a crash or
 forced termination can lose drafts. Do not log file bodies.

@@ -14,6 +14,10 @@ later milestones build on the contracts defined in M0.
 | [M7.md](M7.md) | Remote over SSH: headless server via system SSH, browse, search, manage remote sessions |
 | [M8.md](M8.md) | Windows support: local-first port (paths, Recycle Bin, PowerShell, packaging); remote over SSH later |
 | [file-editing.md](file-editing.md) | Go to File editing: FE-01…FE-14 task checklist, safe local/remote saves, drafts, conflicts, and lifecycle guards |
+| [code-diagnostics.md](code-diagnostics.md) | Proposed Go to File diagnostics: CD-01…CD-28, project checks, live language servers, trust, Problems panel, and local/remote lifecycle |
+
+Detailed code-diagnostics task briefs: [../tasks/README.md](../tasks/README.md).
+Authoritative code-diagnostics wire contract: [code-diagnostics-contract.md](code-diagnostics-contract.md).
 
 Reference: [../formats.md](../formats.md) holds the verified on-disk formats of each tool.
 

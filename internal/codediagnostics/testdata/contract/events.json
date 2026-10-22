@@ -1,0 +1,29 @@
+[
+  {
+    "contractVersion": 1,
+    "context": {"connectionId": "connection-synthetic", "attachmentId": "attachment-synthetic", "generation": "generation-synthetic"},
+    "sequence": 2, "updateId": "update-synthetic", "partIndex": 0, "partCount": 2,
+    "snapshot": {
+      "contractVersion": 1,
+      "context": {"connectionId": "connection-synthetic", "attachmentId": "attachment-synthetic", "generation": "generation-synthetic"},
+      "sequence": 2, "approval": {"state": "approved", "mode": "session", "fingerprint": "fingerprint-synthetic"},
+      "providers": [{"providerId": "checker-a", "availability": "available", "phase": "idle", "coverage": {"kind": "savedProject", "roots": [""], "partial": false, "externalChanges": "unwatched"}, "freshness": "current", "truncated": false}],
+      "resultSets": [
+        {"providerId": "checker-a", "origin": "checker", "scope": {"kind": "project"}, "runId": "run-new", "diagnostics": [{"path": "src/one.txt", "severity": "warning", "message": "Synthetic first fragment.", "source": "tool-a", "freshness": "current", "basis": {"kind": "saved", "revision": "saved-new"}}]},
+        {"providerId": "checker-a", "origin": "lsp", "scope": {"kind": "document", "path": "src/cleared.txt", "documentId": "document-cleared"}, "diagnostics": []}
+      ]
+    }
+  },
+  {
+    "contractVersion": 1,
+    "context": {"connectionId": "connection-synthetic", "attachmentId": "attachment-synthetic", "generation": "generation-synthetic"},
+    "sequence": 2, "updateId": "update-synthetic", "partIndex": 1, "partCount": 2,
+    "snapshot": {
+      "contractVersion": 1,
+      "context": {"connectionId": "connection-synthetic", "attachmentId": "attachment-synthetic", "generation": "generation-synthetic"},
+      "sequence": 2, "approval": {"state": "approved", "mode": "session", "fingerprint": "fingerprint-synthetic"},
+      "providers": [{"providerId": "checker-a", "availability": "available", "phase": "idle", "coverage": {"kind": "savedProject", "roots": [""], "partial": false, "externalChanges": "unwatched"}, "freshness": "current", "truncated": false}],
+      "resultSets": [{"providerId": "checker-a", "origin": "checker", "scope": {"kind": "project"}, "runId": "run-new", "diagnostics": [{"path": "src/two.txt", "severity": "hint", "message": "Synthetic second fragment.", "source": "tool-a", "freshness": "current", "basis": {"kind": "saved", "revision": "saved-new"}}]}]
+    }
+  }
+]
