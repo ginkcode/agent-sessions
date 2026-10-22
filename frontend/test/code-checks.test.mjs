@@ -44,7 +44,7 @@ test('approved check/cancel/retry rules and prompt locks reflect store selectors
 test('zero counts never promise full coverage; provider availability and freshness stay independent', async () => {
   for (const availability of ['approvalRequired', 'available', 'missingTool', 'unsupported', 'disabled']) {
     const html = await render({ partial: true, truncated: true, providers: [{ ...provider, availability, phase: 'canceled', freshness: 'stale', coverage: { ...provider.coverage, partial: true } }] });
-    for (const text of ['No reported problems', 'saved files', 'partial coverage', 'truncated', 'stale', 'freshness uncertain', 'Check canceled']) assert.ok(html.includes(text));
+    for (const text of ['No reported problems', 'saved files', 'partial coverage', 'truncated', 'stale', 'unopened-file coverage stale', 'Check canceled']) assert.ok(html.includes(text));
     assert.doesNotMatch(html, /all clean/i);
     if (availability !== 'available') assert.doesNotMatch(html, />Check Project</);
   }

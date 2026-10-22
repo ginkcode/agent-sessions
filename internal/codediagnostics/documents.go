@@ -396,6 +396,12 @@ func (m *Manager) PublishPathDiagnostics(project Project, generation, path strin
 }
 
 func (m *Manager) publishLocked(a *attachment, d *documentState, documentID, generation string, version *int64, diagnostics []Diagnostic) error {
+	// The document mirror can outlive an idle-evicted/disconnected session.
+	// A matching historical generation alone is not proof that it is still live.
+	current, _, err := m.provider.Session(a.root, d.path)
+	if err != nil || current != generation {
+		return failure("staleContext", "Language session is no longer current")
+	}
 	if generation != d.generation || d.broken || (version != nil && *version != d.version) {
 		return failure("staleContext", "Document publication is not current")
 	}

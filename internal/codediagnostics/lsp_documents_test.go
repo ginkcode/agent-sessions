@@ -122,6 +122,32 @@ func TestSessionDocumentsAgainstFakeServer(t *testing.T) {
 	if _, hasText := save["text"]; hasText {
 		t.Fatal("didSave carried a body")
 	}
+	// Reuse inside grace, then expire and reopen with actual displayed text,
+	// not a disk read or the original didOpen snapshot.
+	if _, err := m.OpenDocument(ctx, c, "source.go", "idle", 1, "unsaved", "rev"); err != nil {
+		t.Fatal(err)
+	}
+	before := e.mgr.Info(root, cfg).Generation
+	e.mgr.Hide(root, cfg)
+	if info, err := e.mgr.Attach(ctx, root, cfg); err != nil || info.Generation != before {
+		t.Fatal("grace reuse", info, err)
+	}
+	e.mgr.Hide(root, cfg)
+	e.clock.Advance(idleGrace)
+	eventually(t, "expired", func() bool { return e.mgr.Info(root, cfg).Phase == phaseStopped })
+	if err := m.PublishDocumentResults(c, "idle", before, nil, nil); errCode(err) != "staleContext" {
+		t.Fatal("expired publication accepted", err)
+	}
+	if _, err := e.mgr.Attach(ctx, root, cfg); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := m.ChangeDocument(ctx, c, "idle", 2, "actual displayed draft"); err != nil {
+		t.Fatal(err)
+	}
+	eventually(t, "reopened text", func() bool {
+		p := got.param(5)
+		return p != nil && p["textDocument"].(map[string]any)["text"] == "actual displayed draft"
+	})
 	// A dead session fails the change and invalidates the document.
 	e.mgr.Revoke(root)
 	if _, err := m.OpenDocument(ctx, c, "source.go", "d2", 1, "x", ""); err == nil {

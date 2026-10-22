@@ -57,13 +57,13 @@ test('editing promotes preview, invalidates pending reads, retains clean history
   const pending = deferred();
   let reads = 0;
   fixture.api.readFile = () => { reads++; return pending.promise; };
-  await store.refresh();
+  const refreshing = store.refresh();
   assert.equal(reads, 1);
   assert.equal(store.startEditing('a.txt'), true);
   const edit = tab.edit;
   assert.equal(tab.preview, false);
   pending.resolve(content('external', 'external'));
-  await tick();
+  await refreshing; await tick();
   assert.equal(tab.content.text, 'old\n');
   assert.equal(edit.draft, 'old\n');
   store.updateDraft(tab, 'new');
@@ -74,7 +74,7 @@ test('editing promotes preview, invalidates pending reads, retains clean history
   store.close();
   await store.show('/p');
   await tick();
-  assert.equal(reads, 1);
+  assert.equal(reads, 3); // refresh and reopen now reconcile saved context, even in edit mode.
   assert.equal(store.activeTab.edit, edit);
   store.openFile('b.txt');
   assert.equal(store.tabs[0], tab);
@@ -131,6 +131,7 @@ test('save snapshots remain attached to hidden/cached tab and later typing stays
   assert.equal(tab.edit.draft, 'later typing');
   assert.equal(tab.edit.dirty, true);
   assert.equal(tab.content.revision, 'r2');
+  fixture.api.readFile = async () => content('submitted', 'r2');
   await store.show('/p');
   store.updateDraft(tab, 'submitted');
   assert.equal(store.hasUnsaved, false);
@@ -348,7 +349,7 @@ test('same-host reconnect retains clean editors, hidden caches, selection and in
   const viewer = store.activeTab;
   const late = deferred();
   fixture.api.readFile = () => late.promise;
-  await store.refresh();
+  const refreshing = store.refresh();
   let reads = 0;
   fixture.api.readFile = async () => { reads++; return content('fresh', 'fresh'); };
   await store.connectionChanged();
@@ -356,13 +357,13 @@ test('same-host reconnect retains clean editors, hidden caches, selection and in
   assert.equal(store.activeTab, viewer);
   assert.equal(store.selected, 'b.txt');
   late.resolve(content('stale', 'stale'));
-  await tick();
+  await refreshing; await tick();
   assert.equal(viewer.content.text, 'fresh');
   await store.show('/p');
   assert.equal(store.activeTab, tab);
   assert.equal(tab.edit, edit);
   assert.deepEqual([...store.expanded], ['folder']);
-  assert.equal(reads, 1);
+  assert.equal(reads, 2); // reopening the retained editor reconciles saved context
 });
 
 test('reconnect settles hidden uncertain drafts without opening their directory', async () => {

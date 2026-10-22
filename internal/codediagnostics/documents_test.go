@@ -461,3 +461,30 @@ func NewManagerForTest(t *testing.T, root AuthorizedRoot) *managerHarness {
 }
 
 func (h *managerHarness) snapshotFor(*testing.T) Snapshot { return h.snap }
+
+func TestPublicationRejectsEvictedSessionEvenWithMatchingMirrorGeneration(t *testing.T) {
+	m, snap, f := docFixture(t, incrementalCaps)
+	ctx, c := context.Background(), snap.Context
+	if _, err := m.OpenDocument(ctx, c, "source.go", "d1", 1, "draft", "r1"); err != nil {
+		t.Fatal(err)
+	}
+	v := int64(1)
+	f.mu.Lock()
+	f.err = failure("staleContext", "Session expired")
+	f.mu.Unlock()
+	if err := m.PublishDocumentResults(c, "d1", "g1", &v, nil); errCode(err) != "staleContext" {
+		t.Fatal("evicted session published", err)
+	}
+	f.mu.Lock()
+	f.err, f.gen = nil, "g2"
+	f.mu.Unlock()
+	if err := m.PublishDocumentResults(c, "d1", "g1", &v, nil); errCode(err) != "staleContext" {
+		t.Fatal("old session published after restart", err)
+	}
+	if _, err := m.ChangeDocument(ctx, c, "d1", 2, "actual displayed draft"); err != nil {
+		t.Fatal(err)
+	}
+	if step := f.last(); step.Kind != "open" || step.Text != "actual displayed draft" || step.Generation != "g2" {
+		t.Fatalf("restart must reopen displayed text: %+v", step)
+	}
+}

@@ -47,6 +47,9 @@ export class CodeDiagnosticsStore {
   private retiredGenerations = new Set<string>();
   private liveCapable = false;
   private listeners = new Set<() => void>();
+  private reconcileFiles: () => Promise<void> = async () => {};
+  /** Read-only files-store reconciliation; no discovery or language-server startup. */
+  setReconciler(reconcile: () => Promise<void>): void { this.reconcileFiles = reconcile; }
 
   /**
    * Identity of the attachment that may carry live document operations: only while
@@ -258,7 +261,12 @@ export class CodeDiagnosticsStore {
     }).catch(e => { if (this.active(life)) this.fail(e); }).finally(() => { if (this.active(life)) this.recovering = false; });
   }
   /** Explicit recovery starts a fresh bounded retry budget, never replays mutations. */
-  refresh() { this.attempts = 0; this.resync(); }
+  async refresh() {
+    const life = this.lifetime;
+    await this.reconcileFiles();
+    if (!this.active(life)) return;
+    this.attempts = 0; this.resync();
+  }
   private async action<T>(operation: (c: CodeDiagnosticsContext, host: string) => Promise<T>, apply?: (value: T) => void) {
     if (!this.context || !this.active()) throw new CodeDiagnosticsError('staleContext', 'Attach diagnostics again');
     const life = this.lifetime, c = this.context;
@@ -287,9 +295,16 @@ export class CodeDiagnosticsStore {
     if (!this.approved) throw new CodeDiagnosticsError('approvalRequired', 'Approve code checks before running');
     if (this.running) throw new CodeDiagnosticsError('busy', 'Check already active');
     if (!this.providers.some(p => p.availability === 'available' && (!providerIds || providerIds.includes(p.providerId)))) throw new CodeDiagnosticsError('unsupported', 'No available checker');
-    return this.request('run', () => this.action((c, h) => this.backend.runCodeDiagnostics(c, providerIds, h), reply => {
-      this.pendingRuns = reply.runs.filter(r => !this.providers.some(p => p.providerId === r.providerId && p.runId === r.runId));
-    }));
+    return this.request('run', async () => {
+      const life = this.lifetime;
+      await this.reconcileFiles();
+      if (!this.active(life)) throw new CodeDiagnosticsError('staleContext', 'Attach diagnostics again');
+      // Only the checker reads disk. Reconciliation does not save drafts, send
+      // didSave, or certify unversioned LSP publications.
+      return this.action((c, h) => this.backend.runCodeDiagnostics(c, providerIds, h), reply => {
+        this.pendingRuns = reply.runs.filter(r => !this.providers.some(p => p.providerId === r.providerId && p.runId === r.runId));
+      });
+    });
   }
   retry(providerId: string) { return this.run([providerId]); }
   cancel(runs: CodeDiagnosticsRun[] = [...this.pendingRuns, ...this.providers.flatMap(p => p.runId && ['starting', 'checking'].includes(p.phase) ? [{ providerId: p.providerId, runId: p.runId }] : [])]) {

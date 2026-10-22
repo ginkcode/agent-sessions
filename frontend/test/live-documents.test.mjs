@@ -280,3 +280,67 @@ test('mock bindings enforce lifecycle and stay unsupported unless enabled; no bo
   const bridge = await readFile(new URL('../src/lib/liveDocuments.ts', import.meta.url), 'utf8');
   assert.doesNotMatch(bridge, /import\(|codemirror|fileEditor/i);
 });
+
+test('refresh compares saved revisions, preserving dirty/conflicted/uncertain drafts and undo versions', async () => {
+  const s = await setup();
+  s.store.openFile('a.txt', { keep: true }); await tick();
+  s.store.startEditing('a.txt'); s.store.updateDraft('a.txt', 'draft');
+  const tab = s.store.activeTab, edit = tab.edit, version = edit.version;
+  const uncertain = edit.uncertain = { text: 'attempt', expectedRevision: 'r1', format: tab.content.edit };
+  s.seed['a.txt'] = content('a.txt', 'external', 'r9');
+  await s.store.refresh(); await tick();
+  assert.equal(tab.content.revision, 'r9');
+  assert.equal(edit.draft, 'draft'); assert.equal(edit.baseline, 'one\n');
+  assert.equal(edit.revision, 'r1'); assert.equal(edit.version, version);
+  assert.equal(edit.uncertain, uncertain); assert.equal(edit.conflict.observedRevision, 'r9');
+  assert.equal(s.calls.some(c => c[0] === 'save'), false);
+  await s.timers.advance(300);
+  assert.equal(s.calls.filter(c => c[0] === 'change').at(-1)[2], 'draft');
+});
+
+test('reopen rechecks saved context without replacing an editor or its undo version', async () => {
+  const s = await setup();
+  s.store.openFile('a.txt', { keep: true }); await tick();
+  s.store.startEditing('a.txt');
+  const tab = s.store.activeTab, version = tab.edit.version;
+  s.store.close();
+  s.seed['a.txt'] = content('a.txt', 'outside', 'r3');
+  await s.store.show('/p'); await tick();
+  assert.equal(s.store.activeTab.edit.draft, 'one\n');
+  assert.equal(s.store.activeTab.edit.version, version);
+  assert.equal(s.store.activeTab.content.revision, 'r3');
+  assert.equal(s.store.activeTab.edit.conflict.observedRevision, 'r3');
+});
+
+test('typing during reconciliation retains the newest draft; late old-host read cannot commit', async () => {
+  const s = await setup();
+  s.store.openFile('a.txt', { keep: true }); await tick(); s.store.startEditing('a.txt');
+  let resolve;
+  s.fixture.api.readFile = () => new Promise(r => { resolve = r; });
+  const pending = s.store.reconcileDisplayed();
+  s.store.updateDraft('a.txt', 'newest');
+  resolve(content('a.txt', 'disk', 'r4')); await pending;
+  assert.equal(s.store.activeTab.edit.draft, 'newest');
+  assert.equal(s.store.activeTab.content.revision, 'r4');
+  const late = s.store.reconcileDisplayed();
+  s.fixture.link.dataHost = 'other';
+  resolve(content('a.txt', 'wrong host', 'r5')); await late;
+  assert.equal(s.store.activeTab.content.revision, 'r4');
+});
+
+test('overlapping saved reads commit only the latest revision, and reload wins over a pending reconciliation', async () => {
+  const s = await setup();
+  s.store.openFile('a.txt', { keep: true }); await tick(); s.store.startEditing('a.txt');
+  const replies = [];
+  s.fixture.api.readFile = () => new Promise(r => replies.push(r));
+  const first = s.store.reconcileDisplayed(), second = s.store.reconcileDisplayed();
+  replies[1](content('a.txt', 'new disk', 'r3')); await second;
+  replies[0](content('a.txt', 'old disk', 'r2')); await first;
+  assert.equal(s.store.activeTab.content.revision, 'r3');
+  const pending = s.store.reconcileDisplayed();
+  const reload = s.store.discardEdited('a.txt');
+  replies[3](content('a.txt', 'reload', 'r4')); await reload;
+  replies[2](content('a.txt', 'stale', 'r3')); await pending;
+  assert.equal(s.store.activeTab.edit.draft, 'reload');
+  assert.equal(s.store.activeTab.content.revision, 'r4');
+});

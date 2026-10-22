@@ -69,7 +69,7 @@
       {#each checks.providers as provider (provider.providerId)}
         <li>
           <span>{provider.providerId}: {availability[provider.availability]} · {provider.phase} · {provider.freshness} · {provider.coverage.kind === 'savedProject' ? 'saved project files' : 'opened documents'} · roots: {provider.coverage.roots.join(', ') || '(project root)'}{provider.coverage.partial ? ' · partial' : ''}{provider.truncated ? ' · truncated' : ''}</span>
-          {#if provider.coverage.externalChanges === 'unwatched'}<span> · external changes unwatched; freshness uncertain</span>{/if}
+          {#if provider.coverage.externalChanges === 'unwatched'}<span> · external changes unwatched; unopened-file coverage stale — reopen, refresh or rerun to reconcile saved context (not continuous sync)</span>{/if}
           {#if provider.notice}<p>{provider.notice}</p>{/if}
           {#if provider.failure}<p>{provider.failure.message} (retained findings are not a successful check)</p>{/if}
           {#if provider.phase === 'canceled'}<p>Check canceled; retained findings may be stale.</p>{/if}

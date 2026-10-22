@@ -131,6 +131,7 @@ export class FilesStore {
   private connectionSeq = 0;
   private reconciling = new Map<FileTab, { seq: number; promise: Promise<void> }>();
   private observer?: FileLifecycleObserver;
+  private savedReads = new WeakMap<FileTab, number>();
 
   /** Installs the single lifecycle observer; returns an unsubscribe function. */
   observe(observer: FileLifecycleObserver | undefined): () => void {
@@ -309,7 +310,8 @@ export class FilesStore {
       this.selected = saved.selected;
       // The files may have changed since: read them again, keeping what
       // shows until the new text arrives.
-      for (const tab of this.tabs) void this.read(tab.path);
+      await this.reconcileDisplayed();
+      if (this.dir !== dir) return;
       this.notify(o => o.restored(dir));
     }
     this.loadingList = true;
@@ -321,8 +323,39 @@ export class FilesStore {
     const dir = this.dir;
     if (!dir || this.loadingList || this.refreshing || this.mutationError(this.dataHost)) return;
     this.refreshing = true;
-    for (const tab of this.tabs) void this.read(tab.path);
-    await this.list(dir);
+    await Promise.all([this.reconcileDisplayed(), this.list(dir)]);
+  }
+
+  /** Read-only revision reconciliation. Never writes, settles uncertainty or resets undo. */
+  async reconcileDisplayed(): Promise<void> {
+    const dir = this.dir, host = this.dataHost, connection = this.connectionSeq, started = epoch();
+    if (!dir || this.mutationError(host)) return;
+    await Promise.all(this.tabs.map(async tab => {
+      const edit = tab.edit;
+      if (!edit) { await this.read(tab.path); return; }
+      if (edit.saving) return;
+      // Typing is allowed during the read. Commit saved context only, not the
+      // captured draft; version/draft/baseline/uncertain are editor-owned.
+      const read = (this.savedReads.get(tab) ?? 0) + 1;
+      this.savedReads.set(tab, read);
+      const token = tab.token, version = edit.version, revision = edit.revision;
+      try {
+        const content = await api.readFile(dir, tab.path);
+        if (this.dir !== dir || started !== epoch() || connection !== this.connectionSeq || host !== link.dataHost
+          || this.savedReads.get(tab) !== read || !this.tabs.includes(tab) || tab.edit !== edit || edit.saving || edit.version !== version || edit.revision !== revision) return;
+        if (content.revision === tab.content?.revision) return;
+        tab.content = content;
+        if (content.revision !== edit.revision) edit.conflict = { observedRevision: content.revision };
+        // A concurrent replacement invalidates the read, but ordinary typing
+        // must not lose its newer draft or undo version.
+        if (tab.token === token) tab.error = null;
+        this.notify(o => o.replaced(dir, tab.path, edit.draft, content.revision));
+      } catch (err) {
+        if (this.dir === dir && started === epoch() && connection === this.connectionSeq && tab.edit === edit && !isStaleReply(err)) {
+          tab.error = errorText(err, 'Could not reconcile the saved file.');
+        }
+      }
+    }));
   }
 
   private async list(dir: string): Promise<void> {

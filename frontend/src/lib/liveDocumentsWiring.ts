@@ -14,6 +14,7 @@ export function startLiveDocuments(): LiveDocumentBridge {
     store: codeDiagnostics,
     source: () => ({ dir: files.dir, documents: files.displayedDocuments() }),
   });
+  codeDiagnostics.setReconciler(() => files.reconcileDisplayed());
   files.observe(bridge);
   codeDiagnostics.onLifecycle(() => bridge.sync());
   return bridge;

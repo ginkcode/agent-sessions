@@ -269,3 +269,20 @@ test('late approval on root switch cannot mutate current pending controls', asyn
   assert.equal(h.store.snapshot.sequence, 0); assert.equal(h.store.pending, undefined);
   await h.store.hide();
 });
+
+test('explicit refresh and checker rerun await read-only reconciliation; disconnect cancels queued run', async () => {
+  const h = harness(); await h.store.attach('/input', connection);
+  const order = [];
+  h.store.setReconciler(async () => { order.push('reconcile'); });
+  h.backend.getCodeDiagnosticsSnapshot = async () => { order.push('snapshot'); return snapshot(); };
+  h.backend.runCodeDiagnostics = async () => { order.push('run'); return { context, runs: [] }; };
+  await h.store.refresh(); await tick();
+  assert.deepEqual(order, ['reconcile', 'snapshot']);
+  order.length = 0; await h.store.run();
+  assert.deepEqual(order, ['reconcile', 'run']);
+  assert.equal(h.store.resultSets[0].diagnostics[0].basis.kind, 'saved');
+  const wait = deferred(); h.store.setReconciler(() => wait.promise);
+  const pending = h.store.run(); h.store.disconnect(); wait.resolve();
+  await assert.rejects(pending, e => e.code === 'staleContext');
+  assert.deepEqual(order, ['reconcile', 'run']);
+});
