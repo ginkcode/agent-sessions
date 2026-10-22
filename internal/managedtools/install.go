@@ -1,5 +1,5 @@
 // Package managedtools installs a closed catalog only after explicit consent.
-// It is not wired to Engine, RPC, or desktop bindings. Installation never grants
+// Engine owns its lifetime; RPC and desktop bindings are separate work. Installation never grants
 // permission to execute a language server against a project.
 package managedtools
 
@@ -133,9 +133,12 @@ func (i *Installer) Install(ctx context.Context, current Binding, token string) 
 	defer func() {
 		if err != nil {
 			path = ""
-			if requestCtx.Err() != nil {
+			switch {
+			case requestCtx.Err() != nil:
 				err = errors.New("managed tools: canceled")
-			} else {
+			case errors.Is(err, ErrPrerequisite):
+				err = ErrPrerequisite
+			default:
 				err = errors.New("managed tools: installation failed; request fresh approval to retry")
 			}
 		}
@@ -208,14 +211,7 @@ func (i *Installer) existing(path string) error {
 		return err
 	}
 	receiptPath := filepath.Join(filepath.Dir(path), "receipt.json")
-	if err := regularOrAbsent(receiptPath); err != nil {
-		return err
-	}
-	info, err := os.Stat(receiptPath)
-	if err != nil || info.Size() > 4096 {
-		return errors.New("invalid receipt")
-	}
-	data, err := os.ReadFile(receiptPath)
+	data, err := readReceipt(receiptPath)
 	if err != nil {
 		return err
 	}

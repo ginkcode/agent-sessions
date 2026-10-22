@@ -16,7 +16,12 @@ func (e *Engine) ResetCodeDiagnostics() {
 	e.mu.Lock()
 	owner := e.codeDiagnostics
 	e.codeDiagnostics = nil
+	managed := e.managedTools
+	e.managedTools = nil
 	e.mu.Unlock()
+	if managed != nil {
+		managed.close()
+	}
 	if owner != nil {
 		owner.close()
 	}

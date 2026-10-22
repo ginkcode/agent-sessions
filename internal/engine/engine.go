@@ -12,6 +12,7 @@ import (
 	"github.com/ginkcode/agent-sessions/internal/files"
 	"github.com/ginkcode/agent-sessions/internal/index"
 	"github.com/ginkcode/agent-sessions/internal/manage"
+	"github.com/ginkcode/agent-sessions/internal/managedtools"
 	"github.com/ginkcode/agent-sessions/internal/model"
 	"github.com/ginkcode/agent-sessions/internal/paths"
 	"github.com/ginkcode/agent-sessions/internal/pathutil"
@@ -37,6 +38,8 @@ type Engine struct {
 	events          *CatalogBus
 	emitter         Emitter
 	codeDiagnostics *diagnosticsOwner
+	managedTools    *managedToolsOwner
+	managedGo       *managedtools.ReviewedGo
 	// liveInjection is set only by tests/fixtures; production never sets it.
 	liveInjection *LiveCodeDiagnosticsInjection
 
@@ -320,6 +323,8 @@ func (e *Engine) Close() error {
 
 	diagnostics := e.codeDiagnostics
 	e.codeDiagnostics = nil
+	managed := e.managedTools
+	e.managedTools = nil
 	e.events = nil
 	e.closeWatch = nil
 	e.runCtx = nil
@@ -330,6 +335,9 @@ func (e *Engine) Close() error {
 	e.lock = nil
 	e.mu.Unlock()
 
+	if managed != nil {
+		managed.close()
+	}
 	if diagnostics != nil {
 		diagnostics.close()
 	}

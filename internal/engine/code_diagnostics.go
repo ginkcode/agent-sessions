@@ -316,6 +316,9 @@ func (e *Engine) RevokeCodeDiagnostics(ctx context.Context, c cd.Context) (cd.Sn
 	}
 	s, err := o.manager.Revoke(c)
 	if s.Context.AttachmentID != "" {
+		// Conservative local ownership policy: explicit project revocation also
+		// abandons pending managed-install consent and joins any owned build.
+		e.RevokeManagedTools()
 		if o.live != nil {
 			o.mu.Lock()
 			root := o.roots[c.AttachmentID]

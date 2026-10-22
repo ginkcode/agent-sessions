@@ -1,6 +1,6 @@
-# Managed language-server installation — TI-01 design and evidence
+# Managed language-server installation — TI-01/TI-02 design and evidence
 
-Date: 2026-10-22. Status: **backend core only, offline tested**. Task split:
+Date: 2026-10-22. Status: **backend core and Engine ownership, offline tested**. Task split:
 [TI-01–TI-05](../tasks/tool-installation.md). Diagnostics progress stays **19/28**;
 CD-09, Stage 1/2 release HOLDs and production live capability are unchanged.
 
@@ -14,13 +14,14 @@ No execution grant, project process start, automatic update, PATH change or
 project/global write follows installation. No real installation/download/build
 was performed on this development host. Existing R11 is a separate unit.
 
-TI-01 adds `internal/managedtools`, not Engine/App/RPC/frontend integration.
+TI-01 added `internal/managedtools`; TI-02 adds backend-only Engine seams below,
+not App/RPC/frontend integration.
 There is no advertised capability, UI prompt, missing-tool detector, remote route
 or progress event yet. Installation success returns a private executable path;
 errors are fixed sanitized text, never raw compiler/network/filesystem output.
-TI-02–TI-04 must supply trusted ownership, context cancellation on disconnect,
-actual host display, status/progress, Install/Not now and independent execution
-approval before this can be offered to users. No request accepts URLs, versions,
+TI-02 supplies trusted ownership/cancellation; TI-03–TI-04 must supply actual
+host display, routing, status/progress, Install/Not now and independent execution
+approval UX before this can be offered to users. No request accepts URLs, versions,
 executable argv or destinations. Backend construction is a trusted Go API, **not**
 a wire schema; callers must not deserialize requests into its parameters.
 
@@ -70,7 +71,7 @@ hash before any Go probe. A user/project-controlled PATH executable or a hash
 computed from untrusted discovery is not acceptable provisioning. **Trust extends
 to the complete Go installation tree**, not just the entrypoint hash; same-account
 malicious modification of that tree is outside this core's threat model. TI-02
-must define production acquisition and fingerprint invalidation policy. Nothing
+defines explicit acquisition and fingerprint invalidation below. Nothing
 currently wires a production caller or treats PATH as trusted.
 
 The command environment is allowlisted: no inherited proxy overrides, GOENV,
@@ -132,3 +133,61 @@ permission check exposed the test temp directory's public mode and a waiting
 concurrency test. Fixtures now explicitly use 0700; the error sanitizer no longer
 mislabels failures after its own timeout-context defer cancels. Focused race and
 full reruns passed. No real Go install or gopls invocation occurred.
+
+## TI-02 ownership, provisioning and evidence
+
+`ReviewInstalledGo(root)` is a trusted backend composition operation, NOT a wire
+schema: the backend operator must explicitly review/trust the **whole installed
+Go tree** first. No default selection, inherited PATH/GOROOT, arbitrary frontend
+executable/hash, version fallback or toolchain fetch is accepted. It derives
+`<canonical reviewed root>/bin/go`, rejects symlink ancestors/unsafe files,
+reads native cmd/go metadata and Go >=1.27 compatibility without execution,
+and pins SHA-256 into opaque `ReviewedGo`. Hashing is NOT trust acquisition;
+the explicit prior whole-tree review is the trust boundary. Same-account tree
+forgery/races remain outside the threat model. This API is intentionally not wired
+to production startup: a deployment must supply its reviewed tree explicitly.
+An empty review cannot construct an installer. Go 1.26.8 on this host yields
+`unsupported prerequisite` with the required version and no-auto-upgrade message.
+The post-consent version check returns that same useful sanitized failure.
+
+`WithReviewedManagedGo` is backend-only provisioning. Engine creates a stable
+local machine/account/installation host identity and random per-owner connection
+nonce; request JSON never supplies binding. Remote fixture identities fail closed;
+there is no RPC remote route pending CD-09 authenticated host identity. Constructor
+and proposal never probe executables or contact network; host identity persistence
+is metadata initialization only. Reset/disconnect, Engine.Close, explicit managed
+revoke and successful project revocation cancel/join owner work outside Engine.mu.
+WaitGroup admission is serialized with removal. Request cancellation is combined
+with owner cancellation; core process-group cancellation remains in force.
+
+Read-only discovery creates nothing: private canonical ancestor/destination checks,
+strict catalog build metadata and receipt version/policy plus SHA-256 binary-byte
+comparison precede use of the private executable directory. Receipt reads are now
+bounded even if a file grows after stat. Missing is `missingTool`; corrupt data
+is unsupported, never automatic repair/reinstall. Managed adapter discovery also
+requires matching local project host and rechecks the reviewed Go entrypoint pin.
+No inherited PATH fallback or new production live launcher is introduced.
+A Go tree change requires explicit re-review, not automatic hash repinning.
+
+Successful installation tears down previous diagnostics ownership/attachments
+before returning; reconnect/reattach must rediscover and recompute independent
+composite execution approval (binary bytes, argv/env, adapter/config identities).
+No attachment, project grant, server start, or live feature enable follows install.
+An already-stored exact execution grant remains governed by the existing trust
+fingerprint policy; new/changed executable bytes cannot inherit an old fingerprint.
+
+Offline evidence: new managedtools discovery tests exercise missing/no writes,
+valid install reuse, tampered bytes, forged receipt and receipt symlink rejection;
+review test reads existing Go metadata only and verifies this host's 1.26.8 refusal.
+Engine fake-installer tests exercise pre-consent no execution/grant, wrong token,
+disconnect/revoke/close cancellation+join, corrupt discovery, and successful install
+invalidating/joining the prior execution owner without live activation. Existing
+core fake-process argv/environment tests still pass; no real managed build,
+installation, download or server run occurred.
+
+Validation 2026-10-22: `go test ./...` PASS;
+`go test -race ./internal/managedtools ./internal/engine` PASS;
+`go tool golangci-lint run --new-from-rev=c68716c ./internal/managedtools/... ./internal/engine/...`
+PASS (0 issues). Unfiltered scoped lint found pre-existing Engine errcheck,
+gofumpt, unparam/unused issues; changed-code findings were fixed, unrelated files
+left untouched. TI-03 not started; diagnostics **19/28** and all release HOLDs unchanged.

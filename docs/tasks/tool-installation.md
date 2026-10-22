@@ -8,7 +8,7 @@ before exceeding that cap. Design/evidence: [managed tools](../plan/tool-install
 | ID | Estimate | Status | Exit / boundary |
 |---|---|---|---|
 | TI-01 | 4h | Complete (offline core only) | Closed gopls catalog, consent-bound local installer core, pinned checksum policy, trusted Go build, private staging/atomic publish, offline fake tests. No App/Engine/RPC/UI integration or real installation. |
-| TI-02 | 4h | Not started | Engine ownership and trusted installed-Go selection/fingerprint policy; connection-lifetime cancellation; read-only missing-tool metadata; managed executable discovery invalidates execution approval. Test no pre-consent probes/network, no automatic starts, independent execution grants. |
+| TI-02 | 4h | Complete (backend ownership, offline tested) | Engine ownership and trusted installed-Go selection/fingerprint policy; connection-lifetime cancellation; read-only missing-tool metadata; managed executable discovery invalidates execution approval. Test no pre-consent probes/network, no automatic starts, independent execution grants. |
 | TI-03 | 4h | Not started | Optional RPC/App contract and routing, proposal/Install/cancel/progress with bounded sanitized states and host epochs; old backend fallback; local only until CD-09 authenticated identity is implemented and reviewed. No client executable/URL/argv. |
 | TI-04 | 4h | Not started | Desktop Install / Not now scoped to actual host; source/version/destination/network/cache disclosure, progress/failure/cancel/retry, denial and reconnect tests; separate project execution approval. |
 | TI-05 | 4h per platform cell | Not started | Explicit approved disposable real build/install evidence, native private-directory permissions/ACL and publish/cancel/concurrency/tamper tests; assess compatibility/security of pinned release and Go trust provisioning. Record unsupported cells, no automatic activation. |
@@ -21,6 +21,21 @@ Full `go test ./...` and `go test -race ./...` pass; scoped golangci-lint report
 0 issues. Initial race timeout and subsequent fixture/sanitization fixes are
 recorded in the evidence. No real installs, downloads or server runs; no UI/RPC
 flow claimed. Next independent work is TI-02, not R11 or diagnostics activation.
+
+## TI-02 progress / evidence
+
+Completed 2026-10-22: backend-only Engine ownership, opaque explicitly reviewed
+installed-Go provisioning, stable local host plus per-owner random connection
+consent, disconnect/close/revoke cancellation and join, read-only managed discovery
+with receipt AND binary validation. Installation tears down prior execution owners;
+reattach recomputes independent execution fingerprints. No live flag, RPC/App/UI
+contract, remote installation or automatic Go upgrade added. Go 1.26.8 returns an
+actionable Go >=1.27 prerequisite refusal without executing it. Full `go test ./...`
+and touched-package race tests pass; changed-code lint versus `c68716c` passes
+(0 issues). Broader package lint also exposed existing unrelated Engine issues;
+these were left unchanged. Tests use fake installer/process seams, no real install,
+download, build or server run. Detailed policy/evidence: plan TI-02 section.
+Diagnostics remains **19/28**. TI-03 is not started.
 
 ## Scope change authorized by user
 

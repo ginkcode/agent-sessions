@@ -23,6 +23,9 @@ func buildGo(ctx context.Context, stage string, tool TrustedGo) error {
 }
 
 func buildGoWith(ctx context.Context, stage string, tool TrustedGo, command func(context.Context, string, string, []string, ...string) ([]byte, error)) error {
+	if err := noLinks(filepath.Dir(tool.Path)); err != nil {
+		return errors.New("untrusted Go installation")
+	}
 	hash, err := fileDigest(tool.Path)
 	if err != nil || hash != tool.SHA256 {
 		return errors.New("untrusted Go")
@@ -53,7 +56,7 @@ func buildGoWith(ctx context.Context, stage string, tool TrustedGo, command func
 	}
 	fields := strings.Fields(string(data))
 	if len(fields) != 4 || fields[0] != "go" || fields[1] != "version" || !goversion.IsValid(fields[2]) || goversion.Compare(fields[2], "go1.27.0") < 0 || fields[3] != runtime.GOOS+"/"+runtime.GOARCH {
-		return errors.New("incompatible local Go; no automatic upgrade")
+		return ErrPrerequisite
 	}
 	// The trusted Go command authenticates module graph downloads using the Go
 	// checksum database. Independently compare the catalog's main zip/go.mod sums.
