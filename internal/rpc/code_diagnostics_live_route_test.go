@@ -144,6 +144,7 @@ type routeFixture struct {
 	tick     chan time.Time
 	launches atomic.Int32
 	servers  chan *routeServer
+	all      []*routeServer
 	mu       sync.Mutex
 	events   []cd.Event
 	attach   engine.CodeDiagnosticsAttachment
@@ -188,6 +189,9 @@ func newRouteFixture(t *testing.T, o routeOptions) *routeFixture {
 			outR, outW := io.Pipe()
 			errR, errW := io.Pipe()
 			f := &routeServer{t: t, in: bufio.NewReader(inR), out: outW, errW: errW, exited: make(chan struct{}), texts: map[string]string{}}
+			x.mu.Lock()
+			x.all = append(x.all, f)
+			x.mu.Unlock()
 			x.servers <- f
 			go f.serve()
 			return f, cd.SessionStreams{Stdin: inW, Stdout: outR, Stderr: errR}, nil

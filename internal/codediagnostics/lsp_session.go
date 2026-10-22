@@ -227,6 +227,34 @@ type SessionManager struct {
 	closed  bool
 	wg      sync.WaitGroup
 	idleSeq atomic.Uint64 // idle ordering for eviction; no wall clock
+
+	owned ownedCounters // test-visible accounting of goroutines this manager started
+}
+
+// ownedCounters counts only resources this SessionManager started; it is not
+// process matching. Each counter returns to zero once its owner has finished.
+type ownedCounters struct {
+	runs           atomic.Int64 // session run loops
+	processWaiters atomic.Int64 // goroutines blocked in SessionProcess.Wait
+	timerWaiters   atomic.Int64 // goroutines blocked on an injected After timer
+}
+
+// OwnedResources is a bounded snapshot of live goroutines owned by one manager.
+type OwnedResources struct{ Runs, ProcessWaiters, TimerWaiters int64 }
+
+// OwnedResources reports goroutines still owned by this manager.
+func (m *SessionManager) OwnedResources() OwnedResources {
+	return OwnedResources{m.owned.runs.Load(), m.owned.processWaiters.Load(), m.owned.timerWaiters.Load()}
+}
+
+// waitProcess starts the single process waiter for s.
+func (s *lspSession) waitProcess(proc SessionProcess) {
+	s.manager.owned.processWaiters.Add(1)
+	go func() {
+		defer s.manager.owned.processWaiters.Add(-1)
+		_, _ = proc.Wait()
+		close(s.exited)
+	}()
 }
 
 func NewSessionManager(trust *Trust, options SessionOptions) *SessionManager {
@@ -311,6 +339,7 @@ func (m *SessionManager) attach(ctx context.Context, root AuthorizedRoot, cfg Se
 		s := newLSPSession(m, e, root, cfg, tool, lease)
 		e.session = s
 		m.wg.Add(1)
+		m.owned.runs.Add(1)
 		m.mu.Unlock()
 		go s.run()
 		return s.wait(ctx)
@@ -389,7 +418,9 @@ func (m *SessionManager) Hide(root AuthorizedRoot, cfg ServerConfig) {
 		return
 	}
 	timer := m.options.After(m.options.IdleGrace)
+	m.owned.timerWaiters.Add(1)
 	go func() {
+		defer m.owned.timerWaiters.Add(-1)
 		select {
 		case <-timer:
 			if s.expireIdle(cancel) {
@@ -616,7 +647,9 @@ func (s *lspSession) expireIdle(token chan struct{}) bool {
 func (s *lspSession) deadline(parent context.Context, d time.Duration) (context.Context, context.CancelFunc) {
 	ctx, cancel := context.WithCancelCause(parent)
 	timer := s.manager.options.After(d)
+	s.manager.owned.timerWaiters.Add(1)
 	go func() {
+		defer s.manager.owned.timerWaiters.Add(-1)
 		select {
 		case <-timer:
 			cancel(context.DeadlineExceeded)
@@ -628,6 +661,7 @@ func (s *lspSession) deadline(parent context.Context, d time.Duration) (context.
 
 func (s *lspSession) run() {
 	defer s.manager.wg.Done()
+	defer s.manager.owned.runs.Add(-1)
 	caps, err := s.initialize()
 	if err != nil {
 		s.stop(phaseFailed, boundedFailure(err), false)
@@ -665,7 +699,7 @@ func (s *lspSession) initialize() (ServerCapabilities, error) {
 		s.mu.Unlock()
 		_ = proc.Terminate()
 		_ = proc.Close()
-		go func() { _, _ = proc.Wait(); close(s.exited) }()
+		s.waitProcess(proc)
 		return ServerCapabilities{}, failure("staleContext", "Language server generation is no longer current")
 	}
 	s.proc = proc
@@ -673,7 +707,7 @@ func (s *lspSession) initialize() (ServerCapabilities, error) {
 		sessionCloser{proc, streams.Stdin}, s.manager.options.LSP)
 	tr := s.tr
 	s.mu.Unlock()
-	go func() { _, _ = proc.Wait(); close(s.exited) }()
+	s.waitProcess(proc)
 
 	ctx, cancel := s.deadline(s.lease.Context, s.manager.options.InitTimeout)
 	defer cancel()

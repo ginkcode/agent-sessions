@@ -394,8 +394,10 @@ func (m *Manager) releaseDocuments(a *attachment) {
 	}
 	if p := m.provider; p != nil && len(steps) > 0 {
 		m.workers.Add(1)
+		m.ownedWork.Add(1)
 		go func() {
 			defer m.workers.Done()
+			defer m.ownedWork.Add(-1)
 			for _, step := range steps {
 				ctx, cancel := context.WithTimeout(context.Background(), documentIOTimeout)
 				_ = p.Apply(ctx, step)

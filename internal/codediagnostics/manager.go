@@ -5,6 +5,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 )
 
 type managedRun struct {
@@ -41,6 +42,7 @@ type Manager struct {
 	projects    map[Project]bool // bounded connection-lifetime identity ledger
 	closed      bool
 	workers     sync.WaitGroup
+	ownedWork   atomic.Int64     // running owned workers (runs + document releases); test-visible
 	provider    DocumentProvider // nil: live document operations are unsupported
 }
 
@@ -361,6 +363,7 @@ func (m *Manager) Run(c Context, ids []string, supersede bool) ([]RunIdentity, e
 		p.Failure = nil
 		m.pending++
 		m.workers.Add(1)
+		m.ownedWork.Add(1)
 		tools := cloneTools(a.tools)
 		go m.execute(ctx, a, c, id, r, lease, tools)
 		out = append(out, RunIdentity{id, r.id})
@@ -390,6 +393,7 @@ func provider(a *attachment, id string) *ProviderState {
 
 func (m *Manager) execute(ctx context.Context, a *attachment, c Context, id string, r *managedRun, lease *Lease, tools []ToolInput) {
 	defer m.workers.Done()
+	defer m.ownedWork.Add(-1)
 	defer r.cancel()
 	result := a.adapters[id].RunApproved(ctx, m.supervisor, r.id, tools)
 	m.mu.Lock()
@@ -526,3 +530,7 @@ func (m *Manager) commit(a *attachment) {
 	}
 	a.events = append(a.events, events)
 }
+
+// OwnedWorkers reports running goroutines this Manager started (adapter runs and
+// best-effort document releases). Zero after Close/Detach cleanup completes.
+func (m *Manager) OwnedWorkers() int64 { return m.ownedWork.Load() }

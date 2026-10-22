@@ -17,6 +17,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 	"unicode/utf8"
 )
@@ -124,6 +125,7 @@ type LSPTransport struct {
 	out      chan lspWrite
 	done     chan struct{}
 	wg       sync.WaitGroup
+	live     atomic.Int64 // running owned goroutines (test-visible)
 
 	mu         sync.Mutex
 	nextID     int64
@@ -152,10 +154,12 @@ func NewLSPTransport(attachmentID, generation string, stdin io.Writer, stdout, s
 	}
 	t.id.attachment, t.id.generation = attachmentID, generation
 	t.wg.Add(2)
+	t.live.Add(2)
 	go t.readLoop(newFrameReader(stdout, limits.MaxHeaderBytes, limits.MaxHeaderLines, limits.MaxBodyBytes))
 	go t.writeLoop()
 	if stderr != nil {
 		t.wg.Add(1)
+		t.live.Add(1)
 		go t.stderrLoop(stderr)
 	}
 	return t
@@ -164,6 +168,9 @@ func NewLSPTransport(attachmentID, generation string, stdin io.Writer, stdout, s
 // Incoming delivers notifications and server requests in arrival order. It is
 // closed after the transport fails or closes, once queued messages are drained.
 func (t *LSPTransport) Incoming() <-chan LSPMessage { return t.incoming }
+
+// LiveGoroutines reports transport goroutines (reader, writer, stderr) still running.
+func (t *LSPTransport) LiveGoroutines() int64 { return t.live.Load() }
 
 // Done is closed when the transport has failed or been closed.
 func (t *LSPTransport) Done() <-chan struct{} { return t.done }
@@ -366,6 +373,7 @@ func (t *LSPTransport) enqueue(w lspWrite) error {
 
 func (t *LSPTransport) writeLoop() {
 	defer t.wg.Done()
+	defer t.live.Add(-1)
 	for {
 		select {
 		case <-t.done:
@@ -385,6 +393,7 @@ func (t *LSPTransport) writeLoop() {
 
 func (t *LSPTransport) readLoop(fr *frameReader) {
 	defer t.wg.Done()
+	defer t.live.Add(-1)
 	defer close(t.incoming)
 	for {
 		body, err := fr.readFrame()
@@ -508,6 +517,7 @@ func sanitizeText(s string, max int) string {
 // bounded sanitized prefix. It is entirely separate from stdout framing.
 func (t *LSPTransport) stderrLoop(r io.Reader) {
 	defer t.wg.Done()
+	defer t.live.Add(-1)
 	buf := make([]byte, 2048)
 	for {
 		n, err := r.Read(buf)

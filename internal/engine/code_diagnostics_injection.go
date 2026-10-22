@@ -32,3 +32,20 @@ func (e *Engine) LiveCodeDiagnosticsReady() bool {
 	defer e.mu.Unlock()
 	return e.liveInjection != nil && e.liveInjection.Discover != nil && e.liveInjection.Session.Launch != nil
 }
+
+// OwnedCodeDiagnosticsResources reports goroutine counters owned by the
+// diagnostics owner (live sessions, document/run workers). Test-visible only;
+// it matches no host processes. Zero values when no live route exists.
+func (e *Engine) OwnedCodeDiagnosticsResources() (cd.OwnedResources, int64) {
+	e.mu.Lock()
+	o := e.codeDiagnostics
+	e.mu.Unlock()
+	if o == nil {
+		return cd.OwnedResources{}, 0
+	}
+	var r cd.OwnedResources
+	if o.live != nil {
+		r = o.live.Sessions.OwnedResources()
+	}
+	return r, o.manager.OwnedWorkers()
+}
