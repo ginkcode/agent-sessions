@@ -95,6 +95,21 @@ test('status button counts problems concisely; tooltip conveys scope without hos
   assert.equal(renderedButtons(html).length, 2, 'collapsed panel has only the status and the show/hide toggle');
 });
 
+test('the status has no triangle; its dot turns green only for approved checks that report nothing', async () => {
+  const clean = statusButton(await renderPanel({ snapshot: approved, providers: [provider], findings: [] }));
+  assert.match(clean, />No problems reported</);
+  assert.match(clean, /class="status tone-ok/);
+  assert.doesNotMatch(clean, /▸|chevron/);
+  assert.equal(codeCheckSummary({ status: 'ready', snapshot: approved, providers: [provider], partial: true }).tone, 'ok');
+  for (const input of [
+    { status: 'ready', snapshot: required, providers: [provider] },
+    { status: 'ready', snapshot: approved, providers: [provider], running: true },
+    { status: 'ready', snapshot: approved, providers: [{ ...provider, availability: 'missingTool' }] },
+    { status: 'disconnected', snapshot: approved, providers: [provider] },
+    { status: 'ready', snapshot: approved, providers: [provider], findings: [finding('a.go', 'hint')] },
+  ]) assert.notEqual(codeCheckSummary(input).tone, 'ok', JSON.stringify(input));
+});
+
 test('an icon toggle shows or hides the problems, like the terminal button', async () => {
   const toggle = html => /<button[^>]*class="panel-toggle[^"]*"[^>]*>/.exec(html)?.[0] ?? '';
   const hidden = toggle(await renderPanel({ snapshot: approved }));

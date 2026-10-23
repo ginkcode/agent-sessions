@@ -99,7 +99,6 @@
     <button bind:this={statusButton} type="button" class="status tone-{summary.tone}" aria-expanded={expanded} aria-controls={regionId}
       title={summary.title} aria-busy={checks.status === 'attaching' || !!checks.running}
       onclick={toggleDetails}>
-      <span class="chevron" class:open={expanded} aria-hidden="true">▸</span>
       <span class="dot" aria-hidden="true"></span>
       <span role="status" aria-live="polite">{summary.text}</span>
     </button>
@@ -175,13 +174,13 @@
   .panel-toggle { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; width: 24px; height: 24px; margin-left: auto; padding: 0; color: var(--text-secondary); }
   .panel-toggle:hover { background: var(--hover-bg); color: var(--text-primary); }
   .panel-toggle.active { color: var(--accent-color); }
-  .chevron { display: inline-block; font-size: 0.7rem; transition: transform 0.1s; }
-  .chevron.open { transform: rotate(90deg); }
   .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text-muted); flex-shrink: 0; }
   .tone-error .dot { background: #f85149; } .tone-error { color: #f85149; }
   .tone-warning .dot { background: #d29922; }
   .tone-info .dot { background: var(--accent-color); }
   .tone-attention .dot { background: #d29922; }
+  .tone-ok .dot { background: #3fb950; }
+  :global(:root:not([data-theme='dark'])) .tone-ok .dot { background: #1a7f37; }
   :global(:root:not([data-theme='dark'])) .tone-error, :global(:root:not([data-theme='dark'])) .sev-error { color: #cf222e; }
   /* Bounded so the source area keeps most of the dialog until dragged taller.
      The only scroll container: nothing inside scrolls on its own. */

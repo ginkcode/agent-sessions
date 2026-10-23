@@ -38,6 +38,31 @@ test('source text clicks select lines without blocking native drag selection', (
   } finally { globalThis.Element = OriginalElement; }
 });
 
+test('a click past the last line clears the selection; gutter buttons and removed diff lines do not', () => {
+  const calls = [];
+  const create = new Function('onselectline', 'onclearselection', `${js}; return lineClicks;`)(
+    (...args) => calls.push(['select', ...args]), () => calls.push(['clear']));
+  const listeners = new Map();
+  let hit = null;
+  const OriginalElement = globalThis.Element;
+  globalThis.Element = class { closest(selector) { assert.equal(selector, '.line, .ln'); return hit; } };
+  const node = {
+    ownerDocument: { getSelection: () => ({ isCollapsed: true }) },
+    contains: () => true,
+    addEventListener: (name, handler) => listeners.set(name, handler),
+    removeEventListener: name => listeners.delete(name),
+  };
+  try {
+    create(node);
+    const click = () => listeners.get('click')({ button: 0, clientX: 0, clientY: 0, target: new Element(), shiftKey: false });
+    listeners.get('pointerdown')({ clientX: 0, clientY: 0 });
+    hit = { dataset: { sourceLine: '3' } }; click();
+    hit = { dataset: {} }; click(); // a gutter button or a removed diff line
+    hit = null; click(); // empty space below the code
+    assert.deepEqual(calls, [['select', 3, false], ['clear']]);
+  } finally { globalThis.Element = OriginalElement; }
+});
+
 test('blank wrapped lines have height without generated escape text', () => {
   const css = compile(source, { generate: 'client', filename: url.pathname }).css.code;
   assert.doesNotMatch(css, /00a0|(?:^|[;{\s])content\s*:/);

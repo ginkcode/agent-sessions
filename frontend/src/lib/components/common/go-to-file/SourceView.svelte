@@ -15,6 +15,7 @@
     codeEl = $bindable<HTMLElement | undefined>(),
     selection,
     onselectline,
+    onclearselection,
     diagnostics = { messages: [], segments: [] },
     recovery,
   }: {
@@ -30,6 +31,8 @@
     codeEl?: HTMLElement;
     selection?: FileLineSelection;
     onselectline?: (line: number, extend: boolean) => void;
+    /** A click on empty space, past the last line. */
+    onclearselection?: () => void;
   } = $props();
 
   const messageId = $props.id();
@@ -66,8 +69,10 @@
     function click(event: MouseEvent) {
       if (event.button !== 0 || Math.abs(event.clientX - startX) > 4 || Math.abs(event.clientY - startY) > 4) return;
       if (node.ownerDocument.getSelection()?.isCollapsed === false) return;
-      const line = event.target instanceof Element ? event.target.closest<HTMLElement>('[data-source-line]') : null;
-      if (line && node.contains(line)) onselectline?.(Number(line.dataset.sourceLine), event.shiftKey);
+      // Gutter buttons select on their own; removed diff lines are code but have no line to select.
+      const hit = event.target instanceof Element ? event.target.closest<HTMLElement>('.line, .ln') : null;
+      if (!hit || !node.contains(hit)) onclearselection?.();
+      else if (hit.dataset.sourceLine) onselectline?.(Number(hit.dataset.sourceLine), event.shiftKey);
     }
     node.addEventListener('pointerdown', down);
     node.addEventListener('click', click);

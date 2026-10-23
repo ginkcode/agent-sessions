@@ -12,7 +12,8 @@ export interface CodeCheckSummaryInput {
   findings?: AttributedCodeDiagnostic[];
 }
 
-export type CodeCheckTone = 'error' | 'warning' | 'info' | 'attention' | 'muted';
+/** 'ok': approved checks are running and report nothing. */
+export type CodeCheckTone = 'error' | 'warning' | 'info' | 'attention' | 'ok' | 'muted';
 
 export interface CodeCheckSummary {
   /** Short visible label for the bottom status button. */
@@ -108,5 +109,5 @@ export function codeCheckSummary(c: CodeCheckSummaryInput): CodeCheckSummary {
     return done(has ? problems : 'No checker available', { tone: has ? tone : 'muted', needsSettings: !has });
   }
   if (has) return done(c.partial ? `${problems} · partial` : problems);
-  return done(c.partial ? 'No problems reported (partial)' : 'No problems reported');
+  return done(c.partial ? 'No problems reported (partial)' : 'No problems reported', { tone: 'ok' });
 }

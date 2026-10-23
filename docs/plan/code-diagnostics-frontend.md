@@ -60,8 +60,9 @@ progress stays at **19/28** with no task counted as done.
   needed", "Code checks unavailable", "Code checks disconnected" or "No checker
   available". "No problems reported" appears only when the project is approved, the
   attachment is ready and a checker is available, and it gets "(partial)" when
-  coverage is partial. The tooltip covers scope and caveats (project only, includes
-  unlisted files, partial or truncated) and never shows host identities.
+  coverage is partial; only then is the status dot green. The tooltip covers scope
+  and caveats (project only, includes unlisted files, partial or truncated) and
+  never shows host identities.
 - **Progressive disclosure.** Clicking the status shows the issue list (severity
   filters, previous/next, file groups) and a separate **Settings** /
   **Set up code checks** toggle, which has its own `aria-expanded`. That toggle

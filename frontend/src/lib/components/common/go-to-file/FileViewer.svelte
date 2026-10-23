@@ -7,6 +7,8 @@
   import type { FilePosition } from '../../../filePosition';
   import { selectFileLine, type FileLineSelection } from '../../../fileSelection';
   import type { BlameLine } from '../../../types';
+  import { formatAbsoluteTime, formatAgo } from '../../../date';
+  import { preferences } from '../../../stores/preferences.svelte';
   import { files } from '../../../stores/files.svelte';
   import { highlightFile, splitHighlightedLines, splitLines } from '../../../codeHighlight';
   import { copyToClipboard } from '../../../portable';
@@ -49,6 +51,7 @@
   let blame = $state<BlameLine | null>(null);
   let blameError = $state('');
   let blameLoading = $state(false);
+  // The commit details card under the blame line; the line itself shows whenever one is selected.
   let blameOpen = $state(false);
   let blameRequest = 0;
 
@@ -56,7 +59,11 @@
     if (!activeTab) return;
     lineSelections.set(activeTab, selectFileLine(selectedLines, line, extend));
     selectionVersion++;
-    closeBlame();
+  }
+  function clearSelection() {
+    if (!activeTab) return;
+    lineSelections.delete(activeTab);
+    selectionVersion++;
   }
   function closeBlame() {
     blameRequest++;
@@ -65,17 +72,11 @@
     blame = null;
     blameError = '';
   }
-  $effect(() => { activeTab; text; editing; closeBlame(); });
-
-  async function blameSelectedLine() {
-    if (!selectedLines || !files.dir || !files.selected) return;
+  async function loadBlame(dir: string, path: string, line: number) {
     const request = ++blameRequest;
-    blameOpen = true;
     blameLoading = true;
-    blameError = '';
-    blame = null;
     try {
-      const result = await api.blameFile(files.dir, files.selected, selectedLines.head);
+      const result = await api.blameFile(dir, path, line);
       if (request === blameRequest) blame = result;
     } catch (error) {
       if (request === blameRequest) blameError = errorText(error, 'Could not load blame for this line.');
@@ -83,7 +84,7 @@
       if (request === blameRequest) blameLoading = false;
     }
   }
-
+  const blameTime = (b: BlameLine) => new Date(b.authorTime * 1000).toISOString();
 
   // Files larger than this are shown without highlighting, which is slow on
   // very long text.
@@ -267,6 +268,17 @@
   let showSvg = $derived(previewOn && !editing && previewKind === 'svg');
   // Rendered rather than source: the source-only tools hide.
   let showPreview = $derived(showMarkdown || showSvg);
+  // Only git listings can blame; older hosts say so instead of failing per line.
+  let blameShown = $derived(Boolean(selectedLines && !showPreview && files.listing?.git));
+  let canBlame = $derived(connectionStore.capabilities.blame === true && !blocked);
+  // The selected line's blame loads by itself; another line, file or text starts over.
+  $effect(() => {
+    const line = selectedLines?.head, dir = files.dir, path = files.selected;
+    void text; void editing;
+    closeBlame();
+    if (!blameShown || !canBlame || editing || !line || !dir || !path) return;
+    untrack(() => void loadBlame(dir, path, line));
+  });
   let text = $derived(files.content?.text ?? '');
   // Drawn as an image, so scripts in the SVG never run.
   let svgSrc = $derived(showSvg && text ? `data:image/svg+xml;charset=utf-8,${encodeURIComponent(text)}` : '');
@@ -863,31 +875,23 @@
           </button>
         </div>
       {/if}
-      {#if selectedLines && !showPreview}
-        <div class="line-actions">
-          <button
-            type="button"
-            class="copy-btn icon-btn"
-            aria-label={selectedLines.anchor === selectedLines.head ? `Blame line ${selectedLines.head}` : `Blame lines ${Math.min(selectedLines.anchor, selectedLines.head)}–${Math.max(selectedLines.anchor, selectedLines.head)}`}
-            title="Blame selected line"
-            disabled={blameLoading || connectionStore.capabilities.blame !== true || Boolean(blocked)}
-            onclick={blameSelectedLine}
-          >
-            <span class="btn-icon icon-git" aria-hidden="true"></span>
-          </button>
-          {#if blameOpen}<button type="button" class="copy-btn" onclick={closeBlame}>Close blame</button>{/if}
-          <button type="button" class="copy-btn" aria-label="Clear line selection" onclick={() => { if (activeTab) lineSelections.delete(activeTab); selectionVersion++; closeBlame(); }}>×</button>
+      {#if blameShown}
+        <div class="line-actions" role="status" aria-live="polite">
+          <span class="btn-icon icon-git" aria-hidden="true"></span>
+          {#if !canBlame}<span>{blocked ? 'Blame unavailable while disconnected' : 'Blame is not supported on this host'}</span>
+          {:else if blameLoading}<span>Loading blame…</span>
+          {:else if blameError}<span class="blame-error">{blameError}</span>
+          {:else if blame?.uncommitted}<span>Not committed yet</span>
+          {:else if blame}
+            <button type="button" class="blame-summary" aria-expanded={blameOpen} title={`${blame.summary} · click for commit details`}
+              onclick={() => (blameOpen = !blameOpen)}>{blame.author} · {formatAgo(blameTime(blame))}</button>
+          {/if}
         </div>
-        {#if blameOpen}
-          <div class="line-blame" role="status" aria-live="polite">
-            {#if blameLoading}Loading blame…
-            {:else if blameError}<span class="blame-error">{blameError}</span>
-            {:else if blame?.uncommitted}<strong>Not committed yet</strong>
-            {:else if blame}
-              <strong>{blame.summary}</strong>
-              <span>{blame.author} · {new Date(blame.authorTime * 1000).toLocaleString()}</span>
-              <button type="button" class="copy-btn" title="Copy commit hash" onclick={async () => { if (blame && !(await copyToClipboard(blame.commit))) toast.show({ title: 'Unable to copy commit hash', body: 'Clipboard access failed.', tone: 'error' }); }}>{blame.commit.slice(0, 12)} · Copy hash</button>
-            {/if}
+        {#if blameOpen && blame && !blame.uncommitted}
+          <div class="line-blame" role="group" aria-label="Commit details">
+            <strong>{blame.summary}</strong>
+            <span>{blame.author} · {formatAbsoluteTime(blameTime(blame), preferences.timeZone)}</span>
+            <button type="button" class="copy-btn" title="Copy commit hash" onclick={async () => { if (blame && !(await copyToClipboard(blame.commit))) toast.show({ title: 'Unable to copy commit hash', body: 'Clipboard access failed.', tone: 'error' }); }}>{blame.commit.slice(0, 12)} · Copy hash</button>
           </div>
         {/if}
       {/if}
@@ -907,7 +911,7 @@
         {:else if showSvg}
           {@render imageView()}
         {:else}
-        <SourceView diagnostics={sourceDiagnostics} recovery={sourceRecovery} {rows} {htmlLines} {plainLines} {showDiff} {presentation} {presentationFontSize} selection={selectedLines} onselectline={selectLine} bind:codeEl={find.codeEl} />
+        <SourceView diagnostics={sourceDiagnostics} recovery={sourceRecovery} {rows} {htmlLines} {plainLines} {showDiff} {presentation} {presentationFontSize} selection={selectedLines} onselectline={selectLine} onclearselection={clearSelection} bind:codeEl={find.codeEl} />
         {/if}
       </div>
       </div>
@@ -1213,6 +1217,16 @@
     font-size: 12px;
   }
   .blame-error { color: var(--danger); }
+  .blame-summary {
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--text-primary);
+    font: inherit;
+    cursor: pointer;
+  }
+  .blame-summary:hover,
+  .blame-summary[aria-expanded='true'] { text-decoration: underline; }
 
   .code-area {
     position: relative;

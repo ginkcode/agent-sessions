@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { fixtureStore, loadServerComponent, renderWithFixture, renderedButtons, unescapeHTML } from './helpers.mjs';
 
 // FileViewer's editing controls, server-rendered against fixture stores. The
@@ -355,4 +356,13 @@ test('a save conflict keeps the draft and offers Resolve and Reload', async () =
   });
   assert.ok(button(uncertain, 'Reload'));
   assert.equal(button(uncertain, 'Resolve…'), undefined);
+});
+
+test('line blame loads with the selection and has no close buttons; its text opens the commit details', () => {
+  const viewer = readFileSync(new URL('../src/lib/components/common/go-to-file/FileViewer.svelte', import.meta.url), 'utf8');
+  assert.doesNotMatch(viewer, /Clear line selection|Close blame/);
+  assert.match(viewer, /let blameShown = \$derived\(Boolean\(selectedLines && !showPreview && files\.listing\?\.git\)\)/);
+  assert.match(viewer, /class="blame-summary" aria-expanded=\{blameOpen\}/);
+  assert.match(viewer, /\{blame\.author\} · \{formatAgo\(blameTime\(blame\)\)\}/);
+  assert.match(viewer, /onclearselection=\{clearSelection\}/);
 });

@@ -44,7 +44,7 @@ async function importCompiled(filename, code, replacements) {
     ...replacements,
   ];
   // Pure display-label helpers shared by the diagnostics components resolve to the real module.
-  for (const [module, file] of [["'../../../codeCheckLabels'", 'codeCheckLabels'], ["'../../../managedTools'", 'managedTools'], ["'../managedTools'", 'managedTools']]) {
+  for (const [module, file] of [["'../../../codeCheckLabels'", 'codeCheckLabels'], ["'../../../managedTools'", 'managedTools'], ["'../managedTools'", 'managedTools'], ["'../../../date'", 'date']]) {
     if (code.includes(module) && !replacements.some(([from]) => from === module)) {
       replacements.push([module, JSON.stringify(new URL(`../src/lib/${file}.ts`, import.meta.url).href)]);
     }
@@ -58,6 +58,11 @@ async function importCompiled(filename, code, replacements) {
   const preferences = "import { preferences } from './preferences.svelte';";
   if (code.includes(preferences) && !replacements.some(([from]) => from === preferences)) {
     replacements.push([preferences, 'const preferences = { autoInstallLanguageServers: false, setAutoInstallLanguageServers() {} };']);
+  }
+  // Go to File reads only the time zone, for blame times.
+  const viewerPreferences = "import { preferences } from '../../../stores/preferences.svelte';";
+  if (code.includes(viewerPreferences) && !replacements.some(([from]) => from === viewerPreferences)) {
+    replacements.push([viewerPreferences, "const preferences = { timeZone: 'utc' };"]);
   }
   for (const [from, to] of replacements) {
     assert.ok(code.includes(from), `compiled ${filename} no longer contains ${from}`);
