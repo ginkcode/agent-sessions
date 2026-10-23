@@ -265,6 +265,8 @@
       </div>
     {/if}
 
+    <!-- References have no search field: this focusable region owns their arrow/Enter navigation. -->
+    <!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_no_noninteractive_element_interactions -->
     <div id="search-results" class="results" role="region" aria-label="Search results" tabindex={references ? 0 : undefined}
       onkeydown={(e) => {
         if (!references || e.target !== e.currentTarget) return;
