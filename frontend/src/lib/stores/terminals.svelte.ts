@@ -115,7 +115,10 @@ export class TerminalsStore {
   private closeQueue: string[] = [];
   private tracker = new AttentionTracker((id, state) => {
     this.attention = { ...this.attention, [id]: state };
+    for (const fn of this.attentionListeners) fn(id, state);
   });
+  private attentionListeners = new Set<(id: string, state: AgentAttention) => void>();
+  private viewingListeners = new Set<(id: string) => void>();
   private windowFocused = true;
   /** The tab the user is looking at, as last noted. */
   private viewing: string | null = null;
@@ -436,6 +439,7 @@ export class TerminalsStore {
     if (tab.id in this.attention) {
       const { [tab.id]: _, ...rest } = this.attention;
       this.attention = rest;
+      for (const fn of this.attentionListeners) fn(tab.id, 'exited');
     }
     if (this.viewing === tab.id) this.viewing = null;
     if (this.active === tab.id) {
@@ -493,6 +497,11 @@ export class TerminalsStore {
     this.noteViewing();
   }
 
+  /** Whether the window has focus, as the browser last reported. */
+  get focused(): boolean {
+    return this.windowFocused;
+  }
+
   /** The tab the user is looking at: the panel's, while it shows and the window has focus. */
   get viewedTab(): string | null {
     return this.open && this.windowFocused ? this.active : null;
@@ -505,6 +514,29 @@ export class TerminalsStore {
     if (this.viewing) this.tracker.seen(this.viewing);
     if (now) this.tracker.seen(now);
     this.viewing = now;
+    if (now) for (const fn of this.viewingListeners) fn(now);
+  }
+
+  /** Calls fn with each change of an agent tab's state. */
+  onAttention(fn: (id: string, state: AgentAttention) => void): () => void {
+    this.attentionListeners.add(fn);
+    return () => this.attentionListeners.delete(fn);
+  }
+
+  /** Calls fn with each tab the user starts looking at. */
+  onViewing(fn: (id: string) => void): () => void {
+    this.viewingListeners.add(fn);
+    return () => this.viewingListeners.delete(fn);
+  }
+
+  /** How many times the user has typed into an agent tab. */
+  inputs(id: string): number {
+    return this.tracker.inputs(id);
+  }
+
+  /** The text of an agent tab's last notification, empty after a bell. */
+  signalText(id: string): string {
+    return this.tracker.signalText(id);
   }
 
   /** A tab was resized: the redraw that follows is not the agent working. */

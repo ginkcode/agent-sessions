@@ -4,6 +4,9 @@
   import CountTooltip from './CountTooltip.svelte';
   import { manage } from '../../stores/manage.svelte';
   import { preferences } from '../../stores/preferences.svelte';
+  import { terminals } from '../../stores/terminals.svelte';
+  import { link } from '../../stores/link.svelte';
+  import AttentionDot from '../common/AttentionDot.svelte';
 
   interface Props {
     session: SessionMeta;
@@ -20,6 +23,11 @@
   let relativeTime = $derived(formatRelativeTime(session.updatedAt));
   let absoluteTime = $derived(formatAbsoluteTime(session.updatedAt, preferences.timeZone));
   let bulkSelected = $derived(manage.isRefSelected(session.ref));
+  // Where the agent running this session in a terminal tab stands.
+  let attention = $derived.by(() => {
+    const tab = terminals.tabFor(session.ref, link.dataHost ?? '');
+    return tab ? terminals.attention[tab.id] : undefined;
+  });
 
   function handleClick() {
     onSelect(session);
@@ -66,7 +74,9 @@
         aria-label="Select session {session.title || session.ref.id}"
       />
     {/if}
-    {#if session.live}
+    {#if attention === 'working' || attention === 'needs' || attention === 'done'}
+      <AttentionDot state={attention} size={6} announce />
+    {:else if session.live}
       <span class="live-dot" title="Active session"></span>
     {/if}
     <span class="agent-badge agent-{session.ref.agent}">{session.ref.agent}</span>

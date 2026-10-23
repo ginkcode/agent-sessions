@@ -73,6 +73,14 @@ type App struct {
 	transportOverride remote.ArtifactTransport
 	fileClose         fileCloseGuard
 	searches          fileSearches
+
+	// Agent alerts: notify is set up on first use; notifierOverride and
+	// notifyRaise replace the desktop's notifications and raising the
+	// window in tests.
+	notifyOnce       sync.Once
+	notify           *notifications
+	notifierOverride notifier
+	notifyRaise      func()
 }
 
 // NewApp creates a new App service instance with default providers.
@@ -327,6 +335,7 @@ func (a *App) Scan() error {
 
 // OnShutdown is invoked by Wails when the desktop application is terminating.
 func (a *App) OnShutdown(ctx context.Context) {
+	a.closeNotifications()
 	_ = a.Close()
 }
 

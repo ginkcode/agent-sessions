@@ -17,7 +17,7 @@ const TRANSLATE_DEFAULTS = {
 async function renderSettingsDialog(
   launcher,
   preferences = { transcriptMode: 'activity', timeZone: 'utc' },
-  { section = 'general', translateSettings = {} } = {},
+  { section = 'general', translateSettings = {}, alerts = {} } = {},
 ) {
   if (!settingsDialogModule) {
     globalThis.__dropdown = (await loadServerComponent(DROPDOWN_URL, [])).default;
@@ -40,6 +40,7 @@ async function renderSettingsDialog(
       ["import { manage } from '../../stores/manage.svelte';", fixtureStore('manage')],
       ["import { launcher } from '../../stores/launcher.svelte';", fixtureStore('launcher')],
       ["import { terminals } from '../../stores/terminals.svelte';", fixtureStore('terminals')],
+      ["import { alerts } from '../../stores/alerts.svelte';", fixtureStore('alerts')],
       ["import { translateSettings } from '../../stores/translate.svelte';", fixtureStore('translateSettings')],
       ["import { preferences } from '../../stores/preferences.svelte';", fixtureStore('preferences')],
     ]);
@@ -52,6 +53,7 @@ async function renderSettingsDialog(
     manage,
     launcher: { terminalError: null, terminal: null, ...launcher },
     terminals: { position: 'bottom' },
+    alerts: { notifyNeeds: true, notifyDone: true, status: null, refreshStatus: async () => {}, ...alerts },
     translateSettings: { ...TRANSLATE_DEFAULTS, ...translateSettings },
     preferences,
   });
@@ -180,4 +182,24 @@ test('Settings Translation shows a saved key as Saved, never the key', async () 
 
   const failed = await renderSettingsDialog({ info }, undefined, { section: 'translation', translateSettings: { testError: 'translate: 401 Unauthorized: bad key' } });
   assert.match(failed, /401 Unauthorized: bad key/);
+});
+
+test('Settings turns agent alerts on or off and says why notifications cannot show', async () => {
+  const launcher = { info: { terminal: true, chooseTerminal: false, shell: 'posix', panel: true }, openMode: 'panel', savingOpenMode: false };
+  const checked = (html, label) => new RegExp(`<input[^>]*type="checkbox"[^>]*checked[^>]*/?>\\s*${label}`).test(html);
+  const on = await renderSettingsDialog(launcher, undefined, { section: 'terminal', alerts: { status: { available: true } } });
+  assert.match(on, /<h4[^>]*>Agent alerts<\/h4>/);
+  assert.ok(checked(on, 'Notify when an agent needs me'));
+  assert.ok(checked(on, 'Notify when an agent finishes'));
+  assert.match(on, /only while this window is in the\s+background/);
+  assert.doesNotMatch(on, /notify-status/);
+
+  const reason = 'Notifications from Agent Sessions are turned off. Allow them in System Settings → Notifications → Agent Sessions.';
+  const denied = await renderSettingsDialog(launcher, undefined, {
+    section: 'terminal',
+    alerts: { notifyDone: false, status: { available: false, reason } },
+  });
+  assert.ok(checked(denied, 'Notify when an agent needs me'));
+  assert.ok(!checked(denied, 'Notify when an agent finishes'));
+  assert.ok(denied.includes(reason));
 });

@@ -55,6 +55,8 @@ import type {
   TerminalSize,
   TerminalTab,
   AgentID,
+  AgentNotification,
+  NotificationStatus,
   AgentStatus,
 } from '../types.js';
 import { mockSessions, mockMessages, mockBlobs, mockDiagnostics } from './fixtures.js';
@@ -613,6 +615,27 @@ export class MockBackendAPI extends MockCodeDiagnostics {
 
   async openBundleHandoffInTerminal(req: BundleHandoffRequest): Promise<void> {
     await this.openTerminal(() => this.bundleHandoffCommand(req));
+  }
+
+  /** Notifications shown, newest last; the mock only records them. */
+  notifications: AgentNotification[] = [];
+  notificationsOn = true;
+
+  async notificationStatus(): Promise<NotificationStatus> {
+    return this.notificationsOn ? { available: true } : { available: false, reason: 'Mock: notifications are off.' };
+  }
+
+  async prepareNotifications(): Promise<NotificationStatus> {
+    return this.notificationStatus();
+  }
+
+  async notify(n: AgentNotification): Promise<void> {
+    if (!this.notificationsOn) throw new Error('notify: Mock: notifications are off.');
+    this.notifications.push(n);
+  }
+
+  async clearNotification(tab: string): Promise<void> {
+    this.notifications = this.notifications.filter((n) => n.tab !== tab);
   }
 
   /** The mock panel's running terminals by id. */

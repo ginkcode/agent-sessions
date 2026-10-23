@@ -38,6 +38,9 @@
   import { launcher } from './lib/stores/launcher.svelte';
   import { translateSettings } from './lib/stores/translate.svelte';
   import { terminals } from './lib/stores/terminals.svelte';
+  import { alerts } from './lib/stores/alerts.svelte';
+  import { attentionSummary, mostUrgent } from './lib/alerts';
+  import AttentionDot from './lib/components/common/AttentionDot.svelte';
   import { newSession } from './lib/stores/newSession.svelte';
   import { sessionLinks } from './lib/stores/sessionLinks.svelte';
   import { files } from './lib/stores/files.svelte';
@@ -68,6 +71,13 @@
   let stale = $derived(link.stale || link.locked);
   // A new shell starts in the shown session's directory.
   let shellCwd = $derived(appState.selectedSessionMeta?.cwd ?? '');
+  // While the panel is hidden, its toggle shows the most urgent agent tab.
+  let panelAttention = $derived(terminals.open ? null : mostUrgent(Object.values(terminals.attention)));
+  let terminalButtonTitle = $derived.by(() => {
+    if (terminals.open) return 'Hide terminal (Ctrl+`)';
+    const summary = attentionSummary(panelAttention);
+    return summary ? `${summary}. Open terminal (Ctrl+\`)` : 'Open terminal (Ctrl+`)';
+  });
   // Only the desktop app opens more windows, each with its own connection.
   let canOpenWindow = $derived(isWails && typeof api.newWindow === 'function');
 
@@ -103,6 +113,7 @@
     void launcher.init();
     void translateSettings.init();
     terminals.init();
+    alerts.init();
     newSession.init();
     sessionLinks.init();
     isWails = typeof window !== 'undefined' && Boolean((window as any).go?.app?.App);
@@ -223,6 +234,7 @@
       window.removeEventListener('mousedown', onMouseButton);
       window.removeEventListener('mouseup', onMouseButton);
       search.destroy();
+      alerts.destroy();
       terminals.destroy();
       sessionLinks.destroy();
       appState.destroy();
@@ -404,7 +416,7 @@
             type="button"
             class="icon-button terminal-button"
             class:active={terminals.open}
-            title={terminals.open ? 'Hide terminal (Ctrl+`)' : 'Open terminal (Ctrl+`)'}
+            title={terminalButtonTitle}
             aria-label={terminals.open ? 'Hide terminal' : 'Open terminal'}
             aria-pressed={terminals.open}
             onclick={() => void terminals.toggle(shellCwd)}
@@ -423,6 +435,9 @@
               <polyline points="4 17 10 11 4 5" />
               <line x1="12" y1="19" x2="20" y2="19" />
             </svg>
+            {#if panelAttention}
+              <span class="terminal-attention"><AttentionDot state={panelAttention} announce /></span>
+            {/if}
           </button>
         {/if}
         <button
@@ -714,6 +729,17 @@
 
   .terminal-button.active {
     color: var(--accent-color);
+  }
+
+  .terminal-button {
+    position: relative;
+  }
+
+  .terminal-attention {
+    position: absolute;
+    top: 4px;
+    right: 3px;
+    display: flex;
   }
 
   .sidebar-mode-section {

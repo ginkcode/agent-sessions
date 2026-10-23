@@ -24,8 +24,32 @@ export function windowTitle(host: string | undefined): string {
   return `${host ? hostLabel(host) : 'Local'} — ${APP_TITLE}`;
 }
 
+let baseTitle = '';
+let needsCount = 0;
+
+/**
+ * The window title while count agent tabs need the user: "(2) Local —
+ * Agent Sessions".
+ */
+export function countedTitle(title: string, count: number): string {
+  return count > 0 ? `(${count}) ${title}` : title;
+}
+
 /** Shows title on the desktop window and, in a browser, on the page. */
 export function setWindowTitle(title: string): void {
+  baseTitle = title;
+  showTitle();
+}
+
+/** Counts the agent tabs that need the user in the window title. */
+export function setTitleCount(count: number): void {
+  if (count === needsCount) return;
+  needsCount = count;
+  if (baseTitle) showTitle();
+}
+
+function showTitle(): void {
+  const title = countedTitle(baseTitle, needsCount);
   if (typeof document !== 'undefined') document.title = title;
   if (typeof window === 'undefined') return;
   try {

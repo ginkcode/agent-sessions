@@ -8,6 +8,8 @@
   import { newShellShortcutLabel } from '../../terminal';
   import ContextMenu from '../common/ContextMenu.svelte';
   import AgentIcon from '../common/AgentIcon.svelte';
+  import AttentionDot from '../common/AttentionDot.svelte';
+  import { attentionLabel } from '../../alerts';
   import { TAB_CLOSE_ACTIONS, tabsToClose } from '../../tabActions';
   import { appState } from '../../stores/appState.svelte';
   import { link } from '../../stores/link.svelte';
@@ -59,7 +61,9 @@
   function tabTitle(tab: (typeof terminals.tabs)[number], index: number): string {
     const where = tab.cwd || tab.dir || (tab.kind === 'shell' ? 'Home directory' : tab.label);
     // The tab may shorten the host's name, so the tooltip gives it in full.
-    const title = tab.host ? `${where} on ${hostLabel(tab.host)}` : where;
+    let title = tab.host ? `${where} on ${hostLabel(tab.host)}` : where;
+    const state = attentionLabel(terminals.attention[tab.id]);
+    if (state) title = `${state} — ${title}`;
     return index < 9 ? `${title} (${isMac ? '⌘' : 'Alt+'}${index + 1})` : title;
   }
 
@@ -91,12 +95,17 @@
             onclick={() => terminals.select(tab.id)}
             onkeydown={(e) => handleTabKeydown(e, tab.id)}
           >
-            <span
-              class="status-dot"
-              class:running={tab.status === 'running'}
-              class:failed={tab.status === 'exited' && tab.exitCode !== 0}
-              aria-hidden="true"
-            ></span>
+            {#if tab.kind === 'agent' && tab.status === 'running' && attentionLabel(terminals.attention[tab.id])}
+              <AttentionDot state={terminals.attention[tab.id]} announce />
+            {:else}
+              <!-- A running agent tab's dot is its state; quiet, it is grey. -->
+              <span
+                class="status-dot"
+                class:running={tab.status === 'running' && tab.kind !== 'agent'}
+                class:failed={tab.status === 'exited' && tab.exitCode !== 0}
+                aria-hidden="true"
+              ></span>
+            {/if}
             {#if tab.agent}
               <AgentIcon agent={tab.agent} size={12} />
             {/if}

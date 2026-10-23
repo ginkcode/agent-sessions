@@ -466,6 +466,22 @@ export interface TerminalExitEvent {
   code: number;
 }
 
+/**
+ * Whether agent alerts reach the desktop's notifications; when not, reason
+ * says why and what would turn them on.
+ */
+export interface NotificationStatus {
+  available: boolean;
+  reason?: string;
+}
+
+/** An alert about an agent tab. */
+export interface AgentNotification {
+  tab: string;
+  title: string;
+  body: string;
+}
+
 /** A terminal app installed on this computer. */
 export interface TerminalOption {
   id: string;

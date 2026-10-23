@@ -3,6 +3,7 @@
   import { manage, type SettingsSection } from '../../stores/manage.svelte';
   import { launcher } from '../../stores/launcher.svelte';
   import { terminals } from '../../stores/terminals.svelte';
+  import { alerts } from '../../stores/alerts.svelte';
   import { translateSettings } from '../../stores/translate.svelte';
   import { formatBytes } from '../../format';
   import { keyHandled } from '../../fullscreen';
@@ -46,6 +47,11 @@
     apiKey = '';
     replacingKey = false;
     showKey = false;
+  });
+
+  // Permission can change in the system settings while the app runs.
+  $effect(() => {
+    if (manage.settingsDialogOpen && section === 'terminal' && launcher.info.panel) void alerts.refreshStatus();
   });
 
   let keyInputShown = $derived(!translateSettings.settings?.apiKeySet || replacingKey);
@@ -254,6 +260,31 @@
                   </label>
                 </fieldset>
                 <TerminalFontSetting />
+                <h4>Agent alerts</h4>
+                <label class="setting">
+                  <input
+                    type="checkbox"
+                    checked={alerts.notifyNeeds}
+                    onchange={(e) => alerts.setNotifyNeeds((e.currentTarget as HTMLInputElement).checked)}
+                  />
+                  Notify when an agent needs me
+                </label>
+                <label class="setting">
+                  <input
+                    type="checkbox"
+                    checked={alerts.notifyDone}
+                    onchange={(e) => alerts.setNotifyDone((e.currentTarget as HTMLInputElement).checked)}
+                  />
+                  Notify when an agent finishes
+                </label>
+                <p class="hint">
+                  Agent tabs show a dot while they work (pulsing), need you (amber) or have finished (green), and the
+                  window title counts the tabs that need you. Notifications come only while this window is in the
+                  background; clicking one shows its tab.
+                </p>
+                {#if alerts.status && !alerts.status.available && alerts.status.reason}
+                  <p class="hint notify-status" role="status">{alerts.status.reason}</p>
+                {/if}
               {:else}
                 <p class="hint">Resume and "Continue in" → Open in terminal start the agent in a new window of this app.</p>
               {/if}

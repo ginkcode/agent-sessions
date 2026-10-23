@@ -191,6 +191,8 @@ interface Tracked extends AttentionFacts {
   provokedAt: number;
   /** The text of the last notification, for an alert. */
   signalText: string;
+  /** How many times the user has typed into the tab. */
+  inputs: number;
   state: AgentAttention;
   timer: ReturnType<typeof setTimeout> | undefined;
 }
@@ -233,6 +235,7 @@ export class AttentionTracker {
       scanner: new TerminalSignalScanner(),
       provokedAt: now,
       signalText: '',
+      inputs: 0,
       state: 'idle',
       timer: undefined,
     });
@@ -257,6 +260,14 @@ export class AttentionTracker {
     return this.tabs.get(id)?.signalText ?? '';
   }
 
+  /**
+   * How many times the user has typed into the tab: each prompt or answer
+   * starts what its alerts are about.
+   */
+  inputs(id: string): number {
+    return this.tabs.get(id)?.inputs ?? 0;
+  }
+
   /** Output from the tab; signals count only while the user is not looking at it. */
   output(id: string, data: Uint8Array, viewed: boolean): void {
     const t = this.tabs.get(id);
@@ -277,6 +288,7 @@ export class AttentionTracker {
     const t = this.tabs.get(id);
     if (!t || !isUserInput(data)) return;
     t.inputAt = t.provokedAt = this.clock.now();
+    t.inputs++;
     t.signaled = false;
     this.update(id, t);
   }

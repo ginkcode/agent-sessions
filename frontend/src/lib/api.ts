@@ -54,6 +54,8 @@ import type {
   TerminalTab,
   TerminalDataEvent,
   TerminalExitEvent,
+  NotificationStatus,
+  AgentNotification,
   AgentID,
   AgentStatus,
 } from './types';
@@ -92,6 +94,14 @@ export interface BackendAPI extends CodeDiagnosticsAPI {
    * forward is false. Absent where the app has one window only.
    */
   focusNextWindow?(forward: boolean): Promise<void>;
+  /** Whether agent alerts can reach the desktop's notifications, without asking. */
+  notificationStatus(): Promise<NotificationStatus>;
+  /** Readies agent alerts, asking for permission the first time where needed. */
+  prepareNotifications(): Promise<NotificationStatus>;
+  /** Shows an alert about an agent tab, replacing its previous one. */
+  notify(n: AgentNotification): Promise<void>;
+  /** Removes a tab's alert once the user has seen the tab. */
+  clearNotification(tab: string): Promise<void>;
   openResumeInTerminal(ref: SessionRef): Promise<void>;
   /** A fresh session of agent in dir, a project of the selected host. */
   openNewSessionInTerminal(agent: AgentID, dir: string): Promise<void>;
@@ -243,6 +253,10 @@ interface WailsAppBinding {
   PrintWindow(): Promise<void>;
   NewWindow(): Promise<void>;
   FocusNextWindow?(forward: boolean): Promise<void>;
+  NotificationStatus(): Promise<NotificationStatus>;
+  PrepareNotifications(): Promise<NotificationStatus>;
+  Notify(n: AgentNotification): Promise<void>;
+  ClearNotification(tab: string): Promise<void>;
   OpenResumeInTerminal(ref: SessionRef): Promise<void>;
   OpenNewSessionInTerminal(agent: AgentID, dir: string): Promise<void>;
   NewSessionAgents(): Promise<AgentStatus[]>;
@@ -559,6 +573,38 @@ class WailsBackendAPI implements BackendAPI {
       // Older backends lack the binding: nothing to switch to.
       if (!this.binding.FocusNextWindow) return;
       return await this.binding.FocusNextWindow(forward);
+    } catch (e) {
+      throw normalizeError(e);
+    }
+  }
+
+  async notificationStatus(): Promise<NotificationStatus> {
+    try {
+      return await this.binding.NotificationStatus();
+    } catch (e) {
+      throw normalizeError(e);
+    }
+  }
+
+  async prepareNotifications(): Promise<NotificationStatus> {
+    try {
+      return await this.binding.PrepareNotifications();
+    } catch (e) {
+      throw normalizeError(e);
+    }
+  }
+
+  async notify(n: AgentNotification): Promise<void> {
+    try {
+      return await this.binding.Notify(n);
+    } catch (e) {
+      throw normalizeError(e);
+    }
+  }
+
+  async clearNotification(tab: string): Promise<void> {
+    try {
+      return await this.binding.ClearNotification(tab);
     } catch (e) {
       throw normalizeError(e);
     }
@@ -1191,6 +1237,11 @@ const UNGUARDED = new Set<string>([
   // A new window is another app on this computer.
   'newWindow',
   'focusNextWindow',
+  // Alerts are about panel tabs, which outlive a host switch.
+  'notificationStatus',
+  'prepareNotifications',
+  'notify',
+  'clearNotification',
   'listPortForwards',
   'savePortForward',
   'startPortForward',
@@ -1220,6 +1271,14 @@ export const ASKPASS_PROMPT_EVENT = 'askpass:prompt';
 export const MOUSE_NAVIGATE_EVENT = 'nav:mouse';
 export const TERMINAL_DATA_EVENT = 'term:data';
 export const TERMINAL_EXIT_EVENT = 'term:exit';
+/** The user clicked an agent alert: { id } is the tab to show. */
+export const NOTIFY_OPEN_EVENT = 'notify:open';
+
+export function subscribeNotificationOpen(fn: (tab: string) => void, backend: BackendAPI = api): () => void {
+  return backend.onEvent(NOTIFY_OPEN_EVENT, (event: { id?: unknown }) => {
+    if (typeof event?.id === 'string') fn(event.id);
+  });
+}
 
 export function subscribeTerminalData(
   fn: (event: TerminalDataEvent) => void,
