@@ -253,7 +253,7 @@
   .text-input:focus,
   .editor:focus {
     outline: none;
-    border-color: var(--accent-color, #3b82f6);
+    border-color: var(--accent-color);
   }
 
   .hint {
@@ -298,13 +298,13 @@
   }
 
   .primary-btn {
-    background-color: var(--accent-color, #3b82f6);
-    border-color: var(--accent-color, #3b82f6);
+    background-color: var(--accent-color);
+    border-color: var(--accent-color);
     color: #fff;
   }
 
   .primary-btn:hover:not(:disabled) {
-    background-color: #2563eb;
-    border-color: #2563eb;
+    background-color: var(--accent-hover);
+    border-color: var(--accent-hover);
   }
 </style>

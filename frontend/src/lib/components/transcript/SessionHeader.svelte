@@ -577,18 +577,36 @@
     border-left: 1px solid rgba(255, 255, 255, 0.35);
   }
 
+  /* A pill-shaped segmented control: a hairline outline, dividers between
+     the levels and an accent tint filling the chosen one. */
   .mode-switch {
     display: inline-flex;
-    padding: 1px;
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-sm, 6px);
+    overflow: hidden;
+    border: 1px solid color-mix(in srgb, var(--text-muted) 35%, transparent);
+    border-radius: 999px;
   }
 
   .mode-switch .mode-btn {
-    padding: 2px 7px;
+    padding: 2px 12px;
+    border-radius: 0;
+    transition: background-color 0.15s ease, color 0.15s ease;
   }
 
-  .action-btn.mode-btn.active {
+  .mode-switch .mode-btn + .mode-btn {
+    border-left: 1px solid color-mix(in srgb, var(--text-muted) 35%, transparent);
+  }
+
+  .mode-switch .mode-btn:hover {
+    background-color: var(--hover-bg);
+  }
+
+  .mode-switch .mode-btn:focus-visible {
+    outline: 2px solid var(--accent-color);
+    outline-offset: -2px;
+  }
+
+  .action-btn.mode-btn.active,
+  .action-btn.mode-btn.active:hover {
     background-color: var(--active-bg);
     color: var(--accent-color);
   }

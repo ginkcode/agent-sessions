@@ -424,7 +424,7 @@
   }
 
   .menu-item.selected {
-    background: rgba(var(--accent-rgb, 59, 130, 246), 0.12);
+    background: color-mix(in srgb, var(--accent-color) 12%, transparent);
     font-weight: 600;
   }
 

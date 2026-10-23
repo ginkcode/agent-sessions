@@ -272,7 +272,7 @@
 
   .search-input:focus {
     outline: none;
-    border-color: var(--accent-color, #3b82f6);
+    border-color: var(--accent-color);
   }
 
   .picker-list {

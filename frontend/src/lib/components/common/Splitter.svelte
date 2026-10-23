@@ -144,7 +144,7 @@
   .splitter:hover .line,
   .splitter.dragging .line,
   .splitter:focus-visible .line {
-    background-color: var(--accent-color, #2563eb);
+    background-color: var(--accent-color);
   }
 
   .splitter.horizontal:hover .line,

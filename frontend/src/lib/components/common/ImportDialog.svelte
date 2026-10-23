@@ -629,8 +629,8 @@
   }
 
   .dialog-tab-btn.active {
-    color: var(--accent-color, #3b82f6);
-    border-bottom-color: var(--accent-color, #3b82f6);
+    color: var(--accent-color);
+    border-bottom-color: var(--accent-color);
   }
 
   .dialog-body {
@@ -905,14 +905,14 @@
   }
 
   .agent-select-btn:hover {
-    border-color: var(--accent-color, #3b82f6);
+    border-color: var(--accent-color);
     background-color: var(--hover-bg);
   }
 
   .agent-select-btn.selected {
-    border-color: var(--accent-color, #3b82f6);
-    background-color: rgba(59, 130, 246, 0.1);
-    color: var(--accent-color, #3b82f6);
+    border-color: var(--accent-color);
+    background-color: color-mix(in srgb, var(--accent-color) 10%, transparent);
+    color: var(--accent-color);
     font-weight: 600;
   }
 
@@ -951,9 +951,9 @@
   }
 
   .budget-btn.selected {
-    background-color: var(--accent-color, #3b82f6);
+    background-color: var(--accent-color);
     color: #fff;
-    border-color: var(--accent-color, #3b82f6);
+    border-color: var(--accent-color);
   }
 
   .toggles-group {
@@ -1156,8 +1156,8 @@
   }
 
   .tab-btn.active {
-    color: var(--accent-color, #3b82f6);
-    border-bottom-color: var(--accent-color, #3b82f6);
+    color: var(--accent-color);
+    border-bottom-color: var(--accent-color);
     font-weight: 600;
   }
 
@@ -1257,14 +1257,14 @@
   }
 
   .primary-btn {
-    background-color: var(--accent-color, #3b82f6);
-    border-color: var(--accent-color, #3b82f6);
+    background-color: var(--accent-color);
+    border-color: var(--accent-color);
     color: #fff;
   }
 
   .primary-btn:hover:not(:disabled) {
-    background-color: #2563eb;
-    border-color: #2563eb;
+    background-color: var(--accent-hover);
+    border-color: var(--accent-hover);
   }
 
   .save-btn {
