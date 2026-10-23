@@ -643,6 +643,52 @@ export interface BlameLine {
   uncommitted: boolean;
 }
 
+/** What to look for across a project's files. */
+export interface SearchQuery {
+  pattern: string;
+  regex?: boolean;
+  matchCase?: boolean;
+  wholeWord?: boolean;
+  /** Comma-separated globs such as `*.go, src/**`; a file must match one. */
+  include?: string;
+  /** Comma-separated globs; a file matching one is skipped. */
+  exclude?: string;
+  /** Caps the matches returned; 0 or absent means the host's default. */
+  maxMatches?: number;
+}
+
+/** One match on one line. Columns count UTF-16 code units. */
+export interface SearchMatch {
+  /** 1-based line number. */
+  line: number;
+  start: number;
+  end: number;
+  /** The line, trimmed and cut to a window around the match when long. */
+  preview: string;
+  previewStart: number;
+  previewEnd: number;
+}
+
+/** The matches in one file. */
+export interface SearchFile {
+  path: string;
+  /** Identifies the bytes searched, so a replace can tell they changed. */
+  revision: string;
+  matches: SearchMatch[];
+  /** The file had more matches than the per-file cap. */
+  truncated?: boolean;
+}
+
+/** The files with matches, sorted by path. */
+export interface SearchResult {
+  files: SearchFile[];
+  matches: number;
+  /** Text files looked through. */
+  searched: number;
+  /** A cap cut the result short. */
+  truncated?: boolean;
+}
+
 export interface HostCapabilities {
   /** Optional Stage 1 support. Live remains false until Stage 2. */
   codeDiagnostics?: boolean;
@@ -651,6 +697,8 @@ export interface HostCapabilities {
   saveFile?: boolean;
   /** Absent on older servers; per-line blame requires an explicit true. */
   blame?: boolean;
+  /** Absent on older servers; content search requires an explicit true. */
+  searchFiles?: boolean;
   trash: boolean;
   manage: boolean;
   export: boolean;

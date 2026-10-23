@@ -583,6 +583,15 @@ func (s *Service) BlameFile(ctx context.Context, dir, rel string, line int) (fil
 	return files.BlameFile(ctx, dir, rel, line)
 }
 
+// SearchFiles authorizes and searches the text of a session directory's
+// files.
+func (s *Service) SearchFiles(ctx context.Context, dir string, q files.SearchQuery) (files.SearchResult, error) {
+	if !s.knownDirectory(dir) {
+		return files.SearchResult{}, fmt.Errorf("%w: %s", ErrUnknownDirectory, dir)
+	}
+	return files.Search(ctx, dir, q)
+}
+
 // ReadFile reads one file of a session directory for the file viewer. A
 // text file's edit eligibility is checked against policy.
 func (s *Service) ReadFile(ctx context.Context, dir, rel string, policy files.EditPolicy) (files.Content, error) {

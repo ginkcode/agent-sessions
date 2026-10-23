@@ -63,7 +63,9 @@ type Capabilities struct {
 	// it false, and their files stay read-only.
 	SaveFile bool `json:"saveFile,omitempty"`
 	// Blame supports on-demand blame for one saved working-tree line.
-	Blame           bool `json:"blame,omitempty"`
+	Blame bool `json:"blame,omitempty"`
+	// SearchFiles supports searching the text of a project's files.
+	SearchFiles     bool `json:"searchFiles,omitempty"`
 	AddFile         bool `json:"addFile,omitempty"`
 	CreateDirectory bool `json:"createDirectory,omitempty"`
 	CreateFile      bool `json:"createFile,omitempty"`
@@ -162,6 +164,11 @@ type BlameFileParams struct {
 	Dir  string `json:"dir"`
 	Path string `json:"path"`
 	Line int    `json:"line"`
+}
+
+type SearchFilesParams struct {
+	Dir   string            `json:"dir"`
+	Query files.SearchQuery `json:"query"`
 }
 
 type SaveFileParams struct {

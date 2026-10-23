@@ -80,6 +80,10 @@ func (b offlineBackend) BlameFile(context.Context, string, string, int) (files.B
 	return files.BlameLine{}, b.err()
 }
 
+func (b offlineBackend) SearchFiles(context.Context, string, files.SearchQuery) (files.SearchResult, error) {
+	return files.SearchResult{}, b.err()
+}
+
 func (b offlineBackend) SaveFile(context.Context, string, files.SaveRequest) (files.SaveResult, error) {
 	return files.SaveResult{}, b.err()
 }

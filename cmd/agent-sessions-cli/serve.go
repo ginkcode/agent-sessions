@@ -104,6 +104,7 @@ func serveCmd(ctx context.Context, args []string, resolveRoots func() (paths.Roo
 			RenameFile:      true,
 			DeleteFile:      true,
 			Blame:           true,
+			SearchFiles:     true,
 		}, roots, nil
 	})
 	server.Store(srv)

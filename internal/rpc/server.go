@@ -299,12 +299,13 @@ func (s *Server) initialize(serveCtx context.Context, req Request, starter Start
 	}
 
 	caps := Capabilities{
-		Trash:  true,
-		Manage: true,
-		Export: true,
-		Import: true,
-		Search: true,
-		Blame:  true,
+		Trash:       true,
+		Manage:      true,
+		Export:      true,
+		Import:      true,
+		Search:      true,
+		Blame:       true,
+		SearchFiles: true,
 		// SaveFile stays off without a starter, which is a test setup.
 	}
 	var roots paths.Roots
@@ -474,6 +475,13 @@ func (s *Server) dispatch(ctx context.Context, req Request) (any, error) {
 			return nil, &ResponseError{Code: CodeInvalidParams, Message: err.Error()}
 		}
 		return backend.BlameFile(ctx, p.Dir, p.Path, p.Line)
+
+	case "searchFiles":
+		var p SearchFilesParams
+		if err := json.Unmarshal(req.Params, &p); err != nil {
+			return nil, &ResponseError{Code: CodeInvalidParams, Message: err.Error()}
+		}
+		return backend.SearchFiles(ctx, p.Dir, p.Query)
 
 	case "saveFile":
 		var p SaveFileParams

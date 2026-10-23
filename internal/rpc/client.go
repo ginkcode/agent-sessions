@@ -430,6 +430,17 @@ func (c *Client) BlameFile(ctx context.Context, dir, path string, line int) (fil
 	return out, err
 }
 
+// SearchFiles searches a project's files only when the remote host
+// advertises support. Canceling ctx cancels the search on the host.
+func (c *Client) SearchFiles(ctx context.Context, dir string, q files.SearchQuery) (files.SearchResult, error) {
+	if !c.caps.SearchFiles {
+		return files.SearchResult{}, fmt.Errorf("%w: this host's agent-sessions cannot search file contents; update it", engine.ErrUnsupportedAction)
+	}
+	var out files.SearchResult
+	err := c.call(ctx, "searchFiles", SearchFilesParams{Dir: dir, Query: q}, &out)
+	return out, err
+}
+
 // SaveFile saves an edited file on the remote host. A server without the
 // SaveFile capability refuses it rather than leaving the method unknown.
 func (c *Client) SaveFile(ctx context.Context, dir string, req files.SaveRequest) (files.SaveResult, error) {

@@ -51,8 +51,12 @@ func (a *App) ListWSLDistros() ([]WSLEntry, error) {
 func (a *App) Connect(alias string) error {
 	a.ensureConn()
 	err := a.conn.Connect(a.appCtx(), alias)
-	if err == nil && a.localEngine != nil {
-		a.localEngine.ResetCodeDiagnostics()
+	if err == nil {
+		// Results from the old host would land in the new host's views.
+		a.searches.cancelAll()
+		if a.localEngine != nil {
+			a.localEngine.ResetCodeDiagnostics()
+		}
 	}
 	return err
 }
@@ -61,6 +65,7 @@ func (a *App) Connect(alias string) error {
 func (a *App) Disconnect() {
 	a.ensureConn()
 	a.conn.Disconnect()
+	a.searches.cancelAll()
 	if a.localEngine != nil {
 		a.localEngine.ResetCodeDiagnostics()
 	}

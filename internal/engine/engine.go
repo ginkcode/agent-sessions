@@ -483,6 +483,11 @@ func (e *Engine) BlameFile(ctx context.Context, dir, path string, line int) (fil
 	return e.svc.BlameFile(ctx, dir, path, line)
 }
 
+// SearchFiles searches the text of a session directory's files.
+func (e *Engine) SearchFiles(ctx context.Context, dir string, q files.SearchQuery) (files.SearchResult, error) {
+	return e.svc.SearchFiles(ctx, dir, q)
+}
+
 // ReadFile reads one file of a session directory.
 func (e *Engine) ProbeFiles(ctx context.Context, dir string, paths []string) (files.ProbeResult, error) {
 	return e.svc.ProbeFiles(ctx, dir, paths)

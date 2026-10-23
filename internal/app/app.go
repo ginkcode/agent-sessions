@@ -72,6 +72,7 @@ type App struct {
 	conn              *connection
 	transportOverride remote.ArtifactTransport
 	fileClose         fileCloseGuard
+	searches          fileSearches
 }
 
 // NewApp creates a new App service instance with default providers.

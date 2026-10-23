@@ -29,6 +29,7 @@ import { link } from './link.svelte';
 const LOCAL_CAPABILITIES: HostCapabilities = {
   saveFile: true,
   blame: true,
+  searchFiles: true,
   trash: true,
   manage: true,
   export: true,

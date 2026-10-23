@@ -17,6 +17,8 @@ import type {
   FileContent,
   FileProbeResult,
   BlameLine,
+  SearchQuery,
+  SearchResult,
   FileSaveRequest,
   FileSaveResult,
   ManageSettings,
@@ -118,6 +120,14 @@ export interface BackendAPI extends CodeDiagnosticsAPI {
    * host. Rejects when the backend has no blame support.
    */
   blameFile(dir: string, path: string, line: number): Promise<BlameLine>;
+  /**
+   * Searches the text of the files of dir on the selected host. searchId
+   * names the search for cancelSearch; a new search under the same ID
+   * cancels the one before it. Rejects when the backend cannot search.
+   */
+  searchFiles(dir: string, query: SearchQuery, searchId: string): Promise<SearchResult>;
+  /** Stops the search started under searchId; its call rejects. */
+  cancelSearch(searchId: string): Promise<void>;
   /**
    * Saves an edited file on the selected host if it still has
    * req.expectedRevision; otherwise reports a conflict and writes nothing.
@@ -235,6 +245,8 @@ interface WailsAppBinding {
   ProbeFiles?(dir: string, paths: string[], host: string): Promise<FileProbeResult>;
   ReadFile(dir: string, path: string): Promise<FileContent>;
   BlameFile?(dir: string, path: string, line: number): Promise<BlameLine>;
+  SearchFiles?(dir: string, query: SearchQuery, searchId: string): Promise<SearchResult>;
+  CancelSearch?(searchId: string): Promise<void>;
   SaveFile(dir: string, req: FileSaveRequest, host: string): Promise<FileSaveResult>;
   EnableFileEditing(): Promise<boolean>;
   CompleteFileClose(id: number, allow: boolean): Promise<void>;
@@ -289,6 +301,7 @@ interface WailsAppBinding {
 }
 
 export const BLAME_UNSUPPORTED = 'Line blame is not supported by this version of the app backend.';
+export const SEARCH_FILES_UNSUPPORTED = 'Searching file contents is not supported by this version of the app backend.';
 
 function normalizeError(err: unknown): Error {
   if (err instanceof Error) return err;
@@ -675,6 +688,20 @@ class WailsBackendAPI implements BackendAPI {
     } catch (e) {
       throw normalizeError(e);
     }
+  }
+
+  async searchFiles(dir: string, query: SearchQuery, searchId: string): Promise<SearchResult> {
+    if (!this.binding.SearchFiles) throw new Error(SEARCH_FILES_UNSUPPORTED);
+    try {
+      return await this.binding.SearchFiles(dir, query, searchId);
+    } catch (e) {
+      throw normalizeError(e);
+    }
+  }
+
+  async cancelSearch(searchId: string): Promise<void> {
+    if (!this.binding.CancelSearch) return;
+    try { await this.binding.CancelSearch(searchId); } catch (e) { throw normalizeError(e); }
   }
 
   async saveFile(dir: string, req: FileSaveRequest, host: string | undefined): Promise<FileSaveResult> {
@@ -1077,6 +1104,9 @@ const UNGUARDED = new Set<string>([
   'onEvent',
   'enableFileEditing',
   'completeFileClose',
+  // Canceling must reach the backend even after a host switch, to stop a
+  // search the switch made stale.
+  'cancelSearch',
   'onFileDrop',
   'openURL',
   'appVersion',

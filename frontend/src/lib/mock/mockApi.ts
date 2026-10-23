@@ -43,6 +43,9 @@ import type {
   ConnectionState,
   HostCapabilities,
   BlameLine,
+  SearchFile,
+  SearchQuery,
+  SearchResult,
   HostEntry,
   WSLEntry,
   TerminalOpenMode,
@@ -848,6 +851,62 @@ export class MockBackendAPI extends MockCodeDiagnostics {
     return { status: 'saved', content: structuredClone(content) };
   }
 
+  private searchRuns = new Map<string, { canceled: boolean }>();
+
+  async searchFiles(dir: string, query: SearchQuery, searchId: string): Promise<SearchResult> {
+    const out: SearchResult = { files: [], matches: 0, searched: 0 };
+    if (!query.pattern) return out;
+    const prev = this.searchRuns.get(searchId);
+    if (prev) prev.canceled = true;
+    const run = { canceled: false };
+    this.searchRuns.set(searchId, run);
+    try {
+      let source = query.regex ? query.pattern : query.pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      if (query.wholeWord) source = `\\b(?:${source})\\b`;
+      let re: RegExp;
+      try { re = new RegExp(source, query.matchCase ? 'gu' : 'giu'); }
+      catch (e) { throw new Error(`invalid search pattern: ${(e as Error).message}`); }
+      const include = mockGlobs(query.include), exclude = mockGlobs(query.exclude);
+      const limit = Math.min(query.maxMatches || 5000, 20000);
+      const paths = (await this.listFiles(dir)).files
+        .filter(p => (include.length === 0 || matchMockGlobs(include, p)) && !matchMockGlobs(exclude, p))
+        .sort();
+      for (const path of paths) {
+        // A real search yields between files; so does this one, to be cancelable.
+        await new Promise(r => setTimeout(r, 0));
+        if (run.canceled) throw new Error('context canceled');
+        const content = await this.readFile(dir, path);
+        if (content.binary || content.tooLarge || content.text === undefined) continue;
+        out.searched++;
+        const file: SearchFile = { path, revision: content.revision ?? '', matches: [] };
+        content.text.split('\n').forEach((raw, i) => {
+          const line = raw.replace(/\r$/, '');
+          const lead = line.length - line.trimStart().length;
+          for (const m of line.matchAll(re)) {
+            if (m[0] === '' || out.matches + file.matches.length >= limit) continue;
+            const start = m.index ?? 0, from = Math.min(lead, start);
+            file.matches.push({
+              line: i + 1, start, end: start + m[0].length,
+              preview: line.slice(from), previewStart: start - from, previewEnd: start - from + m[0].length,
+            });
+          }
+        });
+        if (file.matches.length === 0) continue;
+        out.files.push(file);
+        out.matches += file.matches.length;
+        if (out.matches >= limit) { out.truncated = true; break; }
+      }
+      return out;
+    } finally {
+      if (this.searchRuns.get(searchId) === run) this.searchRuns.delete(searchId);
+    }
+  }
+
+  async cancelSearch(searchId: string): Promise<void> {
+    const run = this.searchRuns.get(searchId);
+    if (run) run.canceled = true;
+  }
+
   async blameFile(dir: string, path: string, line: number): Promise<BlameLine> {
     if (!Number.isInteger(line) || line < 1) throw new Error(`Invalid line number ${line}.`);
     const content = await this.readFile(dir, path);
@@ -1381,6 +1440,7 @@ export class MockBackendAPI extends MockCodeDiagnostics {
     const caps: HostCapabilities = {
       saveFile: true,
       blame: true,
+      searchFiles: true,
       trash: alias !== 'prod-server',
       manage: true,
       export: true,
@@ -1535,4 +1595,26 @@ function mockLaunchCommand(target: string, cwd: string, promptFile: string): str
   const prompt = `'Read ${promptFile} completely to restore the context of an earlier session, then follow its instructions and wait for my next request.'`;
   const argv = target === 'opencode' ? `opencode --prompt ${prompt}` : `${target === 'codex' ? 'codex' : 'claude'} ${prompt}`;
   return `cd '${cwd}' && ${argv}`;
+}
+
+interface MockGlob { re: RegExp; anywhere: boolean }
+
+/** Parses comma-separated globs the way the Go search does, roughly. */
+function mockGlobs(list: string | undefined): MockGlob[] {
+  return (list ?? '').split(/,(?![^{]*\})/).map(p => p.trim().replace(/^\.\//, '').replace(/\/$/, '')).filter(Boolean).map(p => {
+    const source = p.replace(/^\//, '').replace(/[.+^$()|\\]/g, '\\$&')
+      .replace(/\*\*\//g, '\u0001').replace(/\*\*/g, '\u0002').replace(/\*/g, '[^/]*').replace(/\?/g, '[^/]')
+      .replace(/\u0001/g, '(?:.*/)?').replace(/\u0002/g, '.*')
+      .replace(/\{([^}]*)\}/g, (_, alts: string) => `(?:${alts.split(',').join('|')})`)
+      .replace(/\[!/g, '[^');
+    return { re: new RegExp(`^${source}$`), anywhere: !p.includes('/') };
+  });
+}
+
+function matchMockGlobs(globs: MockGlob[], path: string): boolean {
+  return globs.some(g => {
+    if (g.anywhere) return path.split('/').some(part => g.re.test(part));
+    const parts = path.split('/');
+    return parts.some((_, i) => g.re.test(parts.slice(0, i + 1).join('/')));
+  });
 }

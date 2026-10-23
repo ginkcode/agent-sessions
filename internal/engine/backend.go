@@ -37,6 +37,7 @@ type Backend interface {
 	ReadFile(ctx context.Context, dir, path string) (files.Content, error)
 	ProbeFiles(ctx context.Context, dir string, paths []string) (files.ProbeResult, error)
 	BlameFile(ctx context.Context, dir, path string, line int) (files.BlameLine, error)
+	SearchFiles(ctx context.Context, dir string, q files.SearchQuery) (files.SearchResult, error)
 	SaveFile(ctx context.Context, dir string, req files.SaveRequest) (files.SaveResult, error)
 	ResolveFile(ctx context.Context, dir, path string) (string, error)
 	ResolveTerminalFile(ctx context.Context, dir, path string) (files.TerminalFile, error)

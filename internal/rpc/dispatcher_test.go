@@ -139,6 +139,20 @@ func (m *mockBackend) BlameFile(ctx context.Context, dir, path string, line int)
 	return files.BlameLine{Line: line, Commit: "abc123", Author: "Test Author", AuthorTime: 1700000000, Summary: dir + "/" + path}, m.errToReturn
 }
 
+// SearchFiles echoes the query as one match; the pattern "block" waits
+// for the caller to cancel.
+func (m *mockBackend) SearchFiles(ctx context.Context, dir string, q files.SearchQuery) (files.SearchResult, error) {
+	if q.Pattern == "block" {
+		if m.slowCalled != nil {
+			close(m.slowCalled)
+		}
+		<-ctx.Done()
+		return files.SearchResult{}, ctx.Err()
+	}
+	f := files.SearchFile{Path: dir + "/" + q.Include, Revision: "r1", Matches: []files.SearchMatch{{Line: 1, Start: 0, End: len(q.Pattern), Preview: q.Pattern, PreviewEnd: len(q.Pattern)}}}
+	return files.SearchResult{Files: []files.SearchFile{f}, Matches: 1, Searched: 1}, m.errToReturn
+}
+
 func (m *mockBackend) SaveFile(ctx context.Context, dir string, req files.SaveRequest) (files.SaveResult, error) {
 	return files.SaveResult{Status: files.SaveStatusSaved}, nil
 }
