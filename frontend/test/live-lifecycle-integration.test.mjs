@@ -267,3 +267,29 @@ test('vtsls shape: TS/JS extensions go live inside covered packages; unversioned
   assert.equal(checks.counts.error, 0); assert.equal(checks.countsUnder('web'), 0);
   await checks.detach();
 });
+
+test('Ruff shape: .py/.pyi go live inside covered projects; versioned pushes draw inline for the matching version only', async () => {
+  const listeners = new Map();
+  let seq = 0;
+  const lsp = (providerId, extra) => ({ ...provider(providerId), coverage: { kind: 'openedDocuments', roots: [''], partial: true, externalChanges: 'unwatched' }, ...extra });
+  const providers = [lsp('gopls', { documentExtensions: ['.go'] }), lsp('typescript', { availability: 'unsupported' }), lsp('svelte', { availability: 'unsupported' }),
+    lsp('ruff', { coverage: { kind: 'openedDocuments', roots: ['svc'], partial: false, externalChanges: 'unwatched' }, documentExtensions: ['.py', '.pyi'] })];
+  const snapshot = sets => ({ contractVersion: 1, context, sequence: seq++, approval: { state: 'approved', mode: 'session', fingerprint: 'fp' }, providers, resultSets: sets });
+  const api = { onEvent(n, fn) { listeners.set(n, fn); return () => listeners.delete(n); }, async attachCodeDiagnostics() { return { project: { hostId: 'h', root: '/p' }, context, snapshot: snapshot([]) }; }, async detachCodeDiagnostics() { return { context }; } };
+  const checks = new CodeDiagnosticsStore(api, () => 0);
+  await checks.attach('/p', { phase: 'connected', generation: 1, hostId: 'h', capabilities: { codeDiagnostics: true, liveCodeDiagnostics: true } });
+  for (const [path, live] of [['svc/app/a.py', true], ['svc/a.pyi', true], ['x.py', false], ['svc/n.ipynb', false], ['svc/b.ts', false], ['svc/pyproject.toml', false]])
+    assert.equal(checks.liveSupports(path), live, path);
+  // Ruff publishes with the document version: current, positioned, inline for that version.
+  const range = { start: { line: 0, character: 7 }, end: { line: 0, character: 9 } };
+  const d = { path: 'svc/app/a.py', severity: 'warning', message: '`os` imported but unused\n\nhelp: Remove unused import: `os`', code: 'F401', source: 'ruff/Ruff', freshness: 'current', range, basis: { kind: 'document', documentId: 'd1', version: 2 } };
+  const s = snapshot([{ providerId: 'ruff', origin: 'lsp', scope: { kind: 'document', path: 'svc/app/a.py', documentId: 'd1' }, diagnostics: [d] }]);
+  listeners.get('codeDiagnostics:updated')({ contractVersion: 1, context, sequence: s.sequence, updateId: 'ruff', partIndex: 0, partCount: 1, snapshot: s });
+  assert.equal(checks.counts.warning, 1); assert.equal(checks.countsUnder('svc'), 1);
+  assert.equal(checks.liveInline('svc/app/a.py', { documentId: 'd1', version: 2, synced: true }).length, 1);
+  assert.equal(checks.liveInline('svc/app/a.py', { documentId: 'd1', version: 3, synced: true }).length, 0, 'never drawn on newer text');
+  const clear = snapshot([{ providerId: 'ruff', origin: 'lsp', scope: { kind: 'document', path: 'svc/app/a.py', documentId: 'd1' }, diagnostics: [] }]);
+  listeners.get('codeDiagnostics:updated')({ contractVersion: 1, context, sequence: clear.sequence, updateId: 'clear', partIndex: 0, partCount: 1, snapshot: clear });
+  assert.equal(checks.counts.warning, 0); assert.equal(checks.countsUnder('svc'), 0);
+  await checks.detach();
+});

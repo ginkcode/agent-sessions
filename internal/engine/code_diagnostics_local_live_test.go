@@ -86,7 +86,7 @@ func TestDiscoverLocalLiveMissingToolsIsStatusNotError(t *testing.T) {
 		}
 	}
 	regs, err := discoverLocalLive(root)
-	if err != nil || len(regs) != 3 || regs[0].ProviderID != "gopls" || regs[0].Availability != "missingTool" {
+	if err != nil || len(regs) != 4 || regs[0].ProviderID != "gopls" || regs[0].Availability != "missingTool" {
 		t.Fatal(err, regs)
 	}
 	for _, r := range regs {

@@ -15,9 +15,9 @@ func TestDiscoverLocalLiveBindsToolchainAndHoldsOtherLanguages(t *testing.T) {
 		t.Fatal(err)
 	}
 	tsPath, tsEnv := tsHost(t)
-	live := LocalLiveEnvironment{GoPath: []string{bin}, Path: tsPath, Go: env, TS: tsEnv}
+	live := LocalLiveEnvironment{GoPath: []string{bin}, Path: tsPath, Go: env, TS: tsEnv, Ruff: RuffEnvironment{Home: tsEnv.Home}}
 	regs, err := DiscoverLocalLive(root, live)
-	if err != nil || len(regs) != 3 {
+	if err != nil || len(regs) != 4 {
 		t.Fatal(err, regs)
 	}
 	g := regs[0]
@@ -32,7 +32,8 @@ func TestDiscoverLocalLiveBindsToolchainAndHoldsOtherLanguages(t *testing.T) {
 	if !slices.Equal(ids, []string{goplsProviderID, "gopls-toolchain-bin-go", "gopls-toolchain-VERSION"}) {
 		t.Fatal("toolchain not bound", ids)
 	}
-	// No package.json/tsconfig.json: TypeScript stays a muted unsupported.
+	// No package.json/tsconfig.json or Python project: TypeScript and Ruff stay
+	// a muted unsupported.
 	for _, r := range regs[1:] {
 		if r.Availability != "unsupported" || r.Live == nil || r.Live.State.Coverage.Kind != "openedDocuments" || (r.ProviderID == svelteLSProviderID && r.Live.Resolve != nil) {
 			t.Fatalf("%+v", r)

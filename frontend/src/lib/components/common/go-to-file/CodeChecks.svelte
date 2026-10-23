@@ -23,7 +23,7 @@
   /** Managed setup exists only for gopls on this computer; everything else says why it is not offered. */
   function setupNote(providerId: string): string {
     if (providerId === 'gopls') return remote ? 'Setup unavailable: installing on a remote host is not supported (no authenticated remote identity).' : '';
-    if (providerId === 'typescript' || providerId === 'svelte' || providerId === 'svelte-check') return 'Setup not supported here: install it on the host yourself, then refresh.';
+    if (providerId === 'typescript' || providerId === 'ruff' || providerId === 'svelte' || providerId === 'svelte-check') return 'Setup not supported here: install it on the host yourself, then refresh.';
     return '';
   }
 </script>
@@ -148,7 +148,7 @@
   {#if checks.project && checks.status === 'ready'}
     <details aria-label="Go language-server setup" open={setupOpen}>
       <summary>Tools setup · Go language server (gopls)</summary>
-      <p class="muted">Installing a tool is separate from trusting this project's execution. Neither approval installs or starts a server automatically. {checks.liveEnabled ? 'Live diagnostics (experimental) use installed, supported language servers on this host for opened files only, after project approval: gopls for Go and vtsls for TypeScript/JavaScript. A missing or unsupported server is shown as its own status; Svelte live diagnostics are not enabled.' : 'Live diagnostics are not available on this connection.'} Revoking project approval also abandons pending setup consent and cancels an owned installation under the backend's conservative policy.</p>
+      <p class="muted">Installing a tool is separate from trusting this project's execution. Neither approval installs or starts a server automatically. {checks.liveEnabled ? 'Live diagnostics (experimental) use installed, supported language servers on this host for opened files only, after project approval: gopls for Go, vtsls for TypeScript/JavaScript and Ruff for Python (lint and syntax only, not type errors). A missing or unsupported server is shown as its own status; Svelte live diagnostics are not enabled.' : 'Live diagnostics are not available on this connection.'} Revoking project approval also abandons pending setup consent and cancels an owned installation under the backend's conservative policy.</p>
       {#if checks.managedNotice}<p role="status" class="bounded">{checks.managedNotice}</p>{/if}
       {#if checks.managed?.message}<p role="status" class="bounded">{checks.managed.message}</p>{/if}
       {#if remote}
@@ -182,7 +182,7 @@
       <div class="actions">
         <button type="button" disabled={blocked || checks.managedPending} onclick={() => perform(() => checks.refreshManaged())}>Refresh setup status</button>
       </div>
-      <p class="muted">TypeScript/JavaScript and Svelte setup is not offered. For live TypeScript/JavaScript diagnostics, install vtsls on the host yourself with <span class="mono">npm install -g @vtsls/language-server@0.3.0</span>, then refresh.</p>
+      <p class="muted">TypeScript/JavaScript, Python and Svelte setup is not offered. For live TypeScript/JavaScript diagnostics, install vtsls on the host yourself with <span class="mono">npm install -g @vtsls/language-server@0.3.0</span>; for Python, install Ruff with <span class="mono">uv tool install ruff==0.15.20</span>. Then refresh.</p>
     </details>
   {/if}
   {#if checks.project}

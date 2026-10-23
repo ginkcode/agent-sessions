@@ -64,6 +64,10 @@ test('label helpers: human tool names, consistent modes, bounded messages, remot
   assert.equal(liveLanguages(both), 'Go', 'a missing vtsls is never described as checking');
   assert.equal(liveLanguages([live('gopls', 'approvalRequired'), live('typescript', 'approvalRequired')], ['available', 'approvalRequired']), 'Go and TypeScript/JavaScript');
   assert.equal(liveLanguages([]), '');
+  assert.equal(toolName('ruff'), 'Python linter (Ruff)');
+  assert.equal(providerMode({ providerId: 'ruff', coverage: cov('openedDocuments', 'unwatched') }), 'LSP · live, opened Python files');
+  assert.equal(liveLanguages([live('gopls', 'available'), live('typescript', 'available'), live('ruff', 'available')]), 'Go, TypeScript/JavaScript and Python');
+  assert.equal(liveLanguages([live('gopls', 'available'), live('ruff', 'unsupported')]), 'Go', 'a Python-free project never claims Python checking');
   assert.equal(locationLabel(range(9, 4)), 'Ln 10, Col 5'); assert.equal(locationLabel(undefined), 'File'); assert.equal(locationLabel(range(0, 0), 'fileLevel'), 'File');
   assert.equal(longMessage('short'), false); assert.equal(longMessage('a\nb'), true); assert.equal(longMessage('x'.repeat(200)), true);
   assert.equal(messagePreview('first\nsecond'), 'first'); assert.ok(messagePreview('y'.repeat(300)).length <= 141);
@@ -128,6 +132,7 @@ const providers = [
   { providerId: 'go-vet', availability: 'available', phase: 'idle', freshness: 'current', coverage: cov('savedProject', 'unwatched'), truncated: false },
   { providerId: 'svelte-check', availability: 'missingTool', phase: 'idle', freshness: 'uncertain', coverage: cov('savedProject', 'unwatched'), truncated: false },
   { providerId: 'typescript', availability: 'missingTool', phase: 'idle', freshness: 'uncertain', coverage: cov('openedDocuments', 'unwatched'), truncated: false, notice: 'No TypeScript language server (vtsls) is installed.' },
+  { providerId: 'ruff', availability: 'missingTool', phase: 'idle', freshness: 'uncertain', coverage: cov('openedDocuments', 'unwatched'), truncated: false, notice: 'Ruff is not installed.' },
 ];
 const checks = (extra = {}) => ({ status: 'ready', project: { hostId: 'local:abc123', root: '/p' }, snapshot: { approval: { state: 'approved', mode: 'session' }, proposal: { fingerprint: 'sha256:fp', tools: [] } },
   providers, approved: true, canRun: true, canRetry: () => true, liveEnabled: true, liveDocuments: [], managed: { hostId: 'local:abc123', state: 'missingTool' }, ...extra });
@@ -146,6 +151,9 @@ test('checker rows use human names, status pills and consistent modes; technical
   assert.match(html, /TypeScript\/JavaScript language server \(vtsls\)/);
   assert.match(html, /No TypeScript language server \(vtsls\) is installed/);
   assert.match(html, /npm install -g @vtsls\/language-server@0\.3\.0/);
+  assert.match(html, /Python linter \(Ruff\)/);
+  assert.match(html, /uv tool install ruff==0\.15\.20/);
+  assert.doesNotMatch(html, /Opened [^.]*Python[^.]* files are checked live/);
   assert.match(html, /Opened Go files are checked live as you type/);
   assert.doesNotMatch(html, /Opened [^.]*TypeScript[^.]* files are checked live/);
   const buttons = renderedButtons(html).map(b => b.text);

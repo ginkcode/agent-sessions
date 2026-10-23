@@ -64,7 +64,8 @@ server requests were answered `-32601`.
   `.js/.mjs/.cjs` → `javascript`, `.jsx` → `javascriptreact`. `.svelte`, `.go`, `.json` and
   everything else are **not owned** (CD-24 refines Svelte). `TSPlan.Documents` also requires the file
   to sit under a discovered contained package root; there is no parent promotion.
-- **Package discovery** (`discoverTSPackages`): bounded rooted walk (4096 entries, depth 32, 48
+- **Package discovery** (`discoverTSPackages`, on the walker `discoverProjectDirs` shared with the
+  [Ruff adapter](code-diagnostics-python.md)): bounded rooted walk (4096 entries, depth 32, 48
   packages, 192 config files). A directory with `package.json`, `tsconfig.json` or `jsconfig.json` is
   a package root; nested-only roots are fine. `node_modules` is skipped silently; hidden directories
   and symlinks are skipped ⇒ `partial`. `extends`/`references` are never read or followed, so
@@ -113,7 +114,8 @@ open/change/close and the shared normalizer:
 ## Production wiring (2026-10-23)
 
 `DiscoverLocalLive` replaces `DiscoverGoLive` on the local route. It registers
-gopls, vtsls, and Svelte as an unsupported placeholder, each with independent
+gopls, vtsls, Svelte as an unsupported placeholder, and Ruff for Python
+([code-diagnostics-python.md](code-diagnostics-python.md)), each with independent
 availability. vtsls is searched for in project `node_modules/.bin`, then in the
 reviewed executable directories: `PATH`, plus mise's `node/latest/bin` for
 Finder-launched apps. It is never searched for in editor caches. Its approval

@@ -32,6 +32,7 @@ test('approval choices expose canonical scope, tools and non-sandbox risk withou
   assert.match(live, /drafts are never saved/);
   assert.match(live, /Live diagnostics \(experimental\)/);
   assert.match(live, /vtsls for TypeScript\/JavaScript/);
+  assert.match(live, /Ruff for Python \(lint and syntax only, not type errors\)/);
   assert.match(live, /Svelte live diagnostics are not enabled/);
   const noLive = await render({ liveEnabled: true, approved: false, snapshot: { approval: { state: 'required' }, proposal: { fingerprint: 'fp', tools: [] } } });
   assert.match(noLive, /Only saved files are checked/, 'no live claim without a live provider');

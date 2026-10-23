@@ -305,16 +305,7 @@ func realNode(dir string) string {
 		return ""
 	}
 	real, err := filepath.EvalSymlinks(filepath.Join(dir, "node"))
-	if err != nil || filepath.Base(real) != "node" || !isExecutable(real) {
-		return ""
-	}
-	f, err := os.Open(real)
-	if err != nil {
-		return ""
-	}
-	defer func() { _ = f.Close() }()
-	head := make([]byte, 2)
-	if n, _ := io.ReadFull(f, head); n == 2 && string(head) == "#!" {
+	if err != nil || filepath.Base(real) != "node" || !isExecutable(real) || isScript(real) {
 		return ""
 	}
 	return real
@@ -407,23 +398,7 @@ func (p *TSPlan) Documents(sessions *SessionManager) SessionDocuments {
 }
 
 // covers reports whether a contained package directory is an ancestor of file.
-// No parent of the authorized root is ever considered.
-func (p *TSPlan) covers(file string) bool {
-	dir := path.Dir(file)
-	for {
-		check := dir
-		if dir == "." {
-			check = ""
-		}
-		if slices.Contains(p.packages, check) {
-			return true
-		}
-		if dir == "." || dir == "/" {
-			return false
-		}
-		dir = path.Dir(dir)
-	}
-}
+func (p *TSPlan) covers(file string) bool { return coversDir(p.packages, file) }
 
 // TSLanguageID is the extension ownership rule. .svelte (and everything else)
 // is deliberately not owned here; CD-24 refines Svelte ownership.
@@ -448,6 +423,17 @@ type tsWorkspace struct {
 	partial           bool
 }
 
+// projectMarkers selects the files that make a directory a project root.
+// Every configs file found is also a configuration identity bound into
+// approval; plain markers are not read by the server and are not bound.
+// skipDir names dependency trees that are skipped silently.
+type projectMarkers struct {
+	configs, plain []string
+	skipDir        []string
+}
+
+var tsProjectMarkers = projectMarkers{configs: []string{"package.json", "tsconfig.json", "jsconfig.json"}, skipDir: []string{"node_modules"}}
+
 // discoverTSPackages walks only inside the authorized root with bounded rooted
 // reads. A directory containing package.json, tsconfig.json or jsconfig.json is
 // a package root. The selected directory is never promoted to a parent package
@@ -455,10 +441,17 @@ type tsWorkspace struct {
 // directories and symlinks are skipped (partial). tsconfig "extends" and
 // "references" are not followed, so sibling/out-of-root projects are never read.
 func discoverTSPackages(root AuthorizedRoot) (tsWorkspace, error) {
+	return discoverProjectDirs(root, tsProjectMarkers)
+}
+
+// discoverProjectDirs is the bounded contained walk shared by adapters. Hidden
+// directories and symlinks are skipped and mark the result partial; marker
+// contents are never read here.
+func discoverProjectDirs(root AuthorizedRoot, markers projectMarkers) (tsWorkspace, error) {
 	var w tsWorkspace
 	r, err := os.OpenRoot(root.Project().Root)
 	if err != nil {
-		return w, failure("unauthorized", "TypeScript discovery root cannot be opened")
+		return w, failure("unauthorized", "Project discovery root cannot be opened")
 	}
 	defer func() { _ = r.Close() }()
 	entries := 0
@@ -491,7 +484,7 @@ func discoverTSPackages(root AuthorizedRoot) (tsWorkspace, error) {
 			}
 			if d.IsDir() {
 				n := d.Name()
-				if n == "node_modules" { // dependencies, not project packages
+				if slices.Contains(markers.skipDir, n) { // dependencies, not project packages
 					continue
 				}
 				if strings.HasPrefix(n, ".") || depth >= 32 {
@@ -501,9 +494,11 @@ func discoverTSPackages(root AuthorizedRoot) (tsWorkspace, error) {
 				walk(rel, depth+1)
 				continue
 			}
-			switch d.Name() {
-			case "package.json", "tsconfig.json", "jsconfig.json":
-			default:
+			if slices.Contains(markers.plain, d.Name()) {
+				found = true
+				continue
+			}
+			if !slices.Contains(markers.configs, d.Name()) {
 				continue
 			}
 			if len(w.configs) >= maxTSConfigs {
@@ -532,6 +527,25 @@ func discoverTSPackages(root AuthorizedRoot) (tsWorkspace, error) {
 	return w, nil
 }
 
+// coversDir reports whether one of dirs (portable, "" for the root) is an
+// ancestor of file. No parent of the authorized root is ever considered.
+func coversDir(dirs []string, file string) bool {
+	dir := path.Dir(file)
+	for {
+		check := dir
+		if dir == "." {
+			check = ""
+		}
+		if slices.Contains(dirs, check) {
+			return true
+		}
+		if dir == "." || dir == "/" {
+			return false
+		}
+		dir = path.Dir(dir)
+	}
+}
+
 // ---- notification bridge -----------------------------------------------------
 
 // TSBridge turns session notifications into document-set replacements. It
@@ -557,34 +571,45 @@ func (b *TSBridge) note(s string) {
 
 // Handle must be quick and runs on the session goroutine.
 func (b *TSBridge) Handle(n SessionNotification) {
-	if n.Project != b.root.Project() || n.ProviderID != tsProviderID || n.Method != "textDocument/publishDiagnostics" {
+	// Config files (tsconfig.json) and other unowned paths receive pushes from
+	// real servers; they are not JS/TS documents.
+	handleOwnedPush(b.root, b.sink, n, tsProviderID, partialTSNotice, func(file string) bool {
+		_, owned := TSLanguageID(file)
+		return owned
+	}, b.note)
+}
+
+// handleOwnedPush is the shared opened-documents bridge: one provider's
+// publishDiagnostics for owned files become document-set replacements through
+// the CD-22 normalizer. Unowned, unopened, closed and out-of-root files never
+// create state.
+func handleOwnedPush(root AuthorizedRoot, sink goplsSink, n SessionNotification, providerID, partial string, owned func(string) bool, note func(string)) {
+	if n.Project != root.Project() || n.ProviderID != providerID || n.Method != "textDocument/publishDiagnostics" {
 		return
 	}
-	pub, err := normalizeLSPPublication(b.root, n.Params, tsProviderID)
+	pub, err := normalizeLSPPublication(root, n.Params, providerID)
 	switch {
 	case errors.Is(err, errGoplsOutside):
-		b.note(OutsideRootNotice)
+		note(OutsideRootNotice)
 		return
 	case errors.Is(err, errGoplsUnknown):
 		return
 	case err != nil:
-		b.note(partialTSNotice)
+		note(partial)
 		return
 	}
-	// Config files (tsconfig.json) and other unowned paths receive pushes from
-	// real servers; they are not JS/TS documents.
-	if _, owned := TSLanguageID(pub.Path); !owned {
+	if !owned(pub.Path) {
 		return
 	}
-	if err := publishLivePublication(b.sink, n, pub); err != nil {
+	if err := publishLivePublication(sink, n, pub); err != nil {
 		var e *Error
 		if !errors.As(err, &e) || (e.Code != "notFound" && e.Code != "staleContext" && e.Code != "unsupported") {
-			b.note(partialTSNotice)
+			note(partial)
 		}
 		return
 	}
 	if pub.Dropped > 0 || pub.Partial || pub.Truncated {
-		b.note(partialTSNotice)
+		note(partial)
 	}
 }
 

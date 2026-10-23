@@ -142,6 +142,10 @@ func (d *LiveDocuments) notification(n SessionNotification) {
 		b := NewSvelteBridge(p.root, d.manager)
 		b.Notice = notice
 		b.Handle(n)
+	case "ruff":
+		b := NewRuffBridge(p.root, d.manager)
+		b.Notice = notice
+		b.Handle(n)
 	}
 }
 

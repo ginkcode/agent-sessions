@@ -270,7 +270,7 @@ func (e *Engine) AttachCodeDiagnostics(ctx context.Context, dir string, version 
 					discoveryErr = o.live.Register(root, registrations)
 				}
 				if discoveryErr != nil {
-					registrations = []cd.Registration{{ProviderID: "gopls", Availability: "unsupported"}, {ProviderID: "typescript", Availability: "unsupported"}, {ProviderID: "svelte", Availability: "unsupported"}}
+					registrations = []cd.Registration{{ProviderID: "gopls", Availability: "unsupported"}, {ProviderID: "typescript", Availability: "unsupported"}, {ProviderID: "svelte", Availability: "unsupported"}, {ProviderID: "ruff", Availability: "unsupported"}}
 				}
 			}
 			if err := o.manager.CompleteDiscovery(s.Context, registrations); err != nil {

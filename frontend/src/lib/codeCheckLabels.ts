@@ -9,8 +9,9 @@ const toolNames: Record<string, string> = {
   typescript: 'TypeScript/JavaScript language server (vtsls)',
   svelte: 'Svelte language server',
   'svelte-check': 'svelte-check',
+  ruff: 'Python linter (Ruff)',
 };
-const languages: Record<string, string> = { gopls: 'Go', 'go-syntax': 'Go', 'go-vet': 'Go', typescript: 'TypeScript/JavaScript', svelte: 'Svelte', 'svelte-check': 'Svelte' };
+const languages: Record<string, string> = { gopls: 'Go', 'go-syntax': 'Go', 'go-vet': 'Go', typescript: 'TypeScript/JavaScript', svelte: 'Svelte', 'svelte-check': 'Svelte', ruff: 'Python' };
 
 export function toolName(providerId: string): string {
   if (toolNames[providerId]) return toolNames[providerId];

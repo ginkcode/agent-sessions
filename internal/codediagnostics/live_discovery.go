@@ -69,13 +69,14 @@ func DiscoverLive(root AuthorizedRoot, env LiveEnvironment) ([]Registration, err
 // LocalLiveEnvironment is the production local route's reviewed host metadata.
 type LocalLiveEnvironment struct {
 	GoPath []string // gopls search, the selected toolchain's bin first
-	Path   []string // reviewed executable directories for vtsls and node
+	Path   []string // reviewed executable directories for vtsls, node and ruff
 	Go     GoplsEnvironment
 	TS     TSEnvironment
+	Ruff   RuffEnvironment
 }
 
-// DiscoverLocalLive is the production local live route's discovery: gopls and
-// vtsls (CD-23), each with independent availability. Svelte has no verified
+// DiscoverLocalLive is the production local live route's discovery: gopls,
+// vtsls (CD-23) and Ruff for Python, each with independent availability. Svelte has no verified
 // language server (CD-24), so it is registered as an independently unsupported
 // opened-documents provider and never offered for execution. Metadata only.
 func DiscoverLocalLive(root AuthorizedRoot, env LocalLiveEnvironment) ([]Registration, error) {
@@ -90,8 +91,13 @@ func DiscoverLocalLive(root AuthorizedRoot, env LocalLiveEnvironment) ([]Registr
 	if err != nil {
 		return nil, err
 	}
+	ruff, err := DiscoverRuff(root, env.Path, env.Ruff)
+	if err != nil {
+		return nil, err
+	}
 	goConfig, _ := goPlan.Server()
 	tsConfig, _ := ts.Server()
+	ruffConfig, _ := ruff.Server()
 	svelte := ProviderState{
 		ProviderID: svelteLSProviderID, Availability: "unsupported", Phase: "idle", Freshness: "uncertain",
 		Coverage: Coverage{Kind: "openedDocuments", Roots: []string{}, Partial: true, ExternalChanges: CoverageExternalChanges},
@@ -106,6 +112,10 @@ func DiscoverLocalLive(root AuthorizedRoot, env LocalLiveEnvironment) ([]Registr
 			return lang, ok && ts.covers(file)
 		}),
 		liveRegistration(svelte, ServerConfig{}, nil),
+		liveRegistration(ruff.Provider(), ruffConfig, func(file string) (string, bool) {
+			lang, ok := PythonLanguageID(file)
+			return lang, ok && ruff.covers(file)
+		}),
 	}, nil
 }
 

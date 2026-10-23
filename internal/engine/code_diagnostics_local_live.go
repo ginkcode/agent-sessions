@@ -79,7 +79,8 @@ func localGoRoot(dirs []string) string {
 // gopls is searched next to the selected toolchain first so a matching install
 // wins over an unrelated one earlier on PATH. vtsls and node use the plain
 // reviewed directories; node is taken from a global vtsls install's prefix
-// when there is one.
+// when there is one. ruff uses the same directories (uv tool and pipx link
+// into ~/.local/bin).
 func discoverLocalLive(root cd.AuthorizedRoot) ([]cd.Registration, error) {
 	home, err := os.UserHomeDir()
 	if err != nil || !filepath.IsAbs(home) {
@@ -100,7 +101,8 @@ func discoverLocalLive(root cd.AuthorizedRoot) ([]cd.Registration, error) {
 	}
 	return cd.DiscoverLocalLive(root, cd.LocalLiveEnvironment{
 		GoPath: search, Path: dirs,
-		Go: cd.GoplsEnvironment{Home: home, Cache: filepath.Join(cache, "go-build"), ModuleCache: filepath.Join(home, "go", "pkg", "mod"), GoRoot: goroot},
-		TS: cd.TSEnvironment{Home: home},
+		Go:   cd.GoplsEnvironment{Home: home, Cache: filepath.Join(cache, "go-build"), ModuleCache: filepath.Join(home, "go", "pkg", "mod"), GoRoot: goroot},
+		TS:   cd.TSEnvironment{Home: home},
+		Ruff: cd.RuffEnvironment{Home: home},
 	})
 }

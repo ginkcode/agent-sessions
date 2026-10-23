@@ -1,0 +1,315 @@
+{
+  "tool": "ruff",
+  "provenance": "observed (driven by a Python stdio script, not by the Go adapter; the Go adapter smoke is internal/engine/code_diagnostics_ruff_smoke_test.go)",
+  "platform": "darwin/arm64",
+  "versions": {
+    "ruff": "0.15.20"
+  },
+  "location": "uv tool install by the user (~/.local/share/uv/tools/ruff/bin/ruff, linked from ~/.local/bin/ruff); wheel RECORD sha256 matches the binary.",
+  "sanitization": "Disposable synthetic project in a temp dir replaced with /fixture; stderr log lines omitted; message text kept verbatim (no user content).",
+  "argv": [
+    "/installed/ruff",
+    "server"
+  ],
+  "env": {
+    "HOME": "<empty temp dir>",
+    "PATH": "/usr/bin:/bin"
+  },
+  "cwd": "/fixture (the project root; no workspaceFolders sent)",
+  "fixture": {
+    "pyproject.toml": "[project]\nname = \"smoke\"\nversion = \"0\"\n\n[tool.ruff]\nextend = \"../outside/ruff.toml\"\n",
+    "../outside/ruff.toml": "line-length = 20\n[lint]\nextend-select = [\"E501\"]\n",
+    "drafts": {
+      "a.py v1": "x = (1\n",
+      "a.py v2": "x = 1\n",
+      "b.py v1": "s = '😀'; import os\nyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy = 1\n"
+    }
+  },
+  "client": {
+    "capabilities": {
+      "general": {
+        "positionEncodings": [
+          "utf-16"
+        ]
+      }
+    },
+    "workspaceFolders": null,
+    "serverRequests": "none observed"
+  },
+  "initialize": {
+    "serverInfo": {
+      "name": "ruff",
+      "version": "0.15.20"
+    },
+    "capabilities": {
+      "positionEncoding": "utf-16",
+      "textDocumentSync": {
+        "change": 2,
+        "openClose": true,
+        "willSave": false,
+        "willSaveWaitUntil": false
+      },
+      "diagnosticProvider": {
+        "identifier": "Ruff",
+        "interFileDependencies": false,
+        "workDoneProgress": true,
+        "workspaceDiagnostics": false
+      }
+    }
+  },
+  "shutdown": {
+    "result": null,
+    "exitCode": 0
+  },
+  "notes": [
+    "Ruff advertises diagnosticProvider (pull) but pushes publishDiagnostics anyway, even to a client that declares neither publishDiagnostics nor pull diagnostics.",
+    "Every push carries the document version, so matching results are current and drawn inline.",
+    "A file that does not parse reports only invalid-syntax (severity 1); lint findings are severity 2 with string codes, codeDescription and data (fix/noqa edits, which the bridge ignores). Messages may be multi-line.",
+    "The fix edit and didClose each produced an empty publication.",
+    "E501 at line-length 20 came from the extend target outside the project: configuration outside the root is applied. Only the project's own pyproject.toml/ruff.toml/.ruff.toml are bound into approval.",
+    "Without dynamic registration Ruff does not reload configuration on its own; a changed bound config changes the approval fingerprint instead.",
+    "No server->client requests; nothing written to the project or HOME; no .ruff_cache.",
+    "A non-canonical temp path (/var vs /private/var) made Ruff silently ignore the project config; the adapter launches in the canonical authorized root."
+  ],
+  "scenarios": [
+    {
+      "id": "open-syntax-error",
+      "step": "open a.py broken",
+      "publications": [
+        {
+          "params": {
+            "diagnostics": [
+              {
+                "code": "invalid-syntax",
+                "message": "unexpected EOF while parsing",
+                "range": {
+                  "end": {
+                    "character": 0,
+                    "line": 1
+                  },
+                  "start": {
+                    "character": 0,
+                    "line": 1
+                  }
+                },
+                "severity": 1,
+                "source": "Ruff",
+                "tags": []
+              }
+            ],
+            "uri": "file:///fixture/a.py",
+            "version": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "fix-clears",
+      "step": "change a.py fixed",
+      "publications": [
+        {
+          "params": {
+            "diagnostics": [],
+            "uri": "file:///fixture/a.py",
+            "version": 2
+          }
+        }
+      ]
+    },
+    {
+      "id": "open-lint",
+      "step": "open b.py unused import + non-BMP + long line",
+      "publications": [
+        {
+          "params": {
+            "diagnostics": [
+              {
+                "code": "E702",
+                "codeDescription": {
+                  "href": "https://docs.astral.sh/ruff/rules/multiple-statements-on-one-line-semicolon"
+                },
+                "data": {
+                  "code": "E702",
+                  "edits": [],
+                  "noqa_edit": {
+                    "newText": "  # noqa: E702\n",
+                    "range": {
+                      "end": {
+                        "character": 0,
+                        "line": 1
+                      },
+                      "start": {
+                        "character": 19,
+                        "line": 0
+                      }
+                    }
+                  },
+                  "title": "multiple-statements-on-one-line-semicolon"
+                },
+                "message": "Multiple statements on one line (semicolon)",
+                "range": {
+                  "end": {
+                    "character": 9,
+                    "line": 0
+                  },
+                  "start": {
+                    "character": 8,
+                    "line": 0
+                  }
+                },
+                "severity": 2,
+                "source": "Ruff",
+                "tags": []
+              },
+              {
+                "code": "E402",
+                "codeDescription": {
+                  "href": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+                },
+                "data": {
+                  "code": "E402",
+                  "edits": [],
+                  "noqa_edit": {
+                    "newText": "  # noqa: E402\n",
+                    "range": {
+                      "end": {
+                        "character": 0,
+                        "line": 1
+                      },
+                      "start": {
+                        "character": 19,
+                        "line": 0
+                      }
+                    }
+                  },
+                  "title": "module-import-not-at-top-of-file"
+                },
+                "message": "Module level import not at top of file",
+                "range": {
+                  "end": {
+                    "character": 19,
+                    "line": 0
+                  },
+                  "start": {
+                    "character": 10,
+                    "line": 0
+                  }
+                },
+                "severity": 2,
+                "source": "Ruff",
+                "tags": []
+              },
+              {
+                "code": "F401",
+                "codeDescription": {
+                  "href": "https://docs.astral.sh/ruff/rules/unused-import"
+                },
+                "data": {
+                  "code": "F401",
+                  "edits": [
+                    {
+                      "newText": "",
+                      "range": {
+                        "end": {
+                          "character": 19,
+                          "line": 0
+                        },
+                        "start": {
+                          "character": 10,
+                          "line": 0
+                        }
+                      }
+                    }
+                  ],
+                  "noqa_edit": {
+                    "newText": "  # noqa: F401\n",
+                    "range": {
+                      "end": {
+                        "character": 0,
+                        "line": 1
+                      },
+                      "start": {
+                        "character": 19,
+                        "line": 0
+                      }
+                    }
+                  },
+                  "title": "Remove unused import: `os`"
+                },
+                "message": "`os` imported but unused\n\nhelp: Remove unused import: `os`",
+                "range": {
+                  "end": {
+                    "character": 19,
+                    "line": 0
+                  },
+                  "start": {
+                    "character": 17,
+                    "line": 0
+                  }
+                },
+                "severity": 2,
+                "source": "Ruff",
+                "tags": [
+                  1
+                ]
+              },
+              {
+                "code": "E501",
+                "codeDescription": {
+                  "href": "https://docs.astral.sh/ruff/rules/line-too-long"
+                },
+                "data": {
+                  "code": "E501",
+                  "edits": [],
+                  "noqa_edit": {
+                    "newText": "  # noqa: E501\n",
+                    "range": {
+                      "end": {
+                        "character": 0,
+                        "line": 2
+                      },
+                      "start": {
+                        "character": 34,
+                        "line": 1
+                      }
+                    }
+                  },
+                  "title": "line-too-long"
+                },
+                "message": "Line too long (34 > 20)",
+                "range": {
+                  "end": {
+                    "character": 34,
+                    "line": 1
+                  },
+                  "start": {
+                    "character": 20,
+                    "line": 1
+                  }
+                },
+                "severity": 2,
+                "source": "Ruff",
+                "tags": []
+              }
+            ],
+            "uri": "file:///fixture/b.py",
+            "version": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "close-clears",
+      "step": "close b.py",
+      "publications": [
+        {
+          "params": {
+            "diagnostics": [],
+            "uri": "file:///fixture/b.py",
+            "version": 1
+          }
+        }
+      ]
+    }
+  ]
+}
