@@ -15,6 +15,13 @@ func (s *stubRemoteBackend) CreateDirectory(_ context.Context, dir, path, name s
 	return nil
 }
 
+func (s *stubRemoteBackend) CreateFile(_ context.Context, dir, path, name string) error {
+	if dir != "/project" || path != "folder" || name != "new.go" {
+		return errors.New("wrong create file arguments")
+	}
+	return nil
+}
+
 func TestCreateDirectoryHostRouting(t *testing.T) {
 	transport := newFakeArtifactTransport()
 	a := setupRemoteApp(&stubRemoteBackend{transport: transport})
@@ -25,11 +32,20 @@ func TestCreateDirectoryHostRouting(t *testing.T) {
 	if err := a.CreateDirectory("/project", "folder/file", "new", "remote-server"); err != nil {
 		t.Fatal(err)
 	}
+	if err := a.CreateFile("/project", "folder", "new.go", ""); !errors.Is(err, ErrSaveHostChanged) {
+		t.Fatalf("wrong host: %v", err)
+	}
+	if err := a.CreateFile("/project", "folder", "new.go", "remote-server"); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func TestCreateDirectoryOffline(t *testing.T) {
 	b := offlineBackend{}
 	if err := b.CreateDirectory(context.Background(), "root", "file", "new"); !errors.Is(err, rpc.ErrDisconnected) {
+		t.Fatalf("offline: %v", err)
+	}
+	if err := b.CreateFile(context.Background(), "root", "file", "new"); !errors.Is(err, rpc.ErrDisconnected) {
 		t.Fatalf("offline: %v", err)
 	}
 }

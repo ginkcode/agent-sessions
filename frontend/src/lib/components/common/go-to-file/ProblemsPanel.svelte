@@ -41,7 +41,7 @@
   let region = $state<HTMLElement>();
   let details = $state<HTMLElement>();
   let height = $state(savedHeight());
-  let toggle: HTMLButtonElement;
+  let statusButton: HTMLButtonElement;
   let summary = $derived(codeCheckSummary(checks));
   let findings = $derived(checks.findings ?? []);
   let rows = $derived(orderedProblems(findings, enabled));
@@ -51,8 +51,15 @@
   let paths = $derived([...new Set(rows.map(f => f.diagnostic.path))]);
   let visible = $derived(rows.filter(f => !collapsed.includes(f.diagnostic.path)));
   let ownedFocus = false;
+  let section: HTMLElement;
   function toggleDetails() {
     ({ expanded, settingsOpen } = toggleDisclosure({ expanded, settingsOpen }, summary, findings.length));
+  }
+  /** The Ctrl+Shift+M shortcut. Hiding keeps focus in the panel, on the status. */
+  export function toggle() {
+    const inside = section?.contains(document.activeElement);
+    toggleDetails();
+    if (!expanded && inside) void tick().then(() => statusButton?.focus());
   }
   // Dragging the top edge up grows the details; the first drag starts from the shown height.
   function resize(delta: number): number {
@@ -78,7 +85,7 @@
   $effect(() => {
     if (selected && !visible.some(f => diagnosticKey(f.diagnostic) === selected)) {
       selected = visible[0] ? diagnosticKey(visible[0].diagnostic) : undefined;
-      if (ownedFocus) void tick().then(() => { (region?.querySelector<HTMLButtonElement>('[data-problem-key]') ?? toggle)?.focus(); });
+      if (ownedFocus) void tick().then(() => { (region?.querySelector<HTMLButtonElement>('[data-problem-key]') ?? statusButton)?.focus(); });
     }
   });
   const span = (d: CodeDiagnostic) => d.range ? `${d.range.start.line + 1}:${d.range.start.character + 1}–${d.range.end.line + 1}:${d.range.end.character + 1}` : 'File-level';
@@ -86,15 +93,24 @@
   const notCurrent = (f: (typeof findings)[number]) => f.entries.every(e => e.diagnostic.freshness !== 'current');
 </script>
 
-<section class="problems" class:open={expanded} aria-label="Code checks">
+<section bind:this={section} class="problems" class:open={expanded} aria-label="Code checks">
   {#if expanded}<Splitter direction="vertical" ariaLabel="Resize code check details" onResize={resize} />{/if}
   <div class="status-bar">
-    <button bind:this={toggle} type="button" class="status tone-{summary.tone}" aria-expanded={expanded} aria-controls={regionId}
+    <button bind:this={statusButton} type="button" class="status tone-{summary.tone}" aria-expanded={expanded} aria-controls={regionId}
       title={summary.title} aria-busy={checks.status === 'attaching' || !!checks.running}
       onclick={toggleDetails}>
       <span class="chevron" class:open={expanded} aria-hidden="true">▸</span>
       <span class="dot" aria-hidden="true"></span>
       <span role="status" aria-live="polite">{summary.text}</span>
+    </button>
+    <button type="button" class="panel-toggle" class:active={expanded} aria-controls={regionId}
+      title={expanded ? 'Hide problems (Ctrl+Shift+M)' : 'Show problems (Ctrl+Shift+M)'}
+      aria-label={expanded ? 'Hide problems' : 'Show problems'} aria-pressed={expanded} aria-keyshortcuts="Control+Shift+M"
+      onclick={toggleDetails}>
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <!-- The terminal's hide chevron; it points up while there is something to show. -->
+        <path d={expanded ? 'm6 9 6 6 6-6' : 'm6 15 6-6 6 6'} />
+      </svg>
     </button>
   </div>
   <div id={regionId} bind:this={details} class="details" class:sized={height !== undefined} style:height={height ? `${height}px` : undefined}
@@ -156,6 +172,9 @@
   .status-bar { display: flex; align-items: center; padding: 0 8px; min-height: 24px; }
   .status { display: inline-flex; align-items: center; gap: 6px; padding: 2px 6px; border-radius: 4px; color: var(--text-secondary); white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
   .status:hover { background: var(--hover-bg); color: var(--text-primary); }
+  .panel-toggle { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; width: 24px; height: 24px; margin-left: auto; padding: 0; color: var(--text-secondary); }
+  .panel-toggle:hover { background: var(--hover-bg); color: var(--text-primary); }
+  .panel-toggle.active { color: var(--accent-color); }
   .chevron { display: inline-block; font-size: 0.7rem; transition: transform 0.1s; }
   .chevron.open { transform: rotate(90deg); }
   .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text-muted); flex-shrink: 0; }

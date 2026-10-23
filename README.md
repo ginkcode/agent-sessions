@@ -71,10 +71,11 @@ other machines over SSH or in WSL distributions.
   **Upload File…** (remote) to browse for a file on your computer and copy it
   into that directory. Click the project directory name in the dialog header
   to add a file at the project root. Existing files are never overwritten.
-- Choose **New Folder…** from a directory's context menu to create a folder
-  locally or remotely. Right-click empty space in the file tree (or click the
-  project name in the header) for project-root actions. Empty folders appear
-  in the tree too.
+- Choose **New File…** or **New Folder…** from a directory's context menu to
+  create an empty file or a folder locally or remotely. A new file opens in its
+  own tab. Right-click empty space in the file tree (or click the project name
+  in the header) for project-root actions. Empty folders appear in the tree
+  too.
 - Right-click a file or directory in the Go to File tree and choose **Rename…**
   to change its name, locally or remotely. Enter a name, not a path; renaming
   stays in the same parent directory and never overwrites an existing item.

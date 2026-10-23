@@ -13,13 +13,26 @@ import (
 // directory. An empty rel selects the project root. Like saves and renames it
 // holds the save lock, rejects links below the root, and never replaces entries.
 func CreateDirectory(ctx context.Context, policy EditPolicy, root, rel, name string) error {
+	return createEntry(ctx, policy, root, rel, name, true)
+}
+
+// CreateFile creates one missing empty file on the same terms as
+// CreateDirectory.
+func CreateFile(ctx context.Context, policy EditPolicy, root, rel, name string) error {
+	return createEntry(ctx, policy, root, rel, name, false)
+}
+
+func createEntry(ctx context.Context, policy EditPolicy, root, rel, name string, directory bool) error {
 	unlock, err := lockSaves(ctx)
 	if err != nil {
 		return err
 	}
 	defer unlock()
 	if name == "" || name == "." || name == ".." || strings.ContainsAny(name, "/\\\x00") || !filepath.IsLocal(name) || filepath.Base(name) != name {
-		return fmt.Errorf("create directory requires a basename")
+		if directory {
+			return fmt.Errorf("create directory requires a basename")
+		}
+		return fmt.Errorf("create file requires a basename")
 	}
 	// Validate before joining: Join would erase traversal or an absolute parent.
 	if rel != "" && (editHasParentComponent(rel) || !filepath.IsLocal(rel)) {
@@ -33,14 +46,14 @@ func CreateDirectory(ctx context.Context, policy EditPolicy, root, rel, name str
 		}
 	}
 	target := filepath.Join(rel, name)
-	if err := policy.checkTarget(root, target, true, true); err != nil {
+	if err := policy.checkTarget(root, target, true, directory); err != nil {
 		return err
 	}
 	real, err := filepath.EvalSymlinks(root)
 	if err != nil {
 		return err
 	}
-	if err := policy.checkTarget(real, target, true, true); err != nil {
+	if err := policy.checkTarget(real, target, true, directory); err != nil {
 		return err
 	}
 	parent, err := os.OpenRoot(real)
@@ -81,12 +94,20 @@ func CreateDirectory(ctx context.Context, policy EditPolicy, root, rel, name str
 		parent.Close()
 		parent = next
 	}
-	if err := policy.checkTarget(root, target, true, true); err != nil {
+	if err := policy.checkTarget(root, target, true, directory); err != nil {
 		return err
 	}
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	// Mkdir, not MkdirAll, atomically refuses any existing leaf, including links.
-	return parent.Mkdir(name, 0700)
+	// Mkdir, not MkdirAll, and exclusive creation atomically refuse any
+	// existing leaf, including links.
+	if directory {
+		return parent.Mkdir(name, 0700)
+	}
+	f, err := parent.OpenFile(name, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
+	if err != nil {
+		return err
+	}
+	return f.Close()
 }

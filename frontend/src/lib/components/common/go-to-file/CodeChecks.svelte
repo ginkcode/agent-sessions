@@ -2,7 +2,7 @@
   // Code check settings: approval, runs and optional setup. Mounted only inside the
   // disclosed bottom details; the compact status button owns the summary.
   import { codeDiagnostics as checks } from '../../../stores/codeDiagnostics.svelte';
-  import { liveLanguages, providerMode, providerStatus, remoteHost, syncFailureReason, toolName } from '../../../codeCheckLabels';
+  import { liveLanguages, proposalRows, providerMode, providerStatus, remoteHost, syncFailureReason, toolName } from '../../../codeCheckLabels';
   import { MANAGED_TOOL_FOR_PROVIDER, type ManagedToolName } from '../../../managedTools';
   import type { CodeDiagnosticsProvider } from '../../../codeDiagnostics';
   let { blocked = false }: { blocked?: boolean } = $props();
@@ -35,6 +35,7 @@
   /** The tool whose review card is open; its Install button is replaced by the card. */
   let reviewing = $derived(checks.managed?.state === 'proposed' && !checks.managedDismissed && !checks.autoPending ? checks.managed.proposal?.tool : undefined);
   // With nothing approvable, the approval card leads with the installs that would change that.
+  let proposedRows = $derived(proposalRows(checks.snapshot?.proposal?.tools ?? []));
   let installFirst = $derived(checks.snapshot?.proposal?.fingerprint ? [] : checks.providers.flatMap(p => offerFor(p) ?? []).filter(t => t !== reviewing));
   /** Why a server is missing and how to get it, when no Install button says so; Svelte has no managed install. */
   function setupNote(provider: CodeDiagnosticsProvider): string {
@@ -56,6 +57,15 @@
       : 'Not found';
     return [{ providerId: p.providerId, text }];
   }));
+  /** One count pill per checker status, in first-seen order, for the collapsed checker list. */
+  let statusCounts = $derived([...checks.providers.reduce((counts, p) => {
+    const { text, tone } = providerStatus(p);
+    const count = counts.get(text);
+    counts.set(text, { text, tone, count: (count?.count ?? 0) + 1 });
+    return counts;
+  }, new Map<string, { text: string; tone: string; count: number }>()).values()]);
+  // The list opens by itself only when a checker offers an install or has failed.
+  let checkersNeedAttention = $derived(checks.providers.some(p => (checks.status === 'ready' && offerFor(p) && offerFor(p) !== reviewing) || p.failure || p.phase === 'failed'));
   /** Brings a card that appears after a click into view in the scrolled panel. */
   function reveal(node: HTMLElement) { node.scrollIntoView({ block: 'nearest' }); }
   const installWork: Record<ManagedToolName, string> = {
@@ -96,21 +106,13 @@
       {:else}
         <div class="card">
           <p><strong>Enable code checks for this project?</strong></p>
+          <!-- One line of risk stays visible; the full explanation and tool list are a click away. -->
           {#if checks.snapshot.proposal && !checks.snapshot.proposal.tools.length}
-            <p>Only built-in checks are available on this host. They run no program: the app reads saved project files and watches them for changes. No external checker was found, so type and vet errors are not reported.</p>
+            <p>Only built-in checks are available on this host; they run no program.</p>
           {:else}
-            <p>Code checks run the listed tools on this host with your account's permissions. Project configuration and plugins can execute code. Tools may read files and dependencies, access the network, and write caches or other files. This is not a sandbox or a read-only guarantee. Only approve projects and tools you trust.</p>
+            <p>Runs {proposedRows.length === 1 ? 'one tool' : `${proposedRows.length} tools`} on this host with your account's permissions. This is not a sandbox; only approve projects you trust.</p>
           {/if}
-          <p class="muted">{checks.liveEnabled && proposedLive ? `Check Project runs on saved files. After approval, opened ${proposedLive} files are also sent unsaved to the listed language servers for live diagnostics; drafts are never saved.` : 'Only saved files are checked; drafts are never saved or checked automatically.'} Session approval lasts until this connection or app session ends. Always allow remembers this host, project and tool/config identity; relevant changes require approval again. Approval does not start a check.</p>
           {#if checks.snapshot.approval.state === 'revoked'}<p>Permission revoked. Pending and running checks are being canceled; previous findings have been cleared.</p>{/if}
-          <ul class="rows">
-            {#each checks.snapshot.proposal?.analyzers ?? [] as analyzer}
-              <li><span class="name">{toolName(analyzer.providerId)}</span><span class="pill">built-in</span><span class="detail">{analyzer.description}</span></li>
-            {/each}
-            {#each checks.snapshot.proposal?.tools ?? [] as tool}
-              <li><span class="name">{toolName(tool.providerId)}</span><span class="detail mono">{tool.providerId}: {tool.executable} · Configuration: {tool.configPaths.join(', ') || 'none discovered'}</span></li>
-            {/each}
-          </ul>
           {#if checks.approvalBlocker}<p role="status" class="muted">{checks.approvalBlocker}</p>{/if}
           {#if installFirst.length}<p>Install a language server on {where} first, or install one yourself and rediscover checkers. Installing asks for confirmation and approves nothing.</p>{/if}
           <div class="actions">
@@ -120,6 +122,23 @@
             {#if !checks.snapshot.proposal?.fingerprint}{@render rediscoverButton()}{/if}
             <button type="button" disabled={!!checks.pending} onclick={() => (dismissed = true)}>Not now</button>
           </div>
+          <details>
+            <summary>What will run and what approval means</summary>
+            {#if checks.snapshot.proposal && !checks.snapshot.proposal.tools.length}
+              <p>The app reads saved project files and watches them for changes. No external checker was found, so type and vet errors are not reported.</p>
+            {:else}
+              <p>Project configuration and plugins can execute code. Tools may read files and dependencies, access the network, and write caches or other files. This is not a sandbox or a read-only guarantee.</p>
+            {/if}
+            <p class="muted">{checks.liveEnabled && proposedLive ? `Check Project runs on saved files. After approval, opened ${proposedLive} files are also sent unsaved to the listed language servers for live diagnostics; drafts are never saved.` : 'Only saved files are checked; drafts are never saved or checked automatically.'} Session approval lasts until this connection or app session ends. Always allow remembers this host, project and tool/config identity; relevant changes require approval again. Approval does not start a check.</p>
+            <ul class="rows">
+              {#each checks.snapshot.proposal?.analyzers ?? [] as analyzer}
+                <li><span class="name">{toolName(analyzer.providerId)}</span><span class="pill">built-in</span><span class="detail">{analyzer.description}</span></li>
+              {/each}
+              {#each proposedRows as row (row.executable)}
+                <li><span class="name" title={row.name}>{row.name}</span>{#if row.uses > 1}<span class="pill">{row.uses} workspaces</span>{/if}<span class="detail mono">{row.executable} · Configuration: {row.configPaths.join(', ') || 'none discovered'}</span></li>
+              {/each}
+            </ul>
+          </details>
         </div>
       {/if}
     {:else}
@@ -191,30 +210,32 @@
       </div>
     {/if}
     {#if checks.providers.length}
-      <h4>Checkers{checks.partial ? ' · partial coverage' : ''}{checks.truncated ? ' · truncated' : ''}</h4>
-      <ul class="rows">
-        {#each checks.providers as provider (provider.providerId)}
-          {@const status = providerStatus(provider)}
-          {@const note = setupNote(provider)}
-          {@const offer = checks.status === 'ready' ? offerFor(provider) : undefined}
-          <li>
-            <span class="name">{toolName(provider.providerId)}</span>
-            <span class="pill tone-{status.tone}">{status.text}</span>
-            <span class="detail">{providerMode(provider)}{provider.freshness !== 'current' && provider.availability === 'available' ? ` · ${provider.freshness}` : ''}</span>
-            {#if offer && offer !== reviewing}{@render installButton(offer)}{/if}
-            {#if checks.approved && provider.phase === 'failed' && provider.availability === 'available' && provider.coverage.kind === 'savedProject'}
-              <button type="button" disabled={blocked || !checks.canRetry(provider.providerId)} onclick={() => perform(() => checks.retry(provider.providerId))}>Retry {provider.providerId}</button>
-            {/if}
-            {#if provider.failure}<p class="sub wrapped">{provider.failure.message} (retained findings are not a successful check)</p>{/if}
-            {#if provider.phase === 'canceled'}<p class="sub">Check canceled; retained findings may be stale.</p>{/if}
-            {#if checks.approved && provider.phase === 'failed' && provider.availability === 'available' && provider.coverage.kind !== 'savedProject'}
-              <p class="sub">No provider restart action is supported here. A failed session can be recreated by a subsequent document open; reopening in a surviving session may remain uncertain until a new isolated session. Refresh check status only reads status.</p>
-            {/if}
-            {#if provider.availability !== 'available' && note}<p class="sub">{note}</p>{/if}
-            {#if provider.notice}<p class="sub wrapped">{provider.notice}</p>{/if}
-          </li>
-        {/each}
-      </ul>
+      <details class="checkers" open={checkersNeedAttention}>
+        <summary><span class="heading">Checkers</span>{#each statusCounts as s (s.text)}<span class="pill tone-{s.tone}">{s.count} {s.text.toLowerCase()}</span>{/each}{#if checks.partial}<span class="muted">partial coverage</span>{/if}{#if checks.truncated}<span class="muted">truncated</span>{/if}</summary>
+        <ul class="rows">
+          {#each checks.providers as provider (provider.providerId)}
+            {@const status = providerStatus(provider)}
+            {@const note = setupNote(provider)}
+            {@const offer = checks.status === 'ready' ? offerFor(provider) : undefined}
+            <li>
+              <span class="name">{toolName(provider.providerId)}</span>
+              <span class="pill tone-{status.tone}">{status.text}</span>
+              <span class="detail">{providerMode(provider)}{provider.freshness !== 'current' && provider.availability === 'available' ? ` · ${provider.freshness}` : ''}</span>
+              {#if offer && offer !== reviewing}{@render installButton(offer)}{/if}
+              {#if checks.approved && provider.phase === 'failed' && provider.availability === 'available' && provider.coverage.kind === 'savedProject'}
+                <button type="button" disabled={blocked || !checks.canRetry(provider.providerId)} onclick={() => perform(() => checks.retry(provider.providerId))}>Retry {provider.providerId}</button>
+              {/if}
+              {#if provider.failure}<p class="sub wrapped">{provider.failure.message} (retained findings are not a successful check)</p>{/if}
+              {#if provider.phase === 'canceled'}<p class="sub">Check canceled; retained findings may be stale.</p>{/if}
+              {#if checks.approved && provider.phase === 'failed' && provider.availability === 'available' && provider.coverage.kind !== 'savedProject'}
+                <p class="sub">No provider restart action is supported here. A failed session can be recreated by a subsequent document open; reopening in a surviving session may remain uncertain until a new isolated session. Refresh check status only reads status.</p>
+              {/if}
+              {#if provider.availability !== 'available' && note}<p class="sub">{note}</p>{/if}
+              {#if provider.notice}<p class="sub wrapped">{provider.notice}</p>{/if}
+            </li>
+          {/each}
+        </ul>
+      </details>
       <details>
         <summary>Coverage details</summary>
         <ul class="tech">
@@ -261,7 +282,11 @@
 <style>
   .code-checks { padding: 6px 10px; font-size: 12px; line-height: 1.45; }
   p { margin: 4px 0; }
-  h4 { margin: 8px 0 2px; font-size: 12px; font-weight: 600; color: var(--text-secondary); }
+  .checkers > summary { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+  .checkers > summary::before { content: '▶'; font-size: 0.75em; }
+  .checkers[open] > summary::before { content: '▼'; }
+  .checkers > summary::-webkit-details-marker { display: none; }
+  .heading { font-weight: 600; }
   .muted { color: var(--text-secondary); }
   .mono { overflow-wrap: anywhere; font-family: var(--font-mono); font-size: 11px; }
   .wrapped { overflow-wrap: anywhere; white-space: pre-wrap; }

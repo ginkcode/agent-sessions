@@ -92,7 +92,23 @@ test('status button counts problems concisely; tooltip conveys scope without hos
   assert.match(status, /class="status tone-error/);
   assert.doesNotMatch(html, new RegExp(HOST));
   assert.doesNotMatch(html, /error in a\.go|SETTINGS-BODY/, 'collapsed: no issue rows or settings');
-  assert.equal(renderedButtons(html).length, 1, 'collapsed panel has exactly one control');
+  assert.equal(renderedButtons(html).length, 2, 'collapsed panel has only the status and the show/hide toggle');
+});
+
+test('an icon toggle shows or hides the problems, like the terminal button', async () => {
+  const toggle = html => /<button[^>]*class="panel-toggle[^"]*"[^>]*>/.exec(html)?.[0] ?? '';
+  const hidden = toggle(await renderPanel({ snapshot: approved }));
+  assert.match(hidden, /aria-pressed="false"/);
+  assert.match(hidden, /aria-label="Show problems"/);
+  assert.match(hidden, /title="Show problems \(Ctrl\+Shift\+M\)"/);
+  assert.match(hidden, /aria-keyshortcuts="Control\+Shift\+M"/);
+  assert.doesNotMatch(hidden, /active/);
+  const shown = await renderPanel({ snapshot: approved }, { expanded: true });
+  assert.match(toggle(shown), /class="panel-toggle[^"]*active/);
+  assert.match(toggle(shown), /aria-pressed="true"/);
+  assert.match(toggle(shown), /aria-label="Hide problems"/);
+  const region = /<div id="([^"]+)"[^>]*role="region"/.exec(shown)[1];
+  assert.match(toggle(shown), new RegExp(`aria-controls="${region}"`));
 });
 
 test('expanded details list issues; settings stay behind a second disclosure', async () => {
@@ -116,7 +132,8 @@ test('approval and setup controls are reachable only once disclosed, and never a
   const buttons = renderedButtons(html).map(b => b.text);
   for (const label of ['Enable for this session', 'Always allow this project', 'Not now', 'Install gopls…']) assert.ok(buttons.includes(label), label);
   assert.ok(!buttons.includes('Install'), 'install needs a reviewed proposal first');
-  assert.doesNotMatch(html, /<details[^>]*open/, 'setup and technical details start closed');
+  // Only the checker list opens by itself, to show its Install button.
+  assert.deepEqual([...html.matchAll(/<details class="([^"]*)"[^>]*open/g)].map(m => m[1].split(' ')[0]), ['checkers'], 'setup and technical details start closed');
   // Opening with nothing to list reveals settings, but only as a disclosure: approving still takes a click.
   assert.deepEqual(toggleDisclosure({ expanded: false, settingsOpen: false }, { needsSettings: true }, 0), { expanded: true, settingsOpen: true });
   assert.deepEqual(toggleDisclosure({ expanded: false, settingsOpen: false }, { needsSettings: true }, 3), { expanded: true, settingsOpen: false });
@@ -198,4 +215,10 @@ test('unapproved details hide filters and clean claims; blockers and analyzer-on
   assert.doesNotMatch(html, /Project configuration and plugins can execute code/);
   assert.doesNotMatch(html.slice(0, html.indexOf('Technical details')), new RegExp(HOST));
   assert.equal(codeCheckSummary({ status: 'ready', snapshot: { approval: { state: 'required' }, proposal }, providers: [syntax] }).text, 'Code checks: approval needed');
+});
+
+test('the show/hide toggle uses the terminal chevron: down hides, up shows', async () => {
+  const icon = html => /<button[^>]*class="panel-toggle[\s\S]*?<\/button>/.exec(html)?.[0] ?? '';
+  assert.match(icon(await renderPanel({ snapshot: approved }, { expanded: true })), /d="m6 9 6 6 6-6"/);
+  assert.match(icon(await renderPanel({ snapshot: approved })), /d="m6 15 6-6 6 6"/);
 });

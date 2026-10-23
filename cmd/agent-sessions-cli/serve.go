@@ -100,6 +100,7 @@ func serveCmd(ctx context.Context, args []string, resolveRoots func() (paths.Roo
 			SaveFile:        true,
 			AddFile:         true,
 			CreateDirectory: true,
+			CreateFile:      true,
 			RenameFile:      true,
 			DeleteFile:      true,
 			Blame:           true,

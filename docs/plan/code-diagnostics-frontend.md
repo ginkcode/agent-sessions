@@ -73,6 +73,21 @@ progress stays at **19/28** with no task counted as done.
   installation still needs a reviewed proposal. Raw host IDs and proposal
   fingerprints appear only under a collapsed **Technical details**; the install
   proposal still names the target host identity next to the Install button.
+- **Show/hide toggle.** Like the terminal button, an icon button at the right of
+  the status bar shows or hides the details (`aria-pressed`, accent while shown),
+  as does Ctrl+Shift+M while Go to File is open. The editor drops CodeMirror's own
+  Mod-Shift-m lint panel binding so the shortcut always means this panel. Each
+  opening still starts hidden.
+- **Short approval card.** The approval buttons come right after one line saying
+  how many tools will run with the user's permissions. The full risk explanation
+  and the tool list sit under a collapsed **What will run and what approval
+  means**. The list shows each program once: nested workspaces repeat the same
+  executable under hashed IDs, so rows are merged by executable, with every
+  configuration listed and an "N workspaces" pill.
+- **Collapsed checker list.** The Checkers list is a disclosure whose summary is
+  one line of status counts ("2 ready", "4 unsupported", "partial coverage"). It
+  opens by itself only when a checker offers an Install button or has failed, so
+  those actions are never hidden.
 - **Red file names.** A file name in the tree and in search results turns red for
   a finding of *any* severity, including hint and information (`issueCounts`). This
   also applies to the selected row. The Git class and Git letter stay, and the row

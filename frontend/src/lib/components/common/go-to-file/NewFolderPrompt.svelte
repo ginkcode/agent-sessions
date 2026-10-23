@@ -3,7 +3,9 @@
   import { files } from '../../../stores/files.svelte';
   import { link } from '../../../stores/link.svelte';
   import { fileActions } from '../../../stores/fileActions.svelte';
-  let { path, onClose }: { path: string; onClose: () => void } = $props();
+  // One prompt for New Folder and New File; only the wording and the action differ.
+  let { path, kind = 'folder', onClose }: { path: string; kind?: 'folder' | 'file'; onClose: () => void } = $props();
+  const noun = $derived(kind === 'folder' ? 'Folder' : 'File');
   const dir = files.dir;
   const host = link.dataHost;
   const context = files.contextVersion;
@@ -33,7 +35,11 @@
     }
     busy = true;
     error = '';
-    try { await fileActions.createDirectory(path, name); onClose(); }
+    try {
+      if (kind === 'folder') await fileActions.createDirectory(path, name);
+      else await fileActions.createFile(path, name);
+      onClose();
+    }
     catch (err) { error = err instanceof Error ? err.message : String(err); }
     finally { busy = false; }
   }
@@ -53,14 +59,14 @@
 <div class="folder-backdrop" role="presentation">
   <div class="folder-prompt" role="dialog" tabindex="-1" aria-modal="true" aria-labelledby="folder-title" bind:this={panel} onkeydown={key}>
     <form onsubmit={(e) => { e.preventDefault(); void submit(); }}>
-      <h2 id="folder-title">New Folder</h2>
-      <p>Create a folder in {path || dir}</p>
-      <label for="folder-name">Folder name</label>
+      <h2 id="folder-title">New {noun}</h2>
+      <p>Create a {kind} in {path || dir}</p>
+      <label for="folder-name">{noun} name</label>
       <input id="folder-name" bind:this={input} bind:value={name} readonly={busy} autocomplete="off" spellcheck="false" aria-invalid={invalid} aria-describedby={error ? 'folder-error' : undefined} />
       {#if error}<p id="folder-error" class="error" role="alert">{error}</p>{/if}
       <div class="actions">
         <button type="button" disabled={busy} onclick={onClose}>Cancel</button>
-        <button type="submit" disabled={busy || invalid}>{busy ? 'Creating…' : 'Create Folder'}</button>
+        <button type="submit" disabled={busy || invalid}>{busy ? 'Creating…' : `Create ${noun}`}</button>
       </div>
     </form>
   </div>

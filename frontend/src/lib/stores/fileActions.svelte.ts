@@ -44,6 +44,13 @@ export class FileActions {
     finally { this.busy = false; }
   }
 
+  async createFile(path: string, name: string): Promise<void> {
+    if (this.busy || this.quitting) throw new Error('Another file action is in progress.');
+    this.busy = true;
+    try { await files.createFile(path, name); }
+    finally { this.busy = false; }
+  }
+
   /** Shares the close/host-transition lock; dirty drafts are moved, not saved or discarded. */
   async rename(path: string, name: string): Promise<void> {
     if (this.busy || this.quitting) throw new Error('Another file action is in progress.');

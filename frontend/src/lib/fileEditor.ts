@@ -205,6 +205,10 @@ function withDiagnostics(state: EditorState, options: FileEditorOptions): Editor
   return state.update(setDiagnostics(state, editorDiagnostics(state, options))).state;
 }
 
+// F8 still steps through diagnostics. Mod-Shift-m would open CodeMirror's own
+// lint panel; Ctrl+Shift+M toggles the dialog's problems panel instead.
+const editorLintKeymap = lintKeymap.filter(binding => binding.key !== 'Mod-Shift-m');
+
 function freshState(options: FileEditorOptions): EditorState {
   return EditorState.create({
     doc: options.text,
@@ -215,7 +219,7 @@ function freshState(options: FileEditorOptions): EditorState {
       search(), theme, fitTooltips, indentUnit.of(detectIndent(options.text)), EditorState.tabSize.of(4),
       wrapping.of(options.wrap ? EditorView.lineWrapping : []),
       editing.of(editable(options.disabled)), language.of([]), coloring.of([]),
-      keymap.of([indentWithTab, ...defaultKeymap, ...historyKeymap, ...searchKeymap, ...lintKeymap]),
+      keymap.of([indentWithTab, ...defaultKeymap, ...historyKeymap, ...searchKeymap, ...editorLintKeymap]),
       EditorView.updateListener.of(update => {
         if (update.docChanged) owners.get(update.view)?.onchange(update.state.doc.toString());
       }),

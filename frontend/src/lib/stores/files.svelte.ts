@@ -119,7 +119,7 @@ export class FilesStore {
   // What was open in each directory (folders, tabs, the tab shown), kept
   // while the app runs, so Go to File opens there as it was left.
   private saved = new Map<string, { expanded: Set<string>; tabs: FileTab[]; selected: string | null }>();
-  creatingDirectory = $state(false);
+  creating = $state(false);
   deleting = $state(false);
   /** An unknown deletion must never be followed by an old-path write. */
   deleteUncertain = $state<string | null>(null);
@@ -304,7 +304,7 @@ export class FilesStore {
   }
 
   async show(dir: string): Promise<void> {
-    if (this.creatingDirectory || this.renaming || this.deleting) return;
+    if (this.creating || this.renaming || this.deleting) return;
     // Until the host-transition coordinator exists, retain the old host's drafts
     // and refuse to populate that cache with another host's responses.
     if (this.hasHost && this.dataHost !== link.dataHost && !this.reset()) return;
@@ -445,12 +445,23 @@ export class FilesStore {
   }
 
   /** Create once, then refresh only the tree; never reload or discard open drafts. */
-  async createDirectory(path: string, name: string): Promise<void> {
+  createDirectory(path: string, name: string): Promise<void> {
+    return this.createEntry(path, name, 'folder');
+  }
+
+  /** Creates an empty file like createDirectory, then opens it in a tab of its own. */
+  async createFile(path: string, name: string): Promise<void> {
+    const dir = this.dir;
+    await this.createEntry(path, name, 'file');
+    if (this.dir === dir) this.openFile(path ? `${path}/${name}` : name, { keep: true });
+  }
+
+  private async createEntry(path: string, name: string, kind: 'folder' | 'file'): Promise<void> {
     const dir = this.dir;
     const host = this.dataHost;
-    if (!dir || !name || name === '.' || name === '..' || /[\/\\\0]/.test(name)) throw new Error('Enter a single folder name.');
+    if (!dir || !name || name === '.' || name === '..' || /[\/\\\0]/.test(name)) throw new Error(`Enter a single ${kind} name.`);
     if ((path && path.split('/').some(part => !part || part === '.' || part === '..')) || /[\\\0]/.test(path)) throw new Error('Choose a project directory.');
-    if (this.creatingDirectory || this.renaming || this.deleting || this.renameUncertain || this.deleteUncertain) {
+    if (this.creating || this.renaming || this.deleting || this.renameUncertain || this.deleteUncertain) {
       throw new Error(this.deleteUncertain || this.renameUncertain || 'A file operation is already in progress.');
     }
     const blocked = this.mutationError(host);
@@ -458,21 +469,24 @@ export class FilesStore {
     const started = epoch();
     const connection = this.connectionSeq;
     const current = () => started === epoch() && connection === this.connectionSeq && this.dir === dir && host === link.dataHost;
-    this.creatingDirectory = true;
+    this.creating = true;
     try {
-      await api.createDirectory(dir, path, name, host ?? '');
-      if (!current()) throw new Error('The connection changed during folder creation.');
+      if (kind === 'folder') await api.createDirectory(dir, path, name, host ?? '');
+      else await api.createFile(dir, path, name, host ?? '');
+      if (!current()) throw new Error(`The connection changed during ${kind} creation.`);
       const destination = path ? `${path}/${name}` : name;
-      this.expanded = new Set([...this.expanded, ...parentFolders(destination), destination]);
+      this.expanded = new Set([...this.expanded, ...parentFolders(destination), ...(kind === 'folder' ? [destination] : [])]);
       this.save();
       this.refreshing = true;
       await this.list(dir);
     } catch (err) {
       if (!current() || isStaleReply(err) || isDisconnectedError(err)) {
-        throw new Error('The folder creation outcome is unknown. Refresh and verify the directory before trying again.');
+        throw new Error(kind === 'folder'
+          ? 'The folder creation outcome is unknown. Refresh and verify the directory before trying again.'
+          : 'The file creation outcome is unknown. Refresh and verify the file before trying again.');
       }
       throw err;
-    } finally { this.creatingDirectory = false; }
+    } finally { this.creating = false; }
   }
 
   /** Rename in place: retain tab/editor identities, draft text and undo history. */
@@ -481,7 +495,7 @@ export class FilesStore {
     const host = this.dataHost;
     if (!dir || !path || !name || name === '.' || name === '..' || /[\\/\\\\\0]/.test(name)) throw new Error('Enter a single file or directory name.');
     if (name === path.split('/').pop()) return;
-    if (this.creatingDirectory || this.renaming || this.renameUncertain || this.deleting || this.deleteUncertain) throw new Error(this.deleteUncertain || this.renameUncertain || 'A file operation is already in progress.');
+    if (this.creating || this.renaming || this.renameUncertain || this.deleting || this.deleteUncertain) throw new Error(this.deleteUncertain || this.renameUncertain || 'A file operation is already in progress.');
     const blocked = this.mutationError(host);
     if (blocked) throw new Error(blocked);
     const matches = (p: string) => p === path || p.startsWith(path + '/');
@@ -525,7 +539,7 @@ export class FilesStore {
     if (!dir || !path || path.split('/').some(part => !part || part === '.' || part === '..') || /[\\\\\0]/.test(path)) {
       throw new Error('Choose a non-root file or directory to delete.');
     }
-    if (this.creatingDirectory || this.renaming || this.deleting || this.renameUncertain || this.deleteUncertain) {
+    if (this.creating || this.renaming || this.deleting || this.renameUncertain || this.deleteUncertain) {
       throw new Error(this.deleteUncertain || this.renameUncertain || 'A file operation is already in progress.');
     }
     const blocked = this.mutationError(host);
@@ -893,14 +907,14 @@ export class FilesStore {
 
   /** Closes the dialog. What was open is kept for next time. */
   close(): void {
-    if (this.creatingDirectory || this.renaming || this.deleting) return;
+    if (this.creating || this.renaming || this.deleting) return;
     this.save();
     this.clear();
   }
 
   /** Refuse destructive resets until a coordinator has resolved every draft. */
   reset(): boolean {
-    if (this.hasUnsaved || this.creatingDirectory || this.renaming || this.deleting) return false;
+    if (this.hasUnsaved || this.creating || this.renaming || this.deleting) return false;
     this.clear();
     this.saved.clear();
     this.renameUncertain = null;

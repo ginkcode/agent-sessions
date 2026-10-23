@@ -510,6 +510,13 @@ func (s *Server) dispatch(ctx context.Context, req Request) (any, error) {
 		}
 		return nil, backend.CreateDirectory(ctx, p.Dir, p.Path, p.Name)
 
+	case "createFile":
+		var p CreateDirectoryParams
+		if err := json.Unmarshal(req.Params, &p); err != nil {
+			return nil, &ResponseError{Code: CodeInvalidParams, Message: err.Error()}
+		}
+		return nil, backend.CreateFile(ctx, p.Dir, p.Path, p.Name)
+
 	case "renameFile":
 		var p RenameFileParams
 		if err := json.Unmarshal(req.Params, &p); err != nil {

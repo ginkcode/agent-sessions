@@ -66,6 +66,7 @@ type Capabilities struct {
 	Blame           bool `json:"blame,omitempty"`
 	AddFile         bool `json:"addFile,omitempty"`
 	CreateDirectory bool `json:"createDirectory,omitempty"`
+	CreateFile      bool `json:"createFile,omitempty"`
 	RenameFile      bool `json:"renameFile,omitempty"`
 	DeleteFile      bool `json:"deleteFile,omitempty"`
 }

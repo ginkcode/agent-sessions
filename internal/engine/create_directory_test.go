@@ -30,4 +30,13 @@ func TestCreateDirectoryAuthorization(t *testing.T) {
 	if err := e.CreateDirectory(ctx, root, "new", "nested"); err != nil {
 		t.Fatal(err)
 	}
+	if err := e.CreateFile(ctx, t.TempDir(), "", "new.go"); !errors.Is(err, ErrUnknownDirectory) {
+		t.Fatalf("unknown root: %v", err)
+	}
+	if err := e.CreateFile(ctx, root, "", "cache"); !errors.Is(err, files.ErrEditProtected) {
+		t.Fatalf("protected store: %v", err)
+	}
+	if err := e.CreateFile(ctx, root, "new", "file.go"); err != nil {
+		t.Fatal(err)
+	}
 }

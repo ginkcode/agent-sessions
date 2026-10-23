@@ -168,7 +168,7 @@ test('confirmed deletion is routed through coordinator, and reconnect invalidate
 
 test('Go to File context menu offers Delete only for non-root items through the coordinator', async () => {
   const source = await readFile(new URL('../src/lib/components/common/GoToFileDialog.svelte', import.meta.url), 'utf8');
-  assert.match(source, /if \(path\) items\.push\(\{\s*label: 'Delete…'/);
+  assert.match(source, /if \(path\) change\.push\(\{\s*label: 'Delete…'/);
   assert.match(source, /onSelect: \(\) => void deleteItem\(path, directory\)/);
   assert.match(source, /await fileActions\.delete\(path, directory\)/);
 });

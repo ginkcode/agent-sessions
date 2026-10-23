@@ -20,6 +20,26 @@ export function toolName(providerId: string): string {
   return providerId;
 }
 
+export interface ProposalRow { name: string; executable: string; configPaths: string[]; uses: number }
+
+/**
+ * Proposal tools by executable. Nested workspaces bind the same files once per
+ * workspace under hashed IDs, so each file is listed once, by its known tool
+ * name or else its file name, with every configuration that applies to it.
+ */
+export function proposalRows(tools: readonly { providerId: string; executable: string; configPaths: string[] }[]): ProposalRow[] {
+  const rows = new Map<string, ProposalRow>();
+  for (const tool of tools) {
+    const known = toolNames[tool.providerId] ?? (/^go-vet-\d+$/.test(tool.providerId) ? 'Go vet' : undefined);
+    const row = rows.get(tool.executable) ?? { name: '', executable: tool.executable, configPaths: [], uses: 0 };
+    row.name = known ?? (row.name || tool.executable.split(/[\\/]/).pop() || tool.executable);
+    row.configPaths = [...new Set([...row.configPaths, ...tool.configPaths])];
+    row.uses++;
+    rows.set(tool.executable, row);
+  }
+  return [...rows.values()];
+}
+
 /** Hosts reached over SSH/WSL, where managed installs go to the remote host. */
 export function remoteHost(hostId: string | undefined): boolean { return !!hostId && /^(ssh|wsl):/.test(hostId); }
 

@@ -20,6 +20,8 @@ async function setup() {
     api: {
       listFiles: async dir => ({ root: dir, files: [], directories: ['src/nested/new'] }),
       createDirectory: async (...args) => { calls.push(args); },
+      createFile: async (...args) => { calls.push(['file', ...args]); },
+      readFile: async (_dir, path) => ({ path, text: '', revision: 'r0', edit: { eligible: true, newline: 'none' } }),
     },
   };
   const store = new FilesStore();
@@ -87,7 +89,31 @@ test('pending creation blocks duplicate submission and project close; stale comp
   resolve();
   await assert.rejects(pending, /outcome is unknown/);
   assert.equal(store.expanded.size, 0);
-  assert.equal(store.creatingDirectory, false);
+  assert.equal(store.creating, false);
+});
+
+test('New File creates one empty file, expands only its parents and opens it in a kept tab', async () => {
+  const { store, calls } = await setup();
+  await store.createFile('src/nested', 'main.go');
+  assert.deepEqual(calls, [['file', '/repo', 'src/nested', 'main.go', '']]);
+  assert.deepEqual([...store.expanded], ['src', 'src/nested']);
+  assert.equal(store.selected, 'src/nested/main.go');
+  assert.equal(store.activeTab.preview, false);
+  await store.createFile('', 'README.md');
+  assert.equal(store.selected, 'README.md');
+  for (const name of ['', '..', 'a/b']) await assert.rejects(store.createFile('', name), /single file/);
+  assert.equal(calls.length, 2);
+});
+
+test('an unknown file creation outcome opens nothing', async () => {
+  const { store, fixture } = await setup();
+  let resolve;
+  fixture.api.createFile = () => new Promise(r => { resolve = r; });
+  const pending = store.createFile('', 'new.ts');
+  bumpEpoch();
+  resolve();
+  await assert.rejects(pending, /file creation outcome is unknown/);
+  assert.equal(store.tabs.length, 0);
 });
 
 test('native CreateDirectory binding forwards host and normalizes errors', async () => {
@@ -99,7 +125,22 @@ test('native CreateDirectory binding forwards host and normalizes errors', async
     assert.deepEqual(calls, [['/repo', '', 'new', 'remote']]);
     globalThis.window.go.app.App.CreateDirectory = async () => { throw 'exists'; };
     await assert.rejects(createAPI().createDirectory('/repo', '', 'new', ''), /exists/);
+    globalThis.window.go.app.App.CreateFile = async (...args) => { calls.push(['file', ...args]); };
+    await createAPI().createFile('/repo', 'src', 'new.go', 'remote');
+    assert.deepEqual(calls.at(-1), ['file', '/repo', 'src', 'new.go', 'remote']);
   } finally { globalThis.window = previous; }
+});
+
+test('mock New File lists an empty editable file and rejects collisions', async () => {
+  const mock = new MockBackendAPI();
+  await mock.createDirectory('/repo', '', 'empty', '');
+  await mock.createFile('/repo', 'empty', 'new.go', '');
+  assert.ok((await mock.listFiles('/repo')).files.includes('empty/new.go'));
+  const content = await mock.readFile('/repo', 'empty/new.go');
+  assert.equal(content.text, '');
+  assert.equal(content.edit.eligible, true);
+  await assert.rejects(mock.createFile('/repo', 'empty', 'new.go', ''), /already exists/);
+  await assert.rejects(mock.createFile('/repo', '', 'empty', ''), /already exists/);
 });
 
 test('mock empty folders can be nested, renamed, deleted and reject collisions', async () => {
@@ -126,11 +167,17 @@ test('folder prompt is a styled accessible text-input modal, initially empty and
   assert.match(html, /value=""/);
   assert.match(html, />Cancel<\/button>/);
   assert.match(html, /type="submit" disabled/);
+  const file = await renderWithFixture(prompt, { files: { dir: '/repo', contextVersion: '1' }, link: {}, fileActions: {} }, { path: 'src', kind: 'file', onClose() {} });
+  assert.match(file, /<h2[^>]*>New File<\/h2>/);
+  assert.match(file, /Create a file in src/);
+  assert.match(file, /File name/);
+  assert.match(file, />Create File<\/button>/);
 });
 
-test('root blank-space context is tree-only and New Folder is directory-only', async () => {
+test('root blank-space context is tree-only and New File and New Folder are directory-only', async () => {
   const picker = await readFile(new URL('../src/lib/components/common/go-to-file/FilePicker.svelte', import.meta.url), 'utf8');
   assert.match(picker, /if \(!query\.trim\(\)\) onContext\(e, '', true\)/);
   const dialog = await readFile(new URL('../src/lib/components/common/GoToFileDialog.svelte', import.meta.url), 'utf8');
-  assert.match(dialog, /if \(directory\) items\.push\(\{\s*label: 'New Folder…'/);
+  assert.match(dialog, /if \(directory\) create\.push\(\{\s*label: 'New File…'[\s\S]*?kind: 'file'/);
+  assert.match(dialog, /if \(directory\) create\.push\(\{\s*label: 'New Folder…'/);
 });

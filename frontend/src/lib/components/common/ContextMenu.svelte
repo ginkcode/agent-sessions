@@ -5,6 +5,8 @@
     disabled?: boolean;
     /** Shown as a tooltip; explains why a disabled item is unavailable. */
     title?: string;
+    /** Draws a divider above this item, starting a new group. */
+    separator?: boolean;
   }
 </script>
 
@@ -132,6 +134,7 @@
   oncontextmenu={(e) => e.preventDefault()}
 >
   {#each items as item, i (item.label)}
+    {#if item.separator && i > 0}<div class="context-menu-separator" role="separator"></div>{/if}
     <button
       type="button"
       class="context-menu-item"
@@ -187,6 +190,12 @@
   .context-menu-item:focus {
     background: var(--bg-tertiary);
     color: var(--text-primary);
+  }
+
+  .context-menu-separator {
+    height: 1px;
+    margin: 2px 6px;
+    background: var(--border-color);
   }
 
   .context-menu-item.disabled {

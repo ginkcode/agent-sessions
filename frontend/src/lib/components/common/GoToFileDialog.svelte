@@ -31,8 +31,8 @@
   import RenamePrompt from './go-to-file/RenamePrompt.svelte';
   let renamePath = $state<string | null>(null);
   import NewFolderPrompt from './go-to-file/NewFolderPrompt.svelte';
-  let newFolderPath = $state<string | null>(null);
-  let checksBlocked = $derived(!!link.blockedReason || fileActions.busy || fileActions.quitting || renamePath !== null || newFolderPath !== null);
+  let newEntry = $state<{ path: string; kind: 'folder' | 'file' } | null>(null);
+  let checksBlocked = $derived(!!link.blockedReason || fileActions.busy || fileActions.quitting || renamePath !== null || newEntry !== null);
   import { fileActions } from '../../stores/fileActions.svelte';
   import { keyHandled } from '../../fullscreen';
   import { tabShortcut } from '../../tabActions';
@@ -55,6 +55,7 @@
   let picker: FilePicker | undefined = $state();
   let fileTabs: FileTabs | undefined = $state();
   let viewer: FileViewer | undefined = $state();
+  let problems: ProblemsPanel | undefined = $state();
   let restoreFocus: HTMLElement | null = null;
 
   function fileStatus(path: string) {
@@ -156,44 +157,54 @@
     const { path, directory } = context;
     const remote = Boolean(link.dataHost);
     const disabled = actionBusy || fileActions.busy || fileActions.quitting || link.locked || fileStatus(path) === 'D';
-    const items: ContextMenuItem[] = [];
-    if (directory) items.push({
+    const unsafe = Boolean(link.blockedReason || files.renameUncertain || files.deleteUncertain);
+    const why = files.deleteUncertain || files.renameUncertain || link.blockedReason;
+    // Create, then the file manager, then paths; renaming and deleting come last.
+    const create: ContextMenuItem[] = [], open: ContextMenuItem[] = [], copy: ContextMenuItem[] = [], change: ContextMenuItem[] = [];
+    if (directory) create.push({
+      label: 'New File…',
+      disabled: disabled || unsafe,
+      title: why || 'Create an empty file in this directory',
+      onSelect: () => { newEntry = { path, kind: 'file' }; },
+    });
+    if (directory) create.push({
+      label: 'New Folder…',
+      disabled: disabled || unsafe,
+      title: why || 'Create a folder in this directory',
+      onSelect: () => { newEntry = { path, kind: 'folder' }; },
+    });
+    if (directory) create.push({
       label: remote ? 'Upload File…' : 'Add File…',
       disabled: disabled || Boolean(link.blockedReason),
       title: link.blockedReason || (remote ? 'Choose a local file to upload into this directory' : 'Choose a local file to copy into this directory'),
       onSelect: () => void addFile(path),
     });
-    if (directory) items.push({
-      label: 'New Folder…',
-      disabled: disabled || Boolean(link.blockedReason || files.renameUncertain || files.deleteUncertain),
-      title: files.deleteUncertain || files.renameUncertain || link.blockedReason || 'Create a folder in this directory',
-      onSelect: () => { newFolderPath = path; },
-    });
-    if (path) items.push({
-      label: 'Rename…',
-      disabled: disabled || Boolean(link.blockedReason) || Boolean(files.renameUncertain || files.deleteUncertain),
-      title: files.deleteUncertain || files.renameUncertain || link.blockedReason || 'Rename without losing open drafts',
-      onSelect: () => { renamePath = path; },
-    });
-    if (path) items.push({
-      label: 'Delete…',
-      disabled: disabled || Boolean(link.blockedReason || files.renameUncertain || files.deleteUncertain),
-      title: files.deleteUncertain || files.renameUncertain || link.blockedReason || 'Permanently delete this item',
-      onSelect: () => void deleteItem(path, directory),
-    });
-    if (!remote) items.push({ label: 'Reveal', disabled, onSelect: () => void fileAction('reveal', path) });
-    items.push({
+    if (!remote) open.push({ label: 'Reveal', disabled, onSelect: () => void fileAction('reveal', path) });
+    open.push({
       label: remote ? 'Download' : 'Copy', disabled,
       title: remote && directory ? 'Download this directory as a ZIP archive' : undefined,
       onSelect: () => void fileAction(remote ? 'download' : 'copy', path),
     });
-    items.push({ label: 'Copy Path', disabled: actionBusy, onSelect: () => void fileAction('absolute', path) });
-    if (path) items.push({ label: 'Copy Relative Path', disabled: actionBusy, onSelect: () => void fileAction('relative', path) });
-    return items;
+    copy.push({ label: 'Copy Path', disabled: actionBusy, onSelect: () => void fileAction('absolute', path) });
+    if (path) copy.push({ label: 'Copy Relative Path', disabled: actionBusy, onSelect: () => void fileAction('relative', path) });
+    if (path) change.push({
+      label: 'Rename…',
+      disabled: disabled || unsafe,
+      title: why || 'Rename without losing open drafts',
+      onSelect: () => { renamePath = path; },
+    });
+    if (path) change.push({
+      label: 'Delete…',
+      disabled: disabled || unsafe,
+      title: why || 'Permanently delete this item',
+      onSelect: () => void deleteItem(path, directory),
+    });
+    return [create, open, copy, change].filter(group => group.length)
+      .flatMap((group, i) => group.map((item, j) => (i && !j ? { ...item, separator: true } : item)));
   });
 
   function close() {
-    if (fileActions.busy || fileActions.quitting || renamePath !== null || newFolderPath !== null) return;
+    if (fileActions.busy || fileActions.quitting || renamePath !== null || newEntry !== null) return;
     presentation = false;
     fileTabs?.closeContext();
     context = null;
@@ -214,11 +225,18 @@
 </script>
 
 <svelte:window onkeydown={(e) => {
-  if (!files.open || fileActions.busy || fileActions.quitting || renamePath !== null || newFolderPath !== null) return;
+  if (!files.open || fileActions.busy || fileActions.quitting || renamePath !== null || newEntry !== null) return;
   if (e.ctrlKey && e.shiftKey && !e.metaKey && !e.altKey && e.code === 'KeyL') {
     e.preventDefault();
     e.stopPropagation();
     if (!e.repeat) locked = !locked;
+    return;
+  }
+  // Ctrl+Shift+M shows or hides the problems, like Ctrl+` for the terminal.
+  if (e.ctrlKey && e.shiftKey && !e.metaKey && !e.altKey && e.code === 'KeyM' && problems) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!e.repeat) problems.toggle();
     return;
   }
   if (viewer?.handleKey(e)) return;
@@ -243,8 +261,8 @@
 {#if renamePath !== null}
   <RenamePrompt path={renamePath} onClose={() => (renamePath = null)} />
 {/if}
-{#if newFolderPath !== null}
-  <NewFolderPrompt path={newFolderPath} onClose={() => (newFolderPath = null)} />
+{#if newEntry !== null}
+  <NewFolderPrompt path={newEntry.path} kind={newEntry.kind} onClose={() => (newEntry = null)} />
 {/if}
 
 <!-- Keep the viewer mounted so preview preferences and tab scroll positions survive closing. -->
@@ -299,7 +317,7 @@
     </div>
     {#if files.open && !presentation}
       <!-- Compact status only; details, approval and setup stay behind disclosure. -->
-      <ProblemsPanel onnavigate={(diagnostic) => viewer?.navigateProblem(diagnostic)} blocked={checksBlocked}>
+      <ProblemsPanel bind:this={problems} onnavigate={(diagnostic) => viewer?.navigateProblem(diagnostic)} blocked={checksBlocked}>
         {#snippet settings()}
           <CodeChecks blocked={checksBlocked} />
         {/snippet}

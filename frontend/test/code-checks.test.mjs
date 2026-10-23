@@ -79,3 +79,37 @@ test('settings keep raw host identity and proposal hash inside a collapsed techn
   assert.doesNotMatch(html.slice(0, html.indexOf('Technical details')), /local:actual|sha256:abc/);
   assert.doesNotMatch(html, /<details[^>]*open[^>]*>\s*<summary[^>]*>Technical/);
 });
+
+test('approval card puts the buttons under one risk line; the explanation and tools stay collapsed', async () => {
+  const workspace = n => `workspace:${'a'.repeat(64)}:${String(n).repeat(64)}`;
+  const tools = [
+    { providerId: 'typescript', executable: '/managed/vtsls.js', configPaths: ['tsconfig.json'] },
+    { providerId: workspace(1), executable: '/node/bin/node', configPaths: ['frontend/package.json'] },
+    { providerId: workspace(2), executable: '/node/bin/node', configPaths: ['site/package.json'] },
+    { providerId: workspace(3), executable: '/managed/vtsls.js', configPaths: [] },
+  ];
+  const html = await render({ approved: false, snapshot: { approval: { state: 'required' }, proposal: { fingerprint: 'fp', tools } } });
+  const card = html.slice(html.indexOf('Enable code checks for this project?'));
+  const buttons = card.indexOf('>Enable for this session<');
+  assert.match(card.slice(0, buttons), /Runs 2 tools on this host with your account's permissions\. This is not a sandbox/);
+  for (const text of ['Project configuration and plugins can execute code', 'Session approval lasts', '/node/bin/node']) {
+    assert.ok(card.indexOf(text) > buttons, `${text} follows the buttons`);
+  }
+  assert.match(card, /<details[^>]*>\s*<summary[^>]*>What will run and what approval means<\/summary>/);
+  assert.doesNotMatch(html, /<details[^>]*open/);
+  // One row per executable, named; hashed workspace IDs are not shown.
+  assert.doesNotMatch(html, /workspace:a{64}/);
+  assert.equal((card.match(/\/node\/bin\/node ·/g) ?? []).length, 1);
+  assert.match(card, /<span class="name[^"]*"[^>]*>node<\/span>(<!--[^>]*-->)?<span class="pill[^"]*">2 workspaces<\/span>/);
+  assert.match(card, /<span class="name[^"]*"[^>]*>TypeScript\/JavaScript language server \(vtsls\)<\/span>/);
+  assert.match(card, /frontend\/package\.json, site\/package\.json/);
+});
+
+test('checker list collapses to one line of status counts, and opens itself only for an install or a failure', async () => {
+  const ready = providerId => ({ ...provider, providerId });
+  const quiet = await render({ providers: [ready('go-syntax'), ready('gopls'), { ...ready('ruff'), availability: 'unsupported', notice: 'No matching language project was found in this workspace.' }], managedInstalls: {}, partial: true });
+  assert.match(quiet, /<details class="checkers[^"]*"><summary[^>]*><span class="heading[^"]*">Checkers<\/span>(<!--[^>]*-->)*<span class="pill tone-ok[^"]*">2 ready<\/span><span class="pill tone-warn[^"]*">1 unsupported<\/span>(<!--[^>]*-->)*<span class="muted[^"]*">partial coverage<\/span>/);
+  assert.ok(quiet.indexOf('No matching language project') > quiet.indexOf('</summary>', quiet.indexOf('class="checkers')), 'notes sit inside the collapsed list');
+  const failed = await render({ providers: [{ ...ready('go-vet'), phase: 'failed', failure: { message: 'vet crashed' } }] });
+  assert.match(failed, /<details class="checkers[^"]*" open/);
+});

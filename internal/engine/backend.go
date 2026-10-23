@@ -42,6 +42,7 @@ type Backend interface {
 	ResolveTerminalFile(ctx context.Context, dir, path string) (files.TerminalFile, error)
 	PrepareFileDownload(ctx context.Context, dir, path, token string) (files.Download, error)
 	CreateDirectory(ctx context.Context, dir, path, name string) error
+	CreateFile(ctx context.Context, dir, path, name string) error
 	RenameFile(ctx context.Context, dir, path, name string) error
 	DeleteFile(ctx context.Context, dir, path string) error
 	AddFile(ctx context.Context, dir, path, source string) error

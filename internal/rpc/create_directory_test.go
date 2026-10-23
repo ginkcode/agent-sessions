@@ -33,6 +33,26 @@ func TestCreateDirectoryRPC(t *testing.T) {
 	}
 }
 
+func TestCreateFileRPC(t *testing.T) {
+	root := t.TempDir()
+	client := startEditServer(t, root, paths.Roots{})
+	if !client.Capabilities().CreateFile {
+		t.Fatal("missing capability")
+	}
+	ctx := context.Background()
+	if err := client.CreateFile(ctx, root, "", "new.go"); err != nil {
+		t.Fatal(err)
+	}
+	if info, err := os.Stat(filepath.Join(root, "new.go")); err != nil || !info.Mode().IsRegular() {
+		t.Fatalf("file: %v", err)
+	}
+	for _, tc := range []CreateDirectoryParams{{Dir: t.TempDir(), Name: "bad"}, {Dir: root, Name: "../bad"}, {Dir: root, Path: "missing", Name: "bad"}, {Dir: root, Name: ".git"}, {Dir: root, Name: "new.go"}} {
+		if err := client.CreateFile(ctx, tc.Dir, tc.Path, tc.Name); err == nil {
+			t.Fatalf("accepted %+v", tc)
+		}
+	}
+}
+
 func TestCreateDirectoryOldServerCapability(t *testing.T) {
 	_, client, cleanup := setupPipePair(&mockBackend{})
 	defer cleanup()
@@ -41,5 +61,8 @@ func TestCreateDirectoryOldServerCapability(t *testing.T) {
 	}
 	if err := client.CreateDirectory(context.Background(), "root", "", "new"); err == nil {
 		t.Fatal("old server accepted create directory")
+	}
+	if err := client.CreateFile(context.Background(), "root", "", "new"); err == nil {
+		t.Fatal("old server accepted create file")
 	}
 }

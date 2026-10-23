@@ -738,6 +738,19 @@ export class MockBackendAPI extends MockCodeDiagnostics {
     });
   }
 
+  async createFile(dir: string, path: string, name: string, host: string): Promise<void> {
+    if (host !== (this.connState.host ?? '')) throw new Error('The selected host changed.');
+    if (!name || name === '.' || name === '..' || /[\/\\\0]/.test(name)) throw new Error('Invalid file name.');
+    if ((path && path.split('/').some(p => !p || p === '.' || p === '..')) || /[\\\0]/.test(path)) throw new Error('Invalid path.');
+    const listing = await this.listFiles(dir);
+    const paths = [...listing.files, ...(listing.ignored ?? []), ...(listing.directories ?? [])];
+    if (path && !paths.some(p => (p === path && listing.directories?.includes(p)) || p.startsWith(path + '/'))) throw new Error('Directory not found.');
+    const destination = path ? `${path}/${name}` : name;
+    if (paths.some(p => p === destination || p.startsWith(destination + '/'))) throw new Error('Destination already exists.');
+    this.fileDrafts.set(JSON.stringify([host, dir, destination]), { path: destination, size: 0, text: '', revision: await mockFileRevision(''), edit: { eligible: true, newline: 'none' } });
+    this.renamedListings.set(JSON.stringify([host, dir]), { ...listing, files: [...listing.files, destination].sort() });
+  }
+
   async renameFile(dir: string, path: string, name: string, host: string): Promise<void> {
     if (host !== (this.connState.host ?? '')) throw new Error('The selected host changed.');
     if (!path || !name || name === '.' || name === '..' || /[\/\\\\\0]/.test(name)) throw new Error('Invalid name.');

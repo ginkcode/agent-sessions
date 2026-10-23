@@ -97,3 +97,41 @@ func TestCreateDirectorySerializesWithSaves(t *testing.T) {
 		t.Fatal("created despite cancellation")
 	}
 }
+
+func TestCreateFile(t *testing.T) {
+	root := t.TempDir()
+	ctx := context.Background()
+	if err := os.Mkdir(filepath.Join(root, "folder"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct{ path, name string }{{"", "main.go"}, {"folder", "nested.ts"}} {
+		if err := CreateFile(ctx, EditPolicy{}, root, tc.path, tc.name); err != nil {
+			t.Fatal(err)
+		}
+		if info, err := os.Lstat(filepath.Join(root, tc.path, tc.name)); err != nil || !info.Mode().IsRegular() || info.Size() != 0 {
+			t.Fatalf("file: %v %v", info, err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(root, "kept"), []byte("original"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct{ path, name string }{
+		{"", ""}, {"", ".."}, {"", "a/b"}, {"..", "bad"}, {"missing", "bad"}, {"kept", "bad"},
+		{"", "kept"}, {"", "folder"}, {"", ".git"}, {"", "auth.json"},
+	} {
+		if err := CreateFile(ctx, EditPolicy{}, root, tc.path, tc.name); err == nil {
+			t.Fatalf("accepted %+v", tc)
+		}
+	}
+	if data, err := os.ReadFile(filepath.Join(root, "kept")); err != nil || string(data) != "original" {
+		t.Fatalf("existing file changed: %q %v", data, err)
+	}
+	if err := os.Symlink("folder", filepath.Join(root, "link")); err == nil {
+		if err := CreateFile(ctx, EditPolicy{}, root, "link", "bad"); !errors.Is(err, ErrEditLink) {
+			t.Fatal(err)
+		}
+		if err := CreateFile(ctx, EditPolicy{}, root, "", "link"); !errors.Is(err, os.ErrExist) {
+			t.Fatal(err)
+		}
+	}
+}
