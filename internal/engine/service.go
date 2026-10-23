@@ -621,3 +621,12 @@ func (s *Service) SaveFile(ctx context.Context, dir string, req files.SaveReques
 	}
 	return files.Save(ctx, policy, dir, req)
 }
+
+// ReplaceInFiles replaces search matches in files of a session directory,
+// through the same policy and revision checks as SaveFile.
+func (s *Service) ReplaceInFiles(ctx context.Context, dir string, req files.ReplaceRequest, policy files.EditPolicy) (files.ReplaceResult, error) {
+	if !s.knownDirectory(dir) {
+		return files.ReplaceResult{}, fmt.Errorf("%w: %s", ErrUnknownDirectory, dir)
+	}
+	return files.Replace(ctx, policy, dir, req)
+}

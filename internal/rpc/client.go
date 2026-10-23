@@ -452,6 +452,17 @@ func (c *Client) SaveFile(ctx context.Context, dir string, req files.SaveRequest
 	return out, err
 }
 
+// ReplaceInFiles replaces search matches in files on the remote host, only
+// when the host advertises support.
+func (c *Client) ReplaceInFiles(ctx context.Context, dir string, req files.ReplaceRequest) (files.ReplaceResult, error) {
+	if !c.caps.ReplaceFiles {
+		return files.ReplaceResult{}, fmt.Errorf("%w: this host's agent-sessions cannot replace in files; update it", engine.ErrUnsupportedAction)
+	}
+	var out files.ReplaceResult
+	err := c.call(ctx, "replaceInFiles", ReplaceInFilesParams{Dir: dir, Request: req}, &out)
+	return out, err
+}
+
 func (c *Client) Diagnostics(ctx context.Context) (provider.Diagnostics, error) {
 	var out provider.Diagnostics
 	err := c.call(ctx, "diagnostics", nil, &out)

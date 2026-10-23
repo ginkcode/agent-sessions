@@ -88,6 +88,10 @@ func (b offlineBackend) SaveFile(context.Context, string, files.SaveRequest) (fi
 	return files.SaveResult{}, b.err()
 }
 
+func (b offlineBackend) ReplaceInFiles(context.Context, string, files.ReplaceRequest) (files.ReplaceResult, error) {
+	return files.ReplaceResult{}, b.err()
+}
+
 func (b offlineBackend) ResolveFile(context.Context, string, string) (string, error) {
 	return "", b.err()
 }

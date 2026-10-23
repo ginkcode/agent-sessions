@@ -306,7 +306,8 @@ func (s *Server) initialize(serveCtx context.Context, req Request, starter Start
 		Search:      true,
 		Blame:       true,
 		SearchFiles: true,
-		// SaveFile stays off without a starter, which is a test setup.
+		// SaveFile and ReplaceFiles stay off without a starter, which is a
+		// test setup.
 	}
 	var roots paths.Roots
 	if starter != nil {
@@ -489,6 +490,13 @@ func (s *Server) dispatch(ctx context.Context, req Request) (any, error) {
 			return nil, &ResponseError{Code: CodeInvalidParams, Message: err.Error()}
 		}
 		return backend.SaveFile(ctx, p.Dir, p.Request)
+
+	case "replaceInFiles":
+		var p ReplaceInFilesParams
+		if err := json.Unmarshal(req.Params, &p); err != nil {
+			return nil, &ResponseError{Code: CodeInvalidParams, Message: err.Error()}
+		}
+		return backend.ReplaceInFiles(ctx, p.Dir, p.Request)
 
 	case "resolveFile":
 		var p ReadFileParams

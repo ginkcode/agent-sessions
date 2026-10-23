@@ -39,6 +39,7 @@ type Backend interface {
 	BlameFile(ctx context.Context, dir, path string, line int) (files.BlameLine, error)
 	SearchFiles(ctx context.Context, dir string, q files.SearchQuery) (files.SearchResult, error)
 	SaveFile(ctx context.Context, dir string, req files.SaveRequest) (files.SaveResult, error)
+	ReplaceInFiles(ctx context.Context, dir string, req files.ReplaceRequest) (files.ReplaceResult, error)
 	ResolveFile(ctx context.Context, dir, path string) (string, error)
 	ResolveTerminalFile(ctx context.Context, dir, path string) (files.TerminalFile, error)
 	PrepareFileDownload(ctx context.Context, dir, path, token string) (files.Download, error)

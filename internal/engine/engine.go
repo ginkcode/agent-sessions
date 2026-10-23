@@ -502,6 +502,11 @@ func (e *Engine) SaveFile(ctx context.Context, dir string, req files.SaveRequest
 	return e.svc.SaveFile(ctx, dir, req, e.editPolicy())
 }
 
+// ReplaceInFiles replaces search matches in files of a session directory.
+func (e *Engine) ReplaceInFiles(ctx context.Context, dir string, req files.ReplaceRequest) (files.ReplaceResult, error) {
+	return e.svc.ReplaceInFiles(ctx, dir, req, e.editPolicy())
+}
+
 // editPolicy protects the agents' data stores and this app's own
 // directories from the file editor, wherever a session directory is.
 func (e *Engine) editPolicy() files.EditPolicy {

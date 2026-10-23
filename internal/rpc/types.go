@@ -65,8 +65,11 @@ type Capabilities struct {
 	// Blame supports on-demand blame for one saved working-tree line.
 	Blame bool `json:"blame,omitempty"`
 	// SearchFiles supports searching the text of a project's files.
-	SearchFiles     bool `json:"searchFiles,omitempty"`
-	AddFile         bool `json:"addFile,omitempty"`
+	SearchFiles bool `json:"searchFiles,omitempty"`
+	// ReplaceFiles supports replacing search matches in files. Only servers
+	// that can save advertise it.
+	ReplaceFiles    bool `json:"replaceFiles,omitempty"`
+	AddFile        bool `json:"addFile,omitempty"`
 	CreateDirectory bool `json:"createDirectory,omitempty"`
 	CreateFile      bool `json:"createFile,omitempty"`
 	RenameFile      bool `json:"renameFile,omitempty"`
@@ -174,6 +177,11 @@ type SearchFilesParams struct {
 type SaveFileParams struct {
 	Dir     string            `json:"dir"`
 	Request files.SaveRequest `json:"request"`
+}
+
+type ReplaceInFilesParams struct {
+	Dir     string               `json:"dir"`
+	Request files.ReplaceRequest `json:"request"`
 }
 
 type SetManageEnabledParams struct {

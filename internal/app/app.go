@@ -456,6 +456,17 @@ func (a *App) SaveFile(dir string, req files.SaveRequest, host string) (files.Sa
 	return r.backend.SaveFile(a.appCtx(), dir, req)
 }
 
+// ReplaceInFiles replaces search matches in files on the selected host.
+// host is the host the search ran on ("" for Local); as with SaveFile,
+// nothing is written when calls are routed elsewhere by now.
+func (a *App) ReplaceInFiles(dir string, req files.ReplaceRequest, host string) (files.ReplaceResult, error) {
+	r := a.route()
+	if r.host != host {
+		return files.ReplaceResult{}, ErrSaveHostChanged
+	}
+	return r.backend.ReplaceInFiles(a.appCtx(), dir, req)
+}
+
 // ErrSaveHostChanged refuses a save meant for another host than the one
 // calls now go to. Nothing was written.
 var ErrSaveHostChanged = errors.New("the connection changed to another host; nothing was saved")

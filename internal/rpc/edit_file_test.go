@@ -62,7 +62,7 @@ func startEditServer(t *testing.T, root string, roots paths.Roots) *Client {
 	server, client, cleanup := setupPipePair(nil)
 	t.Cleanup(cleanup)
 	server.SetStarter(func(context.Context) (engine.Backend, Capabilities, paths.Roots, error) {
-		return eng, Capabilities{Search: true, SaveFile: true, AddFile: true, RenameFile: true, DeleteFile: true, CreateDirectory: true, CreateFile: true}, roots, nil
+		return eng, Capabilities{Search: true, SaveFile: true, ReplaceFiles: true, AddFile: true, RenameFile: true, DeleteFile: true, CreateDirectory: true, CreateFile: true}, roots, nil
 	})
 	res, err := client.Initialize(context.Background(), InitializeRequest{})
 	if err != nil {
