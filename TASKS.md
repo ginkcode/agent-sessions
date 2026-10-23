@@ -308,7 +308,7 @@ activation or automation are authorized by that split.
 
 ## Follow-up — Editor essentials
 
-Progress: **2/23 complete**. Plan: [docs/plan/editor-essentials.md](docs/plan/editor-essentials.md);
+Progress: **3/23 complete**. Plan: [docs/plan/editor-essentials.md](docs/plan/editor-essentials.md);
 briefs: [docs/tasks](docs/tasks/README.md#editor-essentials). Not included in the
 milestone totals above.
 
@@ -316,7 +316,7 @@ milestone totals above.
 |---|---|---|---|
 | [PS-01](docs/tasks/PS-01.md) | ✅ | Content search engine on the host | 4 |
 | [PS-02](docs/tasks/PS-02.md) | ✅ | Search over Engine/App/RPC with cancel | 3 |
-| [PS-03](docs/tasks/PS-03.md) | ⬜ | Search pane in Go to File | 4 |
+| [PS-03](docs/tasks/PS-03.md) | ✅ | Search pane in Go to File | 4 |
 | [PS-04](docs/tasks/PS-04.md) | ⬜ | Revision-checked replace engine | 3 |
 | [PS-05](docs/tasks/PS-05.md) | ⬜ | Replace in the Search pane, drafts included | 4 |
 | [AG-01](docs/tasks/AG-01.md) | ⬜ | New session launch: local, WSL, SSH; panel and external | 4 |

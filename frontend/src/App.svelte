@@ -38,6 +38,9 @@
   import { launcher } from './lib/stores/launcher.svelte';
   import { translateSettings } from './lib/stores/translate.svelte';
   import { terminals } from './lib/stores/terminals.svelte';
+  import { files } from './lib/stores/files.svelte';
+  import { contentSearch } from './lib/stores/contentSearch.svelte';
+  import { isSearchShortcut, searchSeed } from './lib/contentSearch';
   import { hasOpenModal, isEditableTarget } from './lib/search';
   import { navigationButton, navigationShortcut, type NavDirection } from './lib/navHistory';
   import { api, subscribeMouseNavigate } from './lib/api';
@@ -156,6 +159,19 @@
       if (tabNumber !== null) {
         if (!launcher.info.panel || hasOpenModal()) return;
         if (terminals.selectNth(tabNumber)) event.preventDefault();
+        return;
+      }
+      // Cmd+Shift+F on macOS, Ctrl+Shift+F elsewhere: searches the files of
+      // the selected session's project, from the selected text. Go to File
+      // handles it itself while open.
+      if (isSearchShortcut(event, isMac)) {
+        const cwd = appState.selectedSessionMeta?.cwd;
+        if (!cwd || files.open || hasOpenModal() || link.stale) return;
+        event.preventDefault();
+        if (event.repeat) return;
+        const seed = searchSeed(document.getSelection()?.toString() ?? '');
+        void files.show(cwd);
+        if (files.dir === cwd) contentSearch.open(seed);
         return;
       }
       // Cmd+, on macOS, Ctrl+, elsewhere: the convention for Settings.

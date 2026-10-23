@@ -380,6 +380,11 @@ export function createFileEditor(parent: HTMLElement, initial: FileEditorOptions
       return true;
     },
     focus() { if (!destroyed) view.focus(); },
+    selectedText() {
+      if (destroyed) return '';
+      const { from, to } = view.state.selection.main;
+      return view.state.sliceDoc(from, to);
+    },
     find() { return !destroyed && openSearchPanel(view); },
     closeSearch() { return !destroyed && closeSearchPanel(view); },
     handleKey(event: KeyboardEvent) { return !destroyed && handleKey(view, event); },

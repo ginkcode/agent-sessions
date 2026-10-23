@@ -112,10 +112,16 @@ export function revealSourceRange(root: HTMLElement, range: CodeDiagnosticRange)
 }
 
 export interface ProblemNavigationIdentity { dir: string | null; host: string | undefined; version: string; context: string }
-export interface ProblemNavigationRequest {
-  id: number; identity: ProblemNavigationIdentity; tab: object; path: string; diagnostic: CodeDiagnostic;
+/** A wait to reveal a problem or a search match once its file is shown. */
+export interface ProblemNavigationRequest<Tab extends object = object> {
+  id: number; identity: ProblemNavigationIdentity; tab: Tab; path: string;
+  kind: 'problem' | 'search';
+  /** Absent for a whole-file finding, which locate turns down. */
+  range?: CodeDiagnosticRange;
+  /** Why the target cannot be drawn over source, the text shown; '' when it can. */
+  locate: (tab: Tab, source: string) => string;
 }
-export function matchesProblemNavigation(request: ProblemNavigationRequest, latest: ProblemNavigationRequest | null, identity: ProblemNavigationIdentity, tab: object | undefined, path: string | null): boolean {
+export function matchesProblemNavigation<Tab extends object>(request: ProblemNavigationRequest<Tab>, latest: ProblemNavigationRequest<Tab> | null, identity: ProblemNavigationIdentity, tab: object | undefined, path: string | null): boolean {
   return request === latest && request.tab === tab && request.path === path
     && request.identity.dir === identity.dir && request.identity.host === identity.host
     && request.identity.version === identity.version && request.identity.context === identity.context;

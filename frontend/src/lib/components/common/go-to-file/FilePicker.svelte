@@ -14,15 +14,22 @@
   import LoadingSpinner from '../LoadingSpinner.svelte';
   import FileIcon from '../FileIcon.svelte';
   import { issueCounts } from '../../../codeCheckSummary';
+  import { contentSearch, type PickerMode } from '../../../stores/contentSearch.svelte';
+  import SearchPane from './SearchPane.svelte';
+  import type { SearchMatch } from '../../../types';
 
   interface Props {
     input?: HTMLInputElement | undefined;
     presentation?: boolean;
     onPick: (path: string, keep?: boolean) => void;
     onContext: (event: MouseEvent, path: string, directory: boolean) => void;
+    /** Opens the file at a content search match. */
+    onOpenMatch: (path: string, match: SearchMatch, keep?: boolean) => void;
   }
 
-  let { input = $bindable(), presentation = false, onPick, onContext }: Props = $props();
+  let { input = $bindable(), presentation = false, onPick, onContext, onOpenMatch }: Props = $props();
+  const isMac = typeof navigator !== 'undefined' && /Mac/i.test(navigator.platform);
+  const searchShortcut = isMac ? '⌘⇧F' : 'Ctrl+Shift+F';
 
   let query = $state('');
   let diagnosticContext = $derived([
@@ -51,6 +58,11 @@
   export function reset() {
     query = '';
     activeIndex = 0;
+  }
+
+  function showMode(mode: PickerMode) {
+    contentSearch.setMode(mode);
+    if (mode === 'files') queueMicrotask(() => input?.focus());
   }
 
   function fileStatus(path: string): GitStatus | undefined {
@@ -156,6 +168,14 @@
 {/snippet}
 
 <aside class="picker" class:presentation>
+  <div class="mode-switch" role="tablist" aria-label="Left pane">
+    <button type="button" role="tab" class="mode-btn" class:active={contentSearch.mode === 'files'} aria-selected={contentSearch.mode === 'files'} title="Find a file by name" onclick={() => showMode('files')}>Files</button>
+    <button type="button" role="tab" class="mode-btn" class:active={contentSearch.mode === 'search'} aria-selected={contentSearch.mode === 'search'} title="Search file contents ({searchShortcut})" aria-keyshortcuts={isMac ? 'Meta+Shift+F' : 'Control+Shift+F'} onclick={() => showMode('search')}>Search</button>
+  </div>
+
+  {#if contentSearch.mode === 'search'}
+    <SearchPane onOpen={onOpenMatch} />
+  {:else}
   <input
     bind:this={input}
     class="search-input"
@@ -244,6 +264,7 @@
       </button>
     </footer>
   {/if}
+  {/if}
 </aside>
 
 <style>
@@ -258,6 +279,42 @@
 
   .picker.presentation {
     display: none;
+  }
+
+  .mode-switch {
+    display: flex;
+    margin: 10px 10px 0;
+    overflow: hidden;
+    border: 1px solid color-mix(in srgb, var(--text-muted) 35%, transparent);
+    border-radius: 999px;
+  }
+
+  .mode-btn {
+    flex: 1;
+    padding: 3px 12px;
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: background-color 0.15s ease, color 0.15s ease;
+  }
+
+  .mode-btn + .mode-btn {
+    border-left: 1px solid color-mix(in srgb, var(--text-muted) 35%, transparent);
+  }
+
+  .mode-btn:hover {
+    background-color: var(--hover-bg);
+  }
+
+  .mode-btn:focus-visible {
+    outline: 2px solid var(--accent-color);
+    outline-offset: -2px;
+  }
+
+  .mode-btn.active,
+  .mode-btn.active:hover {
+    background-color: var(--active-bg);
+    color: var(--accent-color);
   }
 
   .search-input {

@@ -677,6 +677,8 @@ export interface SearchFile {
   matches: SearchMatch[];
   /** The file had more matches than the per-file cap. */
   truncated?: boolean;
+  /** Set in the browser: the matches are in an unsaved draft, not on disk. */
+  draft?: boolean;
 }
 
 /** The files with matches, sorted by path. */

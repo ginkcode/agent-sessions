@@ -2,7 +2,7 @@
   import { onDestroy, tick, untrack, type Snippet } from 'svelte';
   import { projectSourceDiagnostics } from '../../../sourceDiagnostics';
   import { codeDiagnostics } from '../../../stores/codeDiagnostics.svelte';
-  import type { CodeDiagnostic } from '../../../codeDiagnostics';
+  import type { CodeDiagnostic, CodeDiagnosticRange } from '../../../codeDiagnostics';
   import { problemPath, problemLocation, rangeOffsets, revealSourceRange, matchesProblemNavigation, type ProblemNavigationRequest } from '../../../problemNavigation';
   import type { FilePosition } from '../../../filePosition';
   import { selectFileLine, type FileLineSelection } from '../../../fileSelection';
@@ -10,6 +10,7 @@
   import { formatAbsoluteTime, formatAgo } from '../../../date';
   import { preferences } from '../../../stores/preferences.svelte';
   import { files } from '../../../stores/files.svelte';
+  import type { FileTab } from '../../../stores/files.svelte';
   import { highlightFile, splitHighlightedLines, splitLines } from '../../../codeHighlight';
   import { copyToClipboard } from '../../../portable';
   import { printFile } from '../../../print';
@@ -93,50 +94,68 @@
   const isMac = typeof navigator !== 'undefined' && /Mac/i.test(navigator.platform);
 
   let previewOn = $state(false);
-  let navigation = $state.raw<ProblemNavigationRequest | null>(null);
+  let navigation = $state.raw<ProblemNavigationRequest<FileTab> | null>(null);
   let navigationSequence = 0;
   let navigationNotice = $state('');
-  function navigationIdentity() {
+  // Problems follow the code-check context too: a finding from an older
+  // check must not be drawn over newer text.
+  function navigationIdentity(kind: ProblemNavigationRequest['kind'] = 'problem') {
     return { dir: files.dir, host: link.dataHost, version: files.contextVersion,
-      context: JSON.stringify([codeDiagnostics.project, codeDiagnostics.snapshot?.context, codeDiagnostics.status]) };
+      context: kind === 'search' ? 'search' : JSON.stringify([codeDiagnostics.project, codeDiagnostics.snapshot?.context, codeDiagnostics.status]) };
   }
   function navigationLocation(diagnostic: CodeDiagnostic, tab: NonNullable<typeof files.activeTab>) {
     if (codeDiagnostics.status !== 'ready' || codeDiagnostics.revoking || codeDiagnostics.directory !== files.dir || blocked) return 'Code checks are reconnecting or updating; the position is shown once results are current.';
     return problemLocation(diagnostic, { dirty: Boolean(tab.edit?.dirty || tab.edit?.uncertain || tab.edit?.conflict), revision: tab.edit?.revision ?? tab.content?.revision, live: codeDiagnostics.liveBasis(tab.path) });
   }
-  export function navigateProblem(diagnostic: CodeDiagnostic) {
+  /** Opens path (in a kept tab, or the preview tab) and starts the wait to reveal its target. */
+  function startNavigation(path: string, kind: ProblemNavigationRequest['kind'], range: CodeDiagnosticRange | undefined, locate: ProblemNavigationRequest<FileTab>['locate'], keep = true) {
     navigation = null;
-    if (!problemPath(diagnostic.path) || !files.dir || frozen || blocked) {
-      navigationNotice = 'Cannot open this problem target in the current project.';
+    if (!problemPath(path) || !files.dir || frozen || blocked) {
+      navigationNotice = kind === 'search' ? 'Cannot open this search result in the current project.' : 'Cannot open this problem target in the current project.';
       return;
     }
-    files.openFile(diagnostic.path, { keep: true, read: fileStatus(diagnostic.path) !== 'D' });
+    files.openFile(path, { keep, read: fileStatus(path) !== 'D' });
     const tab = files.activeTab;
-    if (!tab || tab.path !== diagnostic.path) return;
+    if (!tab || tab.path !== path) return;
     pendingAnchor = null;
     navigationNotice = '';
-    navigation = { id: ++navigationSequence, identity: navigationIdentity(), tab, path: diagnostic.path, diagnostic };
+    navigation = { id: ++navigationSequence, identity: navigationIdentity(kind), tab, path, kind, range, locate };
+  }
+  export function navigateProblem(diagnostic: CodeDiagnostic) {
+    startNavigation(diagnostic.path, 'problem', diagnostic.range, tab => navigationLocation(diagnostic, tab));
+  }
+  /**
+   * Opens a search match and selects it. The match must still read the same
+   * in the text shown; otherwise the file changed since the search. As in
+   * the file list, it opens in the preview tab unless keep is set.
+   */
+  export function navigateMatch(path: string, range: CodeDiagnosticRange, matched: string, keep = false) {
+    startNavigation(path, 'search', range, (_, source) => {
+      const at = rangeOffsets(source, range);
+      return at && source.slice(at.anchor, at.head) === matched ? '' : 'This file changed since the search; search again to update the result.';
+    }, keep);
   }
   // Wait for the matching load and a source render. Recheck identity after every
   // async boundary; a late read/tick must never select another tab or host.
   $effect(() => {
     const request = navigation;
     if (!request) return;
-    const identity = navigationIdentity();
-    const valid = () => matchesProblemNavigation(request, navigation, navigationIdentity(), files.activeTab, files.selected);
+    const identity = navigationIdentity(request.kind);
+    const valid = () => matchesProblemNavigation(request, navigation, navigationIdentity(request.kind), files.activeTab, files.selected);
     if (!matchesProblemNavigation(request, navigation, identity, files.activeTab, files.selected)) { navigation = null; return; }
     if (files.loadingFile || (!editing && highlightPending)) return;
     if (files.fileError || fileStatus(request.path) === 'D') {
-      navigationNotice = files.fileError ?? 'This problem target was deleted; the finding remains in Problems.';
+      navigationNotice = files.fileError ?? (request.kind === 'search' ? 'This file was deleted since the search.' : 'This problem target was deleted; the finding remains in Problems.');
       navigation = null; return;
     }
     const tab = files.activeTab!;
-    const reason = navigationLocation(request.diagnostic, tab);
+    const shownSource = () => (tab.edit?.editing ? tab.edit.draft : text);
+    const source = shownSource();
+    const reason = request.locate(tab, source);
     if (reason) { navigationNotice = reason; navigation = null; return; }
-    const range = request.diagnostic.range!;
-    const source = tab.edit?.editing ? tab.edit.draft : text;
+    const range = request.range!;
     if (!isTextContent(tab.content) || !rangeOffsets(source, range)) {
-      navigationNotice = 'This saved-file range cannot be shown in the current source.';
+      navigationNotice = request.kind === 'search' ? 'This search result cannot be shown in the current source.' : 'This saved-file range cannot be shown in the current source.';
       navigation = null; return;
     }
     previewOn = false;
@@ -146,11 +165,11 @@
     untrack(() => { void tick().then(() => {
       if (!valid() || showPreview || showDiff || frozen || (!editing && highlightPending)) return;
       // A draft may have changed while the source/editor was mounting.
-      if (navigationLocation(request.diagnostic, tab)) {
+      if (request.locate(tab, shownSource())) {
         navigationNotice = 'Stale: the file changed while it was opening; this position no longer matches the text.';
         navigation = null; return;
       }
-      const editorValid = () => valid() && !frozen && !navigationLocation(request.diagnostic, tab);
+      const editorValid = () => valid() && !frozen && !request.locate(tab, shownSource());
       const shown = editing ? editor?.revealRange(range, editorValid) : codeScroll && revealSourceRange(codeScroll, range);
       if (shown) navigation = null;
     }); });
@@ -522,6 +541,14 @@
   function splitPath(path: string): { name: string; dir: string } {
     const at = path.lastIndexOf('/');
     return { name: path.slice(at + 1), dir: at >= 0 ? path.slice(0, at) : '' };
+  }
+
+  /** The text selected in the editor or the source view, for a project search. */
+  export function selectedText(): string {
+    if (editing) return editor?.selectedText() ?? '';
+    const selection = typeof document === 'undefined' ? null : document.getSelection();
+    if (!selection || !codeScroll || !codeScroll.contains(selection.anchorNode)) return '';
+    return selection.toString();
   }
 
   /** Called by the parent only while the file dialog is open. */

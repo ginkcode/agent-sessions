@@ -45,6 +45,7 @@
 
   /** Commands are harmless no-ops until the lazy runtime has mounted. */
   export function focus(): void { editor?.focus(); }
+  export function selectedText(): string { return editor?.selectedText() ?? ''; }
   export function find(): boolean { return editor?.find() ?? false; }
   export function closeSearch(): boolean { return editor?.closeSearch() ?? false; }
   export function handleKey(event: KeyboardEvent): boolean { return editor?.handleKey(event) ?? false; }

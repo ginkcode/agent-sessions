@@ -71,7 +71,7 @@ const { FilesStore } = await loadServerModule(storeURL, [
 function viewerHarness(files) {
   const source = readFileSync(new URL('../src/lib/components/common/go-to-file/FileViewer.svelte', import.meta.url), 'utf8');
   const block = source.slice(source.indexOf('  let previewOn'), source.indexOf('  // Editing.'));
-  const js = ts.transpileModule(block.replace('export function', 'function').replace('let previewOn = $state(false)', 'let previewOn = $state(true)'), { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText;
+  const js = ts.transpileModule(block.replaceAll('export function', 'function').replace('let previewOn = $state(false)', 'let previewOn = $state(true)'), { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText;
   const ticks = [], reveals = [];
   let effect;
   const ctx = { ...navigation, files, codeDiagnostics: { directory: files.dir, liveBasis: () => undefined, status: 'ready', snapshot: { context: { generation: '1' } } }, link: { dataHost: undefined }, frozen: false, blocked: false, highlightPending: false,
@@ -85,7 +85,7 @@ function viewerHarness(files) {
     $state: Object.assign(v => v, { raw: v => v }), $effect: fn => effect = fn,
   };
   ctx.$effect = fn => ctx.runEffect = fn;
-  const control = new Function('ctx', `with(ctx) { ${js}; return { navigateProblem, effect: () => ctx.runEffect(), preview: () => previewOn, notice: () => navigationNotice }; }`)(ctx);
+  const control = new Function('ctx', `with(ctx) { ${js}; return { navigateProblem, navigateMatch, effect: () => ctx.runEffect(), preview: () => previewOn, notice: () => navigationNotice }; }`)(ctx);
   return { ...control, ctx, reveals, async flush() { ticks.splice(0).forEach(f => f()); await Promise.resolve(); } };
 }
 const content = path => ({ path, text: 'a😀z\r\nβx', size: 9, revision: 'r', edit: { eligible: true, newline: 'crlf' } });
@@ -128,6 +128,22 @@ test('actual viewer live navigation rechecks document/version/sync after the ren
   h.navigateProblem(d); h.effect(); live = { ...live, synced: false }; await h.flush();
   assert.equal(h.reveals.length, 1, 'typing while mounting cannot select an old range');
   assert.equal(tab.edit.draft, 'a😀draft\nβx');
+  delete globalThis.__problemFixture;
+});
+
+test('actual viewer opens a search match in the preview tab and refuses text that changed since the search', async () => {
+  globalThis.__problemFixture = { api: { listFiles: async () => ({ files: [] }), readFile: async (_, path) => content(path) } };
+  const files = new FilesStore(); await files.show('/p');
+  const h = viewerHarness(files);
+  const match = { start: { line: 1, character: 0 }, end: { line: 1, character: 2 } };
+  h.navigateMatch('a.go', match, 'βx'); await Promise.resolve(); await Promise.resolve(); h.effect(); await h.flush();
+  assert.deepEqual(h.reveals, [match]); assert.equal(h.notice(), '');
+  assert.equal(files.activeTab.preview, true, 'a click on a match is a preview, as in the file list');
+  h.navigateMatch('b.go', match, 'βx', true); await Promise.resolve(); await Promise.resolve(); h.effect(); await h.flush();
+  assert.equal(files.activeTab.preview, false); assert.equal(h.reveals.length, 2);
+  h.navigateMatch('b.go', match, 'zz'); h.effect(); await h.flush();
+  assert.match(h.notice(), /changed since the search/); assert.equal(h.reveals.length, 2);
+  h.navigateMatch('../outside', match, 'βx'); assert.match(h.notice(), /Cannot open this search result/);
   delete globalThis.__problemFixture;
 });
 

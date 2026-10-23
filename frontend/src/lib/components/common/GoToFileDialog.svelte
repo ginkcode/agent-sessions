@@ -16,6 +16,9 @@
   import { connectionStore } from '../../stores/connection.svelte';
   import CodeChecks from './go-to-file/CodeChecks.svelte';
   import ProblemsPanel from './go-to-file/ProblemsPanel.svelte';
+  import { contentSearch } from '../../stores/contentSearch.svelte';
+  import { isSearchShortcut, matchRange, matchedText, searchSeed } from '../../contentSearch';
+  import type { SearchMatch } from '../../types';
 
   // Track routing, not diagnostics mutations. Discovery never delays picker rendering.
   $effect(() => {
@@ -70,8 +73,10 @@
     if (open && !wasOpen) {
       restoreFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
       picker?.reset();
-      queueMicrotask(() => input?.focus());
+      // The Search pane focuses its own field.
+      if (untrack(() => contentSearch.dialogOpened()) === 'files') queueMicrotask(() => input?.focus());
     } else if (!open && wasOpen) {
+      untrack(() => contentSearch.dialogClosed());
       restoreFocus?.focus();
       restoreFocus = null;
     }
@@ -218,6 +223,17 @@
     files.openFile(path, { keep, read: fileStatus(path) !== 'D' });
   }
 
+  function openMatch(path: string, match: SearchMatch, keep = false) {
+    viewer?.navigateMatch(path, matchRange(match), matchedText(match), keep);
+  }
+
+  /** F4 and Shift+F4: the next and previous search match, in any file. */
+  function stepMatch(direction: 1 | -1) {
+    const ref = contentSearch.step(direction);
+    const match = contentSearch.match(ref);
+    if (ref && match) openMatch(ref.path, match);
+  }
+
   const isMac = typeof navigator !== 'undefined' && /Mac/i.test(navigator.platform);
   function isCloseShortcut(e: KeyboardEvent) {
     return (isMac ? e.metaKey && !e.ctrlKey : e.ctrlKey && !e.metaKey) && !e.altKey && !e.shiftKey && e.code === 'KeyW';
@@ -237,6 +253,19 @@
     e.preventDefault();
     e.stopPropagation();
     if (!e.repeat) problems.toggle();
+    return;
+  }
+  // Cmd+Shift+F on macOS, Ctrl+Shift+F elsewhere: searches the project's
+  // files, starting from the selected text.
+  if (isSearchShortcut(e, isMac)) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!e.repeat) contentSearch.open(searchSeed(viewer?.selectedText() ?? ''));
+    return;
+  }
+  if (e.key === 'F4' && !e.metaKey && !e.ctrlKey && !e.altKey && contentSearch.result?.matches) {
+    e.preventDefault();
+    stepMatch(e.shiftKey ? -1 : 1);
     return;
   }
   if (viewer?.handleKey(e)) return;
@@ -308,7 +337,7 @@
       <button type="button" class="close-button" aria-label="Close" title="Close" onclick={close}>×</button>
     </header>
     <div class="body">
-      <FilePicker bind:this={picker} bind:input {presentation} onPick={pick} onContext={openContext} />
+      <FilePicker bind:this={picker} bind:input {presentation} onPick={pick} onContext={openContext} onOpenMatch={openMatch} />
       <FileViewer bind:this={viewer} bind:presentation bind:presentationFontSize>
         {#snippet tabs()}
           <FileTabs bind:this={fileTabs} {presentation} onContext={() => (context = null)} />

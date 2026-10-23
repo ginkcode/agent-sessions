@@ -64,6 +64,22 @@ async function importCompiled(filename, code, replacements) {
   if (code.includes(viewerPreferences) && !replacements.some(([from]) => from === viewerPreferences)) {
     replacements.push([viewerPreferences, "const preferences = { timeZone: 'utc' };"]);
   }
+  // Go to File's content search: a fixture store (Files mode unless the
+  // render says otherwise), a stub pane, and the real pure helpers.
+  for (const store of ["import { contentSearch } from '../../../stores/contentSearch.svelte';", "import { contentSearch } from '../../stores/contentSearch.svelte';"]) {
+    if (code.includes(store) && !replacements.some(([from]) => from === store)) {
+      replacements.push([store, "const contentSearch = new Proxy({}, { get: (_, key) => (globalThis.__componentFixture?.contentSearch ?? { mode: 'files' })[key] });"]);
+    }
+  }
+  const searchPane = "import SearchPane from './SearchPane.svelte';";
+  if (code.includes(searchPane) && !replacements.some(([from]) => from === searchPane)) {
+    replacements.push([searchPane, "const SearchPane = ($$renderer) => $$renderer.push('<div data-search-pane></div>');"]);
+  }
+  for (const module of ["'../../contentSearch'", "'../../../contentSearch'"]) {
+    if (code.includes(module) && !replacements.some(([from]) => from === module)) {
+      replacements.push([module, JSON.stringify(new URL('../src/lib/contentSearch.ts', import.meta.url).href)]);
+    }
+  }
   for (const [from, to] of replacements) {
     assert.ok(code.includes(from), `compiled ${filename} no longer contains ${from}`);
     code = code.replace(from, to);
