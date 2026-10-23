@@ -206,8 +206,9 @@ func (p *GoplsPlan) Provider() ProviderState {
 	}
 	return ProviderState{
 		ProviderID: goplsProviderID, Availability: p.availability, Phase: "idle", Freshness: "uncertain",
-		Coverage: Coverage{Kind: "openedDocuments", Roots: roots, Partial: p.partial, ExternalChanges: CoverageExternalChanges},
-		Notice:   shorten(notice, 2048),
+		Coverage:           Coverage{Kind: "openedDocuments", Roots: roots, Partial: p.partial, ExternalChanges: CoverageExternalChanges},
+		Notice:             shorten(notice, 2048),
+		DocumentExtensions: slices.Clone(goDocumentExtensions),
 	}
 }
 
@@ -575,3 +576,7 @@ func (b *GoplsBridge) Handle(n SessionNotification) {
 		b.note(partialGoNotice)
 	}
 }
+
+// goDocumentExtensions is the client-side hint matching Documents/DiscoverGoLive
+// resolution (".go" under a discovered module root).
+var goDocumentExtensions = []string{".go"}

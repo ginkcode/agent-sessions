@@ -209,6 +209,10 @@ finding once using path components, independent of expansion/search/listing caps
 - notice: optional plain text, maximum 2048 bytes; use for missing dependencies,
   out-of-root findings, unsupported watchers, or scope limits.
 - failure: optional `{code, message}`, using bounded error codes/messages below.
+- documentExtensions: optional additive `string[]` of lowercase file extensions
+  (e.g. `".go"`) an `openedDocuments` provider accepts for live sync. Clients use
+  it to skip live sync for files no provider supports. If it is missing, clients
+  may try any file (older backends).
 
 Approval state is separate: `{state: "required" | "approved" | "revoked",
 mode?: "session" | "persistent", fingerprint?: string}`. Only approved states

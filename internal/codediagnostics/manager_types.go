@@ -43,6 +43,11 @@ type ProviderState struct {
 	RunID        string   `json:"runId,omitempty"`
 	Notice       string   `json:"notice,omitempty"`
 	Failure      *Error   `json:"failure,omitempty"`
+	// DocumentExtensions lists the file extensions an openedDocuments provider
+	// synchronizes (additive, contract v1). Clients open only matching paths, so
+	// files no provider supports are "not live" rather than failed. The backend
+	// still resolves the owner authoritatively on every open.
+	DocumentExtensions []string `json:"documentExtensions,omitempty"`
 }
 type ProposalTool struct {
 	ProviderID  string   `json:"providerId"`

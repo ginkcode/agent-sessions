@@ -201,8 +201,9 @@ func (p *SvelteLSPlan) Provider() ProviderState {
 	}
 	return ProviderState{
 		ProviderID: svelteLSProviderID, Availability: p.availability, Phase: "idle", Freshness: "uncertain",
-		Coverage: Coverage{Kind: "openedDocuments", Roots: roots, Partial: p.partial, ExternalChanges: CoverageExternalChanges},
-		Notice:   shorten(notice, 2048),
+		Coverage:           Coverage{Kind: "openedDocuments", Roots: roots, Partial: p.partial, ExternalChanges: CoverageExternalChanges},
+		Notice:             shorten(notice, 2048),
+		DocumentExtensions: slices.Clone(svelteDocumentExtensions),
 	}
 }
 
@@ -451,3 +452,6 @@ func (b *SvelteBridge) Handle(n SessionNotification) {
 		b.note(partialSvelteNotice)
 	}
 }
+
+// svelteDocumentExtensions lists the extension DocumentOwner assigns to Svelte.
+var svelteDocumentExtensions = []string{".svelte"}

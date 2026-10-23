@@ -197,8 +197,9 @@ func (p *TSPlan) Provider() ProviderState {
 	}
 	return ProviderState{
 		ProviderID: tsProviderID, Availability: p.availability, Phase: "idle", Freshness: "uncertain",
-		Coverage: Coverage{Kind: "openedDocuments", Roots: roots, Partial: p.partial, ExternalChanges: CoverageExternalChanges},
-		Notice:   shorten(notice, 2048),
+		Coverage:           Coverage{Kind: "openedDocuments", Roots: roots, Partial: p.partial, ExternalChanges: CoverageExternalChanges},
+		Notice:             shorten(notice, 2048),
+		DocumentExtensions: slices.Clone(tsDocumentExtensions),
 	}
 }
 
@@ -393,3 +394,6 @@ func (b *TSBridge) Handle(n SessionNotification) {
 		b.note(partialTSNotice)
 	}
 }
+
+// tsDocumentExtensions lists every extension TSLanguageID owns.
+var tsDocumentExtensions = []string{".ts", ".mts", ".cts", ".tsx", ".js", ".mjs", ".cjs", ".jsx"}

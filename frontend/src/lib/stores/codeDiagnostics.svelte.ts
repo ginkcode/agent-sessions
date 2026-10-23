@@ -167,6 +167,22 @@ export class CodeDiagnosticsStore {
     if (!this.liveCapable || !this.approved || !this.context || !this.directory || !this.active()) return undefined;
     return { context: this.context, host: this.host, directory: this.directory, token: `${this.lifetime}:${this.context.generation}` };
   }
+  /**
+   * Whether an available opened-documents provider declares this path, from the
+   * backend's provider metadata (documentExtensions + coverage roots). With no
+   * declaring provider at all (older backend) every path is offered and the
+   * backend decides; a declared-unsupported path is never opened, so it is "not
+   * live" instead of a failed synchronization.
+   */
+  liveSupports(path: string): boolean {
+    const live = this.providers.filter(p => p.coverage.kind === 'openedDocuments');
+    if (!live.some(p => Array.isArray(p.documentExtensions))) return true;
+    const lower = path.toLowerCase();
+    const under = (root: string) => root === '' || path === root || path.startsWith(root + '/');
+    return live.some(p => p.availability === 'available' && Array.isArray(p.documentExtensions)
+      && p.documentExtensions.some(ext => lower.endsWith(ext.toLowerCase()))
+      && (p.coverage.roots.length === 0 || p.coverage.roots.some(under)));
+  }
   /** Notified (synchronously, errors swallowed) whenever attachment state may have changed. */
   onLifecycle(listener: () => void): () => void {
     this.listeners.add(listener);

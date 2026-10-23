@@ -17,6 +17,13 @@ export interface LiveTimers {
 /** Attachment surface the bridge needs; satisfied by CodeDiagnosticsStore. */
 export interface LiveAttachmentSource {
   readonly liveAttachment: { context: CodeDiagnosticsContext; host: string; directory: string; token: string } | undefined;
+  /**
+   * Whether an available opened-documents provider declares this path (backend
+   * provider metadata). Paths no provider owns are simply not live: they are
+   * never opened, so they can never be reported as failed synchronization.
+   * Absent: every displayed document is offered (older backends).
+   */
+  liveSupports?(path: string): boolean;
 }
 
 type Att = NonNullable<LiveAttachmentSource['liveAttachment']>;
@@ -86,6 +93,20 @@ export class LiveDocumentBridge implements FileLifecycleObserver {
   /** Paths whose rename/delete outcome is unknown: nothing is opened until cleared. */
   private blocked = new Set<string>();
   private token: string | undefined;
+  /**
+   * The owned attachment is momentarily not live (resync, transient store error,
+   * pending revoke) but has not been replaced: the backend still holds every
+   * open lifecycle. Nothing is sent and nothing is forgotten; the same token
+   * resumes, any other token replaces.
+   */
+  private paused = false;
+  /** The attachment `token` names, kept so a paused bridge can still close its lifecycles. */
+  private owned: Att | undefined;
+  /**
+   * Token abandoned by a connection interruption. Its backend state is unknown and
+   * nothing more is sent to it; only a different (reattached) token is adopted.
+   */
+  private retired: string | undefined;
   private chain: Promise<void> = Promise.resolve();
   private listeners = new Set<() => void>();
   private timers: LiveTimers;
@@ -113,7 +134,7 @@ export class LiveDocumentBridge implements FileLifecycleObserver {
    */
   basis(path: string): LiveDocumentBasis | undefined {
     const d = this.docs.get(path);
-    if (!d || d.failed || d.confirmed < 1 || this.blocked.has(path)) return undefined;
+    if (this.paused || !d || d.failed || d.confirmed < 1 || this.blocked.has(path)) return undefined;
     const synced = !d.pending && !d.inflight && !d.saving && d.timer === undefined && d.confirmed === d.version && d.latest === d.queuedText;
     return { documentId: d.id, version: d.confirmed, synced };
   }
@@ -122,7 +143,7 @@ export class LiveDocumentBridge implements FileLifecycleObserver {
   get tracked(): string[] { return [...this.docs.keys()]; }
   get statuses(): LiveDocumentStatus[] {
     const att = this.deps.store.liveAttachment;
-    if (!att || att.token !== this.token) return [];
+    if (!att || att.token !== this.token || this.paused) return [];
     return [...this.docs.values()].map(d => ({ path: d.path, documentId: d.id, failure: d.failed,
       canReopen: !!d.failed && !d.saving && !this.blocked.has(d.path) && d.recoveries < MAX_RECOVERIES && ['toolFailed', 'resyncRequired', 'invalidArgument', 'notFound', 'busy', 'limitExceeded'].includes(d.failed) }));
   }
@@ -140,13 +161,43 @@ export class LiveDocumentBridge implements FileLifecycleObserver {
   sync(): void { void this.ensure(); }
 
   private ensure(): Att | undefined {
-    const att = this.deps.store.liveAttachment;
-    if (att?.token !== this.token) {
-      this.invalidate();
-      this.token = att?.token;
-      if (att) this.reconcileAll(att);
+    const current = this.deps.store.liveAttachment;
+    const att = current && current.token !== this.retired ? current : undefined;
+    if (!att) {
+      // Same attachment, not live right now: keep lifecycles the backend still holds.
+      // Forgetting them here made the next reconcile reopen held paths under fresh
+      // ids ("Path already has an open document" -> invalidArgument).
+      if (this.token !== undefined && !this.paused) this.pause();
+      return undefined;
     }
+    if (att.token === this.token) {
+      this.owned = att;
+      if (this.paused) this.resume_(att);
+      return att;
+    }
+    // A different token is a different backend document namespace (detach,
+    // reattach or revoke released the old one): replace, never reuse.
+    this.invalidate();
+    this.retired = undefined;
+    this.token = att.token;
+    this.owned = att;
+    this.reconcileAll(att);
     return att;
+  }
+
+  private pause(): void {
+    this.paused = true;
+    for (const d of this.docs.values()) this.cancelTimer(d);
+    this.changed_();
+  }
+
+  private resume_(att: Att): void {
+    this.paused = false;
+    this.reconcileAll(att);
+    // Typing whose debounce was canceled by the pause is published now (a save still
+    // in flight keeps holding it back, exactly as before the pause).
+    for (const d of [...this.docs.values()]) if (!d.failed && !d.saving && d.latest !== d.queuedText) this.queueChange(att, d);
+    this.changed_();
   }
 
   /** Replacement/revoke/disconnect: cancel everything; the old attachment owns no results. */
@@ -154,7 +205,9 @@ export class LiveDocumentBridge implements FileLifecycleObserver {
     for (const d of this.docs.values()) this.cancelTimer(d);
     this.docs.clear();
     this.blocked.clear();
+    this.paused = false;
     this.token = undefined;
+    this.owned = undefined;
     this.changed_();
   }
 
@@ -163,6 +216,7 @@ export class LiveDocumentBridge implements FileLifecycleObserver {
     if (dir !== att.directory) return;
     const shown = new Set<string>();
     for (const doc of documents) {
+      if (!this.supported(doc.path)) continue;
       shown.add(doc.path);
       this.track(att, doc.path, doc.text, doc.revision);
     }
@@ -174,10 +228,16 @@ export class LiveDocumentBridge implements FileLifecycleObserver {
     return att && att.directory === dir ? att : undefined;
   }
 
+  /** Closing transitions also apply while paused: the owned attachment still holds the lifecycle. */
+  private forClose(dir: string): Att | undefined {
+    const att = this.for(dir) ?? (this.paused ? this.owned : undefined);
+    return att && att.directory === dir ? att : undefined;
+  }
+
   // -- FileLifecycleObserver ---------------------------------------------------
 
   diskState(dir: string, path: string, absent: boolean): void {
-    const att = this.for(dir);
+    const att = this.forClose(dir);
     if (!att) return;
     if (absent) {
       this.blocked.add(path);
@@ -238,7 +298,11 @@ export class LiveDocumentBridge implements FileLifecycleObserver {
     const d = this.docs.get(path);
     if (!t || !d || d.id !== t.id || this.token !== t.token) return;
     const att = this.deps.store.liveAttachment;
-    if (!att || att.token !== t.token || att.directory !== dir) return;
+    if (!att || att.token !== t.token || att.directory !== dir) {
+      // Settled while paused: the send window is unknown, so no didSave; typing resumes.
+      if (this.paused) { d.saving = false; d.revision = revision; this.changed_(); }
+      return;
+    }
     d.saving = false;
     d.revision = revision;
     const { context, host } = att;
@@ -257,9 +321,10 @@ export class LiveDocumentBridge implements FileLifecycleObserver {
     d.saving = false;
     const att = this.deps.store.liveAttachment;
     if (att && att.token === t.token && att.directory === dir) this.resume(att, d);
+    else this.changed_();
   }
   removed(dir: string, path: string): void {
-    const att = this.for(dir);
+    const att = this.forClose(dir);
     if (att) this.closePath(att, path, true);
   }
   renamed(dir: string, from: string, to: string): void {
@@ -277,7 +342,7 @@ export class LiveDocumentBridge implements FileLifecycleObserver {
     }
   }
   uncertain(dir: string, path: string): void {
-    const att = this.for(dir);
+    const att = this.forClose(dir);
     if (!att) return;
     const matches = (p: string) => p === path || p.startsWith(path + '/');
     for (const d of [...this.docs.values()]) if (matches(d.path)) this.closeDoc(att, d);
@@ -287,8 +352,11 @@ export class LiveDocumentBridge implements FileLifecycleObserver {
     this.changed_();
   }
   cleared(): void {
-    const att = this.deps.store.liveAttachment;
-    if (att && att.token === this.token) for (const d of [...this.docs.values()]) this.closeDoc(att, d);
+    // While paused the owned attachment still holds these lifecycles: close them on
+    // it, or a later reopen of the same path would be rejected as a duplicate.
+    const live = this.deps.store.liveAttachment;
+    const att = live && live.token === this.token ? live : this.paused ? this.owned : undefined;
+    if (att) for (const d of [...this.docs.values()]) this.closeDoc(att, d);
     else for (const d of this.docs.values()) this.cancelTimer(d);
     this.docs.clear();
     this.blocked.clear();
@@ -297,14 +365,23 @@ export class LiveDocumentBridge implements FileLifecycleObserver {
   interrupted(): void {
     // Cancel timers and invalidate now. Nothing is sent to the old route (no close,
     // no change); reconnect/host switch reattaches and reopens from the files store.
+    // The old token is retired: until the diagnostics store replaces it, a hook must
+    // not re-adopt it and reopen paths that route may still hold.
+    const token = this.token ?? this.deps.store.liveAttachment?.token;
     this.invalidate();
+    this.retired = token;
   }
 
   // -- document lifecycle ------------------------------------------------------
 
   /** Opens (or reconciles an already tracked) document with the displayed text. */
+  private supported(path: string): boolean {
+    const supports = this.deps.store.liveSupports;
+    return !supports || supports.call(this.deps.store, path);
+  }
+
   private track(att: Att, path: string, text: string, revision?: string): void {
-    if (this.blocked.has(path)) return;
+    if (this.blocked.has(path) || !this.supported(path)) return;
     const existing = this.docs.get(path);
     if (existing) {
       existing.revision = revision ?? existing.revision;

@@ -27,6 +27,8 @@ export interface CodeDiagnosticsProvider {
   availability: 'approvalRequired' | 'available' | 'missingTool' | 'unsupported' | 'disabled';
   phase: 'idle' | 'starting' | 'checking' | 'failed' | 'canceled' | 'disconnected';
   coverage: { kind: 'savedProject' | 'openedDocuments'; roots: string[]; partial: boolean; externalChanges: 'reconciled' | 'unwatched' | 'watching' };
+  /** Opened-documents providers: file extensions they synchronize (additive; absent on older backends). */
+  documentExtensions?: string[];
   freshness: CodeDiagnosticFreshness;
   truncated: boolean;
   runId?: string;
