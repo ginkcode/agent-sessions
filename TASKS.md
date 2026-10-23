@@ -308,7 +308,7 @@ activation or automation are authorized by that split.
 
 ## Follow-up — Editor essentials
 
-Progress: **11/23 complete**. Plan: [docs/plan/editor-essentials.md](docs/plan/editor-essentials.md);
+Progress: **12/23 complete**. Plan: [docs/plan/editor-essentials.md](docs/plan/editor-essentials.md);
 briefs: [docs/tasks](docs/tasks/README.md#editor-essentials). Not included in the
 milestone totals above.
 
@@ -325,7 +325,7 @@ milestone totals above.
 | [AG-04](docs/tasks/AG-04.md) | ✅ | Turn state from session files | 4 |
 | [AG-05](docs/tasks/AG-05.md) | ✅ | Terminal attention signals | 3 |
 | [AG-06](docs/tasks/AG-06.md) | ✅ | Alerts: badges, window title, system notifications | 4 |
-| [NAV-01](docs/tasks/NAV-01.md) | ⬜ | LSP definition, references and hover requests | 4 |
+| [NAV-01](docs/tasks/NAV-01.md) | ✅ | LSP definition, references and hover requests | 4 |
 | [NAV-02](docs/tasks/NAV-02.md) | ⬜ | Navigation over the wire | 3 |
 | [NAV-03](docs/tasks/NAV-03.md) | ⬜ | Read-only external definitions | 3 |
 | [NAV-04](docs/tasks/NAV-04.md) | ⬜ | Navigation in the viewer | 4 |

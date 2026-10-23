@@ -142,7 +142,7 @@ func TestDiscoverPyrightAvailability(t *testing.T) {
 	py, _ := s["python"].(map[string]any)
 	an, _ := py["analysis"].(map[string]any)
 	pr, _ := s["pyright"].(map[string]any)
-	if py["pythonPath"] != nil || an["diagnosticMode"] != "openFilesOnly" || an["typeCheckingMode"] != "basic" || pr["disableLanguageServices"] != true ||
+	if py["pythonPath"] != nil || an["diagnosticMode"] != "openFilesOnly" || an["typeCheckingMode"] != "basic" || pr["disableLanguageServices"] != false ||
 		an["diagnosticSeverityOverrides"].(map[string]any)["reportMissingImports"] != "none" {
 		t.Fatalf("settings %s", cfg.Settings)
 	}
@@ -481,7 +481,7 @@ func TestPyrightSessionTrustLaunchAndSettings(t *testing.T) {
 	py, _ := res[0].(map[string]any)
 	an, _ := res[1].(map[string]any)
 	pr, _ := res[2].(map[string]any)
-	if py["pythonPath"] != python || an["diagnosticMode"] != "openFilesOnly" || an["typeCheckingMode"] != "basic" || pr["disableLanguageServices"] != true || res[3] != nil {
+	if py["pythonPath"] != python || an["diagnosticMode"] != "openFilesOnly" || an["typeCheckingMode"] != "basic" || pr["disableLanguageServices"] != false || res[3] != nil {
 		t.Fatalf("%v", res)
 	}
 	// A scope outside the root is rejected.

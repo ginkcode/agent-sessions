@@ -268,8 +268,15 @@ func TestSessionAdvertisesNoLiveCapability(t *testing.T) {
 		t.Fatal(err)
 	}
 	caps := params["capabilities"].(map[string]any)
-	if len(caps) != 1 || caps["general"] == nil {
+	if len(caps) != 2 || caps["general"] == nil {
 		t.Fatalf("capabilities %v", caps)
+	}
+	// Only the requests the client sends: no diagnostics, edits or watchers.
+	td := caps["textDocument"].(map[string]any)
+	definition, _ := td["definition"].(map[string]any)
+	hover, _ := td["hover"].(map[string]any)
+	if len(td) != 3 || definition["linkSupport"] != true || td["references"] == nil || len(hover["contentFormat"].([]any)) != 2 {
+		t.Fatalf("textDocument capabilities %v", td)
 	}
 	if params["workspaceFolders"] != nil {
 		t.Fatal("workspace folders must not be advertised")

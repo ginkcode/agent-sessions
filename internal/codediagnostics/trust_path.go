@@ -189,6 +189,24 @@ func (r AuthorizedRoot) ResolvePath(hostID, rel string) (string, error) {
 // ResolveURI accepts only authority-free file URIs on the selected host. Even
 // localhost is rejected: remote identity is supplied separately, not by a URI.
 func (r AuthorizedRoot) ResolveURI(hostID, raw string) (string, error) {
+	native, err := nativeFilePath(raw)
+	if err != nil {
+		return "", err
+	}
+	rel, err := filepath.Rel(r.project.Root, native)
+	if err != nil {
+		return "", failure("unauthorized", "Diagnostic URI is outside the project")
+	}
+	rel = filepath.ToSlash(rel)
+	if _, err := r.ResolvePath(hostID, rel); err != nil {
+		return "", err
+	}
+	return rel, nil
+}
+
+// nativeFilePath is the absolute host-native path of an authority-free file
+// URI, without any filesystem access.
+func nativeFilePath(raw string) (string, error) {
 	if !bounded(raw, 16384) {
 		return "", failure("invalidArgument", "Invalid diagnostic URI")
 	}
@@ -204,15 +222,7 @@ func (r AuthorizedRoot) ResolveURI(hostID, raw string) (string, error) {
 	if !filepath.IsAbs(native) || hasParent(native) {
 		return "", failure("invalidArgument", "Invalid diagnostic URI path")
 	}
-	rel, err := filepath.Rel(r.project.Root, native)
-	if err != nil {
-		return "", failure("unauthorized", "Diagnostic URI is outside the project")
-	}
-	rel = filepath.ToSlash(rel)
-	if _, err := r.ResolvePath(hostID, rel); err != nil {
-		return "", err
-	}
-	return rel, nil
+	return native, nil
 }
 
 // OutsideRootNotice is safe provider status, never a navigable raw tool path.

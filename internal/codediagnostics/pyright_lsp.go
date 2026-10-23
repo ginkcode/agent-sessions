@@ -69,7 +69,8 @@ var pyrightToolchainNames = []string{"pyright-entry", "pyright-langserver", "pyr
 
 // pyrightSettings is the fixed workspace/configuration answer. Pyright asks
 // for the "python", "python.analysis" and "pyright" sections. Only opened files
-// are analyzed and the language services this client never uses are off.
+// are analyzed. Language services stay on: Pyright answers go to definition,
+// references and hover. Organize imports and tagged hints, never used, are off.
 // pythonPath, when set, is the chosen interpreter; without one missing-import
 // rules are silenced because no environment is known.
 func pyrightSettings(pythonPath string) json.RawMessage {
@@ -90,7 +91,7 @@ func pyrightSettings(pythonPath string) json.RawMessage {
 	}
 	data, _ := json.Marshal(map[string]any{
 		"python":  python,
-		"pyright": map[string]any{"disableLanguageServices": true, "disableOrganizeImports": true, "disableTaggedHints": true},
+		"pyright": map[string]any{"disableLanguageServices": false, "disableOrganizeImports": true, "disableTaggedHints": true},
 	})
 	return data
 }

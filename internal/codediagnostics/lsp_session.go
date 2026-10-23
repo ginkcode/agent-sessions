@@ -151,6 +151,9 @@ type ServerCapabilities struct {
 	Save            bool // didSave notifications wanted; text is never included
 	PullAdvertised  bool // recorded only; pull diagnostics stay unsupported
 	PositionEncoded string
+	Definition      bool // textDocument/definition answered
+	References      bool // textDocument/references answered
+	Hover           bool // textDocument/hover answered
 }
 
 func (c ServerCapabilities) FullSync() bool        { return c.Change == 1 }
@@ -782,9 +785,12 @@ func (s *lspSession) initialize() (ServerCapabilities, error) {
 // initializeParams advertises only what this client implements: the UTF-16
 // position encoding, plus workspace/configuration when the adapter supplies
 // fixed settings and publishDiagnostics (no versionSupport) when it declares
-// diagnostics. No other textDocument or window capability, no dynamic
-// registration, no watchers, no edits. A scoped workspace folder and rootUri
-// name only the validated contained Directory, never a broader project root.
+// diagnostics. Definition (with links), references and hover are requests
+// the client sends; they say what answers it can read, start nothing and are
+// not part of the approval policy. No other textDocument or window
+// capability, no dynamic registration, no watchers, no edits. A scoped
+// workspace folder and rootUri name only the validated contained Directory,
+// never a broader project root.
 func (s *lspSession) initializeParams() map[string]any {
 	dir, err := commandDirectory(s.root, s.config.Directory)
 	if err != nil {
@@ -794,9 +800,15 @@ func (s *lspSession) initializeParams() map[string]any {
 	if s.config.Settings != nil {
 		capabilities["workspace"] = map[string]any{"configuration": true}
 	}
-	if s.config.DeclareDiagnostics {
-		capabilities["textDocument"] = map[string]any{"publishDiagnostics": map[string]any{}}
+	textDocument := map[string]any{
+		"definition": map[string]any{"linkSupport": true},
+		"references": map[string]any{},
+		"hover":      map[string]any{"contentFormat": []string{"markdown", "plaintext"}},
 	}
+	if s.config.DeclareDiagnostics {
+		textDocument["publishDiagnostics"] = map[string]any{}
+	}
+	capabilities["textDocument"] = textDocument
 	params := map[string]any{
 		"processId":    nil,
 		"clientInfo":   map[string]string{"name": clientName, "version": clientVersion},
@@ -991,6 +1003,9 @@ func negotiateCapabilities(raw json.RawMessage) (ServerCapabilities, error) {
 			PositionEncoding   string          `json:"positionEncoding"`
 			TextDocumentSync   json.RawMessage `json:"textDocumentSync"`
 			DiagnosticProvider json.RawMessage `json:"diagnosticProvider"`
+			DefinitionProvider json.RawMessage `json:"definitionProvider"`
+			ReferencesProvider json.RawMessage `json:"referencesProvider"`
+			HoverProvider      json.RawMessage `json:"hoverProvider"`
 		} `json:"capabilities"`
 	}
 	if json.Unmarshal(raw, &reply) != nil || reply.Capabilities == nil {
@@ -1001,9 +1016,10 @@ func negotiateCapabilities(raw json.RawMessage) (ServerCapabilities, error) {
 		return ServerCapabilities{}, failure("unsupported", "Language server position encoding is not supported")
 	}
 	caps := ServerCapabilities{PositionEncoded: "utf-16"}
-	if len(c.DiagnosticProvider) > 0 && string(c.DiagnosticProvider) != "null" && string(c.DiagnosticProvider) != "false" {
-		caps.PullAdvertised = true // recorded; push remains the only baseline
-	}
+	caps.PullAdvertised = advertised(c.DiagnosticProvider) // recorded; push remains the only baseline
+	caps.Definition = advertised(c.DefinitionProvider)
+	caps.References = advertised(c.ReferencesProvider)
+	caps.Hover = advertised(c.HoverProvider)
 	if len(c.TextDocumentSync) == 0 || string(c.TextDocumentSync) == "null" {
 		return ServerCapabilities{}, failure("unsupported", "Language server does not support document synchronization")
 	}
@@ -1035,6 +1051,12 @@ func negotiateCapabilities(raw json.RawMessage) (ServerCapabilities, error) {
 		return ServerCapabilities{}, failure("unsupported", "Language server synchronization mode is not supported")
 	}
 	return caps, nil
+}
+
+// advertised reads a provider capability: true or an options object.
+func advertised(raw json.RawMessage) bool {
+	s := string(raw)
+	return s != "" && s != "null" && s != "false"
 }
 
 // boundedConfiguration answers workspace/configuration from the adapter's fixed
