@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -139,4 +140,51 @@ func TestCodeDiagnosticsKnownNonGitWorkspaceNestedProjects(t *testing.T) {
 	}
 	_, err = e.AttachCodeDiagnostics(ctx, parent, 1)
 	requireDiagnosticCode(t, err, "unauthorized")
+}
+
+// A discovery failure is reported with its reason, never as "no checker found".
+func TestCodeDiagnosticsDiscoveryFailureExplainsReason(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	catalog := scan.NewCatalog()
+	catalog.Reset([]model.SessionMeta{{Ref: model.SessionRef{Agent: model.AgentClaude, ID: "failing"}, CWD: dir}})
+	discover := func(cd.AuthorizedRoot) ([]cd.Registration, error) {
+		return nil, errors.New("limitExceeded: synthetic budget")
+	}
+	owner, err := newDiagnosticsOwnerWithLive(t.TempDir(), "workspace-test-host", discover, cd.SessionOptions{
+		Launch: func(cd.Invocation) (cd.SessionProcess, cd.SessionStreams, error) {
+			return nil, cd.SessionStreams{}, errors.New("must not launch")
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	e := NewEngine(WithService(NewService(catalog, nil)), WithCacheEnabled(false))
+	e.codeDiagnostics = owner
+	go owner.events(e)
+	t.Cleanup(func() { _ = e.Close() })
+	attached, err := e.AttachCodeDiagnostics(ctx, dir, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		snapshot, err := e.GetCodeDiagnosticsSnapshot(ctx, attached.Context)
+		if err != nil {
+			t.Fatal(err)
+		}
+		explained := 0
+		for _, p := range snapshot.Providers {
+			if p.Availability == "unsupported" && strings.Contains(p.Notice, "synthetic budget") {
+				explained++
+			}
+		}
+		if explained >= 5 && snapshot.Proposal == nil {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("failure not explained: %+v", snapshot.Providers)
+		}
+		time.Sleep(time.Millisecond)
+	}
 }

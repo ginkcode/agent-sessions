@@ -90,7 +90,21 @@ that read as "install it yourself", so downloads are now automatic, as in Zed:
 
 - Destination: `<app data>/managed-tools/<tool>-<version>-<os>-<arch>/`, private
   (0700), written to a staging directory and renamed into place, with a receipt
-  holding the main file's SHA-256. A changed file is rejected.
+  holding the main file's SHA-256. A changed file is rejected. The app data
+  directory above it is shared with other app storage (the Linux desktop's web
+  view creates `~/.local/share/agent-sessions` group-writable), so it only has
+  to be this account's and not writable by others; installing removes such
+  write access. A tool that is not installed is reported missing whatever that
+  directory looks like, so setup stays offered (it used to show every tool as a
+  failed app copy on such hosts, hiding the Install offers).
+- "Rediscover checkers" (approval card when nothing is approvable, and Tools
+  setup) detaches and attaches again, so a server the user installed is found
+  without reopening Go to File. An unchanged proposal keeps its approval.
+- Language servers see only the text the app sends. A fix saved by another
+  editor or an agent used to stay reported until the tab was reopened. Like
+  editors, the app now re-reads open tabs when its window regains focus while
+  live checks run (one read at a time, nothing saved), and the approved panel has
+  **Refresh check status**, which re-reads them and reconciles the results.
 - Archives (Ruff, Node.js) are verified against the SHA-256 pinned in the source
   before extraction. Extraction refuses absolute paths, `..` and links that
   leave the staging directory.

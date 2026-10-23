@@ -53,13 +53,21 @@ func Fingerprint(root AuthorizedRoot, tools []ToolInput) (string, error) {
 	sort.Slice(inputs, func(i, j int) bool { return inputs[i].ProviderID < inputs[j].ProviderID })
 	identities := make([]toolIdentity, 0, len(inputs))
 	var total int64
+	// Workspace instances share one runtime and server; hash each file once so
+	// the aggregate budget counts distinct bytes, not repeated references.
+	executables := map[string]fileIdentity{}
+	configIdentities := map[string]fileIdentity{}
 	for i, t := range inputs {
 		if !bounded(t.ProviderID, 256) || !bounded(t.Policy, 8192) || (i > 0 && inputs[i-1].ProviderID == t.ProviderID) || len(t.ConfigPaths) > 128 {
 			return "", failure("invalidArgument", "Invalid adapter identity metadata")
 		}
-		executable, err := identifyFile(t.Executable, &total, nil, "")
-		if err != nil {
-			return "", err
+		executable, ok := executables[t.Executable]
+		var err error
+		if !ok {
+			if executable, err = identifyFile(t.Executable, &total, nil, ""); err != nil {
+				return "", err
+			}
+			executables[t.Executable] = executable
 		}
 		configs := append([]string(nil), t.ConfigPaths...)
 		sort.Strings(configs)
@@ -68,14 +76,17 @@ func Fingerprint(root AuthorizedRoot, tools []ToolInput) (string, error) {
 			if j > 0 && configs[j-1] == path {
 				return "", failure("invalidArgument", "Duplicate configuration identity")
 			}
-			// Config discovery may not read through an escaping link.
-			native, err := root.ResolvePath(root.project.HostID, path)
-			if err != nil {
-				return "", err
-			}
-			config, err := identifyFile(native, &total, &root, path)
-			if err != nil {
-				return "", err
+			config, ok := configIdentities[path]
+			if !ok {
+				// Config discovery may not read through an escaping link.
+				native, err := root.ResolvePath(root.project.HostID, path)
+				if err != nil {
+					return "", err
+				}
+				if config, err = identifyFile(native, &total, &root, path); err != nil {
+					return "", err
+				}
+				configIdentities[path] = config
 			}
 			identity.Configs = append(identity.Configs, config)
 		}

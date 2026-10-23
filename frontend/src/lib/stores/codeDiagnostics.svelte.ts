@@ -54,7 +54,7 @@ export class CodeDiagnosticsStore {
    * The backend drops its diagnostics session when an install completes, so the
    * new server is found only by attaching again. Discovery approves and starts nothing.
    */
-  private rediscover(jobId: string) {
+  private rediscoverAfterInstall(jobId: string) {
     const dir = this.directory, connection = this.connection;
     if (this.rediscoveredJob === jobId || !dir || !connection) return;
     this.rediscoveredJob = jobId;
@@ -86,7 +86,7 @@ export class CodeDiagnosticsStore {
     if (action === 'dismiss') { this.managedDismissed = true; this.managed = undefined; }
     const valid = () => this.active(life) && !!this.context && sameContext(c, this.context!);
     try {
-      if (!this.backend.managedTool) throw new Error('Managed setup unavailable on this older backend. Install the language servers on the host yourself, then refresh.');
+      if (!this.backend.managedTool) throw new Error('Managed setup unavailable on this older backend. Install the language servers on the host yourself, then rediscover checkers.');
       const out = await this.backend.managedTool({ action, expectedHostId: host,
         ...(action === 'propose' ? { tool } : {}),
         ...(action === 'install' ? { token: proposal!.token } : {}),
@@ -96,7 +96,7 @@ export class CodeDiagnosticsStore {
       if (out.state === 'installing' && (!out.jobId || (current?.jobId && action === 'status' && out.jobId !== current.jobId))) throw new Error('Installation job identity mismatch. Refresh status explicitly.');
       this.managed = out;
       if (out.tools) this.managedInstalls = Object.fromEntries(MANAGED_TOOLS.flatMap(t => ['available', 'missingTool', 'unavailable'].includes(out.tools![t] ?? '') ? [[t, out.tools![t]]] : []));
-      if (out.state === 'installed' && out.jobId) this.rediscover(out.jobId);
+      if (out.state === 'installed' && out.jobId) this.rediscoverAfterInstall(out.jobId);
       else this.scheduleManaged();
     } catch (e) {
       if (valid()) { this.managed = undefined; this.managedNotice = `Managed setup unavailable: ${codeDiagnosticsError(e).message}. Refresh status before retrying; no installation request will be replayed.`; }
@@ -130,6 +130,18 @@ export class CodeDiagnosticsStore {
     })();
   }
   refreshManaged() { this.managedPolls = 0; this.managedDismissed = false; return this.managedAction('status'); }
+  /**
+   * Discovers checkers again, e.g. after installing a server yourself. Discovery
+   * runs once per attachment, so this detaches and attaches again; a remembered
+   * or session approval of an unchanged proposal still applies. Approves and starts nothing.
+   */
+  async rediscover() {
+    const dir = this.directory;
+    if (!dir || !this.context || !this.active() || this.pending) return;
+    // The backend allows one attachment per project: finish the detach first.
+    await this.detach();
+    await this.show(dir);
+  }
 
   get approved() { return this.status === 'ready' && !this.revoking && this.snapshot?.approval.state === 'approved'; }
   /**

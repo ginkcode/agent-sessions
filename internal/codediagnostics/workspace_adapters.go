@@ -27,6 +27,9 @@ type workspaceDirectory struct {
 type workspaceScan struct {
 	dirs    []workspaceDirectory
 	partial bool
+	// truncated: the entry/depth budget or a read error left the listing
+	// incomplete, beyond the deliberately skipped dot-directories and links.
+	truncated bool
 }
 
 // scanLiveWorkspaces reads metadata only, never dependencies or linked trees.
@@ -44,18 +47,18 @@ func scanLiveWorkspaces(root AuthorizedRoot) (workspaceScan, error) {
 	var walk func(string, int)
 	walk = func(dir string, depth int) {
 		if entries >= maxTSEntries {
-			result.partial = true
+			result.partial, result.truncated = true, true
 			return
 		}
 		f, err := r.Open(dir)
 		if err != nil {
-			result.partial = true
+			result.partial, result.truncated = true, true
 			return
 		}
 		ds, err := f.ReadDir(maxTSEntries + 1 - entries)
 		f.Close()
 		if err != nil && !errors.Is(err, io.EOF) {
-			result.partial = true
+			result.partial, result.truncated = true, true
 			return
 		}
 		slices.SortFunc(ds, func(a, b os.DirEntry) int { return strings.Compare(a.Name(), b.Name()) })
@@ -67,7 +70,7 @@ func scanLiveWorkspaces(root AuthorizedRoot) (workspaceScan, error) {
 		for _, e := range ds {
 			entries++
 			if entries > maxTSEntries {
-				result.partial = true
+				result.partial, result.truncated = true, true
 				break
 			}
 			rel := filepath.Join(dir, e.Name())
@@ -86,6 +89,7 @@ func scanLiveWorkspaces(root AuthorizedRoot) (workspaceScan, error) {
 				}
 				if strings.HasPrefix(e.Name(), ".") || depth >= 32 {
 					result.partial = true
+					result.truncated = result.truncated || depth >= 32
 					continue
 				}
 				children = append(children, rel)
@@ -116,6 +120,35 @@ func scanLiveWorkspaces(root AuthorizedRoot) (workspaceScan, error) {
 	}
 	walk(".", 0)
 	return result, root.Revalidate()
+}
+
+// workspaceNotices lists each distinct message once, after the projects it names.
+type workspaceNotices struct {
+	messages []string
+	labels   map[string][]string
+}
+
+func (n *workspaceNotices) add(label, message string) {
+	if n.labels == nil {
+		n.labels = map[string][]string{}
+	}
+	if _, ok := n.labels[message]; !ok {
+		n.messages = append(n.messages, message)
+	}
+	if label != "" {
+		n.labels[message] = append(n.labels[message], label)
+	}
+}
+
+func (n *workspaceNotices) String() string {
+	parts := make([]string, 0, len(n.messages))
+	for _, m := range n.messages {
+		if labels := n.labels[m]; len(labels) > 0 {
+			m = strings.Join(labels, ", ") + ": " + m
+		}
+		parts = append(parts, m)
+	}
+	return strings.Join(parts, " ")
 }
 
 func withinWorkspace(dir, file string) bool { return dir == "" || strings.HasPrefix(file, dir+"/") }
@@ -228,6 +261,27 @@ func discoverWorkspaceLive(root AuthorizedRoot, env LocalLiveEnvironment) ([]Reg
 			}
 		}
 	}
+	// A boundary owning no scanned source (a manifest-only folder) would only
+	// spend approval and hashing budget. A truncated scan keeps every boundary.
+	owningSources := func(roots []string, language func(string) (string, bool)) []string {
+		if scan.truncated {
+			return roots
+		}
+		all := slices.Clone(roots)
+		return slices.DeleteFunc(roots, func(dir string) bool {
+			for _, d := range scan.dirs {
+				for _, f := range d.files {
+					file := path.Join(d.rel, f)
+					if _, ok := language(file); ok && deepestWorkspace(all, file) == dir {
+						return false
+					}
+				}
+			}
+			return true
+		})
+	}
+	pyRoots = owningSources(pyRoots, PythonLanguageID)
+	tsRoots = owningSources(tsRoots, TSLanguageID)
 	type provider struct {
 		id       string
 		roots    []string
@@ -248,11 +302,11 @@ func discoverWorkspaceLive(root AuthorizedRoot, env LocalLiveEnvironment) ([]Reg
 			state.DocumentExtensions = slices.Clone(ruffDocumentExtensions)
 		}
 		live := &LiveRegistration{}
-		notices := []string{}
+		var notices workspaceNotices
 		for i, dir := range roots {
 			if i >= maxLiveWorkspaces {
 				state.Coverage.Partial = true
-				notices = append(notices, "Workspace instance limit reached; projects not covered: "+strings.Join(roots[i:], ", ")+".")
+				notices.add("", "Workspace instance limit reached; projects not covered: "+strings.Join(roots[i:], ", ")+".")
 				break
 			}
 			scoped, err := scopedDiscoveryRoot(root, dir)
@@ -326,7 +380,7 @@ func discoverWorkspaceLive(root AuthorizedRoot, env LocalLiveEnvironment) ([]Reg
 				if label == "" {
 					label = "workspace root"
 				}
-				notices = append(notices, label+": "+child.Notice)
+				notices.add(label, child.Notice)
 				continue
 			}
 			if cost := len(cfg.Tools()); cost > toolBudget {
@@ -335,7 +389,7 @@ func discoverWorkspaceLive(root AuthorizedRoot, env LocalLiveEnvironment) ([]Reg
 				if label == "" {
 					label = "workspace root"
 				}
-				notices = append(notices, label+": project skipped because the composite tool budget was reached.")
+				notices.add(label, "Project skipped because the composite tool budget was reached.")
 				continue
 			} else {
 				toolBudget -= cost
@@ -356,9 +410,9 @@ func discoverWorkspaceLive(root AuthorizedRoot, env LocalLiveEnvironment) ([]Reg
 		if len(roots) == 0 {
 			state.Notice = "No matching language project was found in this workspace."
 		}
-		if len(notices) > 0 {
+		if len(notices.messages) > 0 {
 			state.Coverage.Partial = true
-			state.Notice = shorten(strings.Join(notices, " ")+" "+state.Notice, 2048)
+			state.Notice = shorten(notices.String()+" "+state.Notice, 2048)
 		}
 		live.State = state
 		registrations = append(registrations, Registration{ProviderID: provider.id, Availability: state.Availability, Live: live})

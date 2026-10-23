@@ -333,6 +333,37 @@ func TestInstallCreatesMissingAppData(t *testing.T) {
 	}
 }
 
+// The Linux desktop's web view creates the app data directory group-writable.
+// Nothing installed is still "missing" there (so setup is offered), and
+// installing removes only the write access of others.
+func TestInstallSharedAppData(t *testing.T) {
+	i, data := fixture(t)
+	if err := os.Chmod(data, 0o775); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := i.Discover("gopls"); !os.IsNotExist(err) {
+		t.Fatalf("missing install reported as %v", err)
+	}
+	p := propose(t, i)
+	binary, err := i.Install(context.Background(), i.binding, p.Token)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st, err := os.Stat(data); err != nil || st.Mode().Perm() != 0o755 {
+		t.Fatal(st, err)
+	}
+	if got, err := i.Discover("gopls"); err != nil || got != binary {
+		t.Fatalf("%s %v", got, err)
+	}
+	// An existing install below a data directory others can write is not used.
+	if err := os.Chmod(data, 0o775); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := i.Discover("gopls"); err == nil || os.IsNotExist(err) {
+		t.Fatalf("install under writable data accepted: %v", err)
+	}
+}
+
 func TestUnsafeFilesystem(t *testing.T) {
 	for _, kind := range []string{"root-link", "root-public", "lock-link", "destination-link", "binary-link", "receipt-link"} {
 		t.Run(kind, func(t *testing.T) {

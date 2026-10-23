@@ -41,7 +41,15 @@ func (i *Installer) Discover(tool string) (string, error) {
 
 func (i *Installer) discover(s spec) (string, error) {
 	dir := filepath.Join(i.root, installDir(s.name, s.version))
-	for _, d := range []string{filepath.Dir(i.root), i.root, dir} {
+	// Not installed is "missing" however the app data directory looks; only an
+	// existing install is judged by its directories.
+	if _, err := os.Lstat(dir); os.IsNotExist(err) {
+		return "", err
+	}
+	if err := readAppData(filepath.Dir(i.root)); err != nil {
+		return "", err
+	}
+	for _, d := range []string{i.root, dir} {
 		if err := readPrivateTree(d); err != nil {
 			return "", err
 		}
@@ -89,6 +97,24 @@ func readPrivateTree(path string) error {
 	}
 	if !st.IsDir() || st.Mode()&os.ModeSymlink != 0 || st.Mode().Perm()&0o077 != 0 {
 		return errors.New("managed tools: unsafe installation directory")
+	}
+	return nil
+}
+
+// readAppData checks the app data directory holding managed-tools. It is
+// shared with other app storage (the Linux desktop's web view creates it with
+// the umask), so it may be readable by others but must be this account's and
+// not writable by anyone else, who could otherwise replace managed-tools.
+func readAppData(path string) error {
+	if err := noLinks(filepath.Dir(path)); err != nil {
+		return err
+	}
+	st, err := os.Lstat(path)
+	if err != nil {
+		return err
+	}
+	if !st.IsDir() || st.Mode()&os.ModeSymlink != 0 || st.Mode().Perm()&0o022 != 0 || !ownedByUser(st) {
+		return errors.New("managed tools: unsafe app data directory")
 	}
 	return nil
 }

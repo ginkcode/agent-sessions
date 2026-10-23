@@ -39,8 +39,10 @@
   /** Why a server is missing and how to get it, when no Install button says so; Svelte has no managed install. */
   function setupNote(provider: CodeDiagnosticsProvider): string {
     const tool = MANAGED_TOOL_FOR_PROVIDER[provider.providerId];
-    if (tool) return (provider.availability === 'missingTool' || provider.missingTool) && checks.managed && !canOffer ? 'No app-managed install is offered on this host: install it yourself, then refresh.' : '';
-    if (provider.providerId === 'svelte' || provider.providerId === 'svelte-check') return 'Setup not supported here: install it on the host yourself, then refresh.';
+    if (!tool) return provider.providerId === 'svelte' || provider.providerId === 'svelte-check' ? 'Setup not supported here: install it on the host yourself, then rediscover checkers.' : '';
+    if (provider.availability !== 'missingTool' && !provider.missingTool) return '';
+    if (checks.managed && !canOffer) return 'No app-managed install is offered on this host: install it yourself, then rediscover checkers.';
+    if (checks.managedInstalls[tool] === 'unavailable') return `This app's copy of ${tool} on ${where} failed verification and is not used. Delete its folder under the app's managed-tools directory, then rediscover checkers.`;
     return '';
   }
   /** Language servers this project uses, with their app-managed install where one exists. */
@@ -49,7 +51,7 @@
     if (!tool || !['available', 'missingTool'].includes(p.availability)) return [];
     const install = checks.managedInstalls[tool];
     const text = p.availability === 'available' ? (install === 'available' ? 'Ready · app copy installed' : 'Ready')
-      : install === 'available' ? 'App copy installed · refresh check status'
+      : install === 'available' ? 'App copy installed · rediscover checkers'
       : install === 'unavailable' ? 'App copy failed verification and is not used'
       : 'Not found';
     return [{ providerId: p.providerId, text }];
@@ -63,6 +65,10 @@
     pyright: 'Runs npm ci against a lockfile shipped with this app, with install scripts disabled; uses the host Node.js or downloads an app-managed copy.',
   };
 </script>
+
+{#snippet rediscoverButton()}
+  <button type="button" title="Looks for language servers and checkers again; approves and starts nothing" disabled={blocked || !!checks.pending} onclick={() => perform(() => checks.rediscover())}>Rediscover checkers</button>
+{/snippet}
 
 {#snippet installButton(tool: ManagedToolName)}
   <button type="button" title="Shows what would be downloaded; nothing is installed until you confirm" disabled={blocked || checks.managedPending || checks.managed?.state === 'installing'} onclick={() => perform(() => checks.managedAction('propose', tool))}>Install {tool}…</button>
@@ -106,11 +112,12 @@
             {/each}
           </ul>
           {#if checks.approvalBlocker}<p role="status" class="muted">{checks.approvalBlocker}</p>{/if}
-          {#if installFirst.length}<p>Install a language server on {where} first, or install one yourself and refresh. Installing asks for confirmation and approves nothing.</p>{/if}
+          {#if installFirst.length}<p>Install a language server on {where} first, or install one yourself and rediscover checkers. Installing asks for confirmation and approves nothing.</p>{/if}
           <div class="actions">
             {#each installFirst as tool (tool)}{@render installButton(tool)}{/each}
             <button type="button" disabled={blocked || !!checks.approvalBlocker || !checks.snapshot.proposal?.fingerprint} onclick={() => perform(() => checks.approve('session'))}>Enable for this session</button>
             <button type="button" disabled={blocked || !!checks.approvalBlocker || !checks.snapshot.proposal?.fingerprint} onclick={() => perform(() => checks.approve('persistent'))}>Always allow this project</button>
+            {#if !checks.snapshot.proposal?.fingerprint}{@render rediscoverButton()}{/if}
             <button type="button" disabled={!!checks.pending} onclick={() => (dismissed = true)}>Not now</button>
           </div>
         </div>
@@ -124,6 +131,7 @@
         {#if checks.approved && checks.running}
           <button type="button" disabled={blocked || !!checks.pending} onclick={() => perform(() => checks.cancel())}>Cancel check</button>
         {/if}
+        <button type="button" title="Re-reads open files from disk so fixes made elsewhere are checked; saves nothing" disabled={blocked || !!checks.pending} onclick={() => perform(() => checks.refresh())}>Refresh check status</button>
         <button type="button" disabled={blocked || checks.pending === 'revoke' || checks.revoking} onclick={() => perform(() => checks.revoke())}>Revoke approval</button>
       </div>
       <p class="muted">{watching ? 'Saved Go files are checked automatically when they change on disk.' : ''}{checks.liveEnabled && activeLive ? ` Opened ${activeLive} files are checked live as you type.` : ''} Check Project runs the on-demand checkers on saved files.</p>
@@ -236,8 +244,9 @@
       {#if !checks.managed && !checks.managedNotice}<p class="muted">Setup status not loaded yet.</p>{/if}
       <div class="actions">
         <button type="button" disabled={blocked || checks.managedPending} onclick={() => perform(() => checks.refreshManaged())}>Refresh setup status</button>
+        {@render rediscoverButton()}
       </div>
-      <p class="muted">Svelte setup is not offered. To install a server yourself instead, add it to the project or put it on your PATH: gopls with your Go toolchain, <span class="mono">npm install -g @vtsls/language-server@0.3.0</span> <span class="mono">uv tool install ruff==0.15.20</span> or <span class="mono">npm install -g pyright</span>. Then refresh check status.</p>
+      <p class="muted">Svelte setup is not offered. To install a server yourself instead, add it to the project or put it on your PATH: gopls with your Go toolchain, <span class="mono">npm install -g @vtsls/language-server@0.3.0</span> <span class="mono">uv tool install ruff==0.15.20</span> or <span class="mono">npm install -g pyright</span>. Then rediscover checkers.</p>
     </details>
   {/if}
   {#if checks.project}

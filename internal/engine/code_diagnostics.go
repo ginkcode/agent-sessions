@@ -270,17 +270,14 @@ func (e *Engine) AttachCodeDiagnostics(ctx context.Context, dir string, version 
 					discoveryErr = o.live.Register(root, registrations)
 				}
 				if discoveryErr != nil {
-					registrations = []cd.Registration{{ProviderID: "gopls", Availability: "unsupported"}, {ProviderID: "typescript", Availability: "unsupported"}, {ProviderID: "svelte", Availability: "unsupported"}, {ProviderID: "ruff", Availability: "unsupported"}}
+					registrations = discoveryFailed(discoveryErr)
 				}
 			}
 			if err := o.manager.CompleteDiscovery(s.Context, registrations); err != nil {
 				// Combined proposals may exceed the contract's tool/hash budget.
 				// Fail closed with explicit unavailable metadata, never leave an
 				// apparently pending executable proposal or silently enable a subset.
-				_ = o.manager.CompleteDiscovery(s.Context, []cd.Registration{
-					{ProviderID: "go-vet", Availability: "unsupported"},
-					{ProviderID: "svelte-check", Availability: "unsupported"},
-				})
+				_ = o.manager.CompleteDiscovery(s.Context, discoveryFailed(err))
 			}
 			// A persistent grant may already approve this proposal.
 			o.syncWatcher(s.Context.AttachmentID)
@@ -291,6 +288,19 @@ func (e *Engine) AttachCodeDiagnostics(ctx context.Context, dir string, version 
 		return CodeDiagnosticsAttachment{}, err
 	}
 	return CodeDiagnosticsAttachment{root.Project(), s.Context, s}, nil
+}
+
+// discoveryFailed reports every live provider unavailable with the reason, so
+// the details explain the failure instead of claiming no checker exists.
+func discoveryFailed(err error) []cd.Registration {
+	var registrations []cd.Registration
+	for _, id := range []string{"gopls", "typescript", "svelte", "ruff", "pyright"} {
+		state := cd.ProviderState{ProviderID: id, Availability: "unsupported", Phase: "idle", Freshness: "uncertain",
+			Coverage: cd.Coverage{Kind: "openedDocuments", Roots: []string{}, Partial: true, ExternalChanges: cd.CoverageExternalChanges},
+			Notice:   "Code checks could not be prepared for this folder: " + err.Error()}
+		registrations = append(registrations, cd.Registration{ProviderID: id, Availability: "unsupported", Live: &cd.LiveRegistration{State: state}})
+	}
+	return registrations
 }
 
 func discoverCheckers(root cd.AuthorizedRoot) []cd.Registration {

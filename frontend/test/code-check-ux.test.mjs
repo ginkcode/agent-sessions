@@ -172,7 +172,7 @@ test('managed setup states: app copies, verification failures and hosts without 
   const rows = async extra => renderedButtons(await renderWithFixture(checksComponent, { checks: checks(extra) })).map(b => b.text);
   const installed = await renderWithFixture(checksComponent, { checks: checks({ managedInstalls: { gopls: 'available', vtsls: 'available', ruff: 'unavailable' } }) });
   assert.match(installed, /Ready · app copy installed/);
-  assert.match(installed, /App copy installed · refresh check status/);
+  assert.match(installed, /App copy installed · rediscover checkers/);
   assert.match(installed, /App copy failed verification and is not used/);
   assert.ok(!renderedButtons(installed).some(b => /^Install \w+…/.test(b.text)));
   assert.ok(!(await rows({ managed: { hostId: 'local:abc123', state: 'unavailable', message: 'Managed installation is unavailable on this host' } })).some(b => /^Install \w+…/.test(b)));

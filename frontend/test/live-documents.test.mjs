@@ -384,3 +384,26 @@ test('R10 overlapping probes, host changes and late read errors never guess dele
   reject(new Error('not found')); await old;
   assert.equal(tab.edit.draft, 'keep'); assert.equal(tab.content.text, 'one\n');
 });
+
+test('window focus re-reads open files only during live checks, one read at a time', async () => {
+  const { refreshOnFocus } = await loadServerModule(new URL('../src/lib/liveDocumentsWiring.ts', import.meta.url), [
+    ["import { api } from './api';", 'const api = {};'],
+    ["import { LiveDocumentBridge } from './liveDocuments';", 'const LiveDocumentBridge = class {};'],
+    ["import { files } from './stores/files.svelte';", fixtureStore('files', '__focusFixture')],
+    ["import { codeDiagnostics } from './stores/codeDiagnostics.svelte';", fixtureStore('codeDiagnostics', '__focusFixture')],
+  ]);
+  let reads = 0, finish;
+  const codeDiagnostics = { liveAttachment: undefined, pending: undefined };
+  globalThis.__focusFixture = { codeDiagnostics, files: { reconcileDisplayed: () => { reads++; return new Promise(r => { finish = r; }); } } };
+  refreshOnFocus();
+  assert.equal(reads, 0, 'no live attachment');
+  codeDiagnostics.liveAttachment = {}; codeDiagnostics.pending = 'approve';
+  refreshOnFocus();
+  assert.equal(reads, 0, 'request pending');
+  codeDiagnostics.pending = undefined;
+  refreshOnFocus(); refreshOnFocus();
+  assert.equal(reads, 1, 'one read in flight');
+  finish(); await new Promise(r => setTimeout(r));
+  refreshOnFocus();
+  assert.equal(reads, 2);
+});

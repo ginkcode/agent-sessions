@@ -5,7 +5,8 @@ import { fixtureStore, loadServerComponent, renderWithFixture, renderedButtons }
 const component = await loadServerComponent(new URL('../src/lib/components/common/go-to-file/CodeChecks.svelte', import.meta.url), [
   ["import { codeDiagnostics as checks } from '../../../stores/codeDiagnostics.svelte';", fixtureStore('checks')],
 ]);
-const executionButtons = html => renderedButtons(html).filter(b => b.text !== 'Refresh setup status');
+// Setup status, rediscovery and status refresh read or discover only; they never approve or execute.
+const executionButtons = html => renderedButtons(html).filter(b => !['Refresh setup status', 'Rediscover checkers', 'Refresh check status'].includes(b.text));
 const provider = { providerId: 'go', availability: 'available', phase: 'idle', freshness: 'current', coverage: { kind: 'savedProject', roots: [''], externalChanges: 'unwatched', partial: false }, truncated: false };
 function render(overrides = {}, props = {}) {
   return renderWithFixture(component, { checks: { status: 'ready', project: { hostId: 'local:actual', root: '/canonical/<root>' }, snapshot: { approval: { state: 'approved', mode: 'session' } }, providers: [provider], approved: true, canRun: true, canRetry: () => true, counts: { error: 0, warning: 0 }, ...overrides } }, props);
@@ -39,10 +40,17 @@ test('approval choices expose canonical scope, tools and non-sandbox risk withou
   assert.doesNotMatch(live, /Only saved files are checked/);
   const noProposal = await render({ approved: false, snapshot: { approval: { state: 'required' } } });
   assert.deepEqual(executionButtons(noProposal).map(b => b.disabled), [true, true, false]);
+  // Nothing approvable: the card offers discovery again (also under Tools setup).
+  assert.equal(renderedButtons(noProposal).filter(b => b.text === 'Rediscover checkers').length, 2);
+  assert.equal(renderedButtons(html).filter(b => b.text === 'Rediscover checkers').length, 1);
 });
 
 test('approved check/cancel/retry rules and prompt locks reflect store selectors', async () => {
   assert.deepEqual(executionButtons(await render()).map(b => b.text), ['Check Project', 'Revoke approval']);
+  // Fixes made outside the app are picked up by re-reading open files.
+  const refresh = renderedButtons(await render()).filter(b => b.text === 'Refresh check status');
+  assert.deepEqual(refresh.map(b => b.disabled), [false]);
+  assert.equal(renderedButtons(await render({ pending: 'run' })).find(b => b.text === 'Refresh check status').disabled, true);
   const busy = executionButtons(await render({ running: true, canRun: false }));
   assert.equal(busy.find(b => b.text === 'Check Project').disabled, true);
   assert.equal(busy.find(b => b.text === 'Cancel check').disabled, false);

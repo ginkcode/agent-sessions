@@ -225,3 +225,21 @@ test('Wails optional ManagedTool maps exact closed request, old App refuses', as
     await api.managedTool(p); assert.deepEqual(got, p);
   } finally { globalThis.window = previous; }
 });
+test('Rediscover checkers detaches before attaching again and approves nothing; a broken app copy names the next step', async () => {
+  const { store, calls } = await setup(async () => state('idle', { tools: { gopls: 'unavailable' } }));
+  await flush();
+  const html = await renderWithFixture(controls, { checks: store });
+  assert.match(html, />Rediscover checkers</);
+  assert.match(html, /copy of gopls on this computer failed verification and is not used/);
+  assert.doesNotMatch(html, /Install gopls…/);
+  const order = [];
+  const { attachCodeDiagnostics: attach, detachCodeDiagnostics: detach } = store.backend;
+  store.backend.connectionState = async () => connection;
+  store.backend.detachCodeDiagnostics = async (...a) => { order.push('detach'); await flush(); order.push('detached'); return detach(...a); };
+  store.backend.attachCodeDiagnostics = async (...a) => { order.push('attach'); return attach(...a); };
+  await store.rediscover(); await flush();
+  assert.deepEqual(order, ['detach', 'detached', 'attach']);
+  assert.equal(store.status, 'ready');
+  assert.ok(!calls.some(p => ['install', 'propose'].includes(p.action)));
+  await store.hide();
+});

@@ -163,8 +163,10 @@ func TestWorkspaceAdaptersBoundariesAndFallback(t *testing.T) {
 		split bool
 	}{
 		{"single", map[string]string{"package.json": "{}", "src/a.ts": "", "src/tsconfig.json": "{}"}, nil, false},
-		{"npm-workspaces", map[string]string{"repo/package.json": "{\"workspaces\":[\"packages/*\"]}", "repo/packages/a/package.json": "{}", "repo/packages/a/tsconfig.json": "{}", "other/package.json": "{}"}, []string{"other", "repo"}, true},
-		{"independent-nested", map[string]string{"web/package.json": "{}", "web/src/tsconfig.json": "{}", "web/example/package.json": "{}"}, []string{"web", "web/example"}, true},
+		{"npm-workspaces", map[string]string{"repo/package.json": "{\"workspaces\":[\"packages/*\"]}", "repo/packages/a/package.json": "{}", "repo/packages/a/tsconfig.json": "{}", "repo/packages/a/index.ts": "", "other/package.json": "{}", "other/index.js": ""}, []string{"other", "repo"}, true},
+		{"independent-nested", map[string]string{"web/package.json": "{}", "web/src/tsconfig.json": "{}", "web/src/a.ts": "", "web/example/package.json": "{}", "web/example/b.ts": ""}, []string{"web", "web/example"}, true},
+		// Manifest-only folders (and skipped dot-directories) start no instance.
+		{"manifest-only", map[string]string{"web/package.json": "{}", "web/a.ts": "", "tools/vtsls/package.json": "{}", "tools/vtsls/package-lock.json": "{}", ".github/workflows/ci.yml": ""}, []string{"web"}, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			root := workspaceTestRoot(t, tc.files)
@@ -191,6 +193,7 @@ func TestWorkspaceAdaptersLimitsAndAuthorization(t *testing.T) {
 	files := map[string]string{}
 	for i := 0; i < maxLiveWorkspaces+3; i++ {
 		files[fmt.Sprintf("p%02d/requirements.txt", i)] = ""
+		files[fmt.Sprintf("p%02d/main.py", i)] = ""
 	}
 	root := workspaceTestRoot(t, files)
 	env := workspaceTestEnv(t)
@@ -199,7 +202,7 @@ func TestWorkspaceAdaptersLimitsAndAuthorization(t *testing.T) {
 		t.Fatal(err)
 	}
 	live := workspaceRegistration(t, regs, "ruff")
-	if len(live.Workspaces) > maxLiveWorkspaces || !live.State.Coverage.Partial {
+	if len(live.Workspaces) != maxLiveWorkspaces || !live.State.Coverage.Partial {
 		t.Fatalf("unbounded %+v", live)
 	}
 	outside := t.TempDir()
@@ -221,5 +224,49 @@ func TestWorkspaceAdaptersLimitsAndAuthorization(t *testing.T) {
 	authorized = false
 	if child.Revalidate() == nil {
 		t.Fatal("child lost parent authorization")
+	}
+}
+
+func TestWorkspaceAdaptersNoticesNameEachMessageOnce(t *testing.T) {
+	root := workspaceTestRoot(t, map[string]string{"a/pyproject.toml": "", "a/main.py": "", "b/requirements.txt": "", "b/main.py": ""})
+	env := workspaceTestEnv(t)
+	env.Path = nil
+	regs, _, err := discoverWorkspaceLive(root, env)
+	if err != nil {
+		t.Fatal(err)
+	}
+	notice := workspaceRegistration(t, regs, "ruff").State.Notice
+	if !strings.HasPrefix(notice, "a, b: ") || strings.Count(notice, "Ruff is not installed") != 1 {
+		t.Fatalf("notice not grouped: %q", notice)
+	}
+}
+
+// Workspace instances reference one shared runtime; it must count once toward
+// the aggregate hashing budget (regression: 4+ TypeScript projects failed).
+func TestFingerprintHashesSharedFilesOnce(t *testing.T) {
+	root := workspaceTestRoot(t, map[string]string{"a/pyproject.toml": ""})
+	runtime := filepath.Join(t.TempDir(), "node")
+	f, err := os.Create(runtime)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := f.Truncate(200 << 20); err != nil {
+		t.Fatal(err)
+	}
+	f.Close()
+	var tools []ToolInput
+	for i := range 4 {
+		tools = append(tools, ToolInput{ProviderID: fmt.Sprintf("tool-%d", i), Executable: runtime, ConfigPaths: []string{"a/pyproject.toml"}, Policy: "p"})
+	}
+	shared, err := Fingerprint(root, tools)
+	if err != nil {
+		t.Fatalf("shared runtime exceeded budget: %v", err)
+	}
+	if again, err := Fingerprint(root, tools); err != nil || again != shared {
+		t.Fatalf("unstable fingerprint: %v", err)
+	}
+	writeTree(t, root.Project().Root, map[string]string{"a/pyproject.toml": "changed"})
+	if changed, err := Fingerprint(root, tools); err != nil || changed == shared {
+		t.Fatalf("shared config not bound: %v", err)
 	}
 }

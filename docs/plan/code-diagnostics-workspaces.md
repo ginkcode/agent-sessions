@@ -51,7 +51,15 @@ unavailable to the existing file viewer and diagnostics API.
   its own server configuration: `Directory` (cwd and initialize
   `rootUri`/`workspaceFolders`), interpreter or TypeScript SDK, and config paths
   translated back to parent-relative paths. A markerless root instance covers
-  sources outside every boundary.
+  sources outside every boundary. A boundary owning no scanned source file
+  (e.g. a folder holding only `package.json`/`package-lock.json`) gets no
+  instance, unless the scan was truncated by its budget.
+- The approval fingerprint hashes each distinct executable and config file once,
+  so instances sharing one Node/vtsls/Pyright install count it once toward the
+  512 MiB aggregate hashing budget. Repeating each instance's copy made
+  folders with four or more TypeScript projects fail.
+- If discovery or the composite proposal fails, every live provider is reported
+  unavailable with the failure reason in its notice.
 - `LiveRegistration.Workspaces` holds up to 16 instances per provider. Tool and
   toolchain identities are namespaced per directory; semantic provider IDs stay
   unchanged. The composite proposal allows 256 tools; nested discovery reserves

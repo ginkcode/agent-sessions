@@ -272,7 +272,7 @@ func (i *Installer) Install(ctx context.Context, current Binding, token string) 
 			return "", err
 		}
 	}
-	if err = privateTree(filepath.Dir(i.root)); err != nil {
+	if err = appDataTree(filepath.Dir(i.root)); err != nil {
 		return "", err
 	}
 	if err = privateTree(i.root); err != nil {
@@ -418,6 +418,30 @@ func privateTree(path string) error {
 	}
 	if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 || info.Mode().Perm()&0o077 != 0 {
 		return errors.New("unsafe private directory")
+	}
+	return nil
+}
+
+// appDataTree creates the app data directory private, or accepts an existing
+// one that this account owns (see readAppData). Group or other write access,
+// as the Linux desktop's web view storage leaves it, is removed; read access
+// stays so that storage keeps working.
+func appDataTree(path string) error {
+	if err := noLinks(filepath.Dir(path)); err != nil {
+		return err
+	}
+	if err := os.Mkdir(path, 0o700); err != nil && !os.IsExist(err) {
+		return err
+	}
+	info, err := os.Lstat(path)
+	if err != nil {
+		return err
+	}
+	if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 || !ownedByUser(info) {
+		return errors.New("unsafe app data directory")
+	}
+	if perm := info.Mode().Perm(); perm&0o022 != 0 {
+		return os.Chmod(path, perm&^0o022)
 	}
 	return nil
 }
