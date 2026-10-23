@@ -58,8 +58,14 @@ export function copiedGuidance(
   }
 }
 
-/** What happens after Open in terminal started a resume or a handoff. */
-export function openedGuidance(kind: 'resume' | 'launch', agent?: AgentID): ToastMessage {
+/** What happens after Open in terminal started a resume, a handoff or a new session. */
+export function openedGuidance(kind: 'resume' | 'launch' | 'new', agent?: AgentID): ToastMessage {
+  if (kind === 'new') {
+    return {
+      title: 'Opened in a terminal',
+      body: `A new ${agentLabel(agent)} session starts in the project directory in a new terminal window.`,
+    };
+  }
   if (kind === 'resume') {
     return {
       title: 'Opened in a terminal',

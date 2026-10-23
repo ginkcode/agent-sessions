@@ -437,6 +437,16 @@ export interface TerminalTab {
   startedAt?: number;
 }
 
+/** Whether an agent's CLI is installed where its new sessions would start. */
+export interface AgentStatus {
+  agent: AgentID;
+  name: string;
+  /** True when the lookup a launch makes finds the CLI. */
+  installed: boolean;
+  /** What to install when it is not. */
+  hint?: string;
+}
+
 export interface TerminalDataEvent {
   id: string;
   /** Output, base64-encoded. */

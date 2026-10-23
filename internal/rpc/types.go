@@ -69,8 +69,8 @@ type Capabilities struct {
 	// ReplaceFiles supports replacing search matches in files. Only servers
 	// that can save advertise it.
 	ReplaceFiles bool `json:"replaceFiles,omitempty"`
-	// NewSession supports newSessionTerminalScript: starting a fresh agent
-	// session in a project.
+	// NewSession supports newSessionTerminalScript and newSessionAgents:
+	// starting a fresh agent session in a project.
 	NewSession      bool `json:"newSession,omitempty"`
 	AddFile         bool `json:"addFile,omitempty"`
 	CreateDirectory bool `json:"createDirectory,omitempty"`

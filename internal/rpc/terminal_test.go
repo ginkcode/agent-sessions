@@ -34,6 +34,11 @@ func (b *launcherBackend) NewSessionLaunch(_ context.Context, agent model.AgentI
 	return b.cmd, b.err
 }
 
+func (b *launcherBackend) NewSessionAgents(context.Context) ([]engine.AgentStatus, error) {
+	b.calls = append(b.calls, "agents")
+	return []engine.AgentStatus{{Agent: model.AgentClaude, Name: "Claude Code", Installed: true}, {Agent: model.AgentCodex, Name: "Codex", Hint: "install it"}}, b.err
+}
+
 func (b *launcherBackend) HandoffLaunch(_ context.Context, req engine.HandoffRequest) (provider.Command, error) {
 	b.calls = append(b.calls, "handoff:"+string(req.Target))
 	return b.cmd, b.err
@@ -163,6 +168,11 @@ func TestNewSessionScriptNeedsCapability(t *testing.T) {
 	if !res.Capabilities.NewSession {
 		t.Fatalf("capabilities = %+v", res.Capabilities)
 	}
+	agents, err := client.NewSessionAgents(ctx)
+	if err != nil || len(agents) != 2 || !agents[0].Installed || agents[1].Installed || agents[1].Hint != "install it" {
+		t.Fatalf("NewSessionAgents = %+v, %v", agents, err)
+	}
+	backend.calls = nil
 
 	// An older server does not advertise it; the client asks nothing of it.
 	client.caps.NewSession = false
@@ -170,6 +180,9 @@ func TestNewSessionScriptNeedsCapability(t *testing.T) {
 		if _, err := call(ctx, model.AgentClaude, "/p"); !errors.Is(err, engine.ErrUnsupportedAction) || !strings.Contains(err.Error(), "update it") {
 			t.Errorf("err = %v, want ErrUnsupportedAction", err)
 		}
+	}
+	if _, err := client.NewSessionAgents(ctx); !errors.Is(err, engine.ErrUnsupportedAction) {
+		t.Errorf("agents err = %v, want ErrUnsupportedAction", err)
 	}
 	if len(backend.calls) != 0 {
 		t.Errorf("backend calls = %q", backend.calls)

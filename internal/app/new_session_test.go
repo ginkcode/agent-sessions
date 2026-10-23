@@ -13,6 +13,7 @@ import (
 	"github.com/ginkcode/agent-sessions/internal/provider"
 	"github.com/ginkcode/agent-sessions/internal/provider/providertest"
 	"github.com/ginkcode/agent-sessions/internal/remote"
+	"github.com/ginkcode/agent-sessions/internal/rpc"
 	"github.com/ginkcode/agent-sessions/internal/scan"
 	"github.com/ginkcode/agent-sessions/internal/term"
 )
@@ -45,6 +46,11 @@ func TestNewSessionLocal(t *testing.T) {
 	}
 	if spec := f.started[0]; !slices.Equal(spec.Argv, []string{"run", "fake"}) || spec.Dir != dir || spec.Cols != 100 {
 		t.Errorf("spec = %+v", spec)
+	}
+
+	agents, err := a.NewSessionAgents()
+	if err != nil || len(agents) != 1 || agents[0].Agent != model.AgentClaude || agents[0].Name != "Claude Code" {
+		t.Errorf("NewSessionAgents = %+v, %v", agents, err)
 	}
 
 	opened := captureTerminal(a)
@@ -135,7 +141,21 @@ func TestNewSessionSSH(t *testing.T) {
 	if err := a.OpenNewSessionInTerminal(model.AgentOpenCode, "/srv/app"); !errors.Is(err, ErrTerminalRemote) {
 		t.Errorf("external: %v", err)
 	}
-	if !slices.Equal(stub.calls, []string{"panel new:opencode:/srv/app"}) {
+	if agents, err := a.NewSessionAgents(); err != nil || len(agents) != 1 || !agents[0].Installed {
+		t.Errorf("NewSessionAgents = %+v, %v", agents, err)
+	}
+	if !slices.Equal(stub.calls, []string{"panel new:opencode:/srv/app", "agents"}) {
 		t.Errorf("server calls = %q", stub.calls)
+	}
+}
+
+func TestNewSessionOffline(t *testing.T) {
+	a := offlineRemoteApp()
+	withPanel(t, a)
+	if _, err := a.PanelNewSession(model.AgentClaude, "/srv/app", TerminalSize{}); !errors.Is(err, rpc.ErrDisconnected) {
+		t.Errorf("panel: %v", err)
+	}
+	if _, err := a.NewSessionAgents(); !errors.Is(err, rpc.ErrDisconnected) {
+		t.Errorf("agents: %v", err)
 	}
 }

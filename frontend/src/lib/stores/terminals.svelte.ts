@@ -168,6 +168,11 @@ export class TerminalsStore {
     return this.start((size) => api.panelResume(ref, size), agentTabLabel(name, ref.agent), dir, ref.agent);
   }
 
+  /** Starts a fresh session of agent in dir, a project of the selected host. */
+  runNewSession(agent: AgentID, dir: string): Promise<PanelTab | null> {
+    return this.start((size) => api.panelNewSession(agent, dir, size), agentTabLabel('', agent), dir, agent);
+  }
+
   /**
    * Writes the handoff files and starts the target agent in a new tab,
    * labelled with the name of the session handed off.

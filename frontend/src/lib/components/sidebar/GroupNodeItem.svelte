@@ -6,6 +6,8 @@
   import { directoryName, isCollapsed as isKeyCollapsed, nodeKind } from '../../tree';
   import { importer } from '../../stores/importer.svelte';
   import { files } from '../../stores/files.svelte';
+  import { newSession } from '../../stores/newSession.svelte';
+  import { newSessionMenuItems } from '../../newSession';
 
   interface Props {
     node: GroupNode;
@@ -57,18 +59,26 @@
       title: node.cwdMissing ? 'This directory no longer exists on disk' : undefined,
       onSelect: () => void importer.start(node.cwd),
     },
+    ...(newSession.available
+      ? newSessionMenuItems(newSession.choices, (agent) => void newSession.start(agent, node.cwd!), {
+          separator: true,
+          disabled: node.cwdMissing ? 'This directory no longer exists on disk' : undefined,
+        })
+      : []),
   ]);
 
   function openMenu(e: MouseEvent) {
     if (!hasMenu) return;
     e.preventDefault();
     menu = { x: e.clientX, y: e.clientY };
+    void newSession.refresh();
   }
 
   function handleMenuButton(e: MouseEvent) {
     e.stopPropagation();
     const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
     menu = { x: r.left, y: r.bottom };
+    void newSession.refresh();
   }
 
   function handleDisclosureClick(e: MouseEvent) {

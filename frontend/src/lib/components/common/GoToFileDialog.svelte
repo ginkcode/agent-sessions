@@ -18,7 +18,10 @@
   import ProblemsPanel from './go-to-file/ProblemsPanel.svelte';
   import { contentSearch } from '../../stores/contentSearch.svelte';
   import { isSearchShortcut, matchRange, matchedText, searchSeed } from '../../contentSearch';
-  import type { SearchMatch } from '../../types';
+  import type { AgentID, SearchMatch } from '../../types';
+  import { newSession } from '../../stores/newSession.svelte';
+  import { newSessionMenuItems } from '../../newSession';
+  import { isNewSessionShortcut } from '../../terminal';
 
   // Track routing, not diagnostics mutations. Discovery never delays picker rendering.
   $effect(() => {
@@ -98,6 +101,18 @@
     e.stopPropagation();
     fileTabs?.closeContext();
     context = { path, directory, x: e.clientX, y: e.clientY };
+    if (directory && !path) void newSession.refresh();
+  }
+
+  /**
+   * Starts a new agent session in the project. The panel it opens in sits
+   * behind this dialog, so the dialog closes for it.
+   */
+  async function startNewSession(agent: AgentID) {
+    const dir = files.dir;
+    if (!dir) return;
+    const inPanel = newSession.where === 'panel';
+    if ((await newSession.start(agent, dir)) && inPanel && files.dir === dir) close();
   }
 
   async function fileAction(action: 'reveal' | 'copy' | 'download' | 'absolute' | 'relative', path: string) {
@@ -166,6 +181,11 @@
     const why = files.deleteUncertain || files.renameUncertain || link.blockedReason;
     // Create, then the file manager, then paths; renaming and deleting come last.
     const create: ContextMenuItem[] = [], open: ContextMenuItem[] = [], copy: ContextMenuItem[] = [], change: ContextMenuItem[] = [];
+    // The project itself can start agent sessions; its subdirectories are
+    // not projects of their own.
+    const start = directory && !path && newSession.available
+      ? newSessionMenuItems(newSession.choices, (agent) => void startNewSession(agent), { disabled: newSession.starting ? 'Starting a session…' : undefined })
+      : [];
     if (directory) create.push({
       label: 'New File…',
       disabled: disabled || unsafe,
@@ -204,7 +224,7 @@
       title: why || 'Permanently delete this item',
       onSelect: () => void deleteItem(path, directory),
     });
-    return [create, open, copy, change].filter(group => group.length)
+    return [start, create, open, copy, change].filter(group => group.length)
       .flatMap((group, i) => group.map((item, j) => (i && !j ? { ...item, separator: true } : item)));
   });
 
@@ -261,6 +281,14 @@
     e.preventDefault();
     e.stopPropagation();
     if (!e.repeat) contentSearch.open(searchSeed(viewer?.selectedText() ?? ''));
+    return;
+  }
+  // Cmd+Shift+A on macOS, Ctrl+Shift+A elsewhere: a new session of the
+  // agent last started, in this project.
+  if (isNewSessionShortcut(e, isMac) && newSession.available) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!e.repeat) void startNewSession(newSession.defaultAgent);
     return;
   }
   if (e.key === 'F4' && !e.metaKey && !e.ctrlKey && !e.altKey && contentSearch.result?.matches) {

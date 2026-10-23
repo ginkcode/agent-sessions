@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { SessionMeta, TerminalOpenMode } from '../../types';
+  import type { AgentID, SessionMeta, TerminalOpenMode } from '../../types';
   import { formatTokens, formatCost } from '../../format';
   import { formatAbsoluteTime, formatAgo, isKnownTime } from '../../date';
   import { appState } from '../../stores/appState.svelte';
@@ -16,6 +16,8 @@
   import { preferences } from '../../stores/preferences.svelte';
   import { resumeButtonTitle } from '../../link';
   import { transcriptModes, type TranscriptMode } from '../../transcript';
+  import { newSession } from '../../stores/newSession.svelte';
+  import { newSessionShortcutLabel } from '../../terminal';
 
   interface Props {
     meta: SessionMeta;
@@ -57,6 +59,30 @@
     panel: { label: 'Open in built-in terminal', title: 'Resume this session in the terminal panel below' },
     external: { label: 'Open in external terminal', title: 'Resume this session in a new terminal window' },
   };
+  // New session: the main part starts this session's agent in its directory,
+  // ▾ offers every agent, those the host lacks disabled with what to install.
+  const isMac = typeof navigator !== 'undefined' && /Mac/i.test(navigator.platform);
+  let newChoices = $derived(newSession.choices);
+  let sameAgent = $derived(newChoices.find((c) => c.agent === meta.ref.agent));
+  let newDisabledReason = $derived(meta.cwdMissing ? 'This directory no longer exists on disk' : '');
+  let newMainTitle = $derived(
+    newDisabledReason ||
+      sameAgent?.missing ||
+      `Start a new ${agentName} session in ${meta.cwd} (${newSessionShortcutLabel(isMac)} starts the agent last used)`,
+  );
+  let newMenuOpen = $state(false);
+  let newMenuRoot: HTMLDivElement | undefined = $state();
+
+  $effect(() => {
+    void link.dataHost;
+    if (newSession.available) void newSession.refresh();
+  });
+
+  function startNew(agent: AgentID) {
+    newMenuOpen = false;
+    void newSession.start(agent, meta.cwd);
+  }
+
   let resumeMenuOpen = $state(false);
   let continueMenuOpen = $state(false);
   let exportMenuOpen = $state(false);
@@ -100,6 +126,9 @@
     }
     if (exportMenuOpen && exportMenuRoot && !exportMenuRoot.contains(target)) {
       exportMenuOpen = false;
+    }
+    if (newMenuOpen && newMenuRoot && !newMenuRoot.contains(target)) {
+      newMenuOpen = false;
     }
   }
 </script>
@@ -169,6 +198,7 @@
               if (resumeMenuOpen) {
                 continueMenuOpen = false;
                 exportMenuOpen = false;
+                newMenuOpen = false;
               }
             }}
           >
@@ -218,6 +248,60 @@
         </button>
       {/if}
 
+      {#if newSession.available && meta.cwd}
+        <div class="menu-container new-split" bind:this={newMenuRoot}>
+          <button
+            type="button"
+            class="action-btn new-btn new-main"
+            title={newMainTitle}
+            disabled={newSession.starting || Boolean(newDisabledReason || sameAgent?.missing)}
+            onclick={() => startNew(meta.ref.agent)}
+          >
+            {newSession.starting ? 'Starting…' : 'New'}
+          </button>
+          <button
+            type="button"
+            class="action-btn new-btn new-toggle"
+            title="Start a new session with another agent"
+            aria-label="New session with another agent"
+            aria-haspopup="menu"
+            aria-expanded={newMenuOpen}
+            disabled={Boolean(newDisabledReason)}
+            onclick={() => {
+              newMenuOpen = !newMenuOpen;
+              if (newMenuOpen) {
+                resumeMenuOpen = false;
+                continueMenuOpen = false;
+                exportMenuOpen = false;
+                void newSession.refresh();
+              }
+            }}
+          >
+            ▾
+          </button>
+          {#if newMenuOpen}
+            <div class="action-dropdown-menu" role="menu">
+              {#each newChoices as choice (choice.agent)}
+                <button
+                  type="button"
+                  class="action-menu-item"
+                  role="menuitem"
+                  title={choice.missing || `Start a new ${choice.name} session in ${meta.cwd}`}
+                  disabled={Boolean(choice.missing) || newSession.starting}
+                  onclick={() => startNew(choice.agent)}
+                >
+                  <AgentIcon agent={choice.agent} size={14} />
+                  <span>New {choice.name} session</span>
+                  {#if choice.missing}
+                    <span class="menu-note">not installed</span>
+                  {/if}
+                </button>
+              {/each}
+            </div>
+          {/if}
+        </div>
+      {/if}
+
       <div class="menu-container" bind:this={continueMenuRoot}>
         <button
           type="button"
@@ -231,6 +315,7 @@
             if (continueMenuOpen) {
               exportMenuOpen = false;
               resumeMenuOpen = false;
+              newMenuOpen = false;
             }
           }}
         >
@@ -269,6 +354,7 @@
             if (exportMenuOpen) {
               continueMenuOpen = false;
               resumeMenuOpen = false;
+              newMenuOpen = false;
             }
           }}
         >
@@ -575,6 +661,45 @@
     border-top-left-radius: 0;
     border-bottom-left-radius: 0;
     border-left: 1px solid rgba(255, 255, 255, 0.35);
+  }
+
+  /* New session: outlined, so Resume stays the main action. */
+  .action-btn.new-btn {
+    border: 1px solid color-mix(in srgb, var(--text-muted) 35%, transparent);
+  }
+
+  .action-btn.new-btn:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+  }
+
+  .new-split .new-main {
+    border-top-right-radius: 0;
+    border-bottom-right-radius: 0;
+  }
+
+  .new-split .new-toggle {
+    padding: 3px 6px;
+    border-left: none;
+    border-top-left-radius: 0;
+    border-bottom-left-radius: 0;
+  }
+
+  .action-menu-item:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+  }
+
+  .action-menu-item:disabled:hover {
+    background: transparent;
+    color: var(--text-secondary);
+  }
+
+  .menu-note {
+    margin-left: auto;
+    padding-left: 8px;
+    font-size: 0.68rem;
+    color: var(--text-muted);
   }
 
   /* A pill-shaped segmented control: a hairline outline, dividers between

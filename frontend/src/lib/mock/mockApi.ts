@@ -55,6 +55,7 @@ import type {
   TerminalSize,
   TerminalTab,
   AgentID,
+  AgentStatus,
 } from '../types.js';
 import { mockSessions, mockMessages, mockBlobs, mockDiagnostics } from './fixtures.js';
 import { refKey } from '../manage.js';
@@ -472,6 +473,7 @@ export class MockBackendAPI extends MockCodeDiagnostics {
     const argv0 = ({ 'claude-code': 'claude', codex: 'codex', opencode: 'opencode' } as Record<string, string>)[agent];
     if (!argv0) throw new Error(`unknown provider: ${agent}`);
     if (!dir || !this.sessions.some((s) => s.cwd === dir)) throw new Error(`unknown directory: ${dir}`);
+    if (this.missingAgents.has(agent)) throw new Error(`agent CLI not found: ${argv0} was not found on PATH or in its usual install locations. Install it, then try again`);
     return `cd '${dir}' && ${argv0}`;
   }
 
@@ -579,6 +581,20 @@ export class MockBackendAPI extends MockCodeDiagnostics {
 
   async openResumeInTerminal(ref: SessionRef): Promise<void> {
     await this.openTerminal(() => this.copyResumeCommand(ref));
+  }
+
+  /** Agents whose CLI the mock host reports missing. */
+  missingAgents = new Set<AgentID>();
+
+  async newSessionAgents(): Promise<AgentStatus[]> {
+    if (this.connState.phase !== 'local' && this.connState.phase !== 'connected') throw new Error('remote disconnected');
+    return [
+      { agent: 'claude-code', name: 'Claude Code' },
+      { agent: 'codex', name: 'Codex' },
+      { agent: 'opencode', name: 'OpenCode' },
+    ].map((a) => this.missingAgents.has(a.agent)
+      ? { ...a, installed: false, hint: `${a.name} was not found on PATH or in its usual install locations. Install it, then try again` }
+      : { ...a, installed: true });
   }
 
   async openNewSessionInTerminal(agent: AgentID, dir: string): Promise<void> {

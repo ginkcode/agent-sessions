@@ -91,6 +91,24 @@ export function windowCycleShortcut(
   return e.shiftKey ? 'previous' : 'next';
 }
 
+/**
+ * Whether a key starts a new agent session: Cmd+Shift+A on macOS,
+ * Ctrl+Shift+A elsewhere (A for agent; Ctrl+Shift+N is New window there).
+ */
+export function isNewSessionShortcut(
+  e: Pick<KeyboardEvent, 'key' | 'code' | 'ctrlKey' | 'metaKey' | 'altKey' | 'shiftKey'>,
+  mac: boolean,
+): boolean {
+  const chord = mac ? e.metaKey && !e.ctrlKey : e.ctrlKey && !e.metaKey;
+  if (!chord || !e.shiftKey || e.altKey) return false;
+  return /^[a-z]$/i.test(e.key) ? e.key.toLowerCase() === 'a' : e.code === 'KeyA';
+}
+
+/** The New session shortcut as the platform writes it. */
+export function newSessionShortcutLabel(mac: boolean): string {
+  return mac ? '⌘⇧A' : 'Ctrl+Shift+A';
+}
+
 /** The New window shortcut as the platform writes it. */
 export function newWindowShortcutLabel(mac: boolean): string {
   return mac ? '⌘N' : 'Ctrl+Shift+N';
@@ -130,6 +148,7 @@ export function terminalKeyAction(
     isPanelToggle(e) ||
     isNewShellShortcut(e, mac) ||
     isNewWindowShortcut(e, mac) ||
+    isNewSessionShortcut(e, mac) ||
     windowCycleShortcut(e, mac) ||
     isFullscreenShortcut(e, mac)
   ) {

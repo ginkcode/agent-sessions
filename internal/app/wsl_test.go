@@ -46,6 +46,11 @@ func (s *wslStub) NewSessionTerminalScript(_ context.Context, agent model.AgentI
 	return "script new " + string(agent), s.err
 }
 
+func (s *wslStub) NewSessionAgents(context.Context) ([]engine.AgentStatus, error) {
+	s.calls = append(s.calls, "agents")
+	return []engine.AgentStatus{{Agent: model.AgentCodex, Name: "Codex", Installed: true}}, s.err
+}
+
 func (s *wslStub) NewSessionPanelScript(_ context.Context, agent model.AgentID, dir string) (string, error) {
 	s.calls = append(s.calls, "panel new:"+string(agent)+":"+dir)
 	return "panel script new " + string(agent), s.err

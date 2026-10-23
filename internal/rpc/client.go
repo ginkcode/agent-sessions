@@ -624,6 +624,17 @@ func (c *Client) NewSessionPanelScript(ctx context.Context, agent model.AgentID,
 	return c.newSessionScript(ctx, NewSessionParams{Agent: agent, Dir: dir, Panel: true})
 }
 
+// NewSessionAgents reports which agents' CLIs are installed on the server's
+// machine.
+func (c *Client) NewSessionAgents(ctx context.Context) ([]engine.AgentStatus, error) {
+	if !c.caps.NewSession {
+		return nil, errNoNewSession
+	}
+	var out []engine.AgentStatus
+	err := c.call(ctx, "newSessionAgents", nil, &out)
+	return out, err
+}
+
 func (c *Client) newSessionScript(ctx context.Context, p NewSessionParams) (string, error) {
 	if !c.caps.NewSession {
 		return "", errNoNewSession

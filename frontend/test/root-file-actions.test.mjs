@@ -22,7 +22,11 @@ test('tree menu groups create, file manager, path and rename/delete actions', ()
   const at = order.map(label => source.indexOf(label));
   assert.ok(at.every(i => i > 0), 'every item present');
   assert.deepEqual([...at].sort((a, b) => a - b), at, 'items in group order');
-  assert.match(source, /\[create, open, copy, change\]\.filter\(group => group\.length\)/);
+  assert.match(source, /\[start, create, open, copy, change\]\.filter\(group => group\.length\)/);
+});
+
+test('only the project root offers new agent sessions, first in its menu', () => {
+  assert.match(source, /const start = directory && !path && newSession\.available\s*\? newSessionMenuItems\(/);
 });
 
 test('context menu draws a divider before each later group, never before the first item', async () => {

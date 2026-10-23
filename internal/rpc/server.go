@@ -715,6 +715,13 @@ func (s *Server) dispatch(ctx context.Context, req Request) (any, error) {
 			return l.NewSessionLaunch(ctx, p.Agent, p.Dir)
 		})
 
+	case "newSessionAgents":
+		l, ok := backend.(terminalLauncher)
+		if !ok {
+			return nil, &ResponseError{Code: CodeMethodNotFound, Message: "method not supported: " + req.Method}
+		}
+		return l.NewSessionAgents(ctx)
+
 	case "handoffTerminalScript":
 		var p HandoffCommandParams
 		if err := json.Unmarshal(req.Params, &p); err != nil {
@@ -746,6 +753,7 @@ func (s *Server) dispatch(ctx context.Context, req Request) (any, error) {
 type terminalLauncher interface {
 	ResumeLaunch(context.Context, model.SessionRef) (provider.Command, error)
 	NewSessionLaunch(context.Context, model.AgentID, string) (provider.Command, error)
+	NewSessionAgents(context.Context) ([]engine.AgentStatus, error)
 	HandoffLaunch(context.Context, engine.HandoffRequest) (provider.Command, error)
 	BundleHandoffLaunch(context.Context, engine.BundleHandoffRequest) (provider.Command, error)
 }

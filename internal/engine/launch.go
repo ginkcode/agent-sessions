@@ -23,6 +23,11 @@ func (e *Engine) NewSessionLaunch(_ context.Context, agent model.AgentID, dir st
 	return e.svc.NewSessionLaunch(agent, dir)
 }
 
+// NewSessionAgents reports which agents' CLIs are installed on this machine.
+func (e *Engine) NewSessionAgents(_ context.Context) ([]AgentStatus, error) {
+	return e.svc.NewSessionAgents(), nil
+}
+
 // HandoffLaunch writes the handoff files and returns the target agent's command.
 func (e *Engine) HandoffLaunch(ctx context.Context, req HandoffRequest) (provider.Command, error) {
 	return e.svc.HandoffLaunch(ctx, req)

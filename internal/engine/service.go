@@ -278,6 +278,40 @@ func (s *Service) NewSessionLaunch(agent model.AgentID, dir string) (provider.Co
 	return cmd, nil
 }
 
+// AgentStatus is whether an agent's CLI is installed where its new sessions
+// would start.
+type AgentStatus struct {
+	Agent model.AgentID `json:"agent"`
+	Name  string        `json:"name"`
+	// Installed is true when the lookup a launch makes finds the CLI.
+	Installed bool `json:"installed"`
+	// Hint says what to install when it is not.
+	Hint string `json:"hint,omitempty"`
+}
+
+// findAgent locates an agent CLI as launches do; tests replace it.
+var findAgent = launch.Find
+
+// NewSessionAgents reports each provider's agent and whether its CLI is
+// installed on this machine, found the way NewSessionLaunch's command is.
+func (s *Service) NewSessionAgents() []AgentStatus {
+	out := make([]AgentStatus, 0, len(s.providers))
+	for _, prov := range s.providers {
+		st := AgentStatus{Agent: prov.ID(), Name: prov.DisplayName()}
+		argv := prov.NewSessionCommand("").Argv
+		if len(argv) == 0 {
+			continue
+		}
+		if _, err := findAgent(argv[0]); err != nil {
+			st.Hint = strings.TrimPrefix(err.Error(), launch.ErrAgentNotFound.Error()+": ")
+		} else {
+			st.Installed = true
+		}
+		out = append(out, st)
+	}
+	return out
+}
+
 // RevealSource exposes the session's source path directory.
 func (s *Service) RevealSource(ref model.SessionRef) (string, error) {
 	m, ok := s.catalog.Get(ref)

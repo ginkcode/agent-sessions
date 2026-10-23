@@ -38,6 +38,7 @@
   import { launcher } from './lib/stores/launcher.svelte';
   import { translateSettings } from './lib/stores/translate.svelte';
   import { terminals } from './lib/stores/terminals.svelte';
+  import { newSession } from './lib/stores/newSession.svelte';
   import { files } from './lib/stores/files.svelte';
   import { contentSearch } from './lib/stores/contentSearch.svelte';
   import { isSearchShortcut, searchSeed } from './lib/contentSearch';
@@ -48,6 +49,7 @@
   import { themeButtonTitle } from './lib/theme';
   import { hostLabel } from './lib/hosts';
   import {
+    isNewSessionShortcut,
     isNewShellShortcut,
     isNewWindowShortcut,
     isPanelToggle,
@@ -100,6 +102,7 @@
     void launcher.init();
     void translateSettings.init();
     terminals.init();
+    newSession.init();
     isWails = typeof window !== 'undefined' && Boolean((window as any).go?.app?.App);
     api
       .appVersion()
@@ -138,6 +141,15 @@
         if (!launcher.info.panel || hasOpenModal()) return;
         event.preventDefault();
         if (!event.repeat) void terminals.newShell(shellCwd);
+        return;
+      }
+      // Cmd+Shift+A on macOS, Ctrl+Shift+A elsewhere: a new session of the
+      // agent last started, in the shown session's project. Go to File
+      // handles it for its own project.
+      if (isNewSessionShortcut(event, isMac)) {
+        if (!newSession.available || !shellCwd || files.open || hasOpenModal() || link.stale) return;
+        event.preventDefault();
+        if (!event.repeat) void newSession.start(newSession.defaultAgent, shellCwd);
         return;
       }
       // Cmd+N on macOS, Ctrl+Shift+N elsewhere: another window of the app.

@@ -41,6 +41,7 @@ var ErrTerminalRemote = errors.New("open in terminal works for local and WSL ses
 type localLauncher interface {
 	ResumeLaunch(context.Context, model.SessionRef) (provider.Command, error)
 	NewSessionLaunch(context.Context, model.AgentID, string) (provider.Command, error)
+	NewSessionAgents(context.Context) ([]engine.AgentStatus, error)
 	HandoffLaunch(context.Context, engine.HandoffRequest) (provider.Command, error)
 	BundleHandoffLaunch(context.Context, engine.BundleHandoffRequest) (provider.Command, error)
 }
@@ -50,6 +51,7 @@ type localLauncher interface {
 type remoteLauncher interface {
 	ResumeTerminalScript(context.Context, model.SessionRef) (string, error)
 	NewSessionTerminalScript(context.Context, model.AgentID, string) (string, error)
+	NewSessionAgents(context.Context) ([]engine.AgentStatus, error)
 	HandoffTerminalScript(context.Context, engine.HandoffRequest) (string, error)
 	BundleHandoffTerminalScript(context.Context, engine.BundleHandoffRequest) (string, error)
 	ResumePanelScript(context.Context, model.SessionRef) (string, error)
@@ -101,6 +103,24 @@ func (a *App) OpenNewSessionInTerminal(agent model.AgentID, dir string) error {
 	}, func(l remoteLauncher) (string, error) {
 		return l.NewSessionTerminalScript(a.appCtx(), agent, dir)
 	})
+}
+
+// NewSessionAgents reports which agents' CLIs are installed on the selected
+// host, found as a new session there would find them.
+func (a *App) NewSessionAgents() ([]engine.AgentStatus, error) {
+	t := a.launchTarget()
+	if t.host == "" {
+		l, err := t.local()
+		if err != nil {
+			return nil, err
+		}
+		return l.NewSessionAgents(a.appCtx())
+	}
+	l, err := t.remote()
+	if err != nil {
+		return nil, err
+	}
+	return l.NewSessionAgents(a.appCtx())
 }
 
 // OpenHandoffInTerminal writes the handoff files and opens a terminal that

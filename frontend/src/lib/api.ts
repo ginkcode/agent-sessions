@@ -55,6 +55,7 @@ import type {
   TerminalDataEvent,
   TerminalExitEvent,
   AgentID,
+  AgentStatus,
 } from './types';
 import { MockBackendAPI } from './mock/mockApi';
 import { epoch, guardEpoch } from './link';
@@ -94,6 +95,8 @@ export interface BackendAPI extends CodeDiagnosticsAPI {
   openResumeInTerminal(ref: SessionRef): Promise<void>;
   /** A fresh session of agent in dir, a project of the selected host. */
   openNewSessionInTerminal(agent: AgentID, dir: string): Promise<void>;
+  /** Which agents' CLIs are installed on the selected host. */
+  newSessionAgents(): Promise<AgentStatus[]>;
   openHandoffInTerminal(req: HandoffRequest): Promise<void>;
   openBundleHandoffInTerminal(req: BundleHandoffRequest): Promise<void>;
   /** Starts a tab in the built-in terminal panel; size is its first size. */
@@ -242,6 +245,7 @@ interface WailsAppBinding {
   FocusNextWindow?(forward: boolean): Promise<void>;
   OpenResumeInTerminal(ref: SessionRef): Promise<void>;
   OpenNewSessionInTerminal(agent: AgentID, dir: string): Promise<void>;
+  NewSessionAgents(): Promise<AgentStatus[]>;
   OpenHandoffInTerminal(req: HandoffRequest): Promise<void>;
   OpenBundleHandoffInTerminal(req: BundleHandoffRequest): Promise<void>;
   PanelResume(ref: SessionRef, size: TerminalSize): Promise<TerminalTab>;
@@ -571,6 +575,14 @@ class WailsBackendAPI implements BackendAPI {
   async openNewSessionInTerminal(agent: AgentID, dir: string): Promise<void> {
     try {
       return await this.binding.OpenNewSessionInTerminal(agent, dir);
+    } catch (e) {
+      throw normalizeError(e);
+    }
+  }
+
+  async newSessionAgents(): Promise<AgentStatus[]> {
+    try {
+      return (await this.binding.NewSessionAgents()) ?? [];
     } catch (e) {
       throw normalizeError(e);
     }
