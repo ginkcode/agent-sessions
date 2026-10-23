@@ -192,6 +192,18 @@ func (t *Trust) Lookup(root AuthorizedRoot, fp string) (Approval, error) {
 // Approve re-discovers the proposed metadata under the trust lock. Approval
 // never launches tools. A stale proposal cannot approve a changed executable.
 func (t *Trust) Approve(root AuthorizedRoot, tools []ToolInput, proposal, mode string) (Approval, error) {
+	return t.approve(root, func() (string, error) { return Fingerprint(root, tools) }, proposal, mode)
+}
+
+// ApproveInProcess approves a proposal made only of reviewed in-process
+// analyzers (no executable). The identity is recomputed under the trust lock
+// exactly like Approve; it grants no executable and Preflight still requires
+// an executable fingerprint, so no tool can launch on this grant.
+func (t *Trust) ApproveInProcess(root AuthorizedRoot, analyzers []string, proposal, mode string) (Approval, error) {
+	return t.approve(root, func() (string, error) { return InProcessFingerprint(root, analyzers) }, proposal, mode)
+}
+
+func (t *Trust) approve(root AuthorizedRoot, identity func() (string, error), proposal, mode string) (Approval, error) {
 	if mode != "session" && mode != "persistent" {
 		return Approval{}, failure("invalidArgument", "Invalid approval mode")
 	}
@@ -200,7 +212,7 @@ func (t *Trust) Approve(root AuthorizedRoot, tools []ToolInput, proposal, mode s
 	if t.closed {
 		return Approval{}, failure("disconnected", "Execution trust owner is closed")
 	}
-	fp, err := Fingerprint(root, tools)
+	fp, err := identity()
 	if err != nil {
 		return Approval{}, err
 	}

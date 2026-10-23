@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 )
 
@@ -81,6 +82,45 @@ func Fingerprint(root AuthorizedRoot, tools []ToolInput) (string, error) {
 		Project Project
 		Tools   []toolIdentity
 	}{1, root.project, identities}
+	data, _ := json.Marshal(payload)
+	sum := sha256.Sum256(data)
+	return "sha256-v1:" + hex.EncodeToString(sum[:]), nil
+}
+
+// inProcessPolicies are the reviewed, fixed policies of backend-owned analyzers
+// that execute nothing. Only listed IDs can receive an analyzer-only identity.
+var inProcessPolicies = map[string]string{
+	GoSyntaxProviderID: "go-syntax-v1:go/parser:contained-os-root:saved-files:no-exec",
+}
+
+// InProcessFingerprint is the approval identity of a proposal that contains
+// only in-process analyzers and no executable. It binds the host/project and
+// the exact analyzer policies; it is a separate payload kind, so it can never
+// equal an executable tool fingerprint. Nothing is read beyond root identity.
+func InProcessFingerprint(root AuthorizedRoot, providers []string) (string, error) {
+	if err := root.Revalidate(); err != nil {
+		return "", err
+	}
+	if len(providers) == 0 || len(providers) > 32 {
+		return "", failure("invalidArgument", "Expected 1 to 32 analyzers")
+	}
+	ids := slices.Clone(providers)
+	slices.Sort(ids)
+	type analyzer struct{ ProviderID, Policy string }
+	analyzers := make([]analyzer, 0, len(ids))
+	for i, id := range ids {
+		policy, ok := inProcessPolicies[id]
+		if !ok || (i > 0 && ids[i-1] == id) {
+			return "", failure("invalidArgument", "Unknown or duplicated in-process analyzer")
+		}
+		analyzers = append(analyzers, analyzer{id, policy})
+	}
+	payload := struct {
+		Version   int
+		Kind      string
+		Project   Project
+		Analyzers []analyzer
+	}{1, "in-process-analyzers-v1", root.project, analyzers}
 	data, _ := json.Marshal(payload)
 	sum := sha256.Sum256(data)
 	return "sha256-v1:" + hex.EncodeToString(sum[:]), nil

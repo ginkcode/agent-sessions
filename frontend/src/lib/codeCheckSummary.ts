@@ -7,7 +7,7 @@ export interface CodeCheckSummaryInput {
   running?: boolean;
   partial?: boolean;
   truncated?: boolean;
-  snapshot?: { approval?: { state?: string } };
+  snapshot?: { approval?: { state?: string }; proposal?: { fingerprint?: string } };
   providers?: CodeDiagnosticsProvider[];
   findings?: AttributedCodeDiagnostic[];
 }
@@ -97,6 +97,9 @@ export function codeCheckSummary(c: CodeCheckSummaryInput): CodeCheckSummary {
     case 'resyncing': return done(has ? `${problems} · updating…` : 'Code checks updating…', { tone: has ? tone : 'muted', title: 'Reconciling; retained results are stale.' });
   }
   if (c.revoking) return done('Code checks turning off…', { tone: 'muted' });
+  if (c.snapshot?.approval?.state !== 'approved' && !c.snapshot?.proposal?.fingerprint && (c.providers ?? []).length) {
+    return done(has ? `${problems} · no checker found` : 'Code checks: no checker found', { tone: has ? tone : 'muted', needsSettings: !has, title: 'No supported checker was found on this host; see the details.' });
+  }
   if (c.snapshot?.approval?.state !== 'approved') {
     return done(has ? `${problems} · approval needed` : 'Code checks: approval needed', { tone: has ? tone : 'attention', needsSettings: true, title: 'Nothing runs until you approve this project in the details.' });
   }

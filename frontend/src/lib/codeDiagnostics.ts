@@ -40,7 +40,8 @@ export interface CodeDiagnosticsSnapshot {
   approval: { state: 'required' | 'approved' | 'revoked'; mode?: 'session' | 'persistent'; fingerprint?: string };
   providers: CodeDiagnosticsProvider[];
   resultSets: CodeDiagnosticsResultSet[];
-  proposal?: { fingerprint: string; tools: { providerId: string; executable: string; configPaths: string[] }[] };
+  /** `analyzers` are built-in in-process checks gated by the same approval; they run no program. */
+  proposal?: { fingerprint: string; tools: { providerId: string; executable: string; configPaths: string[] }[]; analyzers?: { providerId: string; description: string }[] };
 }
 export interface CodeDiagnosticsAttachment {
   project: CodeDiagnosticsProject;

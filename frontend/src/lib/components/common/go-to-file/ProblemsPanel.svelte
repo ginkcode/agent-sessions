@@ -20,6 +20,9 @@
   let summary = $derived(codeCheckSummary(checks));
   let findings = $derived(checks.findings ?? []);
   let rows = $derived(orderedProblems(findings, enabled));
+  // Filters, navigation and the empty-result line only mean something once some
+  // analysis is approved, or when retained findings are still listed.
+  let listing = $derived(!!checks.analyzing || findings.length > 0);
   let paths = $derived([...new Set(rows.map(f => f.diagnostic.path))]);
   let visible = $derived(rows.filter(f => !collapsed.includes(f.diagnostic.path)));
   let ownedFocus = false;
@@ -58,11 +61,13 @@
   <div id={regionId} class="details" role="region" aria-label="Code check details" hidden={!expanded}>
     {#if expanded}
       <div class="toolbar">
-        {#each problemSeverities as severity}
-          <label><input type="checkbox" checked={enabled.includes(severity)} onchange={() => enabled = enabled.includes(severity) ? enabled.filter(s => s !== severity) : [...enabled, severity]} />{severity}</label>
-        {/each}
-        <button type="button" disabled={!rows.length || blocked} onclick={() => step(-1)}>Previous problem</button>
-        <button type="button" disabled={!rows.length || blocked} onclick={() => step(1)}>Next problem</button>
+        {#if listing}
+          {#each problemSeverities as severity}
+            <label><input type="checkbox" checked={enabled.includes(severity)} onchange={() => enabled = enabled.includes(severity) ? enabled.filter(s => s !== severity) : [...enabled, severity]} />{severity}</label>
+          {/each}
+          <button type="button" disabled={!rows.length || blocked} onclick={() => step(-1)}>Previous problem</button>
+          <button type="button" disabled={!rows.length || blocked} onclick={() => step(1)}>Next problem</button>
+        {/if}
         {#if settings}
           <button type="button" class="settings-toggle" class:attention={summary.needsSettings} aria-expanded={settingsOpen} aria-controls={settingsId}
             onclick={() => settingsOpen = !settingsOpen}>{summary.needsSettings ? 'Set up code checks' : 'Settings'}</button>
@@ -73,14 +78,14 @@
           {#if settingsOpen}{@render settings()}{/if}
         </div>
       {/if}
-      {#if checks.partial || checks.truncated}<p class="note">Partial coverage{checks.truncated ? ' · results truncated' : ''}; retained findings are not a complete check.</p>{/if}
+      {#if listing && (checks.partial || checks.truncated)}<p class="note">Partial coverage{checks.truncated ? ' · results truncated' : ''}; retained findings are not a complete check.</p>{/if}
       <!-- Native buttons own activation; this group only delegates arrow navigation. -->
       <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
       <div class="results" bind:this={region} role="group" aria-label="Problems by file"
         title="↑/↓ move between problems; next/previous wrap through the filtered set."
         onfocusin={() => ownedFocus = true} onfocusout={() => ownedFocus = false}
         onkeydown={(event) => { if (!blocked) problemKey(event, step); }}>
-        {#if !rows.length}<p class="note">{findings.length ? 'No problems match the severity filters.' : 'No problems reported.'}</p>{/if}
+        {#if !rows.length && listing}<p class="note">{findings.length ? 'No problems match the severity filters.' : 'No problems reported.'}</p>{/if}
         {#each paths as path (path)}
           <button type="button" class="file" aria-expanded={!collapsed.includes(path)} onclick={() => collapsed = collapsed.includes(path) ? collapsed.filter(p => p !== path) : [...collapsed, path]}>{path}</button>
           {#if !collapsed.includes(path)}

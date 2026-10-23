@@ -22,7 +22,7 @@ func TestLocalExecutableDirsAbsoluteBoundedDeduplicated(t *testing.T) {
 	t.Setenv("PATH", strings.Join([]string{"/usr/bin", "relative/bin", "", "/usr/bin", "/opt/x/../y", "/opt/homebrew/bin"}, string(os.PathListSeparator)))
 	t.Setenv("GOPATH", strings.Join([]string{"/gopath", "rel"}, string(os.PathListSeparator)))
 	dirs := localExecutableDirs(home)
-	want := []string{"/usr/bin", "/opt/homebrew/bin", filepath.Join(home, "go", "bin"), filepath.Join(home, ".local", "bin"), "/gopath/bin", "/usr/local/go/bin", "/usr/local/bin"}
+	want := []string{"/usr/bin", "/opt/homebrew/bin", filepath.Join(home, "go", "bin"), filepath.Join(home, ".local", "bin"), filepath.Join(home, ".local", "share", "mise", "installs", "go", "latest", "bin"), "/gopath/bin", "/usr/local/go/bin", "/usr/local/bin"}
 	if !slices.Equal(dirs, want) {
 		t.Fatalf("%v", dirs)
 	}

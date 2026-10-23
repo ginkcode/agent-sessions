@@ -31,7 +31,11 @@ func localLiveSupported() bool { return runtime.GOOS == "darwin" && runtime.GOAR
 func localExecutableDirs(home string) []string {
 	dirs := filepath.SplitList(os.Getenv("PATH"))
 	if home != "" {
-		dirs = append(dirs, filepath.Join(home, "go", "bin"), filepath.Join(home, ".local", "bin"))
+		dirs = append(dirs, filepath.Join(home, "go", "bin"), filepath.Join(home, ".local", "bin"),
+			// mise's default per-user Go install ("latest" is mise's own link).
+			// Finder-launched apps never see mise's shell activation PATH, and
+			// its shims resolve to the mise launcher, not a Go toolchain.
+			filepath.Join(home, ".local", "share", "mise", "installs", "go", "latest", "bin"))
 		for _, p := range filepath.SplitList(os.Getenv("GOPATH")) {
 			if filepath.IsAbs(p) {
 				dirs = append(dirs, filepath.Join(p, "bin"))

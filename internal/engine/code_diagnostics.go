@@ -296,7 +296,9 @@ func (e *Engine) AttachCodeDiagnostics(ctx context.Context, dir string, version 
 func discoverCheckers(root cd.AuthorizedRoot) []cd.Registration {
 	home, _ := os.UserHomeDir()
 	cache, _ := os.UserCacheDir()
-	path := filepath.SplitList(os.Getenv("PATH"))
+	// The same reviewed absolute search directories as the live route, so a
+	// Finder-launched app (minimal PATH) finds the same installed toolchain.
+	path := localExecutableDirs(home)
 	register := func(id string, adapter cd.CheckerAdapter, err error) cd.Registration {
 		if err == nil {
 			return cd.Registration{ProviderID: id, Availability: "available", Adapter: adapter}

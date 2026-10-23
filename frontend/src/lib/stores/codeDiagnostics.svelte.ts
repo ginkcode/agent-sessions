@@ -75,6 +75,20 @@ export class CodeDiagnosticsStore {
   refreshManaged() { this.managedPolls = 0; this.managedDismissed = false; return this.managedAction('status'); }
 
   get approved() { return this.status === 'ready' && !this.revoking && this.snapshot?.approval.state === 'approved'; }
+  /**
+   * Why the approval buttons are disabled, or undefined when they can be used.
+   * Distinguishes discovery in progress from nothing approvable discovered.
+   */
+  get approvalBlocker(): string | undefined {
+    if (this.status !== 'ready' || !this.snapshot || this.snapshot.approval.state === 'approved') return undefined;
+    if (this.pending) return `Waiting for the ${this.pending} request to finish.`;
+    if (this.snapshot.proposal?.fingerprint) return undefined;
+    if (!this.providers.length) return 'Discovering checkers for this project…';
+    const reasons = this.providers.map(p => `${p.providerId}: ${({ missingTool: 'not installed', unsupported: 'unsupported', disabled: 'disabled' } as Record<string, string>)[p.availability] ?? p.availability}`);
+    return `Nothing to approve: no supported checker was found on this host (${reasons.join(', ')}).`;
+  }
+  /** Some analysis is approved and available, so findings (or their absence) are meaningful. */
+  get analyzing() { return this.approved && this.providers.some(p => p.availability === 'available'); }
   get running() { return this.pending === 'run' || this.pendingRuns.length > 0 || this.providers.some(p => ['starting', 'checking'].includes(p.phase)); }
   get canRun() { return this.approved && !this.pending && !this.running && this.providers.some(p => p.availability === 'available' && p.coverage.kind === 'savedProject'); }
   canRetry(providerId: string) { return this.canRun && this.providers.some(p => p.providerId === providerId && p.availability === 'available' && p.coverage.kind === 'savedProject'); }

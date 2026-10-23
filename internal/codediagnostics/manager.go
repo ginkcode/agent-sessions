@@ -28,6 +28,7 @@ type attachment struct {
 	closedOrder []string
 
 	inProcess map[string]bool // provider IDs published by PublishInProcess
+	analyzers []string        // reviewed in-process IDs offered in the proposal
 }
 
 // Manager owns one authenticated connection and its Supervisor and Trust. Close
@@ -111,7 +112,7 @@ func (m *Manager) CompleteDiscovery(c Context, registrations []Registration) err
 	}
 	next.snapshot.Context = a.snapshot.Context
 	next.snapshot.Sequence = a.snapshot.Sequence
-	a.adapters, a.tools, a.inProcess = next.adapters, next.tools, next.inProcess
+	a.adapters, a.tools, a.inProcess, a.analyzers = next.adapters, next.tools, next.inProcess, next.analyzers
 	a.snapshot = next.snapshot
 	m.commit(a)
 	return nil
@@ -146,6 +147,10 @@ func (m *Manager) prepare(root AuthorizedRoot, registrations []Registration) (*a
 			}
 			a.inProcess[r.ProviderID] = true
 			state.Notice = "Watches saved project files after project approval."
+			if _, reviewed := inProcessPolicies[r.ProviderID]; !reviewed {
+				state.Availability = "unsupported"
+				state.Notice = "This built-in analyzer has not been reviewed."
+			}
 		case r.Adapter != nil:
 			a.adapters[r.ProviderID] = r.Adapter
 			a.tools = append(a.tools, r.Adapter.Tools()...)
@@ -174,9 +179,30 @@ func (m *Manager) prepare(root AuthorizedRoot, registrations []Registration) (*a
 			a.snapshot.Proposal.Tools = append(a.snapshot.Proposal.Tools, ProposalTool{t.ProviderID, t.Executable, paths})
 		}
 	}
-	if len(a.tools) == 0 {
-		// In-process analysis is gated on the composite project approval; with no
-		// executable proposal there is nothing to approve, so it stays off.
+	a.analyzers = a.offeredAnalyzers()
+	analyzers := a.analyzers
+	if len(a.tools) == 0 && len(analyzers) > 0 {
+		// No executable checker is available, yet reviewed in-process analyzers
+		// are. They get their own explicit, analyzer-only approval proposal: its
+		// identity binds host/project/analyzer policy and can never authorize an
+		// executable (Preflight still requires a tool fingerprint).
+		fp, err := InProcessFingerprint(root, analyzers)
+		if err != nil {
+			return nil, err
+		}
+		approval, err := m.trust.Lookup(root, fp)
+		if err != nil {
+			return nil, err
+		}
+		a.snapshot.Approval = approval
+		a.snapshot.Proposal = &Proposal{Fingerprint: fp, Tools: []ProposalTool{}}
+	}
+	if a.snapshot.Proposal != nil {
+		for _, id := range analyzers {
+			a.snapshot.Proposal.Analyzers = append(a.snapshot.Proposal.Analyzers, ProposalAnalyzer{id, inProcessDescriptions[id]})
+		}
+	} else {
+		// Nothing reviewed to approve: in-process analysis stays off.
 		for i := range a.snapshot.Providers {
 			if p := &a.snapshot.Providers[i]; a.inProcess[p.ProviderID] {
 				p.Availability = "unsupported"
@@ -190,6 +216,22 @@ func (m *Manager) prepare(root AuthorizedRoot, registrations []Registration) (*a
 		return nil, failure("limitExceeded", "Provider metadata exceeds delivery budget")
 	}
 	return a, nil
+}
+
+var inProcessDescriptions = map[string]string{
+	GoSyntaxProviderID: "Built-in Go syntax check: parses saved .go files inside the project in the app and watches them for changes. Runs no program.",
+}
+
+// offeredAnalyzers returns the sorted in-process provider IDs offered for
+// approval at discovery (registered available and with a reviewed policy).
+func (a *attachment) offeredAnalyzers() []string {
+	var out []string
+	for _, p := range a.snapshot.Providers {
+		if _, ok := inProcessPolicies[p.ProviderID]; ok && a.inProcess[p.ProviderID] && p.Availability == "available" {
+			out = append(out, p.ProviderID)
+		}
+	}
+	return out
 }
 
 func availability(s string) bool {
@@ -239,7 +281,14 @@ func (m *Manager) Approve(c Context, fingerprint, mode string) (Snapshot, error)
 	if a.snapshot.Proposal == nil || a.snapshot.Proposal.Fingerprint != fingerprint {
 		return Snapshot{}, failure("approvalChanged", "Approval proposal is no longer current")
 	}
-	approval, err := m.trust.Approve(a.root, a.tools, fingerprint, mode)
+	var approval Approval
+	if len(a.tools) > 0 {
+		approval, err = m.trust.Approve(a.root, a.tools, fingerprint, mode)
+	} else {
+		// Analyzer-only proposal: recomputed and compared under the trust lock;
+		// it grants no executable.
+		approval, err = m.trust.ApproveInProcess(a.root, a.analyzers, fingerprint, mode)
+	}
 	if err != nil {
 		return Snapshot{}, err
 	}
@@ -339,6 +388,7 @@ func (m *Manager) Run(c Context, ids []string, supersede bool) ([]RunIdentity, e
 	if a.snapshot.Approval.State != "approved" {
 		return nil, failure("approvalRequired", "Explicit execution approval is required")
 	}
+	requested := ids != nil
 	if ids == nil {
 		for _, p := range a.snapshot.Providers {
 			if p.Availability == "available" && a.adapters[p.ProviderID] != nil {
@@ -350,6 +400,14 @@ func (m *Manager) Run(c Context, ids []string, supersede bool) ([]RunIdentity, e
 	// listing them is a harmless no-op rather than an error.
 	ids = slices.DeleteFunc(slices.Clone(ids), func(id string) bool { return a.inProcess[id] })
 	slices.Sort(ids)
+	if len(ids) == 0 {
+		if !requested {
+			return nil, failure("unsupported", "No available saved-file checker")
+		}
+		// Only in-process analyzers were listed: no executable work, no
+		// preflight, nothing to launch.
+		return []RunIdentity{}, nil
+	}
 	needed := 0
 	for i, id := range ids {
 		p := provider(a, id)

@@ -98,6 +98,77 @@ show the findings in counts and lists.
 - **Go, saved files:** real time. Any contained `.go` file that is created, changed, renamed or deleted on disk updates syntax findings, tree counts and red names in about 0.2–2s, whether it is open or not.
 - **Go, type and vet errors in unopened files:** not real time. `go vet` stays a manual or approved run, and gopls only covers opened documents. gopls is told about changed files only while its session is running.
 - **TypeScript/Svelte:** no unopened-file diagnostics. A watched change only makes clean displayed tabs reconcile. Their checkers still run on demand only, and their coverage stays `unwatched`.
-- **Prerequisites:** the watcher runs only on the local host and only after the composite project approval. That approval exists only when the host offers at least one executable checker proposal (go-vet or svelte-check). Otherwise go-syntax reports `unsupported`.
+- **Prerequisites:** the watcher runs only on the local host and only after explicit project approval. With an executable checker (go-vet, gopls, svelte-check) it is part of the composite approval. Without one, go-syntax gets its own analyzer-only approval (see the fix below); it is `unsupported` only when no reviewed analyzer applies.
 - **Not done:** no demo/mock update, no manual UI or native QA, and no remote watching. Any skipped tree or limit hit shows partial coverage.
 - Progress stays **19/28**. CD-25 stays 🟡.
+
+## Fix: disabled approval buttons in the app (2026-10-23)
+
+**Report.** The expanded bottom panel showed `Enable for this session` and
+`Always allow this project` disabled, `Not now` enabled, `Checkers (6) · partial`,
+and the status `Code checks: approval needed`.
+
+**Root cause (reproduced, metadata only).** The running app
+(`/Applications/Agent Sessions.app`, launched from Finder) inherits
+`PATH=/usr/bin:/bin:/usr/sbin:/sbin`. Go 1.26.8 and gopls v0.24.0 are installed by
+mise under `~/.local/share/mise/installs/go/1.26.8/bin`. That directory was not on
+the app's PATH or in the conventional search list, and mise's `shims/go` resolves to
+the mise launcher. Running the engine's real discovery against this repo with that
+environment gave `go-vet: missingTool`, `gopls: missingTool`, `svelte-check:
+missingTool`, `typescript`/`svelte: unsupported`, and `go-syntax: unsupported` with
+**no proposal**. The buttons are disabled when `proposal.fingerprint` is absent, so
+nothing could be approved. The frontend gave no reason, and still drew filters and
+"No problems reported". From a shell with the mise PATH, the same discovery gave a
+valid 12-tool proposal (go-vet plus gopls). So nothing was wrong with versions, the
+metadata budgets or fingerprinting. The cause was the toolchain lookup plus the
+rule that go-syntax needs an executable proposal.
+
+**Fix.**
+- `localExecutableDirs` also searches mise's per-user Go install
+  (`~/.local/share/mise/installs/go/latest/bin`). `discoverCheckers` (go-vet,
+  svelte-check) now uses the same reviewed absolute list as the live route instead
+  of the raw inherited PATH. The result, metadata only: the app finds Go 1.26.8 and
+  gopls v0.24.0 and offers the full composite proposal. Supported-version and
+  fingerprint checks are unchanged.
+- Analyzer-only proposal: if no executable checker exists, the built-in `go-syntax`
+  analyzer is still independently approvable through explicit consent. Its
+  `InProcessFingerprint` binds host/project and the fixed analyzer policy under a
+  distinct payload kind. It grants no executable: `Trust.Preflight` still needs a
+  tool fingerprint, so `Run` fails for executable providers. Session and persistent
+  grants, revoke and renewed consent when tools appear all work as before.
+  Unreviewed in-process IDs are `unsupported`.
+- UI: the settings show a concrete blocker while the buttons are disabled
+  ("Discovering checkers…", "Nothing to approve: no supported checker was found on
+  this host (go-vet: not installed, …)", or "Waiting for the approve request…"). An
+  analyzer-only proposal shows the built-in check with plain "runs no program"
+  copy instead of the executable-risk paragraph. Issue filters, previous/next,
+  partial notes and "No problems reported" are hidden until some approved analysis
+  is available, unless retained findings are listed. With nothing to approve, the
+  compact status reads "Code checks: no checker found".
+
+**Tests.**
+- `TestInProcessAnalyzerOnlyProposal` and `TestInProcessWithoutReviewedAnalyzerIsUnsupported` (manager).
+- `TestCodeDiagnosticsAnalyzerOnlyApprovalStartsWatcher` (engine). It uses an empty PATH and a temp HOME, then: proposal present → approve → watcher owned → unopened `a.go` syntax finding.
+- `TestCodeDiagnosticsProjectWatcherLifecycle` no longer skips.
+- The `localExecutableDirs` test expectation is updated.
+- Frontend: store blocker/approve flow (`code-diagnostics.test.mjs`) and the rendered blocker, enabled analyzer-only actions and hidden clean claims (`code-check-status.test.mjs`).
+
+**Validation:**
+- `go test ./...` passes.
+- `go test -race -count=1 ./internal/codediagnostics ./internal/engine ./internal/rpc` passes.
+- `go vet ./...` is clean, and `gofmt` is clean on touched files.
+- `npm test` passes 469/469.
+- `npm run check` gives 0 errors and the 1 pre-existing warning.
+- `npm run build` passes.
+- golangci-lint and staticcheck were not run because they are not installed.
+
+No tool was executed against the real repo, and nothing was installed or
+auto-approved. No manual or native GUI QA was done. Progress stays **19/28**.
+
+**User steps.** Rebuild or reinstall the app from this commit, reopen Go to File,
+expand the status and click Set up code checks. The proposal should list go-vet and
+gopls under the mise Go 1.26.8 toolchain, plus built-in go-syntax. Choose Enable for
+this session or Always allow this project. Saved Go syntax errors then appear through
+the watcher, and Check Project runs go vet. If Go is installed somewhere else that is
+not searched, only the built-in go-syntax approval is offered, and the blocker or
+checker list names what is missing.

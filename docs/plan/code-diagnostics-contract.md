@@ -78,6 +78,12 @@ uncertainty rather than reinterpret the error. No live capability is enabled.
   skipped trees or limits. A watcher that ends degrades to stale + `unwatched`.
   First user: in-process `go-syntax` (`Registration.InProcess`). It adds no tool to the
   approval proposal and is gated by the same composite approval. Revoke resets it to `unwatched`.
+  2026-10-23 fix: when no executable checker is discovered, reviewed in-process analyzers
+  get their own **analyzer-only proposal** (`proposal.tools: []`, `proposal.analyzers`).
+  Its fingerprint (`InProcessFingerprint`) binds host/project plus the fixed analyzer
+  policy under a distinct payload kind, so it never equals or authorizes a tool
+  fingerprint, and `Preflight` (executable launch) still fails on it. Unreviewed
+  in-process IDs are `unsupported` and never offered.
   LSP dynamic registration stays rejected. See
   [project watch](code-diagnostics-project-watch.md).
 
@@ -241,7 +247,9 @@ requests cannot change it. No operation takes an arbitrary executable/argv.
 Attach authenticates the known directory before canonical discovery; it performs
 no executable version probes before approval. Initial snapshot includes bounded
 metadata discovery and an approval proposal fingerprint when discovery completes:
-`snapshot.proposal?: {fingerprint, tools: [{providerId, executable, configPaths}]}`.
+`snapshot.proposal?: {fingerprint, tools: [{providerId, executable, configPaths}], analyzers?: [{providerId, description}]}`.
+`analyzers` (additive, optional) lists built-in in-process checks covered by the same
+approval; they run no program. `tools` may be empty only when `analyzers` is not.
 Executable/config paths are display-only host metadata, never frontend commands.
 If metadata is still pending the proposal is absent; approval cannot proceed.
 Approval recomputes/compares the proposal, rejecting stale fingerprints.

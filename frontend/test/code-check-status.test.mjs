@@ -170,3 +170,32 @@ test('file names turn red for any reported severity in tree, selected and search
   const none = await renderWithFixture(picker, { files, checks: checks() }, { onPick() {}, onContext() {} });
   assert.doesNotMatch(none, /has-issue|folder-issue/);
 });
+
+// Regression (2026-10-23 app report): expanded panel showed issue filters and
+// "No problems reported" before any approval, and disabled approval buttons with
+// no reason. Settings now state the concrete blocker; an analyzer-only proposal
+// renders enabled, clearly labelled approval actions without tool spam.
+test('unapproved details hide filters and clean claims; blockers and analyzer-only approval are explicit', async () => {
+  const unapproved = await renderPanel({ analyzing: false }, { expanded: true, settings: settingsSnippet });
+  assert.doesNotMatch(unapproved, /No problems reported|Previous problem|Next problem|type="checkbox"|Partial coverage/);
+  assert.match(unapproved, /Set up code checks|Settings/);
+  const listed = await renderPanel({ snapshot: approved, analyzing: true }, { expanded: true });
+  assert.match(listed, /No problems reported/); assert.match(listed, /type="checkbox"/);
+  const syntax = { ...provider, providerId: 'go-syntax', availability: 'approvalRequired', coverage: { ...provider.coverage, kind: 'savedProject' } };
+  const missing = { ...provider, providerId: 'go-vet', availability: 'missingTool' };
+  const blocker = 'Nothing to approve: no supported checker was found on this host (go-vet: not installed).';
+  const none = await renderWithFixture(settings, { checks: checks({ snapshot: { approval: { state: 'required' } }, providers: [missing], approvalBlocker: blocker }) });
+  assert.ok(none.includes('Nothing to approve: no supported checker was found on this host (go-vet: not installed).'));
+  const buttons = renderedButtons(none).filter(b => /Enable for this session|Always allow/.test(b.text));
+  assert.deepEqual(buttons.map(b => b.disabled), [true, true]);
+  assert.equal(codeCheckSummary({ status: 'ready', snapshot: { approval: { state: 'required' } }, providers: [missing] }).text, 'Code checks: no checker found');
+  const proposal = { fingerprint: 'sha256-v1:analyzers', tools: [], analyzers: [{ providerId: 'go-syntax', description: 'Built-in Go syntax check. Runs no program.' }] };
+  const html = await renderWithFixture(settings, { checks: checks({ snapshot: { approval: { state: 'required' }, proposal }, providers: [syntax, missing] }) });
+  const enabled = renderedButtons(html).filter(b => /Enable for this session|Always allow/.test(b.text));
+  assert.deepEqual(enabled.map(b => b.disabled), [false, false]);
+  assert.match(html, /Built-in go-syntax: Built-in Go syntax check\. Runs no program\./);
+  assert.match(html, /Only built-in checks are available on this host/);
+  assert.doesNotMatch(html, /Project configuration and plugins can execute code/);
+  assert.doesNotMatch(html.slice(0, html.indexOf('Technical details')), new RegExp(HOST));
+  assert.equal(codeCheckSummary({ status: 'ready', snapshot: { approval: { state: 'required' }, proposal }, providers: [syntax] }).text, 'Code checks: approval needed');
+});

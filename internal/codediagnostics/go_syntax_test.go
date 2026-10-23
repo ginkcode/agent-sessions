@@ -204,16 +204,95 @@ func TestInProcessPublicationRequiresCurrentApproval(t *testing.T) {
 	}
 }
 
-func TestInProcessWithoutProposalIsUnsupported(t *testing.T) {
+// Regression (2026-10-23 app report): with no executable checker discovered
+// (e.g. a Finder-launched app whose PATH lacks the Go toolchain) the approval
+// buttons were disabled because no proposal existed. The built-in analyzer now
+// gets its own explicit analyzer-only proposal; approving it grants no
+// executable, and an unreviewed in-process ID is never offered.
+func TestInProcessAnalyzerOnlyProposal(t *testing.T) {
+	root, tools, _ := fixture(t)
+	trust := NewTrust(store(t))
+	m, _ := NewManager("connection", trust, NewSupervisor(trust, SupervisorOptions{}), ManagerLimits{})
+	defer m.Close()
+	s, err := m.Attach(root, 1, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.Proposal != nil {
+		t.Fatal("proposal before discovery")
+	}
+	regs := []Registration{{ProviderID: "go-vet", Availability: "missingTool"}, {ProviderID: GoSyntaxProviderID, Availability: "available", InProcess: true}, {ProviderID: "unreviewed", Availability: "available", InProcess: true}}
+	if err := m.CompleteDiscovery(s.Context, regs); err != nil {
+		t.Fatal(err)
+	}
+	s, _ = m.GetSnapshot(s.Context)
+	syntax := func(s Snapshot) ProviderState { return *provider(&attachment{snapshot: s}, GoSyntaxProviderID) }
+	if s.Proposal == nil || !validFingerprint(s.Proposal.Fingerprint) || len(s.Proposal.Tools) != 0 || len(s.Proposal.Analyzers) != 1 || s.Proposal.Analyzers[0].ProviderID != GoSyntaxProviderID || s.Proposal.Analyzers[0].Description == "" {
+		t.Fatalf("analyzer-only proposal: %+v", s.Proposal)
+	}
+	if syntax(s).Availability != "approvalRequired" || provider(&attachment{snapshot: s}, "unreviewed").Availability != "unsupported" || s.Approval.State != "required" {
+		t.Fatalf("providers %+v", s.Providers)
+	}
+	if m.InProcessApproved(s.Context, GoSyntaxProviderID) {
+		t.Fatal("approved before consent")
+	}
+	if _, err := m.Approve(s.Context, "sha256-v1:"+strings.Repeat("0", 64), "session"); err == nil {
+		t.Fatal("stale fingerprint accepted")
+	}
+	// The analyzer identity is a distinct payload kind; it can never equal a
+	// tool fingerprint, and it does not authorize any executable.
+	if _, err := trust.Approve(root, tools, s.Proposal.Fingerprint, "session"); err == nil {
+		t.Fatal("analyzer identity approved an executable")
+	}
+	fp := s.Proposal.Fingerprint
+	s, err = m.Approve(s.Context, fp, "persistent")
+	if err != nil || s.Approval.State != "approved" || syntax(s).Availability != "available" || !m.InProcessApproved(s.Context, GoSyntaxProviderID) {
+		t.Fatalf("approve: %v %+v", err, s)
+	}
+	if _, err := trust.Preflight(root, nil); err == nil {
+		t.Fatal("analyzer-only grant produced an executable lease")
+	}
+	if _, err := m.Run(s.Context, nil, false); err == nil {
+		t.Fatal("run with no executable checker")
+	}
+	if runs, err := m.Run(s.Context, []string{GoSyntaxProviderID}, false); err != nil || len(runs) != 0 {
+		t.Fatalf("in-process run: %v %v", runs, err)
+	}
+	// Persistent: a fresh attachment of the same project is already approved.
+	if err := m.Detach(s.Context); err != nil {
+		t.Fatal(err)
+	}
+	s, err = m.Attach(root, 1, regs)
+	if err != nil || s.Approval.State != "approved" || s.Approval.Mode != "persistent" || !m.InProcessApproved(s.Context, GoSyntaxProviderID) {
+		t.Fatalf("persistent reattach: %v %+v", err, s)
+	}
+	// Adding an executable checker changes the identity: renewed consent.
+	if err := m.Detach(s.Context); err != nil {
+		t.Fatal(err)
+	}
+	s, err = m.Attach(root, 1, append(regs[1:2:2], Registration{ProviderID: "checker", Availability: "available", Adapter: &fakeChecker{tools, make(chan adapterCall, 1)}}))
+	if err != nil || s.Approval.State != "required" || s.Proposal.Fingerprint == fp || len(s.Proposal.Tools) != 1 || len(s.Proposal.Analyzers) != 1 {
+		t.Fatalf("composite: %v %+v", err, s)
+	}
+	// Revoke clears the analyzer grant too.
+	if _, err := m.Revoke(s.Context); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.Detach(s.Context); err == nil {
+		t.Fatal("revoked generation still current")
+	}
+}
+
+func TestInProcessWithoutReviewedAnalyzerIsUnsupported(t *testing.T) {
 	root, _, _ := fixture(t)
 	trust := NewTrust(nil)
 	m, _ := NewManager("connection", trust, NewSupervisor(trust, SupervisorOptions{}), ManagerLimits{})
 	defer m.Close()
-	s, err := m.Attach(root, 1, []Registration{{ProviderID: GoSyntaxProviderID, Availability: "available", InProcess: true}})
+	s, err := m.Attach(root, 1, []Registration{{ProviderID: "unreviewed", Availability: "available", InProcess: true}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if s.Providers[0].Availability != "unsupported" || m.InProcessApproved(s.Context, GoSyntaxProviderID) {
+	if s.Proposal != nil || s.Providers[0].Availability != "unsupported" || m.InProcessApproved(s.Context, "unreviewed") {
 		t.Fatalf("no proposal must not enable watching: %+v", s.Providers[0])
 	}
 }

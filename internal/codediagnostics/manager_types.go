@@ -49,9 +49,20 @@ type ProposalTool struct {
 	Executable  string   `json:"executable"`
 	ConfigPaths []string `json:"configPaths"`
 }
+
+// ProposalAnalyzer is a backend-owned in-process analyzer covered by the
+// approval. It executes nothing; it is listed so consent is explicit.
+type ProposalAnalyzer struct {
+	ProviderID  string `json:"providerId"`
+	Description string `json:"description"`
+}
 type Proposal struct {
 	Fingerprint string         `json:"fingerprint"`
 	Tools       []ProposalTool `json:"tools"`
+	// Analyzers lists in-process providers gated by this approval. When Tools
+	// is empty the fingerprint is an analyzer-only identity (InProcessFingerprint)
+	// that can never authorize an executable.
+	Analyzers []ProposalAnalyzer `json:"analyzers,omitempty"`
 }
 type Snapshot struct {
 	ContractVersion int             `json:"contractVersion"`

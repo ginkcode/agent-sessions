@@ -37,15 +37,23 @@
         <button type="button" onclick={() => (dismissed = false)}>Enable code checks for this project</button>
       {:else}
         <p><strong>Enable code checks for this project?</strong></p>
-        <p>Code checks run the listed tools on this host with your account's permissions. Project configuration and plugins can execute code. Tools may read files and dependencies, access the network, and write caches or other files. This is not a sandbox or a read-only guarantee. Only approve projects and tools you trust.</p>
+        {#if checks.snapshot.proposal && !checks.snapshot.proposal.tools.length}
+          <p>Only built-in checks are available on this host. They run no program: the app reads saved project files and watches them for changes. No external checker was found, so type and vet errors are not reported.</p>
+        {:else}
+          <p>Code checks run the listed tools on this host with your account's permissions. Project configuration and plugins can execute code. Tools may read files and dependencies, access the network, and write caches or other files. This is not a sandbox or a read-only guarantee. Only approve projects and tools you trust.</p>
+        {/if}
         <p>{checks.liveEnabled ? 'Check Project runs on saved files. After approval, opened Go files are also sent unsaved to the listed gopls for live diagnostics; drafts are never saved.' : 'Only saved files are checked; drafts are never saved or checked automatically.'} Session approval lasts until this connection or app session ends. Always allow remembers this host, project and tool/config identity; relevant changes require approval again. Approval does not start a check.</p>
         {#if checks.snapshot.approval.state === 'revoked'}<p>Permission revoked. Pending and running checks are being canceled; previous findings have been cleared.</p>{/if}
+        {#each checks.snapshot.proposal?.analyzers ?? [] as analyzer}
+          <p>Built-in {analyzer.providerId}: {analyzer.description}</p>
+        {/each}
         {#each checks.snapshot.proposal?.tools ?? [] as tool}
           <p class="mono">{tool.providerId}: {tool.executable} · Configuration: {tool.configPaths.join(', ') || 'none discovered'}</p>
         {/each}
+        {#if checks.approvalBlocker}<p role="status" class="blocker">{checks.approvalBlocker}</p>{/if}
         <div class="actions">
-          <button type="button" disabled={blocked || !!checks.pending || !checks.snapshot.proposal?.fingerprint} onclick={() => perform(() => checks.approve('session'))}>Enable for this session</button>
-          <button type="button" disabled={blocked || !!checks.pending || !checks.snapshot.proposal?.fingerprint} onclick={() => perform(() => checks.approve('persistent'))}>Always allow this project</button>
+          <button type="button" disabled={blocked || !!checks.approvalBlocker || !checks.snapshot.proposal?.fingerprint} onclick={() => perform(() => checks.approve('session'))}>Enable for this session</button>
+          <button type="button" disabled={blocked || !!checks.approvalBlocker || !checks.snapshot.proposal?.fingerprint} onclick={() => perform(() => checks.approve('persistent'))}>Always allow this project</button>
           <button type="button" disabled={!!checks.pending} onclick={() => (dismissed = true)}>Not now</button>
         </div>
       {/if}
@@ -146,6 +154,7 @@
 <style>
   .code-checks { padding: 4px 10px; font-size: 0.78rem; }
   p { margin: 4px 0; }
+  .blocker { color: var(--text-secondary); }
   .mono { overflow-wrap: anywhere; font-family: var(--font-mono); }
   .actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 4px 0; }
   button { padding: 3px 8px; border: 1px solid var(--border-color); border-radius: 4px; cursor: pointer; }

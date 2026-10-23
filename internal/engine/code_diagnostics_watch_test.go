@@ -77,7 +77,7 @@ func TestCodeDiagnosticsProjectWatcherLifecycle(t *testing.T) {
 	}
 	s := await("discovery", c, func(s cd.Snapshot) bool { p, _ := syntax(s); return p.ProviderID != "" })
 	if s.Proposal == nil {
-		t.Skip("no executable checker discovered on this host; go-syntax stays unsupported without a proposal")
+		t.Fatal("go sources present but no approval proposal")
 	}
 	time.Sleep(50 * time.Millisecond)
 	if _, found := syntax(snapshot(c)); found != nil || owner.projectWatchers() != 0 {
@@ -138,4 +138,75 @@ func TestCodeDiagnosticsProjectWatcherLifecycle(t *testing.T) {
 	if owner.projectWatchers() != 0 || owner.manager.OwnedWorkers() != 0 {
 		t.Fatal("reset left owned work")
 	}
+}
+
+// Regression (2026-10-23 app report): a Finder-launched app inherits
+// PATH=/usr/bin:/bin:/usr/sbin:/sbin, so no Go toolchain, gopls or Node is
+// discovered. Previously no proposal existed and both approval buttons were
+// disabled. Now the built-in go-syntax analyzer gets an explicit analyzer-only
+// proposal; approving it starts the watcher, and nothing is executable.
+func TestCodeDiagnosticsAnalyzerOnlyApprovalStartsWatcher(t *testing.T) {
+	ctx := context.Background()
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("PATH", "")
+	t.Setenv("GOPATH", "")
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module example.test/w\n\ngo 1.26\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "a.go"), []byte("package w\nfunc {\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	catalog := scan.NewCatalog()
+	catalog.Reset([]model.SessionMeta{{Ref: model.SessionRef{Agent: model.AgentClaude, ID: "only"}, CWD: dir, RepoRoot: dir}})
+	owner, err := newDiagnosticsOwner(t.TempDir(), "test-host")
+	if err != nil {
+		t.Fatal(err)
+	}
+	owner.watch = cd.ProjectWatchOptions{Debounce: 20 * time.Millisecond}
+	e := NewEngine(WithService(NewService(catalog, nil)), WithCacheEnabled(false))
+	e.codeDiagnostics = owner
+	go owner.events(e)
+	t.Cleanup(func() { _ = e.Close() })
+	attached, err := e.AttachCodeDiagnostics(ctx, dir, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := attached.Context
+	var s cd.Snapshot
+	deadline := time.Now().Add(10 * time.Second)
+	for s.Proposal == nil && time.Now().Before(deadline) {
+		if s, err = e.GetCodeDiagnosticsSnapshot(ctx, c); err != nil {
+			t.Fatal(err)
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	if s.Proposal == nil || len(s.Proposal.Analyzers) != 1 || s.Proposal.Analyzers[0].ProviderID != cd.GoSyntaxProviderID {
+		t.Fatalf("no analyzer proposal: %+v", s)
+	}
+	for _, tool := range s.Proposal.Tools {
+		if tool.ProviderID == cd.GoSyntaxProviderID {
+			t.Fatal("analyzer listed as executable")
+		}
+	}
+	if s.Approval.State != "required" || owner.projectWatchers() != 0 {
+		t.Fatal("approved or watching before consent")
+	}
+	if _, err := e.ApproveCodeDiagnostics(ctx, c, "session", s.Proposal.Fingerprint); err != nil {
+		t.Fatal(err)
+	}
+	for time.Now().Before(deadline) {
+		s, _ = e.GetCodeDiagnosticsSnapshot(ctx, c)
+		for _, set := range s.ResultSets {
+			if set.ProviderID == cd.GoSyntaxProviderID && len(set.Diagnostics) > 0 && set.Diagnostics[0].Path == "a.go" {
+				if owner.projectWatchers() != 1 {
+					t.Fatal("watcher not owned")
+				}
+				return
+			}
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	t.Fatalf("no syntax finding after approval: %+v", s)
 }

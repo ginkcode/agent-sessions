@@ -307,3 +307,32 @@ test('watching provider runs trigger coalesced read-only tab reconciliation; unw
   h.emit(update(snapshot(5, { resultSets: [{ ...unwatched.resultSets[0], providerId: 'go', runId: 'other' }] })));
   await tick(); assert.equal(calls, 0);
 });
+
+// Regression (2026-10-23 app report): approval buttons were disabled with no
+// reason because discovery produced no proposal. The store now explains the
+// blocker, distinguishes discovery from "nothing found", and an analyzer-only
+// proposal (built-in go-syntax, no executable) is approvable explicitly.
+test('approval blocker names discovery, missing checkers and pending; analyzer-only proposal approves', async () => {
+  const h = harness();
+  const syntax = { providerId: 'go-syntax', availability: 'approvalRequired', phase: 'idle', coverage: { kind: 'savedProject', roots: [], partial: true, externalChanges: 'unwatched' }, freshness: 'uncertain', truncated: false };
+  const missing = { ...syntax, providerId: 'go-vet', availability: 'missingTool' };
+  h.setSnapshot(snapshot(0, { approval: { state: 'required' }, providers: [], resultSets: [] }));
+  await h.store.attach('/input', connection);
+  assert.match(h.store.approvalBlocker, /Discovering/);
+  assert.equal(h.store.analyzing, false);
+  h.emit(update(snapshot(1, { approval: { state: 'required' }, providers: [missing], resultSets: [] })));
+  assert.match(h.store.approvalBlocker, /no supported checker.*go-vet: not installed/);
+  const proposal = { fingerprint: 'sha256-v1:analyzers', tools: [], analyzers: [{ providerId: 'go-syntax', description: 'Built-in' }] };
+  h.emit(update(snapshot(2, { approval: { state: 'required' }, providers: [syntax, missing], resultSets: [], proposal })));
+  assert.equal(h.store.approvalBlocker, undefined);
+  let calls = 0;
+  h.backend.approveCodeDiagnostics = async (c, mode, fp) => {
+    calls++; assert.equal(mode, 'session'); assert.equal(fp, 'sha256-v1:analyzers');
+    assert.match(h.store.approvalBlocker, /Waiting for the approve request/);
+    return snapshot(3, { approval: { state: 'approved', mode: 'session', fingerprint: fp }, providers: [{ ...syntax, availability: 'available' }, missing], resultSets: [], proposal });
+  };
+  await h.store.approve('session');
+  assert.equal(calls, 1);
+  assert.equal(h.store.approved, true); assert.equal(h.store.analyzing, true);
+  assert.equal(h.store.approvalBlocker, undefined);
+});
