@@ -308,7 +308,7 @@ activation or automation are authorized by that split.
 
 ## Follow-up — Editor essentials
 
-Progress: **20/23 complete**. Plan: [docs/plan/editor-essentials.md](docs/plan/editor-essentials.md);
+Progress: **21/23 complete**. Plan: [docs/plan/editor-essentials.md](docs/plan/editor-essentials.md);
 briefs: [docs/tasks](docs/tasks/README.md#editor-essentials). Not included in the
 milestone totals above.
 
@@ -334,7 +334,7 @@ milestone totals above.
 | [GIT-01](docs/tasks/GIT-01.md) | ✅ | Repository status | 3 |
 | [GIT-02](docs/tasks/GIT-02.md) | ✅ | Stage, unstage, discard, commit | 4 |
 | [GIT-03](docs/tasks/GIT-03.md) | ✅ | Branches | 3 |
-| [GIT-04](docs/tasks/GIT-04.md) | ⬜ | Changes pane | 4 |
+| [GIT-04](docs/tasks/GIT-04.md) | ✅ | Changes pane | 4 |
 | [GIT-05](docs/tasks/GIT-05.md) | ⬜ | Staged and unstaged diffs | 3 |
 | [GIT-06](docs/tasks/GIT-06.md) | ⬜ | Fetch, pull, push | 3 |
 

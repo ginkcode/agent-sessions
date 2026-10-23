@@ -71,6 +71,16 @@ async function importCompiled(filename, code, replacements) {
       replacements.push([store, "const contentSearch = new Proxy({}, { get: (_, key) => (globalThis.__componentFixture?.contentSearch ?? { mode: 'files' })[key] });"]);
     }
   }
+  for (const store of ["import { gitChanges } from '../../../stores/gitChanges.svelte';", "import { gitChanges } from '../../stores/gitChanges.svelte';"]) {
+    if (code.includes(store) && !replacements.some(([from]) => from === store)) {
+      replacements.push([store, "const gitChanges = new Proxy({}, { get: (_, key) => (globalThis.__componentFixture?.gitChanges ?? { status: null, refresh() {} })[key] });"]);
+    }
+  }
+  for (const module of ["'../../gitChanges'", "'../../../gitChanges'"]) {
+    if (code.includes(module) && !replacements.some(([from]) => from === module)) replacements.push([module, JSON.stringify(new URL('../src/lib/gitChanges.ts', import.meta.url).href)]);
+  }
+  const changesPane = "import ChangesPane from './ChangesPane.svelte';";
+  if (code.includes(changesPane) && !replacements.some(([from]) => from === changesPane)) replacements.push([changesPane, "const ChangesPane = ($$renderer) => $$renderer.push('<div data-changes-pane></div>');"]);
   const searchPane = "import SearchPane from './SearchPane.svelte';";
   if (code.includes(searchPane) && !replacements.some(([from]) => from === searchPane)) {
     replacements.push([searchPane, "const SearchPane = ($$renderer) => $$renderer.push('<div data-search-pane></div>');"]);

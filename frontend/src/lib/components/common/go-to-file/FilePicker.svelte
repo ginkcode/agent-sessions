@@ -16,6 +16,8 @@
   import { issueCounts } from '../../../codeCheckSummary';
   import { contentSearch, type PickerMode } from '../../../stores/contentSearch.svelte';
   import SearchPane from './SearchPane.svelte';
+  import ChangesPane from './ChangesPane.svelte';
+  import { gitChanges } from '../../../stores/gitChanges.svelte';
   import type { SearchMatch } from '../../../types';
 
   interface Props {
@@ -171,9 +173,12 @@
   <div class="mode-switch" role="tablist" aria-label="Left pane">
     <button type="button" role="tab" class="mode-btn" class:active={contentSearch.mode === 'files'} aria-selected={contentSearch.mode === 'files'} title="Find a file by name" onclick={() => showMode('files')}>Files</button>
     <button type="button" role="tab" class="mode-btn" class:active={contentSearch.mode === 'search'} aria-selected={contentSearch.mode === 'search'} title="Search file contents ({searchShortcut})" aria-keyshortcuts={isMac ? 'Meta+Shift+F' : 'Control+Shift+F'} onclick={() => showMode('search')}>Search</button>
+    <button type="button" role="tab" class="mode-btn" class:active={contentSearch.mode === 'changes'} aria-selected={contentSearch.mode === 'changes'} title="Review Git changes (Cmd/Ctrl+Shift+G)" onclick={() => showMode('changes')}>Changes {gitChanges.status?.entries.length ?? changedCount}</button>
   </div>
 
-  {#if contentSearch.mode === 'search'}
+  {#if contentSearch.mode === 'changes'}
+    <ChangesPane onOpen={(path) => { onPick(path, true); if (!files.diff) files.toggleDiff(); }} />
+  {:else if contentSearch.mode === 'search'}
     <SearchPane onOpen={onOpenMatch} />
   {:else}
   <input

@@ -1,6 +1,6 @@
 # GIT-04 — Changes pane
 
-- Status: ⬜ Not started
+- Status: ✅ Done (2026-10-24)
 - Estimate: 4 h
 - Dependencies: GIT-02, GIT-03
 - Plan: [editor-essentials.md](../plan/editor-essentials.md)
@@ -36,3 +36,24 @@ stage, commit, switch branch.
   labels and unsupported states; store tests cover refresh and action
   sequencing.
 - Manual check still needed: the full loop in the app.
+
+## Outcome
+
+Added Changes mode with a count, Cmd/Ctrl+Shift+G, separate conflict/staged/
+working-tree sections, per-file and section stage/unstage/discard, named discard
+confirmation, commit message and staged/all/amend controls. Branches can be
+filtered, created and switched. Arrow keys, Space and Enter operate file rows.
+Actual capability/blocker reasons are shown; drafts block destructive discard,
+branch switching and commit-all. Backend errors remain visible after refresh.
+
+Status refreshes on tree/listing changes, focus and actions. Switching branches
+reloads clean tabs, refreshes the tree/status and reattaches code checks. Failed
+writes also refresh because hooks/discards may partially change the repository.
+Row opening currently uses the existing HEAD diff; GIT-05 supplies exact staged
+and unstaged bases next. Commit-all is a separate control when staged changes
+exist; amend is a checkbox rather than a nested menu.
+
+Validation: 651 frontend tests pass; type check has 0 errors and the existing
+tsconfig warning. Server-render and store tests cover grouping, labels, unsupported
+hosts, action serialization, failed hooks, draft refusal and stale replies. Native
+full-loop GUI validation remains outstanding.

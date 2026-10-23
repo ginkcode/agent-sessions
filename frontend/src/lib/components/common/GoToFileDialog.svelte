@@ -17,12 +17,25 @@
   import CodeChecks from './go-to-file/CodeChecks.svelte';
   import ProblemsPanel from './go-to-file/ProblemsPanel.svelte';
   import { contentSearch } from '../../stores/contentSearch.svelte';
+  import { gitChanges } from '../../stores/gitChanges.svelte';
+  import { isChangesShortcut } from '../../gitChanges';
   import { isReferenceMatch } from '../../referenceResults';
   import { isSearchShortcut, matchRange, matchedText, searchSeed } from '../../contentSearch';
   import type { AgentID, SearchMatch } from '../../types';
   import { newSession } from '../../stores/newSession.svelte';
   import { newSessionMenuItems } from '../../newSession';
   import { isNewSessionShortcut } from '../../terminal';
+
+  $effect(() => {
+    const open = files.open;
+    void files.dir; void files.listing; void link.dataHost; void connectionStore.generation;
+    untrack(() => { if (open) void gitChanges.refresh(); });
+  });
+  onMount(() => {
+    const refresh = () => { if (files.open) void gitChanges.refresh(); };
+    window.addEventListener('focus', refresh);
+    return () => window.removeEventListener('focus', refresh);
+  });
 
   // Track routing, not diagnostics mutations. Discovery never delays picker rendering.
   $effect(() => {
@@ -275,6 +288,11 @@
     e.preventDefault();
     e.stopPropagation();
     if (!e.repeat) problems.toggle();
+    return;
+  }
+  if (isChangesShortcut(e, isMac)) {
+    e.preventDefault(); e.stopPropagation();
+    if (!e.repeat) { contentSearch.setMode('changes'); void gitChanges.refresh(); }
     return;
   }
   // Cmd+Shift+F on macOS, Ctrl+Shift+F elsewhere: searches the project's

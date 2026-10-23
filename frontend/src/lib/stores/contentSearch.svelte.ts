@@ -22,7 +22,7 @@ import {
 import { replaceInText, replaceSummary, replacementTemplate, type ReplaceOutcome } from '../searchReplace';
 
 /** What the left pane of Go to File shows. */
-export type PickerMode = 'files' | 'search';
+export type PickerMode = 'files' | 'search' | 'changes';
 
 /** The Search pane's text and options; kept per project while the app runs. */
 export interface SearchOptions {
