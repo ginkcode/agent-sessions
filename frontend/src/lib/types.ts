@@ -791,6 +791,8 @@ export interface HostCapabilities {
   saveFile?: boolean;
   /** Absent on older servers; per-line blame requires an explicit true. */
   blame?: boolean;
+  /** Absent on older servers; full Git status requires explicit true. */
+  gitChanges?: boolean;
   /** Absent on older servers; content search requires an explicit true. */
   searchFiles?: boolean;
   /** Absent on older servers; replacing in files requires an explicit true. */
@@ -836,3 +838,29 @@ export interface AskpassPrompt {
 
 
 
+
+/** Full repository status; unchanged XY states are empty, untracked is worktree "?". */
+export interface GitChange {
+  path: string;
+  /** Project-relative rename/copy origin; absent if outside the project. */
+  originalPath?: string;
+  index: string;
+  worktree: string;
+  conflict: boolean;
+}
+export interface RepoStatus {
+  ok: boolean;
+  reason?: string;
+  /** Repository-root metadata; entry paths remain relative to the project. */
+  repoRoot?: string;
+  branch: string;
+  head: string;
+  detached: boolean;
+  hasCommits: boolean;
+  upstream: string;
+  ahead: number;
+  behind: number;
+  operation?: string;
+  entries: GitChange[];
+  truncated: boolean;
+}

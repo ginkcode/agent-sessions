@@ -52,6 +52,8 @@ type Notification struct {
 
 // Capabilities indicates the features supported on the remote host.
 type Capabilities struct {
+	// GitChanges supports repository status (and is absent on older servers).
+	GitChanges          bool `json:"gitChanges,omitempty"`
 	CodeDiagnostics     bool `json:"codeDiagnostics,omitempty"`
 	LiveCodeDiagnostics bool `json:"liveCodeDiagnostics,omitempty"`
 	// CodeNavigation: definition, references and hover for live documents.
@@ -280,4 +282,8 @@ type RestoreBundleParams struct {
 
 type RenderBundleHandoffParams struct {
 	Req engine.BundleHandoffRequest `json:"req"`
+}
+
+type GitStatusParams struct {
+	Dir string `json:"dir"`
 }

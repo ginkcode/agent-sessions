@@ -78,3 +78,8 @@ type Backend interface {
 	PreviewBundleRestore(ctx context.Context, req BundleRestoreRequest) (RestorePreview, error)
 	RestoreBundle(ctx context.Context, req BundleRestoreRequest, token string) (RestoreReport, error)
 }
+
+// GitChangesBackend is optional for compatibility with older host backends.
+type GitChangesBackend interface {
+	GitStatus(context.Context, string) (files.RepoStatus, error)
+}

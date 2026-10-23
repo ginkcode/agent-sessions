@@ -30,6 +30,7 @@ import { link } from './link.svelte';
 const LOCAL_CAPABILITIES: HostCapabilities = {
   saveFile: true,
   blame: true,
+  gitChanges: true,
   searchFiles: true,
   replaceFiles: true,
   newSession: true,

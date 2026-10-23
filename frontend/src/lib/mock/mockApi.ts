@@ -47,6 +47,7 @@ import type {
   ConnectionState,
   HostCapabilities,
   BlameLine,
+  RepoStatus,
   SearchQuery,
   SearchResult,
   HostEntry,
@@ -1089,6 +1090,19 @@ export class MockBackendAPI extends MockCodeDiagnostics {
     if (run) run.canceled = true;
   }
 
+  async gitStatus(dir: string): Promise<RepoStatus> {
+    const listing = await this.listFiles(dir);
+    return {
+      ok: true, branch: 'main', head: 'abc1234', detached: false, hasCommits: true,
+      upstream: 'origin/main', ahead: 0, behind: 0, truncated: false,
+      entries: Object.entries(listing.status ?? {}).map(([path, state]) => ({
+        path, index: state === 'A' || state === 'R' ? state : '',
+        worktree: state === 'U' ? '?' : state === 'A' || state === 'R' ? '' : state,
+        conflict: state === 'C',
+      })),
+    };
+  }
+
   async blameFile(dir: string, path: string, line: number): Promise<BlameLine> {
     if (!Number.isInteger(line) || line < 1) throw new Error(`Invalid line number ${line}.`);
     const content = await this.readFile(dir, path);
@@ -1622,6 +1636,7 @@ export class MockBackendAPI extends MockCodeDiagnostics {
     const caps: HostCapabilities = {
       saveFile: true,
       blame: true,
+      gitChanges: true,
       searchFiles: true,
       replaceFiles: true,
       newSession: true,

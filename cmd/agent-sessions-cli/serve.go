@@ -104,6 +104,7 @@ func serveCmd(ctx context.Context, args []string, resolveRoots func() (paths.Roo
 			RenameFile:      true,
 			DeleteFile:      true,
 			Blame:           true,
+			GitChanges:      true,
 			SearchFiles:     true,
 			ReplaceFiles:    true,
 			NewSession:      true,

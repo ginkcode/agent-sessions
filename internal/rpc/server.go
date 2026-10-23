@@ -305,6 +305,7 @@ func (s *Server) initialize(serveCtx context.Context, req Request, starter Start
 		Import:      true,
 		Search:      true,
 		Blame:       true,
+		GitChanges:  true,
 		SearchFiles: true,
 		NewSession:  true,
 		// SaveFile and ReplaceFiles stay off without a starter, which is a
@@ -470,6 +471,17 @@ func (s *Server) dispatch(ctx context.Context, req Request) (any, error) {
 			return nil, &ResponseError{Code: CodeInvalidParams, Message: err.Error()}
 		}
 		return backend.ReadFile(ctx, p.Dir, p.Path)
+
+	case "gitStatus":
+		var p GitStatusParams
+		if err := json.Unmarshal(req.Params, &p); err != nil {
+			return nil, &ResponseError{Code: CodeInvalidParams, Message: err.Error()}
+		}
+		git, ok := backend.(engine.GitChangesBackend)
+		if !ok {
+			return nil, engine.ErrUnsupportedAction
+		}
+		return git.GitStatus(ctx, p.Dir)
 
 	case "blameFile":
 		var p BlameFileParams

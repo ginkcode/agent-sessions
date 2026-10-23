@@ -17,6 +17,7 @@ import type {
   FileContent,
   FileProbeResult,
   BlameLine,
+  RepoStatus,
   SearchQuery,
   SearchResult,
   FileSaveRequest,
@@ -139,6 +140,7 @@ export interface BackendAPI extends CodeDiagnosticsAPI {
    * Blames one 1-based line of a file, path relative to dir, on the selected
    * host. Rejects when the backend has no blame support.
    */
+  gitStatus(dir: string): Promise<RepoStatus>;
   blameFile(dir: string, path: string, line: number): Promise<BlameLine>;
   /**
    * Searches the text of the files of dir on the selected host. searchId
@@ -280,6 +282,7 @@ interface WailsAppBinding {
   ListFiles(dir: string): Promise<FileListing>;
   ProbeFiles?(dir: string, paths: string[], host: string): Promise<FileProbeResult>;
   ReadFile(dir: string, path: string): Promise<FileContent>;
+  GitStatus?(dir: string): Promise<RepoStatus>;
   BlameFile?(dir: string, path: string, line: number): Promise<BlameLine>;
   SearchFiles?(dir: string, query: SearchQuery, searchId: string): Promise<SearchResult>;
   CancelSearch?(searchId: string): Promise<void>;
@@ -336,6 +339,8 @@ interface WailsAppBinding {
   SetHostEnv(env: Record<string, string>): Promise<void>;
   GetHostEnv(): Promise<Record<string, string>>;
 }
+
+export const GIT_CHANGES_UNSUPPORTED = 'Git changes are not supported by this version of the app backend.';
 
 export const BLAME_UNSUPPORTED = 'Line blame is not supported by this version of the app backend.';
 export const SEARCH_FILES_UNSUPPORTED = 'Searching file contents is not supported by this version of the app backend.';
@@ -780,6 +785,12 @@ class WailsBackendAPI implements BackendAPI {
     } catch (e) {
       throw normalizeError(e);
     }
+  }
+
+  async gitStatus(dir: string): Promise<RepoStatus> {
+    if (!this.binding.GitStatus) throw new Error(GIT_CHANGES_UNSUPPORTED);
+    try { return await this.binding.GitStatus(dir); }
+    catch (e) { throw normalizeError(e); }
   }
 
   async blameFile(dir: string, path: string, line: number): Promise<BlameLine> {

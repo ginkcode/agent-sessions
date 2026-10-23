@@ -1,6 +1,6 @@
 # GIT-01 — Repository status
 
-- Status: ⬜ Not started
+- Status: ✅ Done (2026-10-24)
 - Estimate: 3 h
 - Dependencies: none
 - Plan: [editor-essentials.md](../plan/editor-essentials.md)
@@ -32,3 +32,23 @@ every changed file with its staged and unstaged state kept apart.
 - Tests with temporary repositories cover staged, unstaged, both, untracked,
   renamed, deleted, conflicted, detached HEAD, no commits, upstream ahead and
   behind, a subdirectory project and a non-repository.
+
+## Outcome
+
+- Implemented porcelain v2 NUL-delimited status with separate index/worktree
+  states, rename/copy origins, conflicts, branch/upstream counts, detached and
+  unborn HEAD, and a 5,000-entry truncation flag. Repository-root metadata is
+  available, but entries and rename origins cannot expose outside-project paths.
+- Detects merge, rebase, cherry-pick and revert state in each worktree's Git
+  directory. Missing Git and non-repositories return `ok: false` with a reason;
+  command errors and cancellation remain errors.
+- Wired known-directory authorization through the engine, optional RPC
+  `GitChanges`/`gitStatus`, selected-host app binding, frontend API/types and mock.
+  Older backends reject unsupported calls without local fallback.
+- Temporary-repository tests cover all requested states, upstream divergence,
+  unusual filenames, linked worktree operations and subdirectory rename
+  boundaries; parser tests cover copy origins, submodule XY and the entry cap.
+  Engine authorization, RPC compatibility/roundtrip and frontend API tests pass.
+- Validation: `go test ./...`, `go build ./...`, `go vet ./...`, frontend
+  `npm run check`, `npm test` (640 passed), and `npm run build` passed. Existing
+  frontend warnings remain: `ignoreDeprecations` configuration and large bundles.
