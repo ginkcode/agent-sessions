@@ -306,6 +306,38 @@ activation or automation are authorized by that split.
 | [CD-27](docs/tasks/CD-27.md) | 🟡 | Partial/blocked: focused fake preflight and [live QA matrix](docs/plan/code-diagnostics-live-qa.md); no real-server/native/remote runs or measurements | Stage 2 HOLD; production wiring/consumers, identity/bounds/status, approved tools and native/remote prerequisites remain; not counted |
 | [CD-28](docs/tasks/CD-28.md) | ⛔ | Blocked: release prerequisite review only; all acceptance unchecked | [Stage 1 HOLD](docs/plan/code-diagnostics-qa.md#release-decision-and-remaining-work) and [Stage 2 HOLD](docs/plan/code-diagnostics-live-qa.md#release-decision); no dependency exception; automation absent/off-default |
 
+## Follow-up — Editor essentials
+
+Progress: **0/23 complete**. Plan: [docs/plan/editor-essentials.md](docs/plan/editor-essentials.md);
+briefs: [docs/tasks](docs/tasks/README.md#editor-essentials). Not included in the
+milestone totals above.
+
+| IDs | St | Scope | Est |
+|---|---|---|---|
+| [PS-01](docs/tasks/PS-01.md) | ⬜ | Content search engine on the host | 4 |
+| [PS-02](docs/tasks/PS-02.md) | ⬜ | Search over Engine/App/RPC with cancel | 3 |
+| [PS-03](docs/tasks/PS-03.md) | ⬜ | Search pane in Go to File | 4 |
+| [PS-04](docs/tasks/PS-04.md) | ⬜ | Revision-checked replace engine | 3 |
+| [PS-05](docs/tasks/PS-05.md) | ⬜ | Replace in the Search pane, drafts included | 4 |
+| [AG-01](docs/tasks/AG-01.md) | ⬜ | New session launch: local, WSL, SSH; panel and external | 4 |
+| [AG-02](docs/tasks/AG-02.md) | ⬜ | New session entry points | 3 |
+| [AG-03](docs/tasks/AG-03.md) | ⬜ | Link terminal tabs to sessions | 3 |
+| [AG-04](docs/tasks/AG-04.md) | ⬜ | Turn state from session files | 4 |
+| [AG-05](docs/tasks/AG-05.md) | ⬜ | Terminal attention signals | 3 |
+| [AG-06](docs/tasks/AG-06.md) | ⬜ | Alerts: badges, window title, system notifications | 4 |
+| [NAV-01](docs/tasks/NAV-01.md) | ⬜ | LSP definition, references and hover requests | 4 |
+| [NAV-02](docs/tasks/NAV-02.md) | ⬜ | Navigation over the wire | 3 |
+| [NAV-03](docs/tasks/NAV-03.md) | ⬜ | Read-only external definitions | 3 |
+| [NAV-04](docs/tasks/NAV-04.md) | ⬜ | Navigation in the viewer | 4 |
+| [NAV-05](docs/tasks/NAV-05.md) | ⬜ | Navigation in the editor | 3 |
+| [NAV-06](docs/tasks/NAV-06.md) | ⬜ | References list | 3 |
+| [GIT-01](docs/tasks/GIT-01.md) | ⬜ | Repository status | 3 |
+| [GIT-02](docs/tasks/GIT-02.md) | ⬜ | Stage, unstage, discard, commit | 4 |
+| [GIT-03](docs/tasks/GIT-03.md) | ⬜ | Branches | 3 |
+| [GIT-04](docs/tasks/GIT-04.md) | ⬜ | Changes pane | 4 |
+| [GIT-05](docs/tasks/GIT-05.md) | ⬜ | Staged and unstaged diffs | 3 |
+| [GIT-06](docs/tasks/GIT-06.md) | ⬜ | Fetch, pull, push | 3 |
+
 **Critical path to the MVP:**
 
 M0-01 → M0-02 → M0-03 → M0-07 → M0-08 → M0-09 → M0-10 → M1-13 → M1-16 → M1-20 → M1-24 → M1-28

@@ -132,3 +132,16 @@ not a promise that the entire workspace has been checked.
 
 Additional languages and checker adapters require separately scoped tasks after
 feedback from the first two stages; they are not included in CD-28.
+
+## Editor essentials
+
+Briefs for [editor-essentials.md](../plan/editor-essentials.md): project
+search, agent sessions, code navigation and Git changes. Status is tracked in
+each brief and in [TASKS.md](../../TASKS.md#follow-up--editor-essentials).
+
+| Area | Tasks |
+|---|---|
+| Project search | [PS-01](PS-01.md) engine · [PS-02](PS-02.md) wire · [PS-03](PS-03.md) pane · [PS-04](PS-04.md) replace engine · [PS-05](PS-05.md) replace UI |
+| Agent sessions | [AG-01](AG-01.md) launch · [AG-02](AG-02.md) entry points · [AG-03](AG-03.md) tab links · [AG-04](AG-04.md) turn state · [AG-05](AG-05.md) attention · [AG-06](AG-06.md) alerts |
+| Code navigation | [NAV-01](NAV-01.md) LSP requests · [NAV-02](NAV-02.md) wire · [NAV-03](NAV-03.md) external files · [NAV-04](NAV-04.md) viewer · [NAV-05](NAV-05.md) editor · [NAV-06](NAV-06.md) references |
+| Git changes | [GIT-01](GIT-01.md) status · [GIT-02](GIT-02.md) writes · [GIT-03](GIT-03.md) branches · [GIT-04](GIT-04.md) pane · [GIT-05](GIT-05.md) diffs · [GIT-06](GIT-06.md) sync |
