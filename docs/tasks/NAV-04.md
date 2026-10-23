@@ -1,6 +1,6 @@
 # NAV-04 — Navigation in the viewer
 
-- Status: ⬜ Not started
+- Status: ✅ Done (2026-10-24)
 - Estimate: 4 h
 - Dependencies: NAV-02
 - Plan: [editor-essentials.md](../plan/editor-essentials.md)
@@ -33,3 +33,18 @@ shows the type and docs, and back returns to where you were.
 - Unit tests cover position mapping, the history stack and the result
   handling; server-render tests cover the tooltip and menu states.
 - Manual check still needed: hover timing and underline paint.
+
+## Outcome
+
+Implemented modifier-click definitions, F12/Shift+F12, a word context menu,
+400 ms Markdown/plaintext hovers, result pickers and bounded navigation history.
+Unavailable actions explain the actual blocker. Superseded requests cannot open
+an older target. External targets use the existing read-only grant path.
+
+History follows the app's Cmd+[ / Cmd+] or Alt+Left / Alt+Right shortcuts, with
+Ctrl+- / Ctrl+Shift+- on macOS; typing fields keep their editing shortcuts.
+References use the picker until NAV-06 adds the Search-pane list.
+
+Validation: 621 frontend tests pass; svelte-check has 0 errors and the existing
+tsconfig warning. Go build, vet and all tests pass. Native pointer timing,
+underline painting and tooltip placement have not been manually verified.

@@ -78,7 +78,7 @@ test('label helpers: human tool names, consistent modes, bounded messages, remot
 
 const source = await loadServerComponent(new URL('../src/lib/components/common/go-to-file/SourceView.svelte', import.meta.url), [
   ["import { files } from '../../../stores/files.svelte';", fixtureStore('files')],
-  ["'../../../fileSelection'", JSON.stringify(new URL('../src/lib/fileSelection.ts', import.meta.url).href)],
+  ["'../../../fileSelection'", JSON.stringify(new URL('../src/lib/fileSelection.ts', import.meta.url).href)], ["'../../../sourceNavigation'", JSON.stringify(new URL('../src/lib/sourceNavigation.ts', import.meta.url).href)],
   ["'../../../sourceDiagnostics'", JSON.stringify(new URL('../src/lib/sourceDiagnostics.ts', import.meta.url).href)],
 ]);
 const sourceProps = diagnostics => ({ rows: [{ kind: 'line', index: 0 }, { kind: 'line', index: 1 }], htmlLines: null, plainLines: ['a', 'bcd'], showDiff: false, presentation: false, presentationFontSize: 14, diagnostics });

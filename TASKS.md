@@ -308,7 +308,7 @@ activation or automation are authorized by that split.
 
 ## Follow-up — Editor essentials
 
-Progress: **14/23 complete**. Plan: [docs/plan/editor-essentials.md](docs/plan/editor-essentials.md);
+Progress: **15/23 complete**. Plan: [docs/plan/editor-essentials.md](docs/plan/editor-essentials.md);
 briefs: [docs/tasks](docs/tasks/README.md#editor-essentials). Not included in the
 milestone totals above.
 
@@ -328,7 +328,7 @@ milestone totals above.
 | [NAV-01](docs/tasks/NAV-01.md) | ✅ | LSP definition, references and hover requests | 4 |
 | [NAV-02](docs/tasks/NAV-02.md) | ✅ | Navigation over the wire | 3 |
 | [NAV-03](docs/tasks/NAV-03.md) | ✅ | Read-only external definitions | 3 |
-| [NAV-04](docs/tasks/NAV-04.md) | ⬜ | Navigation in the viewer | 4 |
+| [NAV-04](docs/tasks/NAV-04.md) | ✅ | Navigation in the viewer | 4 |
 | [NAV-05](docs/tasks/NAV-05.md) | ⬜ | Navigation in the editor | 3 |
 | [NAV-06](docs/tasks/NAV-06.md) | ⬜ | References list | 3 |
 | [GIT-01](docs/tasks/GIT-01.md) | ⬜ | Repository status | 3 |

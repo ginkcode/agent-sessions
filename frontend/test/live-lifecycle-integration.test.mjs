@@ -96,7 +96,7 @@ test('real files + diagnostics stores: freshness, attribution, save, close and h
 test('R07 real store source/component/editor projection and navigation require the displayed live identity', async () => {
   const component = await loadServerComponent(new URL('../src/lib/components/common/go-to-file/SourceView.svelte', import.meta.url), [
     ["import { files } from '../../../stores/files.svelte';", fixtureStore('files')],
-    ["'../../../fileSelection'", lib('fileSelection')], ["'../../../sourceDiagnostics'", lib('sourceDiagnostics')],
+    ["'../../../fileSelection'", lib('fileSelection')], ["'../../../sourceNavigation'", lib('sourceNavigation')], ["'../../../sourceDiagnostics'", lib('sourceDiagnostics')],
   ]);
   const h = await harness();
   h.files.openFile('a.go', { keep: true }); await tick();

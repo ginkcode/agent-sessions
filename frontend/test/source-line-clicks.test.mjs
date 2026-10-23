@@ -11,7 +11,9 @@ const js = ts.transpileModule(action, { compilerOptions: { target: ts.ScriptTarg
 
 test('source text clicks select lines without blocking native drag selection', () => {
   const selected = [];
-  const create = new Function('onselectline', `${js}; return lineClicks;`)((...args) => selected.push(args));
+  const linkModifier = event => Boolean(event.metaKey);
+  const create = new Function('onselectline', 'symbols', 'linkModifier', 'isMac', `${js}; return lineClicks;`)(
+    (...args) => selected.push(args), { linked: true }, linkModifier, true);
   const listeners = new Map();
   const line = { dataset: { sourceLine: '7' } };
   const OriginalElement = globalThis.Element;
@@ -30,6 +32,7 @@ test('source text clicks select lines without blocking native drag selection', (
     listeners.get('click')(event);
     listeners.get('click')({ ...event, shiftKey: true });
     listeners.get('click')({ ...event, clientX: 30 });
+    listeners.get('click')({ ...event, metaKey: true }); // go to definition, not a line
     collapsed = false;
     listeners.get('click')(event);
     assert.deepEqual(selected, [[7, false], [7, true]]);
@@ -40,7 +43,7 @@ test('source text clicks select lines without blocking native drag selection', (
 
 test('a click past the last line clears the selection; gutter buttons and removed diff lines do not', () => {
   const calls = [];
-  const create = new Function('onselectline', 'onclearselection', `${js}; return lineClicks;`)(
+  const create = new Function('onselectline', 'onclearselection', 'symbols', `${js}; return lineClicks;`)(
     (...args) => calls.push(['select', ...args]), () => calls.push(['clear']));
   const listeners = new Map();
   let hit = null;

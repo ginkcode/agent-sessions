@@ -58,7 +58,7 @@ const [picker, tabs, source] = await Promise.all([
   ]),
   loadServerComponent(new URL('SourceView.svelte', base), [store,
     ["'../../../sourceDiagnostics'", lib('../../../sourceDiagnostics.ts')],
-    ["'../../../fileSelection'", JSON.stringify(new URL('../src/lib/fileSelection.ts', import.meta.url).href)],
+    ["'../../../fileSelection'", JSON.stringify(new URL('../src/lib/fileSelection.ts', import.meta.url).href)], ["'../../../sourceNavigation'", JSON.stringify(new URL('../src/lib/sourceNavigation.ts', import.meta.url).href)],
   ]),
 ]);
 

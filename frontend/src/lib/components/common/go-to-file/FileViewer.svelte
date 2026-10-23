@@ -27,6 +27,10 @@
   import { fileActions } from '../../../stores/fileActions.svelte';
   import { canEditContent, readOnlyText } from '../../../fileEditing';
   import { externalLabel } from '../../../codeNavigation';
+  import type { CodeDiagnosticPosition, CodeNavigationLocation } from '../../../codeDiagnostics';
+  import { SourceHistory, historyKey, hoverHtml, locationText, navigationKey, sourcePosition, type SourceLocation, type SourceSymbols, type ViewportPoint } from '../../../sourceNavigation';
+  import ContextMenu, { type ContextMenuItem } from '../ContextMenu.svelte';
+  import HoverCard from './HoverCard.svelte';
   import type { FileContent } from '../../../types';
   import LoadingSpinner from '../LoadingSpinner.svelte';
   import MarkdownDoc from '../MarkdownDoc.svelte';
@@ -102,20 +106,30 @@
   // check must not be drawn over newer text.
   function navigationIdentity(kind: ProblemNavigationRequest['kind'] = 'problem') {
     return { dir: files.dir, host: link.dataHost, version: files.contextVersion,
-      context: kind === 'search' ? 'search' : JSON.stringify([codeDiagnostics.project, codeDiagnostics.snapshot?.context, codeDiagnostics.status]) };
+      context: kind !== 'problem' ? kind : JSON.stringify([codeDiagnostics.project, codeDiagnostics.snapshot?.context, codeDiagnostics.status]) };
   }
   function navigationLocation(diagnostic: CodeDiagnostic, tab: NonNullable<typeof files.activeTab>) {
     if (codeDiagnostics.status !== 'ready' || codeDiagnostics.revoking || codeDiagnostics.directory !== files.dir || blocked) return 'Code checks are reconnecting or updating; the position is shown once results are current.';
     return problemLocation(diagnostic, { dirty: Boolean(tab.edit?.dirty || tab.edit?.uncertain || tab.edit?.conflict), revision: tab.edit?.revision ?? tab.content?.revision, live: codeDiagnostics.liveBasis(tab.path) });
   }
-  /** Opens path (in a kept tab, or the preview tab) and starts the wait to reveal its target. */
-  function startNavigation(path: string, kind: ProblemNavigationRequest['kind'], range: CodeDiagnosticRange | undefined, locate: ProblemNavigationRequest<FileTab>['locate'], keep = true) {
+  const NOTICES = {
+    problem: { open: 'Cannot open this problem target in the current project.', deleted: 'This problem target was deleted; the finding remains in Problems.', range: 'This saved-file range cannot be shown in the current source.' },
+    search: { open: 'Cannot open this search result in the current project.', deleted: 'This file was deleted since the search.', range: 'This search result cannot be shown in the current source.' },
+    symbol: { open: 'Cannot open this location in the current project.', deleted: 'This file was deleted.', range: 'This position is not in the file any more; it changed since.' },
+  };
+  /**
+   * Opens path (in a kept tab, or the preview tab) and starts the wait to
+   * reveal its target. An external path (outside the project, from code
+   * navigation) opens read-only.
+   */
+  function startNavigation(path: string, kind: ProblemNavigationRequest['kind'], range: CodeDiagnosticRange | undefined, locate: ProblemNavigationRequest<FileTab>['locate'], keep = true, outside = false) {
     navigation = null;
-    if (!problemPath(path) || !files.dir || frozen || blocked) {
-      navigationNotice = kind === 'search' ? 'Cannot open this search result in the current project.' : 'Cannot open this problem target in the current project.';
+    if (!(outside || problemPath(path)) || !files.dir || frozen || blocked) {
+      navigationNotice = NOTICES[kind].open;
       return;
     }
-    files.openFile(path, { keep, read: fileStatus(path) !== 'D' });
+    if (outside) files.openExternal(path, { keep });
+    else files.openFile(path, { keep, read: fileStatus(path) !== 'D' });
     const tab = files.activeTab;
     if (!tab || tab.path !== path) return;
     pendingAnchor = null;
@@ -146,7 +160,7 @@
     if (!matchesProblemNavigation(request, navigation, identity, files.activeTab, files.selected)) { navigation = null; return; }
     if (files.loadingFile || (!editing && highlightPending)) return;
     if (files.fileError || fileStatus(request.path) === 'D') {
-      navigationNotice = files.fileError ?? (request.kind === 'search' ? 'This file was deleted since the search.' : 'This problem target was deleted; the finding remains in Problems.');
+      navigationNotice = files.fileError ?? NOTICES[request.kind].deleted;
       navigation = null; return;
     }
     const tab = files.activeTab!;
@@ -156,7 +170,7 @@
     if (reason) { navigationNotice = reason; navigation = null; return; }
     const range = request.range!;
     if (!isTextContent(tab.content) || !rangeOffsets(source, range)) {
-      navigationNotice = request.kind === 'search' ? 'This search result cannot be shown in the current source.' : 'This saved-file range cannot be shown in the current source.';
+      navigationNotice = NOTICES[request.kind].range;
       navigation = null; return;
     }
     previewOn = false;
@@ -474,6 +488,8 @@
   });
 
   const findShortcut = isMac ? '⌘F' : 'Ctrl+F';
+  const backShortcut = isMac ? '⌘[ or ⌃-' : 'Alt+←';
+  const forwardShortcut = isMac ? '⌘] or ⌃⇧-' : 'Alt+→';
   const saveShortcut = isMac ? '⌘S' : 'Ctrl+S';
   let contentShown = $derived(
     files.open && !editing && !files.loadingFile && !files.fileError && Boolean(text) && fileStatus(files.selected ?? '') !== 'D'
@@ -549,8 +565,174 @@
     return selection.toString();
   }
 
+  // Code navigation from the source: Cmd/Ctrl+click and F12 go to a
+  // definition, Shift+F12 finds references, resting on a word shows its
+  // hover. Back and forward retrace the places it went, for this project.
+  const history = new SourceHistory();
+  let historyVersion = $state(0);
+  let canGoBack = $derived.by(() => { void historyVersion; return history.canGoBack; });
+  let canGoForward = $derived.by(() => { void historyVersion; return history.canGoForward; });
+  // Where the last step landed, so going back from there can come forward again.
+  let landed: SourceLocation | null = null;
+  $effect(() => {
+    void files.dir; void link.dataHost;
+    untrack(() => { history.clear(); landed = null; historyVersion++; });
+  });
+  let symbolBlocker = $derived(
+    !files.selected ? 'Open a file to use code navigation.'
+      : external ? 'Code navigation is not available in files outside the project.'
+      : codeDiagnostics.directory !== files.dir ? 'Code checks are not attached to this project yet.'
+      : codeDiagnostics.navigationBlocker(files.selected)
+  );
+  let symbolNotice = $state<{ text: string; x: number; y: number } | null>(null);
+  let symbolNoticeTimer: ReturnType<typeof setTimeout> | undefined;
+  let symbolPicker = $state<{ label: string; items: ContextMenuItem[]; x: number; y: number } | null>(null);
+  let symbolMenu = $state<{ items: ContextMenuItem[]; x: number; y: number } | null>(null);
+  let hoverCard = $state<{ html: string; truncated: boolean; x: number; y: number } | null>(null);
+  let hoverSequence = 0;
+  let symbolSequence = 0;
+  let hoverInside = false;
+  let hoverCloseTimer: ReturnType<typeof setTimeout> | undefined;
+
+  function showSymbolNotice(text: string, at: ViewportPoint, ms: number) {
+    clearTimeout(symbolNoticeTimer);
+    symbolNotice = { text, ...at };
+    symbolNoticeTimer = setTimeout(() => (symbolNotice = null), ms);
+  }
+  function closeHover() {
+    hoverSequence++;
+    clearTimeout(hoverCloseTimer);
+    hoverCard = null;
+    hoverInside = false;
+  }
+  function closeSymbolPopups() {
+    symbolSequence++;
+    closeHover();
+    clearTimeout(symbolNoticeTimer);
+    symbolNotice = null;
+    symbolPicker = null;
+    symbolMenu = null;
+  }
+  // Another file, an edit or a mode change: popups about the old text go.
+  $effect(() => {
+    void activeTab; void editing; void showPreview; void text;
+    untrack(closeSymbolPopups);
+  });
+
+  const symbolLabel = (path: string) => externalLabel(path, files.dir);
+  const symbolStart = (position: CodeDiagnosticPosition) => ({ start: position, end: position });
+
+  /** Where the user is now: the last place navigation landed, else the selection, else the top line shown. */
+  function currentLocation(): SourceLocation | undefined {
+    const tab = files.activeTab;
+    if (!tab) return undefined;
+    if (landed && landed.path === tab.path) return landed;
+    const selection = codeScroll?.ownerDocument.getSelection();
+    const at = selection?.anchorNode && codeScroll?.contains(selection.anchorNode) ? sourcePosition(codeScroll, selection.anchorNode, selection.anchorOffset) : undefined;
+    const top = sourcePositions.get(tab)?.line;
+    return { path: tab.path, external: tab.external, range: symbolStart(at ?? { line: Math.max(0, (top ?? 1) - 1), character: 0 }) };
+  }
+  function openLocation(location: SourceLocation, from?: SourceLocation) {
+    if (from) {
+      history.visit(from);
+      historyVersion++;
+      // The file navigated from stays open, as when following a Markdown link.
+      files.keepTab(from.path);
+    }
+    landed = location;
+    startNavigation(location.path, 'symbol', location.range, () => '', false, location.external);
+  }
+  export function goHistory(direction: 'back' | 'forward') {
+    const to = direction === 'back' ? history.goBack(currentLocation()) : history.goForward(currentLocation());
+    historyVersion++;
+    if (to) openLocation(to);
+  }
+
+  async function askSymbol(op: 'definition' | 'references', position: CodeDiagnosticPosition, at: ViewportPoint) {
+    closeSymbolPopups();
+    const sequence = symbolSequence;
+    const path = files.selected, tab = files.activeTab;
+    if (!path || !tab) return;
+    if (symbolBlocker) { showSymbolNotice(symbolBlocker, at, 4000); return; }
+    const out = await codeDiagnostics.navigate(path, op, position);
+    if (sequence !== symbolSequence || files.activeTab !== tab || files.selected !== path || out.kind === 'stale') return;
+    if (out.kind !== 'result') { showSymbolNotice(out.reason, at, 4000); return; }
+    const { locations, truncated } = out.result;
+    const from: SourceLocation = { path, external: tab.external, range: symbolStart(position) };
+    if (!locations.length) { showSymbolNotice(op === 'definition' ? 'No definition found' : 'No references found', at, 2000); return; }
+    if (op === 'definition' && locations.length === 1) { openLocation(locations[0], from); return; }
+    const items: ContextMenuItem[] = locations.map((location: CodeNavigationLocation) => ({
+      label: locationText(location, symbolLabel),
+      title: location.external ? `${location.path} (read-only, outside the project)` : undefined,
+      onSelect: () => openLocation(location, from),
+    }));
+    if (truncated) items.push({ label: 'The language server sent more; only these are shown', disabled: true, onSelect() {}, separator: true });
+    symbolPicker = { label: op === 'definition' ? 'Definitions' : 'References', items, ...at };
+  }
+  async function askHover(position: CodeDiagnosticPosition, at: ViewportPoint) {
+    clearTimeout(hoverCloseTimer);
+    const sequence = ++hoverSequence;
+    const path = files.selected, tab = files.activeTab;
+    if (!path || !tab || symbolBlocker || symbolMenu || symbolPicker) return;
+    const out = await codeDiagnostics.navigate(path, 'hover', position);
+    if (sequence !== hoverSequence || files.activeTab !== tab) return;
+    // A hover that fails says nothing: it was never asked for.
+    if (out.kind !== 'result' || !out.result.hover?.value) { hoverCard = null; return; }
+    hoverCard = { html: hoverHtml(out.result.hover), truncated: Boolean(out.result.truncated), ...at };
+  }
+  function hoverEnded() {
+    hoverSequence++;
+    clearTimeout(hoverCloseTimer);
+    // A moment to move onto the card, to scroll or select in it.
+    hoverCloseTimer = setTimeout(() => { if (!hoverInside) hoverCard = null; }, 250);
+  }
+  function wordMenu(position: CodeDiagnosticPosition, word: string, at: ViewportPoint) {
+    closeSymbolPopups();
+    const selected = codeScroll?.ownerDocument.getSelection()?.toString() ?? '';
+    symbolMenu = {
+      ...at,
+      items: [
+        { label: 'Go to Definition (F12)', disabled: Boolean(symbolBlocker), title: symbolBlocker, onSelect: () => void askSymbol('definition', position, at) },
+        { label: 'Find References (Shift+F12)', disabled: Boolean(symbolBlocker), title: symbolBlocker, onSelect: () => void askSymbol('references', position, at) },
+        { label: selected ? 'Copy' : `Copy “${word.length > 40 ? word.slice(0, 39) + '…' : word}”`, separator: true, onSelect: () => void copyToClipboard(selected || word) },
+      ],
+    };
+  }
+  let symbols: SourceSymbols = $derived({
+    linked: !symbolBlocker,
+    definition: (position, at) => void askSymbol('definition', position, at),
+    hover: (position, at) => void askHover(position, at),
+    hoverEnd: hoverEnded,
+    menu: wordMenu,
+  });
+  /** F12 and Shift+F12 at the caret or selection in the source. */
+  function symbolKey(e: KeyboardEvent): boolean {
+    const op = navigationKey(e);
+    if (!op || !codeScroll || editing) return false;
+    const selection = codeScroll.ownerDocument.getSelection();
+    const node = selection?.focusNode;
+    const position = node && codeScroll.contains(node) ? sourcePosition(codeScroll, node, selection!.focusOffset) : undefined;
+    if (!position) return false;
+    e.preventDefault();
+    const rect = selection!.rangeCount ? selection!.getRangeAt(0).getBoundingClientRect() : undefined;
+    void askSymbol(op, position, { x: rect?.left ?? 0, y: rect?.bottom ?? 0 });
+    return true;
+  }
+
   /** Called by the parent only while the file dialog is open. */
   export function handleKey(e: KeyboardEvent): boolean {
+    if (e.key === 'Escape' && !keyHandled(e) && (hoverCard || symbolNotice) && !symbolMenu && !symbolPicker) {
+      e.preventDefault();
+      e.stopPropagation();
+      closeSymbolPopups();
+      return true;
+    }
+    const direction = keyHandled(e) ? null : historyKey(e, isMac);
+    if (direction && (direction === 'back' ? canGoBack : canGoForward)) {
+      e.preventDefault();
+      goHistory(direction);
+      return true;
+    }
     if (editing) {
       // Editor shortcuts (save, its own find, closing its search) come first;
       // the viewer's find never opens over the editor. An unconsumed Escape
@@ -581,10 +763,12 @@
       files.toggleWrap();
       return true;
     }
+    if (contentShown && !showPreview && symbolKey(e)) return true;
     return image.handleImageZoomKey(e);
   }
 
   onDestroy(() => {
+    closeSymbolPopups();
     if (copyTimer) clearTimeout(copyTimer);
     if (pathCopyTimer) clearTimeout(pathCopyTimer);
   });
@@ -618,10 +802,25 @@
 <section class="viewer" class:presentation aria-label="File content">
   {@render tabs?.()}
   {#if navigationNotice}<div class="state nav-notice" role="status">{navigationNotice}</div>{/if}
+  {#if symbolNotice}<div class="symbol-notice" role="status" style:left="{symbolNotice.x}px" style:top="{symbolNotice.y + 14}px">{symbolNotice.text}</div>{/if}
+  {#if hoverCard}
+    <HoverCard html={hoverCard.html} truncated={hoverCard.truncated} x={hoverCard.x} y={hoverCard.y} maxHeight={(codeScroll?.clientHeight ?? 400) * 0.6}
+      onenter={() => { hoverInside = true; clearTimeout(hoverCloseTimer); }} onleave={() => { hoverInside = false; hoverCard = null; }} />
+  {/if}
+  {#if symbolPicker}
+    <ContextMenu x={symbolPicker.x} y={symbolPicker.y} items={symbolPicker.items} ariaLabel={symbolPicker.label} onClose={() => (symbolPicker = null)} />
+  {/if}
+  {#if symbolMenu}
+    <ContextMenu x={symbolMenu.x} y={symbolMenu.y} items={symbolMenu.items} ariaLabel="Code actions" onClose={() => (symbolMenu = null)} />
+  {/if}
   {#if !files.selected}
     <div class="state center">Pick a file to see its content. Double-click keeps it open in a tab.</div>
   {:else}
     <div class="viewer-header">
+      {#if canGoBack || canGoForward}
+        <button type="button" class="copy-btn icon-btn history-btn" aria-label="Back" title="Back to where code navigation came from ({backShortcut})" disabled={!canGoBack || frozen} onclick={() => goHistory('back')}>←</button>
+        <button type="button" class="copy-btn icon-btn history-btn" aria-label="Forward" title="Forward ({forwardShortcut})" disabled={!canGoForward || frozen} onclick={() => goHistory('forward')}>→</button>
+      {/if}
       <span class="viewer-path" title={files.selected}>{external ? externalLabel(files.selected, files.dir) : files.selected}</span>
       <button
         type="button"
@@ -936,7 +1135,7 @@
         {:else if showSvg}
           {@render imageView()}
         {:else}
-        <SourceView diagnostics={sourceDiagnostics} recovery={sourceRecovery} {rows} {htmlLines} {plainLines} {showDiff} {presentation} {presentationFontSize} selection={selectedLines} onselectline={selectLine} onclearselection={clearSelection} bind:codeEl={find.codeEl} />
+        <SourceView diagnostics={sourceDiagnostics} recovery={sourceRecovery} {rows} {htmlLines} {plainLines} {showDiff} {presentation} {presentationFontSize} selection={selectedLines} onselectline={selectLine} onclearselection={clearSelection} {symbols} bind:codeEl={find.codeEl} />
         {/if}
       </div>
       </div>
@@ -1396,6 +1595,25 @@
     padding: 12px;
     font-size: 0.82rem;
     color: var(--text-secondary);
+  }
+
+  .symbol-notice {
+    position: fixed;
+    z-index: 1000;
+    max-width: 360px;
+    padding: 4px 8px;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    background: var(--bg-secondary);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+    font-size: 12px;
+    color: var(--text-primary);
+    pointer-events: none;
+  }
+
+  .history-btn {
+    font-size: 13px;
+    line-height: 1;
   }
 
   .state.nav-notice {

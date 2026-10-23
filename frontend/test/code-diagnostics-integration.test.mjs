@@ -26,7 +26,7 @@ const picker = await loadServerComponent(new URL('FilePicker.svelte', base), [ch
   ["import LoadingSpinner from '../LoadingSpinner.svelte';", 'const LoadingSpinner = () => {};']]);
 const source = await loadServerComponent(new URL('SourceView.svelte', base), [
   ["import { files } from '../../../stores/files.svelte';", fixtureStore('files')],
-  ["'../../../fileSelection'", lib('fileSelection')], ["'../../../sourceDiagnostics'", lib('sourceDiagnostics')]]);
+  ["'../../../fileSelection'", lib('fileSelection')], ["'../../../sourceNavigation'", lib('sourceNavigation')], ["'../../../sourceDiagnostics'", lib('sourceDiagnostics')]]);
 
 const context = { connectionId: 'c', attachmentId: 'a', generation: 'g' };
 const range = { start: { line: 0, character: 1 }, end: { line: 0, character: 3 } };

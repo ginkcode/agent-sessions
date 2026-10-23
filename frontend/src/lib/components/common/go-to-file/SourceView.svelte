@@ -4,6 +4,7 @@
   import { files } from '../../../stores/files.svelte';
   import type { DiffRow } from '../../../files';
   import { includesFileLine, type FileLineSelection } from '../../../fileSelection';
+  import { HOVER_DELAY, caretPoint, linkModifier, sourcePosition, sourceRange, wordRange, type SourceSymbols } from '../../../sourceNavigation';
 
   let {
     rows,
@@ -18,7 +19,10 @@
     onclearselection,
     diagnostics = { messages: [], segments: [] },
     recovery,
+    symbols,
   }: {
+    /** Code navigation on words: underline, Cmd/Ctrl+click, hover and menu. */
+    symbols?: SourceSymbols;
     diagnostics?: SourceDiagnosticProjection;
     /** Explicit, described recovery for results that are actually stale (never shown for file-level findings). */
     recovery?: { label: string; description: string; disabled?: boolean; run: () => void };
@@ -60,6 +64,110 @@
     if (codeEl) return paintSourceDiagnostics(codeEl, activeDiagnostics, 'source-diagnostic');
   });
 
+  const isMac = typeof navigator !== 'undefined' && /Mac/i.test(navigator.platform);
+
+  // Words as links: under Cmd (macOS) or Ctrl the word under the pointer is
+  // underlined and a click goes to its definition; resting on a word asks
+  // for its hover. The pointer's column comes from the text, so highlighting
+  // markup never shifts it.
+  function symbolPointer(node: HTMLElement, initial: SourceSymbols | undefined) {
+    let symbols = initial;
+    const doc = node.ownerDocument;
+    const view = doc.defaultView as (Window & { Highlight?: new (...ranges: Range[]) => unknown; CSS?: { highlights?: Map<string, unknown> } }) | null;
+    let x = 0, y = 0, inside = false, linking = false, buttons = 0;
+    let hovered = '';
+    let timer: ReturnType<typeof setTimeout> | undefined;
+
+    function wordAt() {
+      const point = caretPoint(doc, x, y);
+      const position = point && sourcePosition(node, point.node, point.offset);
+      const line = position && plainLines[position.line];
+      const word = position && line !== undefined ? wordRange(line, position.character) : undefined;
+      if (!position || !word) return undefined;
+      // The caret snaps to the nearest text, so past a line's end it would
+      // find the last word: the pointer must be on the word itself.
+      const range = sourceRange(node, position.line, word.start, word.end);
+      if (!range || ![...range.getClientRects()].some(r => x >= r.left && x <= r.right && y >= r.top && y <= r.bottom)) return undefined;
+      return { position: { line: position.line, character: word.start }, text: line!.slice(word.start, word.end), range };
+    }
+    function paint(range?: Range) {
+      const registry = view?.CSS?.highlights;
+      node.classList.toggle('linking', Boolean(range));
+      if (!registry || !view?.Highlight) return;
+      if (range) registry.set('source-symbol', new view.Highlight(range));
+      else registry.delete('source-symbol');
+    }
+    function endHover() {
+      clearTimeout(timer);
+      if (hovered) { hovered = ''; symbols?.hoverEnd(); }
+    }
+    function update() {
+      const word = symbols && inside ? wordAt() : undefined;
+      paint(word && linking && symbols?.linked ? word.range : undefined);
+      const key = word && !buttons ? `${word.position.line}:${word.position.character}` : '';
+      if (key === hovered) return;
+      endHover();
+      if (!word || !key) return;
+      hovered = key;
+      const at = { x, y };
+      timer = setTimeout(() => symbols?.hover(word.position, at), HOVER_DELAY);
+    }
+    function move(event: PointerEvent) {
+      x = event.clientX; y = event.clientY; inside = true; buttons = event.buttons;
+      linking = linkModifier(event, isMac);
+      update();
+    }
+    function leave() { inside = false; paint(); endHover(); }
+    function down() { buttons = 1; endHover(); }
+    function key(event: KeyboardEvent) {
+      if (!inside || (event.key !== 'Meta' && event.key !== 'Control')) return;
+      linking = event.type === 'keydown' && linkModifier(event, isMac);
+      update();
+    }
+    function click(event: MouseEvent) {
+      if (event.button !== 0 || !linkModifier(event, isMac) || !symbols) return;
+      x = event.clientX; y = event.clientY;
+      const word = wordAt();
+      if (!word) return;
+      event.preventDefault();
+      symbols.definition(word.position, { x, y });
+    }
+    function menu(event: MouseEvent) {
+      x = event.clientX; y = event.clientY;
+      const word = symbols && wordAt();
+      if (!word) return;
+      event.preventDefault();
+      endHover();
+      symbols!.menu(word.position, word.text, { x, y });
+    }
+    // Only the view moving under the pointer: a scrolling hover card is not.
+    function scroll(event: Event) {
+      if (event.target instanceof Node && event.target.contains(node)) { paint(); endHover(); }
+    }
+    node.addEventListener('pointermove', move);
+    node.addEventListener('pointerleave', leave);
+    node.addEventListener('pointerdown', down);
+    node.addEventListener('click', click);
+    node.addEventListener('contextmenu', menu);
+    doc.addEventListener('keydown', key);
+    doc.addEventListener('keyup', key);
+    doc.addEventListener('scroll', scroll, true);
+    return {
+      update(next: SourceSymbols | undefined) { symbols = next; if (!symbols) { paint(); endHover(); } },
+      destroy() {
+        paint(); clearTimeout(timer);
+        node.removeEventListener('pointermove', move);
+        node.removeEventListener('pointerleave', leave);
+        node.removeEventListener('pointerdown', down);
+        node.removeEventListener('click', click);
+        node.removeEventListener('contextmenu', menu);
+        doc.removeEventListener('keydown', key);
+        doc.removeEventListener('keyup', key);
+        doc.removeEventListener('scroll', scroll, true);
+      },
+    };
+  }
+
   // Delegate text clicks without turning code into buttons or interfering
   // with native drag-to-select. Gutter buttons remain keyboard accessible.
   function lineClicks(node: HTMLElement) {
@@ -67,7 +175,8 @@
     let startY = 0;
     function down(event: PointerEvent) { startX = event.clientX; startY = event.clientY; }
     function click(event: MouseEvent) {
-      if (event.button !== 0 || Math.abs(event.clientX - startX) > 4 || Math.abs(event.clientY - startY) > 4) return;
+      // Cmd/Ctrl+click is go to definition, not a line selection.
+      if (event.button !== 0 || (symbols && linkModifier(event, isMac)) || Math.abs(event.clientX - startX) > 4 || Math.abs(event.clientY - startY) > 4) return;
       if (node.ownerDocument.getSelection()?.isCollapsed === false) return;
       // Gutter buttons select on their own; removed diff lines are code but have no line to select.
       const hit = event.target instanceof Element ? event.target.closest<HTMLElement>('.line, .ln') : null;
@@ -118,7 +227,7 @@
     </ul>
   </details>
 {/if}
-<div class="code source file-source" use:lineClicks bind:this={codeEl} class:wrap={files.wrap} class:diff={showDiff} style:font-size={presentation ? `${presentationFontSize}px` : undefined} style:--digits={String(htmlLines?.length ?? plainLines.length).length}>
+<div class="code source file-source" use:lineClicks use:symbolPointer={symbols} bind:this={codeEl} class:wrap={files.wrap} class:diff={showDiff} style:font-size={presentation ? `${presentationFontSize}px` : undefined} style:--digits={String(htmlLines?.length ?? plainLines.length).length}>
   {#snippet lineNumber(row: DiffRow)}
     {#if row.kind === 'removed'}
       <span aria-hidden="true" class="ln sign removed">−</span>
@@ -192,6 +301,8 @@
   .recovery button { padding: 2px 8px; border: 1px solid var(--border-color); border-radius: 4px; font-size: 12px; color: var(--text-primary); cursor: pointer; }
   .recovery button:disabled { opacity: 0.5; cursor: default; }
   .ln.has-diagnostics { text-decoration: underline dotted; font-weight: bold; }
+  :global(::highlight(source-symbol)) { text-decoration: underline; color: var(--accent-color); }
+  .code:global(.linking) .line { cursor: pointer; }
   :global(::highlight(source-diagnostic-error)) { text-decoration: underline wavy #d1242f; }
   :global(::highlight(source-diagnostic-warning)) { text-decoration: underline wavy #9a6700; }
   :global(::highlight(source-diagnostic-information)) { text-decoration: underline dotted #2f81f7; }

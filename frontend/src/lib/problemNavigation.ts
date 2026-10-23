@@ -115,7 +115,8 @@ export interface ProblemNavigationIdentity { dir: string | null; host: string | 
 /** A wait to reveal a problem or a search match once its file is shown. */
 export interface ProblemNavigationRequest<Tab extends object = object> {
   id: number; identity: ProblemNavigationIdentity; tab: Tab; path: string;
-  kind: 'problem' | 'search';
+  /** A problem, a search match, or a place code navigation went to. */
+  kind: 'problem' | 'search' | 'symbol';
   /** Absent for a whole-file finding, which locate turns down. */
   range?: CodeDiagnosticRange;
   /** Why the target cannot be drawn over source, the text shown; '' when it can. */

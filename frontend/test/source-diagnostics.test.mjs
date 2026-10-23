@@ -76,7 +76,7 @@ test('equivalent provider findings select a verified original while retaining al
 const base = new URL('../src/lib/components/common/go-to-file/SourceView.svelte', import.meta.url);
 const component = await loadServerComponent(base, [
   ["import { files } from '../../../stores/files.svelte';", fixtureStore('files')],
-  ["'../../../fileSelection'", JSON.stringify(new URL('../src/lib/fileSelection.ts', import.meta.url).href)],
+  ["'../../../fileSelection'", JSON.stringify(new URL('../src/lib/fileSelection.ts', import.meta.url).href)], ["'../../../sourceNavigation'", JSON.stringify(new URL('../src/lib/sourceNavigation.ts', import.meta.url).href)],
   ["'../../../sourceDiagnostics'", JSON.stringify(new URL('../src/lib/sourceDiagnostics.ts', import.meta.url).href)],
 ]);
 
