@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"sync"
@@ -212,7 +213,7 @@ func TestManagerRevokeDetachShutdown(t *testing.T) {
 
 func mustRoot(t *testing.T, tool string) AuthorizedRoot {
 	t.Helper() // synthetic fixture tool always lives immediately below its root
-	dir := strings.TrimSuffix(tool, "/tool")
+	dir := filepath.Dir(tool)
 	root, err := AuthorizeRoot("local:test", dir, func(s string) bool { return s == dir })
 	if err != nil {
 		t.Fatal(err)

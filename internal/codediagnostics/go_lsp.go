@@ -327,9 +327,11 @@ func discoverGoWorkspace(root AuthorizedRoot) (goWorkspace, error) {
 }
 
 // localInside reports whether a go.work/replace path, relative to its directory
-// inside the root, stays inside the root. Absolute paths never do.
+// inside the root, stays inside the root. Absolute paths never do, nor do
+// rooted or drive-relative ones (Windows reads /x as the current drive's root).
 func localInside(dir, target string) bool {
-	if target == "" || filepath.IsAbs(filepath.FromSlash(target)) || strings.ContainsRune(target, 0) {
+	native := filepath.FromSlash(target)
+	if target == "" || filepath.IsAbs(native) || filepath.VolumeName(native) != "" || strings.HasPrefix(target, "/") || strings.HasPrefix(target, `\`) || strings.ContainsRune(target, 0) {
 		return false
 	}
 	joined := filepath.Join(dir, filepath.FromSlash(target))

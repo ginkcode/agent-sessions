@@ -19,7 +19,7 @@ func TestSvelteEvidenceParser(t *testing.T) {
 		}
 		t.Run(f.ID, func(t *testing.T) {
 			root := vetRoot(t, f.Files)
-			text := strings.ReplaceAll(f.Stdout, f.Cwd, root.Project().Root)
+			text := strings.ReplaceAll(f.Stdout, f.Cwd, jsonText(root.Project().Root))
 			got, err := parseSvelte(root, "", []byte(text), f.ExitCode, 10000)
 			bad := f.Expected == "failure" || f.Expected == "reject"
 			if (err != nil) != bad {

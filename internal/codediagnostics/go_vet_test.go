@@ -50,6 +50,13 @@ func vetRoot(t *testing.T, files map[string]string) AuthorizedRoot {
 	return r
 }
 
+// jsonText is s escaped for use inside a JSON string: Windows roots carry
+// backslashes into the recorded output.
+func jsonText(s string) string {
+	b, _ := json.Marshal(s)
+	return string(b[1 : len(b)-1])
+}
+
 func TestGoVetEvidenceParser(t *testing.T) {
 	for _, f := range goFixtures(t) {
 		if f.Tool != "go" || !strings.HasPrefix(f.ID, "go-") || f.ID == "go-version" || f.ID == "go-text-findings" {
@@ -58,7 +65,7 @@ func TestGoVetEvidenceParser(t *testing.T) {
 		t.Run(f.ID, func(t *testing.T) {
 			r := vetRoot(t, f.Files)
 			// Replace only the recorded synthetic cwd, never arbitrary output paths.
-			stdout := strings.ReplaceAll(f.Stdout, f.Cwd, r.Project().Root)
+			stdout := strings.ReplaceAll(f.Stdout, f.Cwd, jsonText(r.Project().Root))
 			got, err := parseGoVet(r, "", []byte(stdout), 10000)
 			if f.ID == "go-truncated" || f.Expected == "failure" {
 				if err == nil {

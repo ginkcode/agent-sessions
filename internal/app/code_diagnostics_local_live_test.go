@@ -176,7 +176,8 @@ func TestLocalLiveRouteCapabilitiesApproveOpenAndEvent(t *testing.T) {
 	case <-time.After(15 * time.Second):
 		t.Fatal("no server launched")
 	}
-	uri := (&url.URL{Scheme: "file", Path: filepath.ToSlash(filepath.Join(dir, "a.go"))}).String()
+	// The LSP form: a Windows drive path gets a leading slash (file:///C:/...).
+	uri := (&url.URL{Scheme: "file", Path: "/" + strings.TrimPrefix(filepath.ToSlash(filepath.Join(dir, "a.go")), "/")}).String()
 	select {
 	case got := <-srv.opened:
 		if got != uri {

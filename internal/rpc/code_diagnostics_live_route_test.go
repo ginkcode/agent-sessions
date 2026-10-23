@@ -288,7 +288,17 @@ func (x *routeFixture) snapshot() cd.Snapshot {
 }
 
 func (x *routeFixture) uri(rel string) string {
-	return (&url.URL{Scheme: "file", Path: filepath.ToSlash(filepath.Join(x.root, rel))}).String()
+	return fileURI(filepath.Join(x.root, rel))
+}
+
+// fileURI is the LSP form: a Windows drive path gets a leading slash
+// (file:///C:/...), as the session sends it.
+func fileURI(path string) string {
+	p := filepath.ToSlash(path)
+	if !strings.HasPrefix(p, "/") {
+		p = "/" + p
+	}
+	return (&url.URL{Scheme: "file", Path: p}).String()
 }
 
 func (x *routeFixture) set(s cd.Snapshot, provider, path string) *cd.ResultSet {

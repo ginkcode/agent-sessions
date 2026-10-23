@@ -131,9 +131,32 @@ func ValidatePath(s string) error {
 			if strings.TrimRight(p, " .") != p {
 				return failure("invalidArgument", "Ambiguous Windows diagnostic path")
 			}
+			if windowsDevice(p) {
+				return failure("invalidArgument", "Invalid diagnostic path")
+			}
 		}
 	}
 	return nil
+}
+
+// windowsDevice reports a reserved device name, with or without an extension
+// ("CON.txt" opens the console on Windows 10). Newer Go releases no longer
+// treat the extension form as non-local, so it is checked here.
+func windowsDevice(part string) bool {
+	name, _, _ := strings.Cut(part, ".")
+	name = strings.ToUpper(strings.TrimRight(name, " "))
+	switch name {
+	case "CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$":
+		return true
+	}
+	if len(name) < 4 || (name[:3] != "COM" && name[:3] != "LPT") {
+		return false
+	}
+	switch name[3:] {
+	case "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "¹", "²", "³":
+		return true
+	}
+	return false
 }
 
 // ResolvePath validates host ownership and containment using metadata only. No

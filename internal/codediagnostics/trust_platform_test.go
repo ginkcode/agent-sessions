@@ -64,6 +64,19 @@ func TestFailedPersistentRevokeStillCancels(t *testing.T) {
 	}
 }
 
+func TestWindowsDeviceNames(t *testing.T) {
+	for _, name := range []string{"CON", "con.txt", "Nul .log", "COM1", "lpt9.tar.gz", "COM¹", "conin$"} {
+		if !windowsDevice(name) {
+			t.Errorf("%q not reserved", name)
+		}
+	}
+	for _, name := range []string{"CONFIG", "console.go", "COM10", "LPT", "aux_test.go", "nul-file"} {
+		if windowsDevice(name) {
+			t.Errorf("%q reserved", name)
+		}
+	}
+}
+
 func TestWindowsNativePaths(t *testing.T) {
 	if runtime.GOOS != "windows" {
 		t.Skip("native Windows path semantics")

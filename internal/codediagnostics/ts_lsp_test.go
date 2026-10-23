@@ -624,6 +624,7 @@ func TestTSBridgeIgnoresOtherProviders(t *testing.T) {
 // HostNode follows tsNode: the first real node decides, and only a new
 // enough one is offered to managed installs.
 func TestHostNode(t *testing.T) {
+	unixTools(t)
 	base, _ := filepath.EvalSymlinks(t.TempDir())
 	old, cur, empty := filepath.Join(base, "old"), filepath.Join(base, "cur"), filepath.Join(base, "empty")
 	writeNode(t, old, "16.20.2")

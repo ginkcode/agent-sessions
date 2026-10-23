@@ -18,6 +18,9 @@ import (
 )
 
 func TestLocalExecutableDirsAbsoluteBoundedDeduplicated(t *testing.T) {
+	if !localLiveSupported() {
+		t.Skip("local live platform gate")
+	}
 	home := t.TempDir()
 	t.Setenv("PATH", strings.Join([]string{"/usr/bin", "relative/bin", "", "/usr/bin", "/opt/x/../y", "/opt/homebrew/bin"}, string(os.PathListSeparator)))
 	t.Setenv("GOPATH", strings.Join([]string{"/gopath", "rel"}, string(os.PathListSeparator)))
@@ -45,6 +48,9 @@ func TestLocalExecutableDirsAbsoluteBoundedDeduplicated(t *testing.T) {
 }
 
 func TestLocalGoRootFollowsResolvedExecutable(t *testing.T) {
+	if !localLiveSupported() {
+		t.Skip("local live platform gate")
+	}
 	base, _ := filepath.EvalSymlinks(t.TempDir())
 	goroot := filepath.Join(base, "sdk", "go1")
 	shims := filepath.Join(base, "shims")

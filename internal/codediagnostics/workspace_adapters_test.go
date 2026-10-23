@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -21,6 +22,7 @@ func workspaceTestRoot(t *testing.T, files map[string]string) AuthorizedRoot {
 }
 func workspaceTestEnv(t *testing.T) LocalLiveEnvironment {
 	t.Helper()
+	unixTools(t)
 	tsPath, ts := tsHost(t)
 	pyPath, py, _ := pyrightHost(t)
 	ruffPath, ruff, _ := ruffHost(t, "0.14.0")
@@ -35,6 +37,16 @@ func workspaceRegistration(t *testing.T, registrations []Registration, id string
 	}
 	t.Fatal("missing provider", id)
 	return nil
+}
+
+// unixTools skips a test whose synthetic tools rely on Unix executable bits.
+// Host tool discovery feeds local live checks, which run on darwin and linux
+// only; Windows projects are checked through WSL.
+func unixTools(t *testing.T) {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("host tool discovery is Unix-only")
+	}
 }
 
 func TestWorkspaceAdaptersIndependentChildren(t *testing.T) {

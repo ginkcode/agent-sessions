@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"sync"
+	"sync/atomic"
 	"syscall"
 )
 
@@ -51,13 +52,15 @@ func HostSessionLaunch(in Invocation) (SessionProcess, SessionStreams, error) {
 }
 
 type hostSession struct {
-	cmd   *exec.Cmd
-	files []*os.File
-	once  sync.Once
+	cmd    *exec.Cmd
+	files  []*os.File
+	once   sync.Once
+	exited atomic.Bool
 }
 
 func (p *hostSession) Wait() (int, error) {
 	err := p.cmd.Wait()
+	p.exited.Store(true)
 	var exit *exec.ExitError
 	if errors.As(err, &exit) {
 		return exit.ExitCode(), nil
@@ -71,6 +74,12 @@ func (p *hostSession) Wait() (int, error) {
 func (p *hostSession) Terminate() error {
 	err := syscall.Kill(-p.cmd.Process.Pid, syscall.SIGKILL)
 	if errors.Is(err, syscall.ESRCH) {
+		return nil
+	}
+	// macOS reports EPERM for a group whose only members are killed processes
+	// not yet reaped by their new parent. After the leader exited, nothing is
+	// left that this account could signal.
+	if errors.Is(err, syscall.EPERM) && p.exited.Load() {
 		return nil
 	}
 	return err
