@@ -177,7 +177,7 @@
   </div>
 
   {#if contentSearch.mode === 'changes'}
-    <ChangesPane onOpen={(path) => { onPick(path, true); if (!files.diff) files.toggleDiff(); }} />
+    <ChangesPane onOpen={(path, staged) => { if (!files.openGitDiff(path, staged ? 'staged' : 'index')) onPick(path, true); }} />
   {:else if contentSearch.mode === 'search'}
     <SearchPane onOpen={onOpenMatch} />
   {:else}

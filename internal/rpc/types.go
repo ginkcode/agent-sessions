@@ -52,6 +52,7 @@ type Notification struct {
 
 // Capabilities indicates the features supported on the remote host.
 type Capabilities struct {
+	GitDiff bool `json:"gitDiff,omitempty"`
 	// GitChanges supports repository status (and is absent on older servers).
 	GitChanges          bool `json:"gitChanges,omitempty"`
 	GitWrite            bool `json:"gitWrite,omitempty"`

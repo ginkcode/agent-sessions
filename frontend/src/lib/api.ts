@@ -22,6 +22,8 @@ import type {
   GitCommitRequest,
   GitBranchList,
   GitSwitchRequest,
+  GitDiffBasis,
+  GitDiffContent,
   SearchQuery,
   SearchResult,
   FileSaveRequest,
@@ -144,6 +146,7 @@ export interface BackendAPI extends CodeDiagnosticsAPI {
    * Blames one 1-based line of a file, path relative to dir, on the selected
    * host. Rejects when the backend has no blame support.
    */
+  readGitDiff(dir: string, path: string, basis: GitDiffBasis): Promise<GitDiffContent>;
   gitStatus(dir: string): Promise<RepoStatus>;
   gitBranches(dir: string): Promise<GitBranchList>;
   /** Caller blocks live drafts, then reloads clean tabs/tree/status/diagnostics on success. */
@@ -293,6 +296,7 @@ interface WailsAppBinding {
   ListFiles(dir: string): Promise<FileListing>;
   ProbeFiles?(dir: string, paths: string[], host: string): Promise<FileProbeResult>;
   ReadFile(dir: string, path: string): Promise<FileContent>;
+  ReadGitDiff?(dir: string, path: string, basis: GitDiffBasis): Promise<GitDiffContent>;
   GitStatus?(dir: string): Promise<RepoStatus>;
   GitBranches?(dir: string): Promise<GitBranchList>;
   GitSwitch?(dir: string, req: GitSwitchRequest, host: string): Promise<void>;
@@ -357,6 +361,7 @@ interface WailsAppBinding {
   GetHostEnv(): Promise<Record<string, string>>;
 }
 
+export const GIT_DIFF_UNSUPPORTED = 'Git diff bases are not supported by this version of the app backend.';
 export const GIT_WRITE_UNSUPPORTED = 'Git writes are not supported by this version of the app backend.';
 export const GIT_CHANGES_UNSUPPORTED = 'Git changes are not supported by this version of the app backend.';
 
@@ -837,6 +842,12 @@ class WailsBackendAPI implements BackendAPI {
   async gitSwitch(dir: string, req: GitSwitchRequest, host: string | undefined): Promise<void> {
     if (!this.binding.GitSwitch) throw new Error(GIT_WRITE_UNSUPPORTED);
     try { await this.binding.GitSwitch(dir, req, host ?? ''); }
+    catch (e) { throw normalizeError(e); }
+  }
+
+  async readGitDiff(dir: string, path: string, basis: GitDiffBasis): Promise<GitDiffContent> {
+    if (!this.binding.ReadGitDiff) throw new Error(GIT_DIFF_UNSUPPORTED);
+    try { return await this.binding.ReadGitDiff(dir, path, basis); }
     catch (e) { throw normalizeError(e); }
   }
 

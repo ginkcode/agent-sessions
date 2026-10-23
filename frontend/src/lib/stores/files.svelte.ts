@@ -100,6 +100,9 @@ export interface FileTab {
    * diagnostics, and never a live document.
    */
   external?: boolean;
+  /** A Git review snapshot, never an editable/live document. */
+  gitBasis?: 'head' | 'index' | 'staged';
+  gitDeleted?: boolean;
 }
 
 export class FilesStore {
@@ -168,7 +171,7 @@ export class FilesStore {
   displayedDocuments(): DisplayedDocument[] {
     const out: DisplayedDocument[] = [];
     for (const tab of this.tabs) {
-      if (tab.diskAbsent || tab.external) continue;
+      if (tab.diskAbsent || tab.external || tab.gitBasis) continue;
       if (tab.edit) out.push({ path: tab.path, text: tab.edit.draft, revision: tab.edit.revision });
       else if (displayable(tab.content)) out.push({ path: tab.path, text: tab.content.text, revision: tab.content.revision });
     }
@@ -176,7 +179,7 @@ export class FilesStore {
   }
 
   private shown(dir: string, tab: FileTab): void {
-    if (tab.external) return;
+    if (tab.external || tab.gitBasis) return;
     const content = tab.content;
     if (displayable(content)) this.notify(o => o.opened(dir, tab.path, content.text, content.revision));
     else this.notify(o => o.removed(dir, tab.path));
@@ -396,7 +399,7 @@ export class FilesStore {
     if (!dir || this.mutationError(host)) return;
     await Promise.all(this.tabs.map(async tab => {
       const edit = tab.edit;
-      if (tab.external) return;
+      if (tab.external || tab.gitBasis) return;
       if (!edit) { await this.read(tab.path); return; }
       if (edit.saving || (typeof api.probeFiles === 'function' && !await this.probe(dir, tab))) return;
       // Typing is allowed during the read. Commit saved context only, not the
@@ -631,6 +634,11 @@ export class FilesStore {
     if (existing) {
       if (keep) existing.preview = false;
       this.selected = path;
+      if (existing.gitBasis && opts.read !== false) {
+        existing.gitBasis = undefined; existing.gitDeleted = undefined;
+        existing.content = null;
+        void this.read(path);
+      }
       return;
     }
     const tab: FileTab = {
@@ -664,6 +672,22 @@ export class FilesStore {
     const existing = this.tabs.find((t) => t.path === path);
     if (existing && !existing.external) return;
     this.openFile(path, { ...opts, external: true });
+  }
+
+  /** Reviews a Git basis in the file's tab; a retained draft is never replaced. */
+  openGitDiff(path: string, basis: 'head' | 'index' | 'staged'): boolean {
+    const existing = this.tabs.find(t => t.path === path);
+    if (existing?.edit) return false;
+    this.openFile(path, { keep: true, read: false });
+    const tab = this.activeTab;
+    if (!tab || tab.path !== path || tab.external) return false;
+    if (this.dir && !tab.gitBasis) this.notify(o => o.removed(this.dir!, path));
+    tab.gitBasis = basis;
+    tab.gitDeleted = false;
+    tab.content = null;
+    this.diff = true;
+    void this.read(path);
+    return true;
   }
 
   /** Turns a preview tab into one that stays. */
@@ -722,11 +746,13 @@ export class FilesStore {
     const current = () => started === epoch() && this.dataHost === link.dataHost && this.dir === dir
       && this.tabs.find((t) => t === tab && t.token === token && !t.edit);
     try {
-      if ((!tab.external && typeof api.probeFiles === 'function' && !await this.probe(dir, tab)) || !current()) return;
-      const content = tab.external ? await this.readExternal(path) : await api.readFile(dir, path);
+      if ((!tab.external && !tab.gitBasis && typeof api.probeFiles === 'function' && !await this.probe(dir, tab)) || !current()) return;
+      const review = tab.gitBasis ? await api.readGitDiff(dir, path, tab.gitBasis) : undefined;
+      const content = review ? review.content : tab.external ? await this.readExternal(path) : await api.readFile(dir, path);
       const t = current();
       if (t) {
         t.content = content;
+        t.gitDeleted = review?.deleted;
         t.error = null;
         this.shown(dir, t);
       }
@@ -745,7 +771,7 @@ export class FilesStore {
   /** Enter edit mode without rereading, retaining even a clean editor's undo history. */
   startEditing(path: string): boolean {
     const tab = this.tabs.find((t) => t.path === path);
-    if (!tab || tab.external || this.mutationError(this.dataHost) || !canEditContent(tab.content)) return false;
+    if (!tab || tab.external || tab.gitBasis || this.mutationError(this.dataHost) || !canEditContent(tab.content)) return false;
     if (tab.edit) {
       tab.edit.editing = true;
       return true;

@@ -181,6 +181,32 @@ async function loadFilesStore() {
   return filesStoreModule;
 }
 
+test('Git snapshots use their basis, keep deleted diffs readable and never become live documents or drafts', async () => {
+  const { FilesStore } = await loadFilesStore();
+  const calls = [], live = [];
+  globalThis.__storeFixture = { api: {
+    listFiles: async dir => ({ root: dir, files: ['a.ts'], status: { 'a.ts': 'D' } }),
+    readFile: async (_dir, path) => ({ path, size: 4, text: 'disk' }),
+    readGitDiff: async (_dir, path, basis) => { calls.push(basis); return { content: { path, size: 0, text: '', changes: [{ kind: 'deleted', start: 0, count: 0, removed: ['old'] }] }, basis, deleted: true, readOnly: true }; },
+  } };
+  const store = new FilesStore();
+  await store.show('/p');
+  store.observe({ opened: () => live.push('opened'), removed: () => {}, replaced() {}, changed() {}, beforeSave() {}, saved() {}, saveFailed() {}, renamed() {}, uncertain() {}, restored() {}, cleared() {}, interrupted() {} });
+  assert.equal(store.openGitDiff('a.ts', 'staged'), true);
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert.deepEqual(calls, ['staged']);
+  assert.equal(store.activeTab.gitDeleted, true);
+  assert.equal(store.displayedDocuments().length, 0);
+  assert.equal(store.startEditing('a.ts'), false);
+  assert.deepEqual(live, []);
+  store.openFile('a.ts');
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert.equal(store.activeTab.gitBasis, undefined);
+  assert.equal(store.content.text, 'disk');
+  assert.equal(store.displayedDocuments().length, 1);
+  delete globalThis.__storeFixture;
+});
+
 test('FilesStore: one click previews, double click keeps a tab, folders are remembered', async () => {
   const { FilesStore } = await loadFilesStore();
   globalThis.__storeFixture = {

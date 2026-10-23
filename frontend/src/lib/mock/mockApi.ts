@@ -52,6 +52,8 @@ import type {
   GitCommitRequest,
   GitBranchList,
   GitSwitchRequest,
+  GitDiffBasis,
+  GitDiffContent,
   SearchQuery,
   SearchResult,
   HostEntry,
@@ -1154,6 +1156,19 @@ export class MockBackendAPI extends MockCodeDiagnostics {
     this.mockBranchLists.set(JSON.stringify([this.connState.host ?? '', dir]), list);
   }
 
+  async readGitDiff(dir: string, path: string, basis: GitDiffBasis): Promise<GitDiffContent> {
+    if (!['head', 'index', 'staged'].includes(basis)) throw new Error('Invalid Git diff basis.');
+    const status = await this.gitStatus(dir);
+    const entry = status.entries.find(e => e.path === path);
+    const deleted = basis === 'staged' ? entry?.index === 'D' : entry?.worktree === 'D';
+    const readOnly = basis === 'staged' || !!deleted;
+    const content = deleted ? { path, size: 0, text: '', changes: [{ kind: 'deleted' as const, start: 0, count: 0, removed: ['Deleted mock content'] }] }
+      : { ...await this.readFile(dir, path) };
+    if (basis === 'staged' && !entry?.index || basis === 'index' && !entry?.worktree) content.changes = [];
+    if (readOnly) { content.edit = { eligible: false, reason: 'read_only' }; content.revision = undefined; }
+    return { content, basis, deleted: !!deleted, readOnly };
+  }
+
   async gitStatus(dir: string): Promise<RepoStatus> {
     const listing = await this.listFiles(dir);
     const changed = this.mockGitEntries.get(JSON.stringify([this.connState.host ?? '', dir]));
@@ -1703,6 +1718,7 @@ export class MockBackendAPI extends MockCodeDiagnostics {
       saveFile: true,
       blame: true,
       gitChanges: true,
+      gitDiff: true,
       gitWrite: true,
       searchFiles: true,
       replaceFiles: true,

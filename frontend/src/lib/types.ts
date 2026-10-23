@@ -793,6 +793,7 @@ export interface HostCapabilities {
   blame?: boolean;
   /** Absent on older servers; full Git status requires explicit true. */
   gitChanges?: boolean;
+  gitDiff?: boolean;
   gitWrite?: boolean;
   /** Absent on older servers; content search requires an explicit true. */
   searchFiles?: boolean;
@@ -895,4 +896,12 @@ export interface GitSwitchRequest {
   remote?: boolean;
   /** Any live draft blocks branch switching/creation. */
   draftPaths?: string[];
+}
+
+export type GitDiffBasis = 'head' | 'index' | 'staged';
+export interface GitDiffContent {
+  content: FileContent;
+  basis: GitDiffBasis;
+  deleted: boolean;
+  readOnly: boolean;
 }

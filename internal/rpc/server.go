@@ -307,6 +307,7 @@ func (s *Server) initialize(serveCtx context.Context, req Request, starter Start
 		Search:      true,
 		Blame:       true,
 		GitChanges:  true,
+		GitDiff:     true,
 		SearchFiles: true,
 		NewSession:  true,
 		// SaveFile and ReplaceFiles stay off without a starter, which is a
@@ -477,6 +478,8 @@ func (s *Server) dispatch(ctx context.Context, req Request) (any, error) {
 		}
 		return backend.ReadFile(ctx, p.Dir, p.Path)
 
+	case "readGitDiff":
+		return s.dispatchGitDiff(ctx, req, backend)
 	case "gitBranches", "gitSwitch":
 		return s.dispatchGitBranches(ctx, req, backend)
 	case "gitStage", "gitUnstage", "gitDiscard", "gitCommit":

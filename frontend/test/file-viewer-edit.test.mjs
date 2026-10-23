@@ -90,6 +90,20 @@ function content(path, text, extra = {}) {
   };
 }
 
+test('Git review exposes basis switch, disables editing and displays deleted-file removal rows', async () => {
+  const value = content('gone.ts', '', { changes: [{ kind: 'deleted', start: 0, count: 0, removed: ['old'] }] });
+  const html = await render({ files: { content: value, diff: true,
+    activeTab: { path: 'gone.ts', content: value, gitBasis: 'staged', gitDeleted: true },
+    listing: { files: [], status: { 'gone.ts': 'D' } },
+  } });
+  assert.match(html, /aria-label="Diff basis"/);
+  assert.match(html, /Staged: index vs HEAD/);
+  assert.match(html, /Read-only: Git review snapshot/);
+  assert.doesNotMatch(html, /This file was deleted since the last commit/);
+  assert.match(html, /data-show-diff="true"/);
+  assert.doesNotMatch(html, /aria-label="Edit"/);
+});
+
 function editState(baseline, draft = baseline, extra = {}) {
   return {
     editing: true, baseline, revision: 'rev-1', draft,
@@ -366,7 +380,7 @@ test('a save conflict keeps the draft and offers Resolve and Reload', async () =
 test('line blame loads with the selection and has no close buttons; its text opens the commit details', () => {
   const viewer = readFileSync(new URL('../src/lib/components/common/go-to-file/FileViewer.svelte', import.meta.url), 'utf8');
   assert.doesNotMatch(viewer, /Clear line selection|Close blame/);
-  assert.match(viewer, /let blameShown = \$derived\(Boolean\(selectedLines && !showPreview && files\.listing\?\.git && !external\)\)/);
+  assert.match(viewer, /let blameShown = \$derived\(Boolean\(selectedLines && !showPreview && files\.listing\?\.git && !external && !activeTab\?\.gitBasis\)\)/);
   assert.match(viewer, /class="blame-summary" aria-expanded=\{blameOpen\}/);
   assert.match(viewer, /\{blame\.author\} · \{formatAgo\(blameTime\(blame\)\)\}/);
   assert.match(viewer, /onclearselection=\{clearSelection\}/);

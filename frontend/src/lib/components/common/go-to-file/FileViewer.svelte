@@ -209,10 +209,11 @@
   let textContent = $derived(isTextContent(files.content));
   let canEdit = $derived(
     !editing && !starting && !frozen && canSaveHost && !blocked
-      && !files.loadingFile && !files.fileError && canEditContent(files.content)
+      && !activeTab?.gitBasis && !files.loadingFile && !files.fileError && canEditContent(files.content)
   );
   let readOnlyReason = $derived(
     editing || !textContent ? ''
+      : activeTab?.gitBasis ? 'Read-only: Git review snapshot'
       : external ? 'Read-only: outside the project'
       : files.content?.edit?.eligible === false ? readOnlyText(files.content.edit.reason)
       : !canSaveHost && files.content?.edit?.eligible ? 'Read-only: this host cannot save files'
@@ -297,7 +298,7 @@
   // Rendered rather than source: the source-only tools hide.
   let showPreview = $derived(showMarkdown || showSvg);
   // Only git listings can blame; older hosts say so instead of failing per line.
-  let blameShown = $derived(Boolean(selectedLines && !showPreview && files.listing?.git && !external));
+  let blameShown = $derived(Boolean(selectedLines && !showPreview && files.listing?.git && !external && !activeTab?.gitBasis));
   let canBlame = $derived(connectionStore.capabilities.blame === true && !blocked);
   // The selected line's blame loads by itself; another line, file or text starts over.
   $effect(() => {
@@ -336,7 +337,7 @@
   let htmlLines = $derived(html !== null ? splitHighlightedLines(html) : null);
   let plainLines = $derived(textContent ? splitLines(text) : []);
   let changes = $derived(
-    files.selected && !external ? fileChanges(status?.[files.selected], files.content?.changes, plainLines.length) : undefined
+    files.selected && !external ? activeTab?.gitBasis ? files.content?.changes : fileChanges(status?.[files.selected], files.content?.changes, plainLines.length) : undefined
   );
   let marks = $derived(lineMarks(changes, plainLines.length));
   // The diff view shows when it is on and the file has changes to show.
@@ -344,7 +345,7 @@
   // Git markers describe the saved file, so the diff never shows over a draft.
   let showDiff = $derived(files.diff && hasChanges && !editing);
   let sourceDiagnostics = $derived(projectSourceDiagnostics(text,
-    codeDiagnostics.project && codeDiagnostics.directory === files.dir && !external && !blocked && !files.loadingFile && !showDiff && !showPreview && !blameOpen
+    codeDiagnostics.project && codeDiagnostics.directory === files.dir && !external && !activeTab?.gitBasis && !blocked && !files.loadingFile && !showDiff && !showPreview && !blameOpen
       ? codeDiagnostics.findings.filter(f => f.diagnostic.path === files.selected) : [],
     { dirty: Boolean(edit?.dirty || edit?.uncertain || edit?.conflict), revision: edit?.revision ?? files.content?.revision, live: files.selected ? codeDiagnostics.liveBasis(files.selected) : undefined },
     codeDiagnostics.status === 'ready' && !codeDiagnostics.revoking && !highlightPending));
@@ -363,7 +364,8 @@
   });
   let rows: DiffRow[] = $derived(
     showDiff
-      ? diffRows(changes, plainLines.length)
+      // An empty or deleted file has no lines, only the ones it lost.
+      ? diffRows(changes, text ? plainLines.length : 0)
       : Array.from({ length: htmlLines?.length ?? plainLines.length }, (_, index) => ({ kind: 'line', index, mark: marks[index] }))
   );
 
@@ -582,6 +584,7 @@
   });
   let symbolBlocker = $derived(
     !files.selected ? 'Open a file to use code navigation.'
+      : activeTab?.gitBasis ? 'Open the working file to use code navigation.'
       : external ? 'Code navigation is not available in files outside the project.'
       : codeDiagnostics.directory !== files.dir ? 'Code checks are not attached to this project yet.'
       : codeDiagnostics.navigationBlocker(files.selected)
@@ -926,7 +929,7 @@
           Save
         </button>
       {:else if files.content && !files.loadingFile && !files.fileError}
-        {#if canSaveHost && canEditContent(files.content)}
+        {#if canSaveHost && !activeTab?.gitBasis && canEditContent(files.content)}
           <button
             type="button"
             class="copy-btn icon-btn"
@@ -940,6 +943,14 @@
         {:else if readOnlyReason}
           <span class="read-only" title={readOnlyReason}>{readOnlyReason}</span>
         {/if}
+      {/if}
+      {#if activeTab?.gitBasis}
+        <select aria-label="Diff basis" value={activeTab.gitBasis} disabled={frozen || Boolean(blocked)} onchange={(e) => files.openGitDiff(activeTab!.path, e.currentTarget.value as 'head' | 'index' | 'staged')}>
+          <option value="head">Working tree vs HEAD</option>
+          <option value="index">Unstaged: working tree vs index</option>
+          <option value="staged">Staged: index vs HEAD</option>
+        </select>
+        <button type="button" class="copy-btn" disabled={frozen || Boolean(blocked)} onclick={() => files.openFile(activeTab!.path, { keep: true })}>Open working file</button>
       {/if}
       {#if editing}
         <!-- Read-only tools hide while editing. -->
@@ -1079,7 +1090,7 @@
           symbols={editorSymbols}
         />
       </div>
-    {:else if fileStatus(files.selected) === 'D'}
+    {:else if fileStatus(files.selected) === 'D' && !activeTab?.gitBasis}
       <div class="state center">This file was deleted since the last commit.</div>
     {:else if files.loadingFile}
       <div class="state center"><LoadingSpinner size={16} label="Loading file…" /></div>
@@ -1095,8 +1106,8 @@
       <div class="state center">This file is too large to show ({formatSize(files.content.size)}).</div>
     {:else if files.content?.binary}
       <div class="state center">This is a binary file, so it can't be shown.</div>
-    {:else if files.content && !text}
-      <div class="state center">This file is empty.</div>
+    {:else if files.content && !text && !showDiff}
+      <div class="state center">{activeTab?.gitDeleted ? 'This file does not exist in this version.' : 'This file is empty.'}</div>
     {:else if files.content}
       <div class="code-area">
       {#if find.findActive}
