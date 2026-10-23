@@ -141,4 +141,8 @@ func TestDiscover(t *testing.T) {
 	if subCmd.Argv[2] != "parent-uuid" {
 		t.Fatalf("expected subagent to resume parent UUID, got: %s", subCmd.Argv[2])
 	}
+
+	if got := p.NewSessionCommand("/home/dev/work"); len(got.Argv) != 1 || got.Argv[0] != "claude" || got.Dir != "/home/dev/work" {
+		t.Fatalf("NewSessionCommand = %+v, want claude in /home/dev/work", got)
+	}
 }

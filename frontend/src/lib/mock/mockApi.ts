@@ -54,6 +54,7 @@ import type {
   TerminalOpenMode,
   TerminalSize,
   TerminalTab,
+  AgentID,
 } from '../types.js';
 import { mockSessions, mockMessages, mockBlobs, mockDiagnostics } from './fixtures.js';
 import { refKey } from '../manage.js';
@@ -465,6 +466,15 @@ export class MockBackendAPI extends MockCodeDiagnostics {
     return `cd '${meta.cwd}' && claude --resume '${ref.id}'`;
   }
 
+  // Mirrors the backend: a new session starts only in a directory the
+  // catalog knows, with an agent it has a provider for.
+  private newSessionCommand(agent: AgentID, dir: string): string {
+    const argv0 = ({ 'claude-code': 'claude', codex: 'codex', opencode: 'opencode' } as Record<string, string>)[agent];
+    if (!argv0) throw new Error(`unknown provider: ${agent}`);
+    if (!dir || !this.sessions.some((s) => s.cwd === dir)) throw new Error(`unknown directory: ${dir}`);
+    return `cd '${dir}' && ${argv0}`;
+  }
+
   async launchInfo(): Promise<LaunchInfo> {
     return { ...this.launch };
   }
@@ -571,6 +581,10 @@ export class MockBackendAPI extends MockCodeDiagnostics {
     await this.openTerminal(() => this.copyResumeCommand(ref));
   }
 
+  async openNewSessionInTerminal(agent: AgentID, dir: string): Promise<void> {
+    await this.openTerminal(async () => this.newSessionCommand(agent, dir));
+  }
+
   async openHandoffInTerminal(req: HandoffRequest): Promise<void> {
     await this.openTerminal(() => this.handoffCommand(req));
   }
@@ -585,12 +599,20 @@ export class MockBackendAPI extends MockCodeDiagnostics {
 
   // Mirrors the backend: agents start on the host the session belongs to,
   // SSH included; a shell needs no connection to the host's server.
-  private startPanel(kind: TerminalTab['kind'], size: TerminalSize, banner: string, needsServer: boolean, dir = ''): TerminalTab {
+  private startPanel(kind: TerminalTab['kind'], size: TerminalSize, banner: string, needsServer: boolean, dir = '', named: Pick<TerminalTab, 'label' | 'agent'> | null = null): TerminalTab {
     if (!this.launch.panel) throw new Error('the built-in terminal is not available');
     const host = this.connState.phase === 'local' ? '' : (this.connState.host ?? '');
     if (host && wslDistro(host) && !this.launch.wsl) throw new Error('WSL is not installed');
     if (host && needsServer && this.connState.phase !== 'connected') throw new Error('remote disconnected');
-    const tab: TerminalTab = { id: `t${this.nextTerminal++}`, label: kind === 'agent' ? 'Agent' : 'Shell', host, kind, ...(dir && { dir }) };
+    const tab: TerminalTab = {
+      id: `t${this.nextTerminal++}`,
+      label: kind === 'agent' ? 'Agent' : 'Shell',
+      host,
+      kind,
+      ...(dir && { dir }),
+      ...named,
+      startedAt: Date.now(),
+    };
     this.panelTerminals.set(tab.id, { tab, line: '', size: { ...size }, unacked: 0 });
     // Output can arrive before the start reply, as it can from the backend.
     this.terminalOutput(tab.id, `\x1b[2m${banner}\x1b[0m\r\n${this.prompt(tab)}`);
@@ -609,6 +631,12 @@ export class MockBackendAPI extends MockCodeDiagnostics {
 
   async panelResume(ref: SessionRef, size: TerminalSize): Promise<TerminalTab> {
     return this.startPanel('agent', size, `[mock] ${await this.copyResumeCommand(ref)}`, true);
+  }
+
+  async panelNewSession(agent: AgentID, dir: string, size: TerminalSize): Promise<TerminalTab> {
+    const label = agent === 'claude-code' ? 'Claude Code' : agent === 'codex' ? 'Codex' : agent === 'opencode' ? 'OpenCode' : 'Agent';
+    const banner = `[mock] ${this.newSessionCommand(agent, dir)}`;
+    return this.startPanel('agent', size, banner, true, dir, { label, agent });
   }
 
   async panelHandoff(req: HandoffRequest, size: TerminalSize): Promise<TerminalTab> {
@@ -1469,6 +1497,7 @@ export class MockBackendAPI extends MockCodeDiagnostics {
       blame: true,
       searchFiles: true,
       replaceFiles: true,
+      newSession: true,
       trash: alias !== 'prod-server',
       manage: true,
       export: true,

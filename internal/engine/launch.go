@@ -17,6 +17,12 @@ func (e *Engine) ResumeLaunch(_ context.Context, ref model.SessionRef) (provider
 	return e.svc.ResumeLaunch(ref)
 }
 
+// NewSessionLaunch returns the command that starts a fresh session of agent
+// in dir.
+func (e *Engine) NewSessionLaunch(_ context.Context, agent model.AgentID, dir string) (provider.Command, error) {
+	return e.svc.NewSessionLaunch(agent, dir)
+}
+
 // HandoffLaunch writes the handoff files and returns the target agent's command.
 func (e *Engine) HandoffLaunch(ctx context.Context, req HandoffRequest) (provider.Command, error) {
 	return e.svc.HandoffLaunch(ctx, req)

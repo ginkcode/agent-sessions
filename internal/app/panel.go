@@ -88,17 +88,44 @@ type PanelShellRequest struct {
 // PanelResume starts a tab in the built-in terminal panel that resumes a
 // session, on the host the session belongs to.
 func (a *App) PanelResume(ref model.SessionRef, size TerminalSize) (term.Tab, error) {
-	return a.startPanelAgent(size, func(l localLauncher) (provider.Command, error) {
+	tab := term.Tab{Label: "Agent", Kind: term.KindAgent, Agent: string(ref.Agent)}
+	return a.startPanelAgent(size, tab, func(l localLauncher) (provider.Command, error) {
 		return l.ResumeLaunch(a.appCtx(), ref)
 	}, func(l remoteLauncher) (string, error) {
 		return l.ResumePanelScript(a.appCtx(), ref)
 	})
 }
 
+// PanelNewSession starts a panel tab with a fresh session of agent in dir,
+// a project of the selected host. The tab is named after the agent and
+// records it with the directory, so the session it writes can be found.
+func (a *App) PanelNewSession(agent model.AgentID, dir string, size TerminalSize) (term.Tab, error) {
+	tab := term.Tab{Label: agentLabel(agent), Kind: term.KindAgent, Agent: string(agent), Dir: dir}
+	return a.startPanelAgent(size, tab, func(l localLauncher) (provider.Command, error) {
+		return l.NewSessionLaunch(a.appCtx(), agent, dir)
+	}, func(l remoteLauncher) (string, error) {
+		return l.NewSessionPanelScript(a.appCtx(), agent, dir)
+	})
+}
+
+// agentLabel names an agent's tab.
+func agentLabel(agent model.AgentID) string {
+	switch agent {
+	case model.AgentClaude:
+		return "Claude Code"
+	case model.AgentCodex:
+		return "Codex"
+	case model.AgentOpenCode:
+		return "OpenCode"
+	}
+	return "Agent"
+}
+
 // PanelHandoff writes the handoff files and starts a panel tab that runs the
 // target agent with them.
 func (a *App) PanelHandoff(req HandoffRequest, size TerminalSize) (term.Tab, error) {
-	return a.startPanelAgent(size, func(l localLauncher) (provider.Command, error) {
+	tab := term.Tab{Label: "Agent", Kind: term.KindAgent, Agent: string(req.Target)}
+	return a.startPanelAgent(size, tab, func(l localLauncher) (provider.Command, error) {
 		return l.HandoffLaunch(a.appCtx(), req)
 	}, func(l remoteLauncher) (string, error) {
 		return l.HandoffPanelScript(a.appCtx(), req)
@@ -107,7 +134,8 @@ func (a *App) PanelHandoff(req HandoffRequest, size TerminalSize) (term.Tab, err
 
 // PanelBundleHandoff does what PanelHandoff does for an opened bundle.
 func (a *App) PanelBundleHandoff(req BundleHandoffRequest, size TerminalSize) (term.Tab, error) {
-	return a.startPanelAgent(size, func(l localLauncher) (provider.Command, error) {
+	tab := term.Tab{Label: "Agent", Kind: term.KindAgent, Agent: string(req.Target)}
+	return a.startPanelAgent(size, tab, func(l localLauncher) (provider.Command, error) {
 		return l.BundleHandoffLaunch(a.appCtx(), req)
 	}, func(l remoteLauncher) (string, error) {
 		return l.BundleHandoffPanelScript(a.appCtx(), req)
@@ -116,15 +144,16 @@ func (a *App) PanelBundleHandoff(req BundleHandoffRequest, size TerminalSize) (t
 
 // startPanelAgent routes like openInTerminal, and SSH hosts work too: their
 // agent runs over ssh in the tab. Each target is checked before anything is
-// built, so a target that cannot start writes no handoff files.
-func (a *App) startPanelAgent(size TerminalSize, build func(localLauncher) (provider.Command, error), script func(remoteLauncher) (string, error)) (term.Tab, error) {
+// built, so a target that cannot start writes no handoff files. tab is the
+// tab to show; its host is filled in here.
+func (a *App) startPanelAgent(size TerminalSize, tab term.Tab, build func(localLauncher) (provider.Command, error), script func(remoteLauncher) (string, error)) (term.Tab, error) {
 	if a.terminals == nil {
 		return term.Tab{}, ErrPanelUnavailable
 	}
 	t := a.launchTarget()
 	sys := a.panelSys()
 	spec := term.Spec{Cols: size.Cols, Rows: size.Rows}
-	tab := term.Tab{Label: "Agent", Host: t.host, Kind: term.KindAgent}
+	tab.Host = t.host
 	if t.host == "" {
 		l, err := t.local()
 		if err != nil {

@@ -609,6 +609,30 @@ func (c *Client) ResumeTerminalScript(ctx context.Context, ref model.SessionRef)
 	return out, err
 }
 
+// errNoNewSession refuses a new session on a server without the NewSession
+// capability, which would not know the method.
+var errNoNewSession = fmt.Errorf("%w: this host's agent-sessions cannot start new sessions; update it", engine.ErrUnsupportedAction)
+
+// NewSessionTerminalScript returns the script a terminal runs to start a
+// fresh session of agent in dir on the server's machine.
+func (c *Client) NewSessionTerminalScript(ctx context.Context, agent model.AgentID, dir string) (string, error) {
+	return c.newSessionScript(ctx, NewSessionParams{Agent: agent, Dir: dir})
+}
+
+// NewSessionPanelScript is NewSessionTerminalScript for a panel tab.
+func (c *Client) NewSessionPanelScript(ctx context.Context, agent model.AgentID, dir string) (string, error) {
+	return c.newSessionScript(ctx, NewSessionParams{Agent: agent, Dir: dir, Panel: true})
+}
+
+func (c *Client) newSessionScript(ctx context.Context, p NewSessionParams) (string, error) {
+	if !c.caps.NewSession {
+		return "", errNoNewSession
+	}
+	var out string
+	err := c.call(ctx, "newSessionTerminalScript", p, &out)
+	return out, err
+}
+
 // HandoffTerminalScript writes the handoff files on the server's machine and
 // returns the script a terminal runs to start the target agent there.
 func (c *Client) HandoffTerminalScript(ctx context.Context, req engine.HandoffRequest) (string, error) {

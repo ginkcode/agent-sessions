@@ -80,6 +80,11 @@ func (p *Provider) WatchPaths() []string {
 }
 
 // ResumeCommand generates the command to resume a session in the terminal.
+// NewSessionCommand starts Claude Code in dir.
+func (p *Provider) NewSessionCommand(dir string) provider.Command {
+	return provider.Command{Argv: []string{"claude"}, Dir: dir}
+}
+
 func (p *Provider) ResumeCommand(m model.SessionMeta) provider.Command {
 	targetID := m.Ref.ID
 	if m.ParentID != "" {

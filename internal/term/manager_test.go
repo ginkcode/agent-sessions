@@ -116,6 +116,9 @@ func TestStartEchoesInput(t *testing.T) {
 	if tab.ID == "" || tab.Label != "sh" || tab.Kind != KindShell || tab.Host != "h" {
 		t.Fatalf("tab = %+v", tab)
 	}
+	if since := time.Since(time.UnixMilli(tab.StartedAt)); since < 0 || since > time.Minute {
+		t.Fatalf("StartedAt = %d, %s ago", tab.StartedAt, since)
+	}
 	if !m.Running("h") || m.Running("") {
 		t.Fatal("Running should report the host of the running terminal only")
 	}

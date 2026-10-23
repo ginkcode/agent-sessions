@@ -42,6 +42,9 @@ func TestProviderBasics(t *testing.T) {
 			t.Errorf("ResumeCommand.Argv[%d] = %q, want %q", i, cmd.Argv[i], wantArgv[i])
 		}
 	}
+	if got := p.NewSessionCommand("/home/user/project"); len(got.Argv) != 1 || got.Argv[0] != "codex" || got.Dir != "/home/user/project" {
+		t.Errorf("NewSessionCommand = %+v, want codex in /home/user/project", got)
+	}
 
 	// Missing roots have no rollouts. Load/Blob return descriptive not-found errors.
 	ctx := context.Background()

@@ -40,6 +40,7 @@ var ErrTerminalRemote = errors.New("open in terminal works for local and WSL ses
 // localLauncher builds agent commands from the local engine.
 type localLauncher interface {
 	ResumeLaunch(context.Context, model.SessionRef) (provider.Command, error)
+	NewSessionLaunch(context.Context, model.AgentID, string) (provider.Command, error)
 	HandoffLaunch(context.Context, engine.HandoffRequest) (provider.Command, error)
 	BundleHandoffLaunch(context.Context, engine.BundleHandoffRequest) (provider.Command, error)
 }
@@ -48,9 +49,11 @@ type localLauncher interface {
 // panel tab runs, with the agent found on that host.
 type remoteLauncher interface {
 	ResumeTerminalScript(context.Context, model.SessionRef) (string, error)
+	NewSessionTerminalScript(context.Context, model.AgentID, string) (string, error)
 	HandoffTerminalScript(context.Context, engine.HandoffRequest) (string, error)
 	BundleHandoffTerminalScript(context.Context, engine.BundleHandoffRequest) (string, error)
 	ResumePanelScript(context.Context, model.SessionRef) (string, error)
+	NewSessionPanelScript(context.Context, model.AgentID, string) (string, error)
 	HandoffPanelScript(context.Context, engine.HandoffRequest) (string, error)
 	BundleHandoffPanelScript(context.Context, engine.BundleHandoffRequest) (string, error)
 }
@@ -87,6 +90,16 @@ func (a *App) OpenResumeInTerminal(ref model.SessionRef) error {
 		return l.ResumeLaunch(a.appCtx(), ref)
 	}, func(l remoteLauncher) (string, error) {
 		return l.ResumeTerminalScript(a.appCtx(), ref)
+	})
+}
+
+// OpenNewSessionInTerminal opens a terminal that starts a fresh session of
+// agent in dir, a project of the selected host.
+func (a *App) OpenNewSessionInTerminal(agent model.AgentID, dir string) error {
+	return a.openInTerminal(func(l localLauncher) (provider.Command, error) {
+		return l.NewSessionLaunch(a.appCtx(), agent, dir)
+	}, func(l remoteLauncher) (string, error) {
+		return l.NewSessionTerminalScript(a.appCtx(), agent, dir)
 	})
 }
 

@@ -431,6 +431,10 @@ export interface TerminalTab {
    * home directory, or unknown for an agent on a WSL or SSH host.
    */
   dir?: string;
+  /** The agent an agent tab runs, where known. */
+  agent?: AgentID;
+  /** When it started, in Unix milliseconds on this computer. */
+  startedAt?: number;
 }
 
 export interface TerminalDataEvent {
@@ -755,6 +759,8 @@ export interface HostCapabilities {
   searchFiles?: boolean;
   /** Absent on older servers; replacing in files requires an explicit true. */
   replaceFiles?: boolean;
+  /** Absent on older servers; starting new sessions requires an explicit true. */
+  newSession?: boolean;
   trash: boolean;
   manage: boolean;
   export: boolean;

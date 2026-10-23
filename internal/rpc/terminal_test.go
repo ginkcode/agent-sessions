@@ -29,6 +29,11 @@ func (b *launcherBackend) ResumeLaunch(_ context.Context, ref model.SessionRef) 
 	return b.cmd, b.err
 }
 
+func (b *launcherBackend) NewSessionLaunch(_ context.Context, agent model.AgentID, dir string) (provider.Command, error) {
+	b.calls = append(b.calls, "new:"+string(agent)+":"+dir)
+	return b.cmd, b.err
+}
+
 func (b *launcherBackend) HandoffLaunch(_ context.Context, req engine.HandoffRequest) (provider.Command, error) {
 	b.calls = append(b.calls, "handoff:"+string(req.Target))
 	return b.cmd, b.err
@@ -72,6 +77,9 @@ func TestTerminalScriptMethods(t *testing.T) {
 		"bundle": func() (string, error) {
 			return client.BundleHandoffTerminalScript(ctx, engine.BundleHandoffRequest{BundleID: "b-1", Target: model.AgentClaude})
 		},
+		"new": func() (string, error) {
+			return client.NewSessionTerminalScript(ctx, model.AgentOpenCode, dir)
+		},
 	} {
 		got, err := call()
 		if err != nil {
@@ -81,7 +89,7 @@ func TestTerminalScriptMethods(t *testing.T) {
 		}
 	}
 	slices.Sort(backend.calls)
-	if !slices.Equal(backend.calls, []string{"bundle:b-1", "handoff:" + string(model.AgentCodex), "resume:s-1"}) {
+	if !slices.Equal(backend.calls, []string{"bundle:b-1", "handoff:" + string(model.AgentCodex), "new:opencode:" + dir, "resume:s-1"}) {
 		t.Errorf("backend calls = %q", backend.calls)
 	}
 
@@ -102,6 +110,9 @@ func TestTerminalScriptMethods(t *testing.T) {
 		},
 		"bundle": func() (string, error) {
 			return client.BundleHandoffPanelScript(ctx, engine.BundleHandoffRequest{BundleID: "b-1", Target: model.AgentClaude})
+		},
+		"new": func() (string, error) {
+			return client.NewSessionPanelScript(ctx, model.AgentOpenCode, dir)
 		},
 	} {
 		got, err := call()
@@ -137,5 +148,30 @@ func TestTerminalScriptMethodsNeedLauncher(t *testing.T) {
 	var rerr *ResponseError
 	if !errors.As(err, &rerr) || rerr.Code != CodeMethodNotFound {
 		t.Errorf("backend without launcher: %v", err)
+	}
+}
+
+func TestNewSessionScriptNeedsCapability(t *testing.T) {
+	backend := &launcherBackend{mockBackend: &mockBackend{}}
+	_, client, cleanup := setupPipePair(backend)
+	defer cleanup()
+	ctx := context.Background()
+	res, err := client.Initialize(ctx, InitializeRequest{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !res.Capabilities.NewSession {
+		t.Fatalf("capabilities = %+v", res.Capabilities)
+	}
+
+	// An older server does not advertise it; the client asks nothing of it.
+	client.caps.NewSession = false
+	for _, call := range []func(context.Context, model.AgentID, string) (string, error){client.NewSessionTerminalScript, client.NewSessionPanelScript} {
+		if _, err := call(ctx, model.AgentClaude, "/p"); !errors.Is(err, engine.ErrUnsupportedAction) || !strings.Contains(err.Error(), "update it") {
+			t.Errorf("err = %v, want ErrUnsupportedAction", err)
+		}
+	}
+	if len(backend.calls) != 0 {
+		t.Errorf("backend calls = %q", backend.calls)
 	}
 }

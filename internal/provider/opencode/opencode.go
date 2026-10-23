@@ -78,6 +78,11 @@ func (p *Provider) dbPath() string {
 
 // ResumeCommand returns the OpenCode CLI invocation that continues m. The
 // app quotes argv and cwd for a shell; the provider never builds shell text.
+// NewSessionCommand starts OpenCode in dir, which it takes as the project.
+func (p *Provider) NewSessionCommand(dir string) provider.Command {
+	return provider.Command{Argv: []string{"opencode"}, Dir: dir}
+}
+
 func (p *Provider) ResumeCommand(m model.SessionMeta) provider.Command {
 	return provider.Command{
 		Argv: []string{"opencode", "--session", m.Ref.ID},

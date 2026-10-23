@@ -259,6 +259,25 @@ func (s *Service) ResumeLaunch(ref model.SessionRef) (provider.Command, error) {
 	return cmd, nil
 }
 
+// NewSessionLaunch returns the command that starts a fresh session of agent
+// in dir. Sessions start only in directories the catalog knows that still
+// exist, so a typo or a stale project never starts an agent elsewhere.
+func (s *Service) NewSessionLaunch(agent model.AgentID, dir string) (provider.Command, error) {
+	prov, ok := s.providers.Get(agent)
+	if !ok {
+		return provider.Command{}, fmt.Errorf("%w: %s", ErrUnknownProvider, agent)
+	}
+	if !s.knownDirectory(dir) {
+		return provider.Command{}, fmt.Errorf("%w: %s", ErrUnknownDirectory, dir)
+	}
+	if info, err := os.Stat(dir); err != nil || !info.IsDir() {
+		return provider.Command{}, fmt.Errorf("the project directory %s no longer exists", dir)
+	}
+	cmd := prov.NewSessionCommand(dir)
+	cmd.Dir = dir
+	return cmd, nil
+}
+
 // RevealSource exposes the session's source path directory.
 func (s *Service) RevealSource(ref model.SessionRef) (string, error) {
 	m, ok := s.catalog.Get(ref)

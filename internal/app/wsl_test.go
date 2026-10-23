@@ -41,6 +41,16 @@ func (s *wslStub) ResumePanelScript(_ context.Context, ref model.SessionRef) (st
 	return "panel script resume " + ref.ID, s.err
 }
 
+func (s *wslStub) NewSessionTerminalScript(_ context.Context, agent model.AgentID, dir string) (string, error) {
+	s.calls = append(s.calls, "new:"+string(agent)+":"+dir)
+	return "script new " + string(agent), s.err
+}
+
+func (s *wslStub) NewSessionPanelScript(_ context.Context, agent model.AgentID, dir string) (string, error) {
+	s.calls = append(s.calls, "panel new:"+string(agent)+":"+dir)
+	return "panel script new " + string(agent), s.err
+}
+
 func (s *wslStub) HandoffPanelScript(_ context.Context, req engine.HandoffRequest) (string, error) {
 	s.calls = append(s.calls, "panel handoff:"+req.Ref.ID)
 	return "panel script handoff " + string(req.Target), s.err

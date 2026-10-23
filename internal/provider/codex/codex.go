@@ -132,6 +132,11 @@ func (p *Provider) WatchPaths() []string {
 
 // ResumeCommand generates the command to resume a Codex session in a terminal.
 // `codex resume` (verified on CLI 0.156.1) accepts the session UUID.
+// NewSessionCommand starts Codex in dir.
+func (p *Provider) NewSessionCommand(dir string) provider.Command {
+	return provider.Command{Argv: []string{"codex"}, Dir: dir}
+}
+
 func (p *Provider) ResumeCommand(m model.SessionMeta) provider.Command {
 	return provider.Command{
 		Argv: []string{"codex", "resume", m.Ref.ID},

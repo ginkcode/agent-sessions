@@ -55,6 +55,8 @@ type Provider interface {
 	Blob(ctx context.Context, ref model.SessionRef, key string) ([]byte, error)
 	WatchPaths() []string
 	ResumeCommand(m model.SessionMeta) Command
+	// NewSessionCommand starts a fresh session in dir.
+	NewSessionCommand(dir string) Command
 }
 
 // LiveDetector is an optional interface for providers supporting live session detection.

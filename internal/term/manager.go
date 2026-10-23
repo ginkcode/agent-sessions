@@ -86,9 +86,14 @@ type Tab struct {
 	Host string `json:"host"`
 	Kind Kind   `json:"kind"`
 	// Dir is the directory it starts in, where known: always on this
-	// computer, and for a shell elsewhere. Empty means the home directory
-	// or, for an agent elsewhere, unknown here.
+	// computer, and for a shell or a new session elsewhere. Empty means the
+	// home directory or, for a resumed agent elsewhere, unknown here.
 	Dir string `json:"dir,omitempty"`
+	// Agent is the agent a KindAgent tab runs, where known.
+	Agent string `json:"agent,omitempty"`
+	// StartedAt is when the process started, in Unix milliseconds on this
+	// computer.
+	StartedAt int64 `json:"startedAt,omitempty"`
 }
 
 // DataPayload is the payload of DataEvent.
@@ -154,6 +159,7 @@ func (m *Manager) Start(spec Spec, info Tab) (Tab, error) {
 	cmd.Args[0] = spec.Argv[0]
 	cmd.Dir = spec.Dir
 	cmd.Env = terminalEnv(spec.Env)
+	info.StartedAt = time.Now().UnixMilli()
 	if err := cmd.Start(); err != nil {
 		_ = p.Close()
 		return Tab{}, fmt.Errorf("could not start %s: %w", spec.Argv[0], err)

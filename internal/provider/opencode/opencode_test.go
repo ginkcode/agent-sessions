@@ -73,6 +73,9 @@ func TestResumeCommand(t *testing.T) {
 	if cmd.Dir != meta.CWD {
 		t.Errorf("Dir = %q, want %q", cmd.Dir, meta.CWD)
 	}
+	if got := p.NewSessionCommand(meta.CWD); len(got.Argv) != 1 || got.Argv[0] != "opencode" || got.Dir != meta.CWD {
+		t.Errorf("NewSessionCommand = %+v, want opencode in %s", got, meta.CWD)
+	}
 }
 
 func TestWatchPaths(t *testing.T) {

@@ -147,6 +147,10 @@ func (f *Fake) ResumeCommand(m model.SessionMeta) provider.Command {
 	}
 }
 
+func (f *Fake) NewSessionCommand(dir string) provider.Command {
+	return provider.Command{Argv: []string{"fake"}, Dir: dir}
+}
+
 func (f *Fake) Live(ctx context.Context) (map[string]provider.LiveInfo, error) {
 	if f.LiveDelay > 0 {
 		select {

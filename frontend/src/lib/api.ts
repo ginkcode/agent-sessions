@@ -54,6 +54,7 @@ import type {
   TerminalTab,
   TerminalDataEvent,
   TerminalExitEvent,
+  AgentID,
 } from './types';
 import { MockBackendAPI } from './mock/mockApi';
 import { epoch, guardEpoch } from './link';
@@ -91,10 +92,14 @@ export interface BackendAPI extends CodeDiagnosticsAPI {
    */
   focusNextWindow?(forward: boolean): Promise<void>;
   openResumeInTerminal(ref: SessionRef): Promise<void>;
+  /** A fresh session of agent in dir, a project of the selected host. */
+  openNewSessionInTerminal(agent: AgentID, dir: string): Promise<void>;
   openHandoffInTerminal(req: HandoffRequest): Promise<void>;
   openBundleHandoffInTerminal(req: BundleHandoffRequest): Promise<void>;
   /** Starts a tab in the built-in terminal panel; size is its first size. */
   panelResume(ref: SessionRef, size: TerminalSize): Promise<TerminalTab>;
+  /** A fresh session of agent in dir; the tab records both. */
+  panelNewSession(agent: AgentID, dir: string, size: TerminalSize): Promise<TerminalTab>;
   panelHandoff(req: HandoffRequest, size: TerminalSize): Promise<TerminalTab>;
   panelBundleHandoff(req: BundleHandoffRequest, size: TerminalSize): Promise<TerminalTab>;
   /** A plain shell on the selected host, in cwd when it exists there. */
@@ -236,9 +241,11 @@ interface WailsAppBinding {
   NewWindow(): Promise<void>;
   FocusNextWindow?(forward: boolean): Promise<void>;
   OpenResumeInTerminal(ref: SessionRef): Promise<void>;
+  OpenNewSessionInTerminal(agent: AgentID, dir: string): Promise<void>;
   OpenHandoffInTerminal(req: HandoffRequest): Promise<void>;
   OpenBundleHandoffInTerminal(req: BundleHandoffRequest): Promise<void>;
   PanelResume(ref: SessionRef, size: TerminalSize): Promise<TerminalTab>;
+  PanelNewSession(agent: AgentID, dir: string, size: TerminalSize): Promise<TerminalTab>;
   PanelHandoff(req: HandoffRequest, size: TerminalSize): Promise<TerminalTab>;
   PanelBundleHandoff(req: BundleHandoffRequest, size: TerminalSize): Promise<TerminalTab>;
   PanelShell(req: { cwd: string }, size: TerminalSize): Promise<TerminalTab>;
@@ -561,6 +568,14 @@ class WailsBackendAPI implements BackendAPI {
     }
   }
 
+  async openNewSessionInTerminal(agent: AgentID, dir: string): Promise<void> {
+    try {
+      return await this.binding.OpenNewSessionInTerminal(agent, dir);
+    } catch (e) {
+      throw normalizeError(e);
+    }
+  }
+
   async openHandoffInTerminal(req: HandoffRequest): Promise<void> {
     try {
       return await this.binding.OpenHandoffInTerminal(req);
@@ -580,6 +595,14 @@ class WailsBackendAPI implements BackendAPI {
   async panelResume(ref: SessionRef, size: TerminalSize): Promise<TerminalTab> {
     try {
       return await this.binding.PanelResume(ref, size);
+    } catch (e) {
+      throw normalizeError(e);
+    }
+  }
+
+  async panelNewSession(agent: AgentID, dir: string, size: TerminalSize): Promise<TerminalTab> {
+    try {
+      return await this.binding.PanelNewSession(agent, dir, size);
     } catch (e) {
       throw normalizeError(e);
     }

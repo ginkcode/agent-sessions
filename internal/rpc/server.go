@@ -306,6 +306,7 @@ func (s *Server) initialize(serveCtx context.Context, req Request, starter Start
 		Search:      true,
 		Blame:       true,
 		SearchFiles: true,
+		NewSession:  true,
 		// SaveFile and ReplaceFiles stay off without a starter, which is a
 		// test setup.
 	}
@@ -705,6 +706,15 @@ func (s *Server) dispatch(ctx context.Context, req Request) (any, error) {
 			return l.ResumeLaunch(ctx, p.Ref)
 		})
 
+	case "newSessionTerminalScript":
+		var p NewSessionParams
+		if err := json.Unmarshal(req.Params, &p); err != nil {
+			return nil, &ResponseError{Code: CodeInvalidParams, Message: err.Error()}
+		}
+		return terminalScript(backend, req.Method, p.Panel, func(l terminalLauncher) (provider.Command, error) {
+			return l.NewSessionLaunch(ctx, p.Agent, p.Dir)
+		})
+
 	case "handoffTerminalScript":
 		var p HandoffCommandParams
 		if err := json.Unmarshal(req.Params, &p); err != nil {
@@ -735,6 +745,7 @@ func (s *Server) dispatch(ctx context.Context, req Request) (any, error) {
 // one; a backend that is not cannot open terminals.
 type terminalLauncher interface {
 	ResumeLaunch(context.Context, model.SessionRef) (provider.Command, error)
+	NewSessionLaunch(context.Context, model.AgentID, string) (provider.Command, error)
 	HandoffLaunch(context.Context, engine.HandoffRequest) (provider.Command, error)
 	BundleHandoffLaunch(context.Context, engine.BundleHandoffRequest) (provider.Command, error)
 }

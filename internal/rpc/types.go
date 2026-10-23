@@ -68,8 +68,11 @@ type Capabilities struct {
 	SearchFiles bool `json:"searchFiles,omitempty"`
 	// ReplaceFiles supports replacing search matches in files. Only servers
 	// that can save advertise it.
-	ReplaceFiles    bool `json:"replaceFiles,omitempty"`
-	AddFile        bool `json:"addFile,omitempty"`
+	ReplaceFiles bool `json:"replaceFiles,omitempty"`
+	// NewSession supports newSessionTerminalScript: starting a fresh agent
+	// session in a project.
+	NewSession      bool `json:"newSession,omitempty"`
+	AddFile         bool `json:"addFile,omitempty"`
 	CreateDirectory bool `json:"createDirectory,omitempty"`
 	CreateFile      bool `json:"createFile,omitempty"`
 	RenameFile      bool `json:"renameFile,omitempty"`
@@ -143,6 +146,14 @@ type CopyResumeCommandParams struct {
 	// Panel asks a terminal script method for the app's terminal panel,
 	// whose script ends with the agent. Older servers ignore it.
 	Panel bool `json:"panel,omitempty"`
+}
+
+// NewSessionParams asks for the script that starts a fresh session of Agent
+// in Dir, a directory the server's catalog knows.
+type NewSessionParams struct {
+	Agent model.AgentID `json:"agent"`
+	Dir   string        `json:"dir"`
+	Panel bool          `json:"panel,omitempty"` // as in CopyResumeCommandParams
 }
 
 type RevealSourceParams struct {
