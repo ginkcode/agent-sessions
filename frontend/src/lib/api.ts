@@ -20,6 +20,8 @@ import type {
   RepoStatus,
   GitDiscardRequest,
   GitCommitRequest,
+  GitBranchList,
+  GitSwitchRequest,
   SearchQuery,
   SearchResult,
   FileSaveRequest,
@@ -143,6 +145,9 @@ export interface BackendAPI extends CodeDiagnosticsAPI {
    * host. Rejects when the backend has no blame support.
    */
   gitStatus(dir: string): Promise<RepoStatus>;
+  gitBranches(dir: string): Promise<GitBranchList>;
+  /** Caller blocks live drafts, then reloads clean tabs/tree/status/diagnostics on success. */
+  gitSwitch(dir: string, req: GitSwitchRequest, host: string | undefined): Promise<void>;
   gitStage(dir: string, paths: string[], host: string | undefined): Promise<void>;
   gitUnstage(dir: string, paths: string[], host: string | undefined): Promise<void>;
   gitDiscard(dir: string, req: GitDiscardRequest, host: string | undefined): Promise<void>;
@@ -289,6 +294,8 @@ interface WailsAppBinding {
   ProbeFiles?(dir: string, paths: string[], host: string): Promise<FileProbeResult>;
   ReadFile(dir: string, path: string): Promise<FileContent>;
   GitStatus?(dir: string): Promise<RepoStatus>;
+  GitBranches?(dir: string): Promise<GitBranchList>;
+  GitSwitch?(dir: string, req: GitSwitchRequest, host: string): Promise<void>;
   GitStage?(dir: string, paths: string[], host: string): Promise<void>;
   GitUnstage?(dir: string, paths: string[], host: string): Promise<void>;
   GitDiscard?(dir: string, req: GitDiscardRequest, host: string): Promise<void>;
@@ -819,6 +826,17 @@ class WailsBackendAPI implements BackendAPI {
   async gitCommit(dir: string, req: GitCommitRequest, host: string | undefined): Promise<void> {
     if (!this.binding.GitCommit) throw new Error(GIT_WRITE_UNSUPPORTED);
     try { await this.binding.GitCommit(dir, req, host ?? ''); }
+    catch (e) { throw normalizeError(e); }
+  }
+
+  async gitBranches(dir: string): Promise<GitBranchList> {
+    if (!this.binding.GitBranches) throw new Error(GIT_CHANGES_UNSUPPORTED);
+    try { return await this.binding.GitBranches(dir); }
+    catch (e) { throw normalizeError(e); }
+  }
+  async gitSwitch(dir: string, req: GitSwitchRequest, host: string | undefined): Promise<void> {
+    if (!this.binding.GitSwitch) throw new Error(GIT_WRITE_UNSUPPORTED);
+    try { await this.binding.GitSwitch(dir, req, host ?? ''); }
     catch (e) { throw normalizeError(e); }
   }
 

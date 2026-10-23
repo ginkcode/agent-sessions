@@ -876,3 +876,23 @@ export interface GitCommitRequest {
   amend: boolean;
   stageAll: boolean;
 }
+
+export interface GitBranch {
+  name: string;
+  remote: boolean;
+  current: boolean;
+  upstream?: string;
+  commitTime: number;
+}
+export interface GitBranchList {
+  branches: GitBranch[];
+  truncated: boolean;
+}
+export interface GitSwitchRequest {
+  name: string;
+  create: boolean;
+  /** Explicitly select refs/remotes/name and create its local tracking branch. */
+  remote?: boolean;
+  /** Any live draft blocks branch switching/creation. */
+  draftPaths?: string[];
+}

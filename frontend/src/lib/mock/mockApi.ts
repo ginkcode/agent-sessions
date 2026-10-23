@@ -50,6 +50,8 @@ import type {
   RepoStatus,
   GitDiscardRequest,
   GitCommitRequest,
+  GitBranchList,
+  GitSwitchRequest,
   SearchQuery,
   SearchResult,
   HostEntry,
@@ -1123,11 +1125,41 @@ export class MockBackendAPI extends MockCodeDiagnostics {
     });
   }
 
+  private mockBranchLists = new Map<string, GitBranchList>();
+  async gitBranches(dir: string): Promise<GitBranchList> {
+    const key = JSON.stringify([this.connState.host ?? '', dir]);
+    const list = this.mockBranchLists.get(key) ?? { branches: [
+      { name: 'main', remote: false, current: true, upstream: 'origin/main', commitTime: 1700000000 },
+      { name: 'feature/mock', remote: false, current: false, commitTime: 1699999000 },
+      { name: 'origin/remote-only', remote: true, current: false, commitTime: 1699998000 },
+    ], truncated: false };
+    return { ...list, branches: list.branches.map(b => ({ ...b })) };
+  }
+  async gitSwitch(dir: string, req: GitSwitchRequest, host: string | undefined): Promise<void> {
+    if ((host ?? '') !== (this.connState.host ?? '')) throw new Error('The connection changed to another host.');
+    if (req.draftPaths?.length) throw new Error('Cannot switch branches: save or discard unsaved drafts first.');
+    if (!req.name || req.name.startsWith('-') || req.name.includes('..') || /[~^:?*[\\\s]/.test(req.name) || (req.create && req.remote)) throw new Error('Invalid branch name.');
+    const list = await this.gitBranches(dir);
+    const found = list.branches.find(b => b.name === req.name && b.remote === !!req.remote);
+    let name = req.name;
+    if (req.remote) name = req.name.slice(req.name.indexOf('/') + 1);
+    if (req.create && found) throw new Error('Branch already exists.');
+    if (!req.create && !found) throw new Error('Branch does not exist.');
+    if (req.remote && list.branches.some(b => !b.remote && b.name === name)) throw new Error('Local branch already exists.');
+    for (const b of list.branches) b.current = false;
+    if (req.create || req.remote) list.branches.push({ name, current: true, remote: false,
+      upstream: req.remote ? req.name : undefined, commitTime: 1700000000 });
+    else list.branches.find(b => !b.remote && b.name === name)!.current = true;
+    list.branches = list.branches.filter(b => !b.remote || b.name !== req.name);
+    this.mockBranchLists.set(JSON.stringify([this.connState.host ?? '', dir]), list);
+  }
+
   async gitStatus(dir: string): Promise<RepoStatus> {
     const listing = await this.listFiles(dir);
     const changed = this.mockGitEntries.get(JSON.stringify([this.connState.host ?? '', dir]));
+    const currentBranch = (await this.gitBranches(dir)).branches.find(b => b.current);
     return {
-      ok: true, branch: 'main', head: 'abc1234', detached: false, hasCommits: true,
+      ok: true, branch: currentBranch?.name ?? 'main', head: 'abc1234', detached: false, hasCommits: true,
       upstream: 'origin/main', ahead: 0, behind: 0, truncated: false,
       entries: changed?.map(e => ({ ...e })) ?? Object.entries(listing.status ?? {}).map(([path, state]) => ({
         path, index: state === 'A' || state === 'R' ? state : '',

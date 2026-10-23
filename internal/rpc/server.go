@@ -477,6 +477,8 @@ func (s *Server) dispatch(ctx context.Context, req Request) (any, error) {
 		}
 		return backend.ReadFile(ctx, p.Dir, p.Path)
 
+	case "gitBranches", "gitSwitch":
+		return s.dispatchGitBranches(ctx, req, backend)
 	case "gitStage", "gitUnstage", "gitDiscard", "gitCommit":
 		return s.dispatchGitWrite(ctx, req, backend)
 	case "gitStatus":
