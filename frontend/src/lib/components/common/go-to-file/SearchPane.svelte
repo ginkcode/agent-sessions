@@ -265,7 +265,17 @@
       </div>
     {/if}
 
-    <div id="search-results" class="results" role="region" aria-label="Search results" bind:this={resultsEl}>
+    <div id="search-results" class="results" role="region" aria-label="Search results" tabindex={references ? 0 : undefined}
+      onkeydown={(e) => {
+        if (!references || e.target !== e.currentTarget) return;
+        if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+          e.preventDefault();
+          reveal(contentSearch.move(e.key === 'ArrowDown' ? 1 : -1));
+        } else if (e.key === 'Enter') {
+          e.preventDefault();
+          open(active ?? contentSearch.order[0] ?? null, true);
+        }
+      }} bind:this={resultsEl}>
       {#if result && !contentSearch.idle && (references || !contentSearch.error)}
         {#each result.files as file (file.path)}
           {@const parts = splitPath(file.path)}
