@@ -77,7 +77,22 @@ type SessionMeta struct {
 	Live             bool          `json:"live,omitempty"`
 	LiveStatus       string        `json:"liveStatus,omitempty"`
 	AgentVersion     string        `json:"agentVersion,omitempty"`
+	// Turn is where the agent's last turn stands, read from the session
+	// files: TurnWorking, TurnDone, TurnTool, or "" when unknown.
+	Turn string `json:"turn,omitempty"`
 }
+
+// Turn states of SessionMeta.Turn.
+const (
+	// TurnWorking: the agent is answering a prompt or a tool result.
+	TurnWorking = "working"
+	// TurnDone: the agent finished its turn, or was stopped, and waits for a
+	// prompt.
+	TurnDone = "done"
+	// TurnTool: a tool call has no result yet. A long-running tool and one
+	// waiting for the user's approval look alike on disk.
+	TurnTool = "tool"
+)
 
 // Role identifies who authored a message.
 type Role string

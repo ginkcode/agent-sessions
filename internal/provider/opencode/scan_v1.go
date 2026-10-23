@@ -322,7 +322,7 @@ func (p *Provider) v1Counts(ctx context.Context, db v2Query, metas []model.Sessi
 	if err := closeRows(rows); err != nil {
 		return fmt.Errorf("v1 latest user prompts: %w", err)
 	}
-	return nil
+	return v1Turns(ctx, db, in, args, byID)
 }
 
 func mergeIDLists(lists ...[]string) []string {

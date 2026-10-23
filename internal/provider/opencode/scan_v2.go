@@ -301,7 +301,7 @@ func (p *Provider) v2Counts(ctx context.Context, db v2Query, metas []model.Sessi
 		return fmt.Errorf("v2 latest user prompts: %w", err)
 	}
 
-	return nil
+	return v2Turns(ctx, db, in, args, byID)
 }
 
 func closeRows(rows *sql.Rows) error {

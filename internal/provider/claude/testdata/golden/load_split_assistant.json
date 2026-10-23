@@ -22,7 +22,8 @@
       "reasoning": 0,
       "cacheRead": 0,
       "cacheWrite": 0
-    }
+    },
+    "turn": "working"
   },
   "messages": [
     {

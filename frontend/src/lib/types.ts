@@ -170,9 +170,17 @@ export interface SessionMeta {
   costUsd?: number;
   live?: boolean;
   liveStatus?: string;
+  /**
+   * Where the agent's last turn stands, read from its files: working, done
+   * (waiting for a prompt) or tool (a tool call without a result, as when it
+   * asks for approval).
+   */
+  turn?: SessionTurn;
   archived?: boolean;
   sourcePath?: string;
 }
+
+export type SessionTurn = 'working' | 'done' | 'tool';
 
 export type PartKind =
   | 'text'

@@ -209,10 +209,11 @@ func (r *Refresher) Refresh(ctx context.Context, p provider.Provider) ([]model.S
 	hasChanges := len(result.Changed) > 0 || len(result.Removed) > 0
 	stateAdvanced := hasStateChanged(prev, result.State)
 
-	// If no changes and state has not advanced, nothing to commit or notify.
+	// If no changes and state has not advanced, nothing to commit; only an
+	// agent's status may have changed.
 	if !hasChanges && !stateAdvanced {
 		r.clearError(p.ID())
-		return nil, nil, nil
+		return r.refreshLive(ctx, p, gen), nil, nil
 	}
 
 	// 6. DB.CommitScan first; then Catalog.Apply(result); then emit change event.
@@ -236,16 +237,18 @@ func (r *Refresher) Refresh(ctx context.Context, p provider.Provider) ([]model.S
 	r.recordState(p.ID(), result.State)
 	r.clearError(p.ID())
 
-	// If no changes but scan state advanced, commit state without a UI event.
+	// If no changes but scan state advanced, commit state without a UI event
+	// for it.
 	if !hasChanges {
-		return nil, nil, nil
+		return r.refreshLive(ctx, p, gen), nil, nil
 	}
 
 	// 7. Update in-memory Catalog and overlay live badges if available.
+	var badged []model.SessionRef
 	if r.catalog != nil {
 		if detector, ok := p.(provider.LiveDetector); ok && ctx.Err() == nil {
 			live, liveErr := detector.Live(ctx)
-			r.catalog.ApplyLive(p.ID(), result, live, liveErr, true)
+			badged = r.catalog.ApplyLive(p.ID(), result, live, liveErr, true)
 			if liveErr != nil {
 				r.recordError(p.ID(), fmt.Errorf("live: %w", liveErr))
 			}
@@ -254,11 +257,13 @@ func (r *Refresher) Refresh(ctx context.Context, p provider.Provider) ([]model.S
 		}
 	}
 
-	// 8. Build refs and notify listeners.
-	changedRefs := make([]model.SessionRef, len(result.Changed))
+	// 8. Build refs and notify listeners. Sessions whose badge alone changed
+	// are changed too.
+	changedRefs := make([]model.SessionRef, len(result.Changed), len(result.Changed)+len(badged))
 	for i, m := range result.Changed {
 		changedRefs[i] = m.Ref
 	}
+	changedRefs = append(changedRefs, badged...)
 	removedRefs := make([]model.SessionRef, len(result.Removed))
 	copy(removedRefs, result.Removed)
 
@@ -271,6 +276,35 @@ func (r *Refresher) Refresh(ctx context.Context, p provider.Provider) ([]model.S
 	}
 
 	return changedRefs, removedRefs, nil
+}
+
+// refreshLive re-reads which of a provider's sessions run when no session
+// changed: an agent going busy or idle may only rewrite its status file.
+// Sessions whose badge changed are notified and returned.
+func (r *Refresher) refreshLive(ctx context.Context, p provider.Provider, gen uint64) []model.SessionRef {
+	detector, ok := p.(provider.LiveDetector)
+	if !ok || r.catalog == nil || ctx.Err() != nil {
+		return nil
+	}
+	live, err := detector.Live(ctx)
+	if err != nil {
+		r.recordError(p.ID(), fmt.Errorf("live: %w", err))
+		return nil
+	}
+	if ctx.Err() != nil || r.Generation() != gen {
+		return nil
+	}
+	badged := r.catalog.ApplyLive(p.ID(), provider.ScanResult{}, live, nil, true)
+	if len(badged) == 0 {
+		return nil
+	}
+	r.onChangedMu.RLock()
+	notify := r.onChanged
+	r.onChangedMu.RUnlock()
+	if notify != nil {
+		notify(p.ID(), badged, nil)
+	}
+	return badged
 }
 
 // Bootstrap scans all detected providers concurrently and updates the cache.

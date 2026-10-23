@@ -1000,3 +1000,57 @@ func TestRefresherCanceledScan(t *testing.T) {
 		t.Errorf("expected 1 source state, got %+v", st.Sources)
 	}
 }
+
+// TestRefreshLiveOnlyChange verifies that a session whose files are unchanged
+// but whose agent changed status (busy to idle) is reported changed.
+func TestRefreshLiveOnlyChange(t *testing.T) {
+	p := providertest.NewFake(model.AgentClaude, "Claude")
+	p.DetectionData = provider.Detection{Present: true}
+	p.Sessions = []model.SessionMeta{
+		refresherMeta(model.AgentClaude, "s1", time.Now().UTC()),
+		refresherMeta(model.AgentClaude, "s2", time.Now().UTC()),
+	}
+	p.StateOverride = &provider.ScanState{Sources: map[string]provider.SourceState{"/tmp/a.jsonl": {Size: 1, ModTimeNs: 1, Offset: 1}}}
+	p.LiveMap = map[string]provider.LiveInfo{"s1": {Status: "busy"}}
+	r, _ := newTestRefresher(t, p)
+	var notified [][]model.SessionRef
+	r.SetOnChanged(func(_ model.AgentID, changed, _ []model.SessionRef) {
+		notified = append(notified, changed)
+	})
+	ctx := context.Background()
+	if _, _, err := r.Refresh(ctx, p); err != nil {
+		t.Fatal(err)
+	}
+
+	// Nothing on disk changes: no event while the status holds.
+	p.Sessions = nil
+	if changed, _, err := r.Refresh(ctx, p); err != nil || len(changed) != 0 {
+		t.Fatalf("steady status: changed=%v err=%v", changed, err)
+	}
+
+	// s1 goes idle and s2 starts.
+	p.LiveMap = map[string]provider.LiveInfo{"s1": {Status: "idle"}, "s2": {Status: "busy"}}
+	changed, _, err := r.Refresh(ctx, p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(changed) != 2 || changed[0].ID != "s1" || changed[1].ID != "s2" {
+		t.Fatalf("changed = %+v", changed)
+	}
+	if len(notified) != 2 || len(notified[1]) != 2 {
+		t.Fatalf("notified = %+v", notified)
+	}
+	if m, _ := r.catalog.Get(model.SessionRef{Agent: model.AgentClaude, ID: "s1"}); !m.Live || m.LiveStatus != "idle" {
+		t.Errorf("s1 = live %t %q", m.Live, m.LiveStatus)
+	}
+
+	// The agent of s1 exits; a failed read changes nothing.
+	p.LiveMap = map[string]provider.LiveInfo{"s2": {Status: "busy"}}
+	if changed, _, _ := r.Refresh(ctx, p); len(changed) != 1 || changed[0].ID != "s1" {
+		t.Fatalf("exit: changed = %+v", changed)
+	}
+	p.LiveErr = errors.New("unreadable")
+	if changed, _, _ := r.Refresh(ctx, p); len(changed) != 0 {
+		t.Fatalf("failed live read: changed = %+v", changed)
+	}
+}

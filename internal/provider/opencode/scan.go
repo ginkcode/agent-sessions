@@ -32,9 +32,9 @@ type dbCheckpoint struct {
 }
 
 const (
-	// Version 4 normalizes Windows CWDs and worktrees in their own style;
-	// older checkpoints are rescanned in full (see decodeCheckpoint).
-	dbCheckpointVersion = 4
+	// Version 4 normalizes Windows CWDs and worktrees in their own style; 5
+	// adds Turn. Older checkpoints are rescanned in full (see decodeCheckpoint).
+	dbCheckpointVersion = 5
 	genBoth             = GenV2 + "+" + GenV1
 )
 

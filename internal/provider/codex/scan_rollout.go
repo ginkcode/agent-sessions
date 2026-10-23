@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -35,6 +36,11 @@ type checkpoint struct {
 	MetaCWD         bool              `json:"metaCwd,omitempty"`
 	FirstLineTime   time.Time         `json:"firstLineTime,omitempty"`
 	LinesRead       int               `json:"linesRead,omitempty"`
+	// PendingCalls holds the IDs of tool calls without an output yet.
+	PendingCalls []string `json:"pendingCalls,omitempty"`
+	// TaskEvents is set once the rollout records task_started or
+	// task_complete: they then mark turns, rather than assistant messages.
+	TaskEvents bool `json:"taskEvents,omitempty"`
 	// Canonical records the last emitted metadata (including index fields).
 	// Meta remains the raw rollout aggregate for exact append resume.
 	Canonical *model.SessionMeta `json:"canonical,omitempty"`
@@ -42,9 +48,9 @@ type checkpoint struct {
 	lineNo    int
 }
 
-// checkpointVersion 3 normalizes Windows CWDs in their own style; a full
-// rescan replaces CWDs cached by earlier versions.
-const checkpointVersion = 3
+// checkpointVersion 3 normalizes Windows CWDs in their own style; 4 adds
+// Turn. A full rescan replaces metadata cached by earlier versions.
+const checkpointVersion = 4
 
 // Rollout items known from Codex CLI source that are not conversational messages.
 // These are skipped safely without generating an unknown-type diagnostic.
@@ -200,6 +206,11 @@ func (c *checkpoint) consumeResponseItem(payload gjson.Result, d *provider.Diagn
 		if callID == "" {
 			callID = payload.Get("id").String()
 		}
+		// A web search carries its own result.
+		if callID != "" && pType != "web_search_call" && !slices.Contains(c.PendingCalls, callID) {
+			c.PendingCalls = append(c.PendingCalls, callID)
+		}
+		c.Meta.Turn = c.pendingOr(model.TurnWorking)
 		if callID != "" {
 			if c.CallIDs == nil {
 				c.CallIDs = make(map[string]bool)
@@ -213,6 +224,10 @@ func (c *checkpoint) consumeResponseItem(payload gjson.Result, d *provider.Diagn
 		}
 	case "function_call_output", "custom_tool_call_output", "local_shell_call_output", "web_search_call_output", "reasoning":
 		// Results and reasoning do not count as conversational messages or tool calls.
+		if callID := payload.Get("call_id").String(); callID != "" {
+			c.PendingCalls = slices.DeleteFunc(c.PendingCalls, func(id string) bool { return id == callID })
+		}
+		c.Meta.Turn = c.pendingOr(model.TurnWorking)
 	default:
 		d.Unknown("response_item:" + pType)
 	}
@@ -223,6 +238,9 @@ func (c *checkpoint) handleMessage(role string, content gjson.Result, id string,
 	case "user":
 		prompt, counts := isConversationalUser(content)
 		if counts {
+			// A prompt; any call still pending was abandoned.
+			c.PendingCalls = nil
+			c.Meta.Turn = model.TurnWorking
 			c.Meta.Counts.User++
 			if !c.FirstUserSeen {
 				c.FirstUserSeen = true
@@ -233,6 +251,12 @@ func (c *checkpoint) handleMessage(role string, content gjson.Result, id string,
 			}
 		}
 	case "assistant":
+		// Without task events, an answer with no call pending ends the turn.
+		if c.TaskEvents {
+			c.Meta.Turn = c.pendingOr(model.TurnWorking)
+		} else {
+			c.Meta.Turn = c.pendingOr(model.TurnDone)
+		}
 		if id != "" {
 			if c.AssistantIDs == nil {
 				c.AssistantIDs = make(map[string]bool)
@@ -300,6 +324,18 @@ func isInjectedContext(text string) bool {
 
 func (c *checkpoint) consumeEventMsg(payload gjson.Result, _ *provider.Diagnostics) {
 	pType := payload.Get("type").String()
+	switch pType {
+	case "task_started":
+		c.TaskEvents = true
+		c.Meta.Turn = model.TurnWorking
+	case "task_complete", "turn_complete":
+		c.TaskEvents = true
+		c.PendingCalls = nil
+		c.Meta.Turn = model.TurnDone
+	case "turn_aborted", "error":
+		c.PendingCalls = nil
+		c.Meta.Turn = model.TurnDone
+	}
 	if pType == "token_count" {
 		usage := payload.Get("info.total_token_usage")
 		if !usage.Exists() {
@@ -316,6 +352,14 @@ func (c *checkpoint) consumeEventMsg(payload gjson.Result, _ *provider.Diagnosti
 		}
 	}
 	// user_message and agent_message are duplicate UI events and must not be counted.
+}
+
+// pendingOr is TurnTool while a call waits for its output, else state.
+func (c *checkpoint) pendingOr(state string) string {
+	if len(c.PendingCalls) > 0 {
+		return model.TurnTool
+	}
+	return state
 }
 
 func firstNonZero(vals ...int64) int64 {

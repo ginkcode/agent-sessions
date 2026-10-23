@@ -27,7 +27,8 @@
       "cacheWrite": 3
     },
     "costUsd": 2.5,
-    "agentVersion": "1.18.33"
+    "agentVersion": "1.18.33",
+    "turn": "working"
   },
   {
     "ref": {

@@ -24,7 +24,8 @@
       "cacheRead": 30,
       "cacheWrite": 10
     },
-    "agentVersion": "2.1.0"
+    "agentVersion": "2.1.0",
+    "turn": "done"
   },
   "messages": [
     {

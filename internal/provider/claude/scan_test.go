@@ -439,3 +439,90 @@ func TestScanCheckpointJSONRoundtrip(t *testing.T) {
 		t.Errorf("updated counts/tokens = %+v", resumed.Changed[0])
 	}
 }
+
+func TestScanTurnState(t *testing.T) {
+	t.Parallel()
+	const (
+		prompt     = `{"type":"user","message":{"content":"Fix the bug"}}`
+		thinking   = `{"type":"assistant","message":{"id":"a1","stop_reason":"tool_use","content":[{"type":"thinking","thinking":"..."}]}}`
+		call       = `{"type":"assistant","message":{"id":"a1","stop_reason":"tool_use","content":[{"type":"tool_use","id":"t1","name":"Bash"}]}}`
+		call2      = `{"type":"assistant","message":{"id":"a1","stop_reason":"tool_use","content":[{"type":"tool_use","id":"t2","name":"Read"}]}}`
+		result1    = `{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"t1","content":"ok"}]}}`
+		result2    = `{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"t2","content":"ok"}]}}`
+		answer     = `{"type":"assistant","message":{"id":"a2","stop_reason":"end_turn","content":[{"type":"text","text":"Fixed."}]}}`
+		streamText = `{"type":"assistant","message":{"id":"a2","stop_reason":null,"content":[{"type":"text","text":"Fixed."}]}}`
+		streamCall = `{"type":"assistant","message":{"id":"a2","stop_reason":null,"content":[{"type":"tool_use","id":"t3"}]}}`
+		interrupt  = `{"type":"user","message":{"content":[{"type":"text","text":"[Request interrupted by user for tool use]"}]}}`
+		apiError   = `{"type":"assistant","isApiErrorMessage":true,"message":{"content":[{"type":"text","text":"API Error"}]}}`
+		sidechain  = `{"type":"assistant","isSidechain":true,"message":{"id":"s1","stop_reason":"tool_use","content":[{"type":"tool_use","id":"s9"}]}}`
+		metaUser   = `{"type":"user","isMeta":true,"message":{"content":"Caveat: local command"}}`
+		command    = `{"type":"user","message":{"content":"<command-name>/model</command-name>"}}`
+	)
+	tests := []struct {
+		name  string
+		lines []string
+		want  string
+	}{
+		{"no conversation", nil, ""},
+		{"prompt", []string{prompt}, model.TurnWorking},
+		{"thinking before a call", []string{prompt, thinking}, model.TurnWorking},
+		{"call waits", []string{prompt, call}, model.TurnTool},
+		{"parallel calls wait for both", []string{prompt, call, call2, result1}, model.TurnTool},
+		{"results answered", []string{prompt, call, call2, result2, result1}, model.TurnWorking},
+		{"end turn", []string{prompt, call, result1, answer}, model.TurnDone},
+		{"older text without stop reason", []string{prompt, streamText}, model.TurnDone},
+		{"older call without stop reason", []string{prompt, streamText, streamCall}, model.TurnTool},
+		{"interrupted at a call", []string{prompt, call, interrupt}, model.TurnDone},
+		{"API error", []string{prompt, apiError}, model.TurnDone},
+		{"a new prompt drops an abandoned call", []string{prompt, call, prompt}, model.TurnWorking},
+		{"sidechain and meta records leave it", []string{prompt, call, result1, answer, sidechain, metaUser, command}, model.TurnDone},
+	}
+	for _, tt := range tests {
+		var cp checkpoint
+		var d provider.Diagnostics
+		for _, line := range tt.lines {
+			cp.consume([]byte(line), &d)
+		}
+		if got := cp.finalize(time.Time{}).Turn; got != tt.want {
+			t.Errorf("%s: Turn = %q, want %q", tt.name, got, tt.want)
+		}
+	}
+
+	// Incremental scans carry pending calls across appends.
+	root := t.TempDir()
+	project := filepath.Join(root, "projects", "p")
+	if err := os.MkdirAll(project, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(project, "s.jsonl")
+	p := New(root, nil)
+	state := provider.ScanState{}
+	for i, step := range []struct {
+		lines []string
+		want  string
+	}{
+		{[]string{prompt, call, call2}, model.TurnTool},
+		{[]string{result1}, model.TurnTool},
+		{[]string{result2}, model.TurnWorking},
+		{[]string{answer}, model.TurnDone},
+	} {
+		f, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := f.WriteString(strings.Join(step.lines, "\n") + "\n"); err != nil {
+			t.Fatal(err)
+		}
+		if err := f.Close(); err != nil {
+			t.Fatal(err)
+		}
+		result, err := p.Scan(context.Background(), state)
+		if err != nil || len(result.Changed) != 1 {
+			t.Fatalf("step %d: %+v, %v", i, result.Changed, err)
+		}
+		if got := result.Changed[0].Turn; got != step.want {
+			t.Errorf("step %d: Turn = %q, want %q", i, got, step.want)
+		}
+		state = result.State
+	}
+}

@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -42,13 +43,15 @@ type checkpoint struct {
 	SubagentMetaSize      int64  `json:"subagentMetaSize,omitempty"`
 	SubagentMetaModTimeNs int64  `json:"subagentMetaModTimeNs,omitempty"`
 	LinesRead             int    `json:"linesRead,omitempty"`
-	path                  string
-	lineNo                int
+	// PendingTools holds the IDs of tool calls without a result yet.
+	PendingTools []string `json:"pendingTools,omitempty"`
+	path         string
+	lineNo       int
 }
 
-// checkpointVersion 4 normalizes Windows CWDs in their own style; a full
-// rescan replaces CWDs cached by earlier versions.
-const checkpointVersion = 4
+// checkpointVersion 4 normalizes Windows CWDs in their own style; 5 adds
+// Turn. A full rescan replaces metadata cached by earlier versions.
+const checkpointVersion = 5
 
 var ignoredRecordTypes = map[string]bool{
 	"attachment": true, "last-prompt": true, "mode": true,
@@ -95,6 +98,9 @@ func (c *checkpoint) consume(line []byte, d *provider.Diagnostics) {
 		if gjson.GetBytes(line, "isCompactSummary").Bool() {
 			return
 		}
+		if !gjson.GetBytes(line, "isMeta").Bool() {
+			c.userTurn(gjson.GetBytes(line, "message.content"), gjson.GetBytes(line, "isSidechain").Bool())
+		}
 		if gjson.GetBytes(line, "isMeta").Bool() {
 			// A subagent's task prompt can arrive as its opening meta record.
 			// It names the subagent when the spawn metadata has no description.
@@ -117,7 +123,15 @@ func (c *checkpoint) consume(line []byte, d *provider.Diagnostics) {
 		}
 	case "assistant":
 		if gjson.GetBytes(line, "isApiErrorMessage").Bool() {
+			// Claude Code gave up on the request: the turn is over.
+			if !gjson.GetBytes(line, "isSidechain").Bool() {
+				c.PendingTools = nil
+				c.Meta.Turn = model.TurnDone
+			}
 			return
+		}
+		if !gjson.GetBytes(line, "isSidechain").Bool() {
+			c.assistantTurn(gjson.GetBytes(line, "message.content"), gjson.GetBytes(line, "message.stop_reason").String())
 		}
 		id := gjson.GetBytes(line, "message.id").String()
 		if id != "" && id != c.LastAssistantID {
@@ -157,6 +171,78 @@ func (c *checkpoint) consume(line []byte, d *provider.Diagnostics) {
 			d.Unknown(kind)
 		}
 	}
+}
+
+// userTurn follows the turn through a user record: a prompt starts one, an
+// interruption ends it, and tool results answer pending calls.
+func (c *checkpoint) userTurn(content gjson.Result, sidechain bool) {
+	if sidechain {
+		return
+	}
+	text, counts := userContent(content)
+	if strings.HasPrefix(strings.TrimSpace(text), "[Request interrupted by user") {
+		c.PendingTools = nil
+		c.Meta.Turn = model.TurnDone
+		return
+	}
+	if counts {
+		// A prompt; any call still pending was abandoned.
+		c.PendingTools = nil
+		c.Meta.Turn = model.TurnWorking
+		return
+	}
+	answered := false
+	content.ForEach(func(_, part gjson.Result) bool {
+		if part.Get("type").String() == "tool_result" {
+			answered = true
+			id := part.Get("tool_use_id").String()
+			c.PendingTools = slices.DeleteFunc(c.PendingTools, func(p string) bool { return p == id })
+		}
+		return true
+	})
+	if answered {
+		c.Meta.Turn = c.pendingOr(model.TurnWorking)
+	}
+}
+
+// assistantTurn follows the turn through an assistant record: a tool call
+// waits for its result, and a final stop reason ends the turn.
+func (c *checkpoint) assistantTurn(content gjson.Result, stopReason string) {
+	content.ForEach(func(_, part gjson.Result) bool {
+		if part.Get("type").String() == "tool_use" {
+			if id := part.Get("id").String(); id != "" && !slices.Contains(c.PendingTools, id) {
+				c.PendingTools = append(c.PendingTools, id)
+			}
+		}
+		return true
+	})
+	switch stopReason {
+	case "end_turn", "stop_sequence", "max_tokens", "refusal":
+		c.Meta.Turn = c.pendingOr(model.TurnDone)
+	case "":
+		// Older Claude Code wrote each block as it streamed, without a stop
+		// reason: text last reads as the answer, a tool call follows at once.
+		last := ""
+		content.ForEach(func(_, part gjson.Result) bool {
+			last = part.Get("type").String()
+			return true
+		})
+		if last == "text" {
+			c.Meta.Turn = c.pendingOr(model.TurnDone)
+		} else {
+			c.Meta.Turn = c.pendingOr(model.TurnWorking)
+		}
+	default:
+		c.Meta.Turn = c.pendingOr(model.TurnWorking)
+	}
+}
+
+// pendingOr is TurnTool while a call waits for its result, else state.
+func (c *checkpoint) pendingOr(state string) string {
+	if len(c.PendingTools) > 0 {
+		return model.TurnTool
+	}
+	return state
 }
 
 // userContent reports whether this is a conversational user message and

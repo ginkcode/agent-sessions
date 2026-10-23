@@ -47,8 +47,9 @@ func (c *Catalog) Reset(metas []model.SessionMeta) {
 }
 
 // ApplyLive updates the catalog with scan results and overlays live badges.
-func (c *Catalog) ApplyLive(id model.AgentID, result provider.ScanResult, live map[string]provider.LiveInfo, liveErr error, hasLive bool) {
-	c.applyLive(id, result, live, liveErr, hasLive)
+// It returns the sessions the scan left unchanged whose badge changed.
+func (c *Catalog) ApplyLive(id model.AgentID, result provider.ScanResult, live map[string]provider.LiveInfo, liveErr error, hasLive bool) []model.SessionRef {
+	return c.applyLive(id, result, live, liveErr, hasLive)
 }
 
 func (c *Catalog) apply(result provider.ScanResult) {
@@ -66,8 +67,9 @@ func (c *Catalog) apply(result provider.ScanResult) {
 // applyLive makes the scan result and its live overlay visible atomically.
 // A failed live call keeps the badges from the previous scan, even for
 // sessions the scan just changed; a successful call re-derives every badge of
-// this provider from the live map, including for unchanged sessions.
-func (c *Catalog) applyLive(id model.AgentID, result provider.ScanResult, live map[string]provider.LiveInfo, liveErr error, hasLive bool) {
+// this provider from the live map, including for unchanged sessions; those
+// whose badge changed are returned, sorted.
+func (c *Catalog) applyLive(id model.AgentID, result provider.ScanResult, live map[string]provider.LiveInfo, liveErr error, hasLive bool) []model.SessionRef {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -82,24 +84,35 @@ func (c *Catalog) applyLive(id model.AgentID, result provider.ScanResult, live m
 	}
 	c.apply(result)
 	if !hasLive {
-		return
+		return nil
 	}
 	if liveErr != nil {
 		// Overlay with the stale badges instead of erasing them.
 		live = badges
 	}
+	scanned := make(map[string]bool, len(result.Changed))
+	for _, m := range result.Changed {
+		scanned[m.Ref.Key()] = true
+	}
+	var badged []model.SessionRef
 	for key, m := range c.byKey {
 		if m.Ref.Agent != id {
 			continue
 		}
 		info, ok := live[m.Ref.ID]
+		wasLive, wasStatus := m.Live, m.LiveStatus
 		m.Live = ok
 		m.LiveStatus = ""
 		if ok {
 			m.LiveStatus = info.Status
 		}
 		c.byKey[key] = m
+		if !scanned[key] && (m.Live != wasLive || m.LiveStatus != wasStatus) {
+			badged = append(badged, m.Ref)
+		}
 	}
+	slices.SortFunc(badged, func(a, b model.SessionRef) int { return strings.Compare(a.Key(), b.Key()) })
+	return badged
 }
 
 // All returns a sorted, independent snapshot of every session.

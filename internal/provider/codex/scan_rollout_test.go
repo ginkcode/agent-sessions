@@ -716,3 +716,86 @@ func TestScan_NilGitResolver(t *testing.T) {
 		t.Errorf("RepoRoot = %q, want empty with nil resolver", res.Changed[0].RepoRoot)
 	}
 }
+
+func TestScan_TurnState(t *testing.T) {
+	const ts = "2026-09-28T12:00:00Z"
+	var (
+		prompt   = line(ts, "response_item", `{"type":"message","role":"user","content":[{"type":"input_text","text":"Fix it"}]}`)
+		injected = line(ts, "response_item", `{"type":"message","role":"user","content":[{"type":"input_text","text":"<environment_context>x"}]}`)
+		started  = line(ts, "event_msg", `{"type":"task_started"}`)
+		reply    = line(ts, "response_item", `{"type":"message","role":"assistant","id":"m1","content":[{"type":"output_text","text":"Looking."}]}`)
+		call     = line(ts, "response_item", `{"type":"function_call","name":"shell","arguments":"{}","call_id":"c1"}`)
+		call2    = line(ts, "response_item", `{"type":"custom_tool_call","name":"apply_patch","input":"","call_id":"c2"}`)
+		output   = line(ts, "response_item", `{"type":"function_call_output","call_id":"c1","output":"ok"}`)
+		output2  = line(ts, "response_item", `{"type":"custom_tool_call_output","call_id":"c2","output":"ok"}`)
+		search   = line(ts, "response_item", `{"type":"web_search_call","id":"ws1","status":"completed"}`)
+		complete = line(ts, "event_msg", `{"type":"task_complete","last_agent_message":"Done."}`)
+		aborted  = line(ts, "event_msg", `{"type":"turn_aborted","reason":"interrupted"}`)
+		tokens   = line(ts, "event_msg", `{"type":"token_count","info":null}`)
+	)
+	tests := []struct {
+		name  string
+		lines []string
+		want  string
+	}{
+		{"no conversation", []string{injected}, ""},
+		{"prompt", []string{started, prompt}, model.TurnWorking},
+		{"a call waits", []string{started, prompt, call}, model.TurnTool},
+		{"both calls wait", []string{started, prompt, call, call2, output}, model.TurnTool},
+		{"outputs answered", []string{started, prompt, call, call2, output2, output}, model.TurnWorking},
+		{"a web search is answered", []string{started, prompt, search}, model.TurnWorking},
+		{"a reply mid-task works on", []string{started, prompt, reply}, model.TurnWorking},
+		{"task complete", []string{started, prompt, call, output, reply, complete, tokens}, model.TurnDone},
+		{"aborted at a call", []string{started, prompt, call, aborted}, model.TurnDone},
+		{"older rollouts end on a reply", []string{prompt, call, output, reply}, model.TurnDone},
+		{"older rollouts wait on a call", []string{prompt, reply, call}, model.TurnTool},
+		{"a new prompt drops an abandoned call", []string{prompt, call, prompt}, model.TurnWorking},
+	}
+	for _, tt := range tests {
+		var cp checkpoint
+		var d provider.Diagnostics
+		for _, l := range tt.lines {
+			cp.consume([]byte(strings.TrimSuffix(l, "\n")), &d)
+		}
+		if got := cp.finalize("x.jsonl", time.Time{}).Turn; got != tt.want {
+			t.Errorf("%s: Turn = %q, want %q", tt.name, got, tt.want)
+		}
+	}
+
+	// Incremental scans carry pending calls across appends.
+	root := platform.TempDir(t)
+	meta := line(ts, "session_meta", `{"id":"22222222-2222-2222-2222-222222222222","timestamp":"`+ts+`","cwd":"/tmp/proj"}`)
+	path := writeRollout(t, root, "22222222-2222-2222-2222-222222222222", meta, false)
+	p := New(root, nil)
+	state := provider.ScanState{}
+	for i, step := range []struct {
+		lines []string
+		want  string
+	}{
+		{[]string{started, prompt, call, call2}, model.TurnTool},
+		{[]string{output}, model.TurnTool},
+		{[]string{output2}, model.TurnWorking},
+		{[]string{reply, complete}, model.TurnDone},
+	} {
+		f, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0o644)
+		if err != nil {
+			t.Fatal(err)
+		}
+		// Each step is later, so the session changes even when its turn does not.
+		later := fmt.Sprintf("2026-09-28T12:00:%02dZ", i+1)
+		if _, err := f.WriteString(strings.ReplaceAll(strings.Join(step.lines, ""), ts, later)); err != nil {
+			t.Fatal(err)
+		}
+		if err := f.Close(); err != nil {
+			t.Fatal(err)
+		}
+		result, err := p.Scan(context.Background(), state)
+		if err != nil || len(result.Changed) != 1 {
+			t.Fatalf("step %d: %+v, %v", i, result.Changed, err)
+		}
+		if got := result.Changed[0].Turn; got != step.want {
+			t.Errorf("step %d: Turn = %q, want %q", i, got, step.want)
+		}
+		state = result.State
+	}
+}
