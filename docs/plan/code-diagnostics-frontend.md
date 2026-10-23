@@ -1,5 +1,46 @@
 # Code diagnostics frontend (CD-10 / CD-11 / CD-12 / CD-13 / CD-14 / CD-15)
 
+## Diagnostics UI polish (screenshot feedback, 2026-10-23)
+
+This change came from a user screenshot. It touches frontend presentation only:
+backend, `liveDocuments.ts` and store protocol state are unchanged. Progress stays
+at **19/28** with no task counted as done.
+
+- **Location wording** (`problemNavigation.ts` `problemLocationStatus`,
+  `fileLevelFinding`). A finding with no range, or a 0:0 range whose message reads
+  like a build-constraint exclusion, is now *file-level*. It is never called stale.
+  A truly outdated location starts with "Stale: …" and no longer uses "stale or
+  unverified; location remains in Problems only". Source projection
+  (`sourceDiagnostics.ts`) gives each message a `kind`. An out-of-range position
+  reads "Position is outside the displayed text; shown in the list only."
+- **Recovery action.** `FileViewer` passes `sourceRecovery` to `SourceView`, which
+  shows it only when stale findings exist. If the file's live document failed and
+  can reopen, the button reads **Reopen live sync** (the existing
+  `codeDiagnostics.reopenDocument`). Otherwise it reads **Refresh results** (the
+  existing `codeDiagnostics.refresh()`). Each button says what it does and says that
+  nothing is saved. It never approves, installs, saves or runs on its own.
+- **Compact Source list.** Shows severity counts, a "N not current" tag, and per row
+  a severity pill, Ln/Col, a short source label and a collapsed long message. The
+  list is 12px and scrolls inside a bounded height so the source area keeps its
+  space. Text stays escaped.
+- **Problems panel.** Severity filter checkboxes are grouped with a gap and use
+  capitalized labels. Rows are a pill/location/message/meta grid. Details are capped
+  at `min(38vh, 360px)`.
+- **Code Checks settings** (`codeCheckLabels.ts`). Human tool names ("Go language
+  server (gopls)", "Go syntax", "Go vet"), status pills, and consistent modes ("LSP ·
+  live opened Go files", "saved Go files · automatic", "saved files · on demand").
+  Live-sync failures are grouped, with a Reopen button per file. Coverage and host
+  details sit under disclosures. gopls install/check appears only for the local
+  host. Remote hosts get an explicit "not available for remote hosts" reason, and
+  TS/Svelte setup is stated as not offered.
+
+Evidence: new `frontend/test/code-check-ux.test.mjs` plus adapted `problems`,
+`source-diagnostics` and `code-check-status` tests. Validation: **479/479 frontend
+tests**, `npm run check` 0 errors (existing tsconfig warning), build passed
+(existing chunk advisory). Caveats: these are server-rendered markup and pure-state
+checks only, with no native GUI run. Build-exclusion detection is a message
+heuristic. Remote detection uses the `ssh:`/`wsl:` host-ID prefix.
+
 ## Compact Go to File status (UX simplification, 2026-10-23)
 
 This change came from user feedback: the always-visible Code Checks/setup text at

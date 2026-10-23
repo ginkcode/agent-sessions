@@ -193,7 +193,7 @@ test('unapproved details hide filters and clean claims; blockers and analyzer-on
   const html = await renderWithFixture(settings, { checks: checks({ snapshot: { approval: { state: 'required' }, proposal }, providers: [syntax, missing] }) });
   const enabled = renderedButtons(html).filter(b => /Enable for this session|Always allow/.test(b.text));
   assert.deepEqual(enabled.map(b => b.disabled), [false, false]);
-  assert.match(html, /Built-in go-syntax: Built-in Go syntax check\. Runs no program\./);
+  assert.match(html, /Go syntax<\/span><span[^>]*>built-in<\/span><span[^>]*>Built-in Go syntax check\. Runs no program\./);
   assert.match(html, /Only built-in checks are available on this host/);
   assert.doesNotMatch(html, /Project configuration and plugins can execute code/);
   assert.doesNotMatch(html.slice(0, html.indexOf('Technical details')), new RegExp(HOST));

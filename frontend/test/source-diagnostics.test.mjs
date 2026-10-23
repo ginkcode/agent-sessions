@@ -43,7 +43,7 @@ test('invalid endpoints never clamp or throw; file-level/stale/unverified/drafts
   for (const r of invalid) {
     const p = projectSourceDiagnostics('a😀b', [finding(r)], saved);
     assert.equal(p.segments.length, 0);
-    assert.match(p.messages[0].notice, /Invalid range/);
+    assert.match(p.messages[0].notice, /outside the displayed text/); assert.equal(p.messages[0].kind, 'invalidRange');
   }
   const cases = [finding(), finding(range(0, 0), { freshness: 'stale' }), finding(range(0, 0), { freshness: 'uncertain' }), finding(range(0, 0), { basis: { kind: 'saved' } }), finding(range(0, 0), { locationIssue: 'invalidRange' }), finding(range(0, 0), { basis: { kind: 'document', documentId: 'd' } })];
   assert.equal(projectSourceDiagnostics('text', cases, saved).segments.length, 0);
@@ -81,7 +81,8 @@ test('SSR keeps syntax HTML intact, escapes messages and exposes overlaps withou
     assert.match(html, /mark-modified/);
     assert.match(html, /aria-pressed="true"/);
     assert.match(html, /File-level finding/);
-    assert.match(html, /stale or unverified/);
+    assert.match(html, /Stale: the file or checker changed/);
+    assert.doesNotMatch(html, /stale or unverified|remains in Problems only/);
     assert.match(html, /font-size:\s*24px/);
     const diff = await renderWithFixture(component, { files: { wrap } }, { ...props, showDiff: true });
     assert.doesNotMatch(diff, /Source diagnostics|has-diagnostics|diagnostics: error/);

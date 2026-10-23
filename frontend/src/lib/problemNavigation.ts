@@ -48,13 +48,41 @@ export function rangeOffsets(text: string, range: CodeDiagnosticRange): { anchor
   const anchor = offset(range.start), head = offset(range.end);
   return anchor === undefined || head === undefined || head < anchor ? undefined : { anchor, head };
 }
+/**
+ * Why a finding's position cannot be drawn over the displayed text.
+ * `fileLevel` is about the whole file (no range, or a build-constraint exclusion
+ * reported at 1:1): it is never called stale just because it has no position.
+ * Only `staleDocument`/`staleSaved` mean the result predates the displayed text.
+ */
+export type LocationKind = 'shown' | 'fileLevel' | 'invalidRange' | 'draft' | 'staleDocument' | 'staleSaved' | 'unverified';
+export interface ProblemLocationStatus { kind: LocationKind; notice: string }
+
+const buildExclusion = /build constraints? exclude|excluded by build (tags|constraints)|no packages found for open file/i;
+/** Whole-file findings: no range, or a zero-width 1:1 build-tag exclusion. Wording only, never freshness. */
+export function fileLevelFinding(d: CodeDiagnostic): boolean {
+  if (!d.range) return true;
+  const { start, end } = d.range;
+  return start?.line === 0 && start.character === 0 && end?.line === 0 && end.character === 0 && buildExclusion.test(d.message);
+}
+
+export function problemLocationStatus(d: CodeDiagnostic, saved: DiagnosticDisplayBasis): ProblemLocationStatus {
+  if (fileLevelFinding(d)) return { kind: 'fileLevel', notice: buildExclusion.test(d.message) ? 'File-level finding: build constraints exclude this file.' : 'File-level finding (no line position).' };
+  if (d.locationIssue) return { kind: 'invalidRange', notice: 'The checker reported an invalid position; shown in the list only.' };
+  if (d.basis.kind === 'document') {
+    if (!saved.live) return { kind: 'staleDocument', notice: 'From a live session that is no longer open for this tab; position not shown.' };
+    const eligibility = liveDocumentEligibility(d, saved.live);
+    if (eligibility === 'current') return { kind: 'shown', notice: '' };
+    if (eligibility === 'hidden') return { kind: 'staleDocument', notice: 'From an older version of this file; waiting for a newer result.' };
+    if (d.freshness === 'stale') return { kind: 'staleDocument', notice: 'Stale: live sync stopped after this result; position not shown.' };
+    return { kind: 'unverified', notice: 'Waiting for the language server to confirm the current text; position not shown yet.' };
+  }
+  if (saved.dirty) return { kind: 'draft', notice: 'Position is from the saved file and may not match your unsaved draft.' };
+  if (d.freshness === 'stale') return { kind: 'staleSaved', notice: 'Stale: the file or checker changed since this result; position not shown.' };
+  if (d.freshness !== 'current' || !saved.revision || d.basis.revision !== saved.revision) return { kind: 'unverified', notice: 'Position unverified: the saved file may have changed since this result.' };
+  return { kind: 'shown', notice: '' };
+}
 export function problemLocation(d: CodeDiagnostic, saved: DiagnosticDisplayBasis): string {
-  if (!d.range || d.locationIssue) return 'File-level finding; no valid source range.';
-  if (d.basis.kind === 'document') return saved.live && liveDocumentEligibility(d, saved.live) === 'current'
-    ? '' : 'Document location is stale or unverified; location remains in Problems only.';
-  if (saved.dirty) return 'Saved-file location is stale over this unsaved draft; location remains in Problems only.';
-  if (d.freshness !== 'current' || !saved.revision || d.basis.revision !== saved.revision) return 'Saved-file location is stale or unverified; location remains in Problems only.';
-  return '';
+  return problemLocationStatus(d, saved).notice;
 }
 
 /** Separate from the line-only blame selection. Highlighted spans are text-walked,

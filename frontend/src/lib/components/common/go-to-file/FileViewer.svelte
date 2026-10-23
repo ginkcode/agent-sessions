@@ -100,7 +100,7 @@
       context: JSON.stringify([codeDiagnostics.project, codeDiagnostics.snapshot?.context, codeDiagnostics.status]) };
   }
   function navigationLocation(diagnostic: CodeDiagnostic, tab: NonNullable<typeof files.activeTab>) {
-    if (codeDiagnostics.status !== 'ready' || codeDiagnostics.revoking || codeDiagnostics.directory !== files.dir || blocked) return 'Source location is stale or unverified; location remains in Problems only.';
+    if (codeDiagnostics.status !== 'ready' || codeDiagnostics.revoking || codeDiagnostics.directory !== files.dir || blocked) return 'Code checks are reconnecting or updating; the position is shown once results are current.';
     return problemLocation(diagnostic, { dirty: Boolean(tab.edit?.dirty || tab.edit?.uncertain || tab.edit?.conflict), revision: tab.edit?.revision ?? tab.content?.revision, live: codeDiagnostics.liveBasis(tab.path) });
   }
   export function navigateProblem(diagnostic: CodeDiagnostic) {
@@ -146,7 +146,7 @@
       if (!valid() || showPreview || showDiff || frozen || (!editing && highlightPending)) return;
       // A draft may have changed while the source/editor was mounting.
       if (navigationLocation(request.diagnostic, tab)) {
-        navigationNotice = 'Source location is stale over this draft; location remains in Problems only.';
+        navigationNotice = 'Stale: the file changed while it was opening; this position no longer matches the text.';
         navigation = null; return;
       }
       const editorValid = () => valid() && !frozen && !navigationLocation(request.diagnostic, tab);
@@ -308,6 +308,19 @@
       ? codeDiagnostics.findings.filter(f => f.diagnostic.path === files.selected) : [],
     { dirty: Boolean(edit?.dirty || edit?.uncertain || edit?.conflict), revision: edit?.revision ?? files.content?.revision, live: files.selected ? codeDiagnostics.liveBasis(files.selected) : undefined },
     codeDiagnostics.status === 'ready' && !codeDiagnostics.revoking && !highlightPending));
+  // Explicit recovery for results that predate the displayed text. Both paths reuse the
+  // store's existing reconciliation: nothing is saved and freshness is never assumed.
+  let sourceRecovery = $derived.by(() => {
+    const failed = (codeDiagnostics.liveDocuments ?? []).find(d => d.path === files.selected && d.failure && d.canReopen);
+    const disabled = Boolean(blocked) || !!codeDiagnostics.pending;
+    if (failed) return { label: 'Reopen live sync', disabled,
+      description: 'Live sync for this file stopped. Reopen sends the displayed text to the language server again under a new document identity; nothing is saved.',
+      run: () => codeDiagnostics.reopenDocument(failed.path, failed.documentId) };
+    if (codeDiagnostics.status !== 'ready' && codeDiagnostics.status !== 'error') return undefined;
+    return { label: 'Refresh results', disabled: disabled || codeDiagnostics.status === 'ready' && codeDiagnostics.revoking,
+      description: 'Some positions are from an older version of this file. Refresh re-reads saved files and fetches the latest results; nothing is saved or re-run.',
+      run: () => { void codeDiagnostics.refresh().catch(() => {}); } };
+  });
   let rows: DiffRow[] = $derived(
     showDiff
       ? diffRows(changes, plainLines.length)
@@ -567,7 +580,7 @@
 
 <section class="viewer" class:presentation aria-label="File content">
   {@render tabs?.()}
-  {#if navigationNotice}<div class="state" role="status">{navigationNotice}</div>{/if}
+  {#if navigationNotice}<div class="state nav-notice" role="status">{navigationNotice}</div>{/if}
   {#if !files.selected}
     <div class="state center">Pick a file to see its content. Double-click keeps it open in a tab.</div>
   {:else}
@@ -894,7 +907,7 @@
         {:else if showSvg}
           {@render imageView()}
         {:else}
-        <SourceView diagnostics={sourceDiagnostics} {rows} {htmlLines} {plainLines} {showDiff} {presentation} {presentationFontSize} selection={selectedLines} onselectline={selectLine} bind:codeEl={find.codeEl} />
+        <SourceView diagnostics={sourceDiagnostics} recovery={sourceRecovery} {rows} {htmlLines} {plainLines} {showDiff} {presentation} {presentationFontSize} selection={selectedLines} onselectline={selectLine} bind:codeEl={find.codeEl} />
         {/if}
       </div>
       </div>
@@ -1344,6 +1357,13 @@
     padding: 12px;
     font-size: 0.82rem;
     color: var(--text-secondary);
+  }
+
+  .state.nav-notice {
+    padding: 4px 12px;
+    font-size: 12px;
+    border-bottom: 1px solid var(--border-color);
+    overflow-wrap: anywhere;
   }
 
   .state.center {

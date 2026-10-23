@@ -1,8 +1,9 @@
 import type { AttributedCodeDiagnostic } from './codeDiagnostics';
-import { problemLocation, rangeOffsets, type DiagnosticDisplayBasis } from './problemNavigation';
+import { fileLevelFinding, problemLocation, problemLocationStatus, rangeOffsets, type DiagnosticDisplayBasis, type LocationKind } from './problemNavigation';
 
 export interface SourceDiagnosticSegment { line: number; start: number; end: number; finding: number }
-export interface SourceDiagnosticMessage { finding: AttributedCodeDiagnostic; notice: string }
+/** `kind` lets the list tell file-level findings apart from results that are actually stale. */
+export interface SourceDiagnosticMessage { finding: AttributedCodeDiagnostic; notice: string; kind?: LocationKind }
 export interface SourceDiagnosticProjection { messages: SourceDiagnosticMessage[]; segments: SourceDiagnosticSegment[]; text?: string }
 
 /** Project verified saved or current versioned live ranges. Ends are exclusive; zero-width and empty
@@ -10,13 +11,15 @@ export interface SourceDiagnosticProjection { messages: SourceDiagnosticMessage[
 export function projectSourceDiagnostics(text: string, findings: AttributedCodeDiagnostic[], saved: DiagnosticDisplayBasis, current = true): SourceDiagnosticProjection {
   const lines = text.split(/\r\n|\n/);
   const segments: SourceDiagnosticSegment[] = [];
-  const messages = findings.map(f => {
+  const messages = findings.map((f): SourceDiagnosticMessage => {
     const eligible = current && f.entries.find(e => !problemLocation(e.diagnostic, saved));
     const finding = eligible ? { ...f, diagnostic: eligible.diagnostic } : f;
     const d = finding.diagnostic;
-    let notice = current ? problemLocation(d, saved) : 'Stale or uncertain results; source location is not verified.';
-    if (!notice && (!d.range || !rangeOffsets(text, d.range))) notice = 'Invalid range for the displayed source; file message only.';
-    return { finding, notice };
+    // A whole-file finding stays file-level whatever the attachment state; it never had a position.
+    if (!current && !fileLevelFinding(d)) return { finding, kind: 'unverified', notice: 'Code checks are reconnecting or updating; position not shown until results are current.' };
+    let { kind, notice } = problemLocationStatus(d, saved);
+    if (!notice && (!d.range || !rangeOffsets(text, d.range))) { kind = 'invalidRange'; notice = 'Position is outside the displayed text; shown in the list only.'; }
+    return { finding, notice, kind };
   });
   messages.forEach(({ finding, notice }, findingIndex) => {
     if (notice) return;

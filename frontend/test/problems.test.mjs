@@ -34,7 +34,7 @@ test('UTF16 exclusive multiline CRLF offsets reject invalid columns and split su
   assert.equal(rangeOffsets('a😀z\nβx', { start: { line: 0, character: 2 }, end: { line: 0, character: 3 } }), undefined);
   assert.equal(rangeOffsets('x', range), undefined);
   assert.match(problemLocation(diagnostic(), { dirty: true, revision: 'r' }), /unsaved draft/);
-  assert.match(problemLocation(diagnostic({ freshness: 'stale' }), { dirty: false, revision: 'r' }), /stale/);
+  assert.match(problemLocation(diagnostic({ freshness: 'stale' }), { dirty: false, revision: 'r' }), /^Stale:/);
   assert.equal(problemLocation(diagnostic(), { dirty: false, revision: 'r' }), '');
   for (const path of ['../x', '/etc/passwd', 'file:///x', 'C:/x', 'a//b', 'a\\b', 'a\0b']) assert.equal(problemPath(path), false);
   assert.equal(problemPath('src/😀.ts'), true);
@@ -154,7 +154,7 @@ test('viewer failed/file-level/unverified targets never select or reload a draft
   h.navigateProblem(diagnostic({ path: 'level' })); h.effect(); await h.flush();
   assert.deepEqual(h.reveals, [range]); assert.equal(files.activeTab, tab);
   h.navigateProblem(diagnostic({ path: 'level' })); h.effect(); files.updateDraft(tab, 'new draft'); await h.flush();
-  assert.equal(h.reveals.length, 1); assert.match(h.notice(), /stale/);
+  assert.equal(h.reveals.length, 1); assert.match(h.notice(), /^Stale:/);
   delete globalThis.__problemFixture;
 });
 

@@ -43,6 +43,11 @@ async function importCompiled(filename, code, replacements) {
     ["'svelte/internal/server'", JSON.stringify(import.meta.resolve('svelte/internal/server'))],
     ...replacements,
   ];
+  // Pure display-label helpers shared by the diagnostics components resolve to the real module.
+  const labels = "'../../../codeCheckLabels'";
+  if (code.includes(labels) && !replacements.some(([from]) => from === labels)) {
+    replacements.push([labels, JSON.stringify(new URL('../src/lib/codeCheckLabels.ts', import.meta.url).href)]);
+  }
   for (const [from, to] of replacements) {
     assert.ok(code.includes(from), `compiled ${filename} no longer contains ${from}`);
     code = code.replace(from, to);

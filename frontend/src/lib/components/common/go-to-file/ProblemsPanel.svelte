@@ -2,8 +2,9 @@
   import { tick, type Snippet } from 'svelte';
   import { codeDiagnostics as checks } from '../../../stores/codeDiagnostics.svelte';
   import { diagnosticKey, type CodeDiagnostic } from '../../../codeDiagnostics';
-  import { orderedProblems, problemSeverities, problemKey, stepProblem } from '../../../problemNavigation';
+  import { fileLevelFinding, orderedProblems, problemSeverities, problemKey, stepProblem } from '../../../problemNavigation';
   import { codeCheckSummary, toggleDisclosure } from '../../../codeCheckSummary';
+  import { locationLabel, longMessage, messagePreview, severityLabels, toolName } from '../../../codeCheckLabels';
   // Every dialog opening mounts this collapsed: details and settings are never remembered.
   let { onnavigate, blocked = false, expanded = $bindable(false), settingsOpen = $bindable(false), settings }: {
     onnavigate: (diagnostic: CodeDiagnostic) => void; blocked?: boolean; expanded?: boolean; settingsOpen?: boolean;
@@ -45,7 +46,9 @@
       if (ownedFocus) void tick().then(() => { (region?.querySelector<HTMLButtonElement>('[data-problem-key]') ?? toggle)?.focus(); });
     }
   });
-  const line = (d: CodeDiagnostic) => d.range ? `${d.range.start.line + 1}:${d.range.start.character + 1}–${d.range.end.line + 1}:${d.range.end.character + 1}` : 'File-level';
+  const span = (d: CodeDiagnostic) => d.range ? `${d.range.start.line + 1}:${d.range.start.character + 1}–${d.range.end.line + 1}:${d.range.end.character + 1}` : 'File-level';
+  const attribution = (f: (typeof findings)[number]) => f.entries.map(e => `${e.diagnostic.source} (${toolName(e.providerId)}) · ${e.diagnostic.freshness}`).sort().join(', ');
+  const notCurrent = (f: (typeof findings)[number]) => f.entries.every(e => e.diagnostic.freshness !== 'current');
 </script>
 
 <section class="problems" aria-label="Code checks">
@@ -62,11 +65,15 @@
     {#if expanded}
       <div class="toolbar">
         {#if listing}
-          {#each problemSeverities as severity}
-            <label><input type="checkbox" checked={enabled.includes(severity)} onchange={() => enabled = enabled.includes(severity) ? enabled.filter(s => s !== severity) : [...enabled, severity]} />{severity}</label>
-          {/each}
-          <button type="button" disabled={!rows.length || blocked} onclick={() => step(-1)}>Previous problem</button>
-          <button type="button" disabled={!rows.length || blocked} onclick={() => step(1)}>Next problem</button>
+          <div class="filters" role="group" aria-label="Severity filters">
+            {#each problemSeverities as severity}
+              <label class="filter"><input type="checkbox" checked={enabled.includes(severity)} onchange={() => enabled = enabled.includes(severity) ? enabled.filter(s => s !== severity) : [...enabled, severity]} /><span>{severityLabels[severity]}</span></label>
+            {/each}
+          </div>
+          <div class="nav" role="group" aria-label="Problem navigation">
+            <button type="button" disabled={!rows.length || blocked} onclick={() => step(-1)}>Previous problem</button>
+            <button type="button" disabled={!rows.length || blocked} onclick={() => step(1)}>Next problem</button>
+          </div>
         {/if}
         {#if settings}
           <button type="button" class="settings-toggle" class:attention={summary.needsSettings} aria-expanded={settingsOpen} aria-controls={settingsId}
@@ -92,9 +99,11 @@
             {#each rows.filter(f => f.diagnostic.path === path) as finding (diagnosticKey(finding.diagnostic))}
               {@const d = finding.diagnostic}
               <button type="button" class="problem" data-problem-key={diagnosticKey(d)} aria-pressed={selected === diagnosticKey(d)} disabled={blocked} onclick={() => activate(d)}
-                title={finding.entries.map(e => `${e.diagnostic.source} (${e.providerId}) · ${e.diagnostic.freshness}`).sort().join(', ')}>
-                <strong class="sev-{d.severity}">{d.severity}</strong> {d.message} {d.code ?? ''}
-                <span>{line(d)} · {finding.entries.map(e => `${e.diagnostic.source} (${e.providerId}) · ${e.diagnostic.freshness}`).sort().join(', ')}</span>
+                title={`${span(d)} · ${attribution(finding)}`}>
+                <span class="sev sev-{d.severity}">{severityLabels[d.severity]}</span>
+                <span class="loc">{fileLevelFinding(d) ? 'File-level' : locationLabel(d.range)}</span>
+                <span class="msg">{longMessage(d.message) ? messagePreview(d.message) : d.message}{d.code ? ` (${d.code})` : ''}</span>
+                <span class="meta">{attribution(finding)}{notCurrent(finding) ? ' · not current' : ''}</span>
               </button>
             {/each}
           {/if}
@@ -116,9 +125,14 @@
   .tone-info .dot { background: var(--accent-color); }
   .tone-attention .dot { background: #d29922; }
   :global(:root:not([data-theme='dark'])) .tone-error, :global(:root:not([data-theme='dark'])) .sev-error { color: #cf222e; }
-  .details { border-top: 1px solid var(--border-color); padding: 4px 12px 6px; max-height: 38vh; overflow: auto; background: var(--bg-primary); }
+  /* Bounded so the source area keeps most of the dialog. */
+  .details { border-top: 1px solid var(--border-color); padding: 4px 12px 6px; max-height: min(38vh, 360px); overflow: auto; background: var(--bg-primary); }
   .details[hidden] { display: none; }
-  .toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 2px 0 4px; }
+  .toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 16px; margin: 2px 0 4px; }
+  .filters, .nav { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; }
+  .filter { display: inline-flex; align-items: center; gap: 5px; cursor: pointer; white-space: nowrap; }
+  .filter input { margin: 0; }
+  .nav button { border: 1px solid var(--border-color); padding: 2px 8px; }
   .settings-toggle { margin-left: auto; }
   .settings-toggle.attention { color: var(--accent-color); }
   .settings { border: 1px solid var(--border-color); border-radius: 4px; margin: 4px 0; }
@@ -130,9 +144,14 @@
   button:focus-visible { outline: 2px solid var(--accent-color); }
   button:disabled { opacity: .5; }
   .file { font-family: var(--font-mono); }
-  .problem { display: block; width: 100%; padding-left: 18px; overflow-wrap: anywhere; }
+  .problem { display: grid; grid-template-columns: auto auto minmax(0, 1fr); column-gap: 8px; align-items: baseline; width: 100%; padding: 2px 4px 2px 18px; overflow-wrap: anywhere; }
+  .problem .meta { grid-column: 3; font-size: 11px; }
+  .sev { padding: 0 6px; border-radius: 8px; font-size: 11px; font-weight: 600; line-height: 16px; white-space: nowrap; background: rgba(127, 127, 127, 0.15); }
+  .sev-error { background: rgba(248, 81, 73, 0.12); } .sev-warning { background: rgba(210, 153, 34, 0.12); }
+  .sev-information { color: #2f81f7; background: rgba(47, 129, 247, 0.12); } .sev-hint { color: #8250df; background: rgba(130, 80, 223, 0.12); }
+  .loc { font-family: var(--font-mono); font-size: 11px; color: var(--text-secondary); white-space: nowrap; }
   .problem[aria-pressed='true'] { background: var(--active-bg); }
   .sev-error { color: #f85149; } .sev-warning { color: #d29922; }
-  .problem span, .note { color: var(--text-secondary); } .problem span { display: block; }
+  .problem .meta, .note { color: var(--text-secondary); }
   .note { margin: 4px 0; }
 </style>
