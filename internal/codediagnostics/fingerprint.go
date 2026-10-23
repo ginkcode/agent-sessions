@@ -13,6 +13,10 @@ import (
 
 const maxIdentityFile = 256 << 20
 
+// A bounded composite proposal supports several independently rooted language
+// servers and their runtimes without weakening per-file or aggregate hash limits.
+const maxProposalTools = 256
+
 // ToolInput is fixed adapter-owned metadata, never arbitrary client commands.
 // Policy includes the adapter version, fixed argv policy, environment allowlist
 // values, toolchain selectors and dependency identity policy. ConfigPaths must
@@ -42,8 +46,8 @@ func Fingerprint(root AuthorizedRoot, tools []ToolInput) (string, error) {
 	if err := root.Revalidate(); err != nil {
 		return "", err
 	}
-	if len(tools) == 0 || len(tools) > 32 {
-		return "", failure("invalidArgument", "Expected 1 to 32 tools")
+	if len(tools) == 0 || len(tools) > maxProposalTools {
+		return "", failure("invalidArgument", "Expected 1 to 256 tools")
 	}
 	inputs := append([]ToolInput(nil), tools...)
 	sort.Slice(inputs, func(i, j int) bool { return inputs[i].ProviderID < inputs[j].ProviderID })

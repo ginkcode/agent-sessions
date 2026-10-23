@@ -13,6 +13,8 @@ package codediagnostics
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"io"
@@ -103,7 +105,7 @@ func (c ServerConfig) command() Command {
 	if c.Settings != nil {
 		policy += "|settings:" + string(c.Settings)
 	}
-	return Command{ProviderID: c.ProviderID, Executable: c.Executable, Args: c.Args, Env: c.Env, Directory: c.Directory, AdapterPolicy: policy, AcceptedExits: []int{0}}
+	return Command{ProviderID: c.scopedToolID(c.ProviderID), Executable: c.Executable, Args: c.Args, Env: c.Env, Directory: c.Directory, AdapterPolicy: policy, AcceptedExits: []int{0}}
 }
 
 // Policy is the ToolInput.Policy that approval must bind (CD-02 fingerprint).
@@ -111,13 +113,28 @@ func (c ServerConfig) Policy() string { return c.command().Policy() }
 
 // Tool is the approval input for this server.
 func (c ServerConfig) Tool() ToolInput {
-	return ToolInput{ProviderID: c.ProviderID, Executable: c.Executable, ConfigPaths: append([]string(nil), c.ConfigPaths...), Policy: c.Policy()}
+	return ToolInput{ProviderID: c.scopedToolID(c.ProviderID), Executable: c.Executable, ConfigPaths: append([]string(nil), c.ConfigPaths...), Policy: c.Policy()}
 }
 
 // Tools is the server's complete approval contribution: its own identity plus
 // any bound toolchain files.
 func (c ServerConfig) Tools() []ToolInput {
-	return append([]ToolInput{c.Tool()}, cloneTools(c.Toolchain)...)
+	tools := cloneTools(c.Toolchain)
+	for i := range tools {
+		tools[i].ProviderID = c.scopedToolID(tools[i].ProviderID)
+	}
+	return append([]ToolInput{c.Tool()}, tools...)
+}
+
+// Keep semantic provider identities separate from exact proposal identities.
+// Hash both components so even a 256-byte toolchain ID stays bounded.
+func (c ServerConfig) scopedToolID(id string) string {
+	if c.Directory == "" {
+		return id
+	}
+	workspace := sha256.Sum256([]byte(c.Directory))
+	tool := sha256.Sum256([]byte(id))
+	return "workspace:" + hex.EncodeToString(workspace[:]) + ":" + hex.EncodeToString(tool[:])
 }
 
 func (c ServerConfig) approvalTools() []ToolInput {
@@ -735,7 +752,13 @@ func (s *lspSession) initialize() (ServerCapabilities, error) {
 
 	ctx, cancel := s.deadline(s.lease.Context, s.manager.options.InitTimeout)
 	defer cancel()
-	raw, err := tr.Call(ctx, "initialize", s.initializeParams())
+	params := s.initializeParams()
+	// Revalidate the contained directory after launch as well; initialize must
+	// never silently widen an invalid workspace back to the attachment root.
+	if params == nil {
+		return ServerCapabilities{}, failure("unauthorized", "Invalid language server workspace")
+	}
+	raw, err := tr.Call(ctx, "initialize", params)
 	if err != nil {
 		if errors.Is(context.Cause(ctx), context.DeadlineExceeded) {
 			err = context.DeadlineExceeded
@@ -760,9 +783,13 @@ func (s *lspSession) initialize() (ServerCapabilities, error) {
 // position encoding, plus workspace/configuration when the adapter supplies
 // fixed settings and publishDiagnostics (no versionSupport) when it declares
 // diagnostics. No other textDocument or window capability, no dynamic
-// registration, no watchers, no edits, no workspace folders. rootUri is the authorized canonical
-// root; nothing is expanded outside it.
+// registration, no watchers, no edits. A scoped workspace folder and rootUri
+// name only the validated contained Directory, never a broader project root.
 func (s *lspSession) initializeParams() map[string]any {
+	dir, err := commandDirectory(s.root, s.config.Directory)
+	if err != nil {
+		return nil
+	}
 	capabilities := map[string]any{"general": map[string]any{"positionEncodings": []string{"utf-16"}}}
 	if s.config.Settings != nil {
 		capabilities["workspace"] = map[string]any{"configuration": true}
@@ -770,12 +797,16 @@ func (s *lspSession) initializeParams() map[string]any {
 	if s.config.DeclareDiagnostics {
 		capabilities["textDocument"] = map[string]any{"publishDiagnostics": map[string]any{}}
 	}
-	return map[string]any{
+	params := map[string]any{
 		"processId":    nil,
 		"clientInfo":   map[string]string{"name": clientName, "version": clientVersion},
-		"rootUri":      fileURI(s.root.Project().Root),
+		"rootUri":      fileURI(dir),
 		"capabilities": capabilities,
 	}
+	if s.config.Directory != "" {
+		params["workspaceFolders"] = []map[string]string{{"uri": fileURI(dir), "name": filepath.Base(dir)}}
+	}
+	return params
 }
 
 // serve applies the request policy until the transport or generation ends.

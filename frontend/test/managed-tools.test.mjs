@@ -85,6 +85,20 @@ test('Python offers Ruff and Pyright independently, with one shared language lab
   await store.hide();
 });
 
+test('mixed nested workspaces retain setup offers and automatic downloads for missing siblings', async () => {
+  const setting = autoSetting(false);
+  const { store, calls } = await setup(async p => p.action === 'propose' ? state('proposed', { proposal: { ...proposal, tool: 'pyright' } })
+    : p.action === 'install' ? state('failed', { tool: 'pyright', message: 'offline' })
+    : state('idle', { tools: { pyright: 'missingTool' } }), setting);
+  store.snapshot = { ...store.snapshot, providers: [{ ...gopls, providerId: 'pyright', availability: 'available', missingTool: true, notice: 'processing: missingTool', coverage: { ...gopls.coverage, roots: ['api'], partial: true } }] };
+  const html = await renderWithFixture(controls, { checks: store });
+  assert.match(html, /Install pyright…/);
+  assert.match(html, /processing: missingTool/);
+  store.setAutoInstall(true); await flush();
+  assert.deepEqual(calls.map(p => p.action), ['status', 'propose', 'install']);
+  await store.hide();
+});
+
 test('automatic download off: nothing is proposed until the setting is turned on; off again stops before install', async () => {
   const setting = autoSetting(false);
   const { store, calls } = await setup(async p => p.action === 'propose' ? (setting.set(false), state('proposed', { proposal })) : state('idle', { tools: { gopls: 'missingTool' } }), setting);

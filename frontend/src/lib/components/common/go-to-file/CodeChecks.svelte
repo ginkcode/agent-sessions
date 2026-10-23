@@ -27,7 +27,7 @@
   /** The app-managed install a missing language server can get here, if any. */
   function offerFor(provider: CodeDiagnosticsProvider): ManagedToolName | undefined {
     const tool = MANAGED_TOOL_FOR_PROVIDER[provider.providerId];
-    if (!tool || !canOffer || provider.availability !== 'missingTool') return undefined;
+    if (!tool || !canOffer || (provider.availability !== 'missingTool' && !provider.missingTool)) return undefined;
     // An app copy that exists (verified or not) is not offered again; "missingTool" means none.
     const install = checks.managedInstalls?.[tool];
     return !install || install === 'missingTool' ? tool : undefined;
@@ -39,7 +39,7 @@
   /** Why a server is missing and how to get it, when no Install button says so; Svelte has no managed install. */
   function setupNote(provider: CodeDiagnosticsProvider): string {
     const tool = MANAGED_TOOL_FOR_PROVIDER[provider.providerId];
-    if (tool) return provider.availability === 'missingTool' && checks.managed && !canOffer ? 'No app-managed install is offered on this host: install it yourself, then refresh.' : '';
+    if (tool) return (provider.availability === 'missingTool' || provider.missingTool) && checks.managed && !canOffer ? 'No app-managed install is offered on this host: install it yourself, then refresh.' : '';
     if (provider.providerId === 'svelte' || provider.providerId === 'svelte-check') return 'Setup not supported here: install it on the host yourself, then refresh.';
     return '';
   }
@@ -224,6 +224,7 @@
     <details aria-label="Language-server setup">
       <summary>Tools setup · language servers</summary>
       <p class="muted">Like Zed, each language server is looked up in the project first (node_modules/.bin, .venv), then on your login shell's PATH, then in this app's own install folder on {where}. {checks.liveEnabled ? 'Live diagnostics (experimental) use them for opened files only, after project approval: gopls for Go, vtsls for TypeScript/JavaScript and Ruff plus Pyright for Python (lint/syntax and type errors, respectively). Svelte live diagnostics are not enabled.' : 'Live diagnostics are not available on this connection.'} Like Zed, a missing server that this project's files need is downloaded into this app's folder automatically, at most once per app session; turn that off below to review each download first. Installing is separate from trusting this project: it never approves or starts a server. Revoking project approval also abandons a pending installation offer and cancels an owned installation.</p>
+      <p class="muted">The opened folder does not need Git. Nested Python and JavaScript/TypeScript projects use their own configuration and environments; coverage roots are listed under Coverage details.</p>
       <label class="toggle"><input type="checkbox" checked={checks.autoInstall} onchange={e => checks.setAutoInstall(e.currentTarget.checked)} /> Download missing language servers automatically</label>
       {#if setupRows.length}
         <ul class="rows">

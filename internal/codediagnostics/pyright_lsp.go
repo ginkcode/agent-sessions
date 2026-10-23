@@ -122,6 +122,10 @@ type PyrightPlan struct {
 // DiscoverPyright inspects metadata only. Errors are reserved for an invalid
 // host description or a root that is no longer authorized.
 func DiscoverPyright(root AuthorizedRoot, reviewedPath []string, env PyrightEnvironment) (*PyrightPlan, error) {
+	return discoverPyrightWorkspace(root, reviewedPath, env, nil)
+}
+
+func discoverPyrightWorkspace(root AuthorizedRoot, reviewedPath []string, env PyrightEnvironment, workspace *tsWorkspace) (*PyrightPlan, error) {
 	if err := root.Revalidate(); err != nil {
 		return nil, err
 	}
@@ -136,7 +140,7 @@ func DiscoverPyright(root AuthorizedRoot, reviewedPath []string, env PyrightEnvi
 	}
 	// Python first: a root without Python stays a muted "unsupported" rather
 	// than asking for an install it does not need.
-	w, err := discoverProjectDirs(root, pyrightProjectMarkers)
+	w, err := workspaceMetadata(workspace, func() (tsWorkspace, error) { return discoverProjectDirs(root, pyrightProjectMarkers) })
 	if err != nil {
 		return nil, err
 	}

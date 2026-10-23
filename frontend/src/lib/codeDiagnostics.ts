@@ -29,6 +29,8 @@ export interface CodeDiagnosticsProvider {
   coverage: { kind: 'savedProject' | 'openedDocuments'; roots: string[]; partial: boolean; externalChanges: 'reconciled' | 'unwatched' | 'watching' };
   /** Opened-documents providers: file extensions they synchronize (additive; absent on older backends). */
   documentExtensions?: string[];
+  /** Some nested projects lack this server even if other projects can use it. */
+  missingTool?: boolean;
   freshness: CodeDiagnosticFreshness;
   truncated: boolean;
   runId?: string;

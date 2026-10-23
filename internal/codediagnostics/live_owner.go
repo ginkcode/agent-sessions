@@ -42,8 +42,8 @@ func (d *LiveDocuments) Register(root AuthorizedRoot, registrations []Registrati
 			tools = append(tools, r.Adapter.Tools()...)
 		}
 		if r.Live != nil && r.Availability == "available" {
-			servers = append(servers, cloneServer(r.Live.Server))
-			tools = append(tools, r.Live.Server.Tools()...)
+			servers = append(servers, liveServers(r.Live)...)
+			tools = append(tools, liveTools(r.Live)...)
 		}
 	}
 	for i := range servers {

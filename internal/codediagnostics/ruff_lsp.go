@@ -72,6 +72,10 @@ type RuffPlan struct {
 // DiscoverRuff inspects metadata only. Errors are reserved for an invalid host
 // description or a root that is no longer authorized.
 func DiscoverRuff(root AuthorizedRoot, reviewedPath []string, env RuffEnvironment) (*RuffPlan, error) {
+	return discoverRuffWorkspace(root, reviewedPath, env, nil)
+}
+
+func discoverRuffWorkspace(root AuthorizedRoot, reviewedPath []string, env RuffEnvironment, workspace *tsWorkspace) (*RuffPlan, error) {
 	if err := root.Revalidate(); err != nil {
 		return nil, err
 	}
@@ -85,7 +89,7 @@ func DiscoverRuff(root AuthorizedRoot, reviewedPath []string, env RuffEnvironmen
 	}
 	// Python first: a root without Python stays a muted "unsupported" rather
 	// than asking for an install it does not need.
-	w, err := discoverProjectDirs(root, ruffProjectMarkers)
+	w, err := workspaceMetadata(workspace, func() (tsWorkspace, error) { return discoverProjectDirs(root, ruffProjectMarkers) })
 	if err != nil {
 		return nil, err
 	}

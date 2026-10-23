@@ -102,6 +102,10 @@ type TSPlan struct {
 // DiscoverTypeScript inspects metadata only. Errors are reserved for an invalid
 // host description or a root that is no longer authorized.
 func DiscoverTypeScript(root AuthorizedRoot, reviewedPath []string, env TSEnvironment) (*TSPlan, error) {
+	return discoverTypeScriptWorkspace(root, reviewedPath, env, nil)
+}
+
+func discoverTypeScriptWorkspace(root AuthorizedRoot, reviewedPath []string, env TSEnvironment, workspace *tsWorkspace) (*TSPlan, error) {
 	if err := root.Revalidate(); err != nil {
 		return nil, err
 	}
@@ -116,7 +120,7 @@ func DiscoverTypeScript(root AuthorizedRoot, reviewedPath []string, env TSEnviro
 	}
 	// Sources first: a project without JS/TS stays a muted "unsupported"
 	// rather than asking for an install it does not need.
-	w, err := discoverTSPackages(root)
+	w, err := workspaceMetadata(workspace, func() (tsWorkspace, error) { return discoverTSPackages(root) })
 	if err != nil {
 		return nil, err
 	}

@@ -117,7 +117,7 @@ export class CodeDiagnosticsStore {
     if (!this.autoInstall || this.status !== 'ready' || this.managedPending || !m || !host || ['proposed', 'installing'].includes(m.state) || (m.state === 'unavailable' && !m.tool)) return;
     const tool = this.providers.flatMap(p => {
       const t = MANAGED_TOOL_FOR_PROVIDER[p.providerId], app = t && this.managedInstalls[t];
-      return t && p.availability === 'missingTool' && (!app || app === 'missingTool') && !this.autoTried.has(`${host}\0${t}`) ? [t] : [];
+      return t && (p.availability === 'missingTool' || p.missingTool) && (!app || app === 'missingTool') && !this.autoTried.has(`${host}\0${t}`) ? [t] : [];
     })[0];
     if (!tool) return;
     this.autoTried.add(`${host}\0${tool}`);

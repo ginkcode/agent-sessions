@@ -48,6 +48,8 @@ type ProviderState struct {
 	// files no provider supports are "not live" rather than failed. The backend
 	// still resolves the owner authoritatively on every open.
 	DocumentExtensions []string `json:"documentExtensions,omitempty"`
+	// MissingTool also reports missing child-workspace servers when siblings are available.
+	MissingTool bool `json:"missingTool,omitempty"`
 }
 type ProposalTool struct {
 	ProviderID  string   `json:"providerId"`

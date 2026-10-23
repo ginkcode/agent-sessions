@@ -10,9 +10,42 @@ import (
 // Available servers join the same exact attachment-wide proposal as saved checkers.
 // Resolve assigns one synchronization owner; it never starts a process.
 type LiveRegistration struct {
-	State   ProviderState
+	State      ProviderState
+	Server     ServerConfig // legacy single-workspace registration
+	Resolve    func(string) (language string, owned bool)
+	Workspaces []LiveWorkspace
+}
+
+// LiveWorkspace keeps a server rooted in one contained project directory while
+// approval and attachment authority remain with the parent AuthorizedRoot.
+type LiveWorkspace struct {
 	Server  ServerConfig
 	Resolve func(string) (language string, owned bool)
+}
+
+const maxLiveWorkspaces = 16
+
+func liveWorkspaces(l *LiveRegistration) []LiveWorkspace {
+	if len(l.Workspaces) != 0 {
+		return l.Workspaces
+	}
+	return []LiveWorkspace{{Server: l.Server, Resolve: l.Resolve}}
+}
+
+func liveServers(l *LiveRegistration) []ServerConfig {
+	var configs []ServerConfig
+	for _, w := range liveWorkspaces(l) {
+		configs = append(configs, cloneServer(w.Server))
+	}
+	return configs
+}
+
+func liveTools(l *LiveRegistration) []ToolInput {
+	var tools []ToolInput
+	for _, cfg := range liveServers(l) {
+		tools = append(tools, cfg.Tools()...)
+	}
+	return tools
 }
 
 // LiveEnvironment contains reviewed host-local paths only. Discovery does not
@@ -88,6 +121,31 @@ func DiscoverLocalLive(root AuthorizedRoot, env LocalLiveEnvironment) ([]Registr
 	if err != nil {
 		return nil, err
 	}
+	if nested, used, err := discoverWorkspaceLive(root, env); err != nil {
+		return nil, err
+	} else if used {
+		goConfig, _ := goPlan.Server()
+		svelte := ProviderState{
+			ProviderID: svelteLSProviderID, Availability: "unsupported", Phase: "idle", Freshness: "uncertain",
+			Coverage: Coverage{Kind: "openedDocuments", Roots: []string{}, Partial: true, ExternalChanges: CoverageExternalChanges},
+			Notice:   "Live diagnostics for Svelte are not enabled: no Svelte language server version has been verified.",
+		}
+		registrations := []Registration{liveRegistration(goPlan.Provider(), goConfig, func(file string) (string, bool) {
+			return "go", strings.HasSuffix(file, ".go") && coversPackage(goPlan.modules, file)
+		})}
+		for _, r := range nested {
+			if r.ProviderID == tsProviderID {
+				registrations = append(registrations, r)
+			}
+		}
+		registrations = append(registrations, liveRegistration(svelte, ServerConfig{}, nil))
+		for _, r := range nested {
+			if r.ProviderID != tsProviderID {
+				registrations = append(registrations, r)
+			}
+		}
+		return registrations, nil
+	}
 	ts, err := DiscoverTypeScript(root, env.Path, env.TS)
 	if err != nil {
 		return nil, err
@@ -161,10 +219,17 @@ func DiscoveryDocuments(root AuthorizedRoot, registrations []Registration, sessi
 				return SessionDocuments{}, err
 			}
 			if r.Availability == "available" {
-				cfg := r.Live.Server
-				tools = append(tools, cfg.Tools()...)
+				for _, cfg := range liveServers(r.Live) {
+					if _, err := commandDirectory(root, cfg.Directory); err != nil {
+						return SessionDocuments{}, err
+					}
+				}
+				tools = append(tools, liveTools(r.Live)...)
 				entry := *r.Live
-				entry.Server = cloneServer(cfg)
+				entry.Workspaces = nil
+				for _, w := range liveWorkspaces(r.Live) {
+					entry.Workspaces = append(entry.Workspaces, LiveWorkspace{Server: cloneServer(w.Server), Resolve: w.Resolve})
+				}
 				live = append(live, entry)
 			}
 		}
@@ -184,10 +249,39 @@ func DiscoveryDocuments(root AuthorizedRoot, registrations []Registration, sessi
 		}
 		var result []DocumentServer
 		for _, entry := range live {
-			if lang, ok := entry.Resolve(file); ok {
-				cfg := cloneServer(entry.Server)
+			var selected *DocumentServer
+			depth := -1
+			conflict := false
+			for _, w := range entry.Workspaces {
+				dir := w.Server.Directory
+				if dir != "" && !strings.HasPrefix(file, dir+"/") {
+					continue
+				}
+				lang, ok := w.Resolve(file)
+				if !ok {
+					continue
+				}
+				d := 0
+				if dir != "" {
+					d = strings.Count(dir, "/") + 1
+				}
+				if d < depth {
+					continue
+				}
+				if d == depth {
+					conflict = true
+					continue
+				}
+				cfg := cloneServer(w.Server)
 				cfg.ApprovalTools = cloneTools(tools)
-				result = append(result, DocumentServer{Config: cfg, LanguageID: lang})
+				selected = &DocumentServer{Config: cfg, LanguageID: lang}
+				depth, conflict = d, false
+			}
+			if conflict {
+				return nil
+			}
+			if selected != nil {
+				result = append(result, *selected)
 			}
 		}
 		// Only the reviewed Python lint/type pair may share a document. Arbitrary
@@ -227,8 +321,26 @@ func validateLive(r Registration) error {
 	if r.Adapter != nil || l.State.ProviderID != r.ProviderID || l.State.Availability != r.Availability || l.State.Coverage.Kind != "openedDocuments" {
 		return failure("invalidArgument", "Invalid live provider metadata")
 	}
-	if r.Availability == "available" && (l.Server.ProviderID != r.ProviderID || l.Resolve == nil || l.Server.ApprovalTools != nil) {
-		return failure("invalidArgument", "Invalid live server identity")
+	if len(l.Workspaces) > maxLiveWorkspaces {
+		return failure("limitExceeded", "Live workspace budget exceeded")
+	}
+	if len(l.Workspaces) != 0 && (l.Server.ProviderID != "" || l.Resolve != nil) {
+		return failure("invalidArgument", "Mixed legacy and workspace live registration")
+	}
+	if r.Availability == "available" {
+		seen := map[string]bool{}
+		for _, w := range liveWorkspaces(l) {
+			cfg := w.Server
+			if cfg.ProviderID != r.ProviderID || w.Resolve == nil || cfg.ApprovalTools != nil || seen[cfg.Directory] {
+				return failure("invalidArgument", "Invalid live server identity")
+			}
+			if cfg.Directory != "" {
+				if err := ValidatePath(cfg.Directory); err != nil {
+					return err
+				}
+			}
+			seen[cfg.Directory] = true
+		}
 	}
 	return nil
 }

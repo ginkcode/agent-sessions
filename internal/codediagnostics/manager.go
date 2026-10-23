@@ -139,7 +139,12 @@ func (m *Manager) prepare(root AuthorizedRoot, registrations []Registration) (*a
 			state = r.Live.State
 			state.Coverage.Roots = slices.Clone(state.Coverage.Roots)
 			if r.Availability == "available" {
-				a.tools = append(a.tools, r.Live.Server.Tools()...)
+				for _, cfg := range liveServers(r.Live) {
+					if _, err := commandDirectory(root, cfg.Directory); err != nil {
+						return nil, err
+					}
+				}
+				a.tools = append(a.tools, liveTools(r.Live)...)
 			}
 		case r.InProcess:
 			if r.Adapter != nil || r.Live != nil {
