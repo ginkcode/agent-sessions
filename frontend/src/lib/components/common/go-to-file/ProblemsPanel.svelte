@@ -1,11 +1,33 @@
+<script module lang="ts">
+  const HEIGHT_KEY = 'agent-sessions:problems-height';
+  // Room the header, status bar and some source lines keep above the details.
+  const MIN_HEIGHT = 80, KEPT_ABOVE = 240;
+
+  function clampDetailsHeight(height: number, windowHeight: number): number {
+    return Math.round(Math.max(MIN_HEIGHT, Math.min(height, windowHeight - KEPT_ABOVE)));
+  }
+
+  function savedHeight(): number | undefined {
+    try {
+      if (typeof localStorage === 'undefined') return undefined;
+      const saved = Number(localStorage.getItem(HEIGHT_KEY));
+      return saved > 0 ? saved : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+</script>
+
 <script lang="ts">
   import { tick, type Snippet } from 'svelte';
+  import Splitter from '../Splitter.svelte';
   import { codeDiagnostics as checks } from '../../../stores/codeDiagnostics.svelte';
   import { diagnosticKey, type CodeDiagnostic } from '../../../codeDiagnostics';
   import { fileLevelFinding, orderedProblems, problemSeverities, problemKey, stepProblem } from '../../../problemNavigation';
   import { codeCheckSummary, toggleDisclosure } from '../../../codeCheckSummary';
   import { locationLabel, longMessage, messagePreview, severityLabels, toolName } from '../../../codeCheckLabels';
-  // Every dialog opening mounts this collapsed: details and settings are never remembered.
+  // Every dialog opening mounts this collapsed: details and settings are never
+  // remembered. Only the height the details were dragged to is.
   let { onnavigate, blocked = false, expanded = $bindable(false), settingsOpen = $bindable(false), settings }: {
     onnavigate: (diagnostic: CodeDiagnostic) => void; blocked?: boolean; expanded?: boolean; settingsOpen?: boolean;
     /** Approval, setup and run controls, rendered only once disclosed. */
@@ -17,6 +39,8 @@
   let collapsed = $state<string[]>([]);
   let selected = $state<string>();
   let region = $state<HTMLElement>();
+  let details = $state<HTMLElement>();
+  let height = $state(savedHeight());
   let toggle: HTMLButtonElement;
   let summary = $derived(codeCheckSummary(checks));
   let findings = $derived(checks.findings ?? []);
@@ -29,6 +53,17 @@
   let ownedFocus = false;
   function toggleDetails() {
     ({ expanded, settingsOpen } = toggleDisclosure({ expanded, settingsOpen }, summary, findings.length));
+  }
+  // Dragging the top edge up grows the details; the first drag starts from the shown height.
+  function resize(delta: number): number {
+    const before = height ?? details?.offsetHeight ?? 0;
+    height = clampDetailsHeight(before - delta, window.innerHeight);
+    try {
+      localStorage.setItem(HEIGHT_KEY, String(height));
+    } catch {
+      // Storage disabled; the height lasts this opening.
+    }
+    return before - height;
   }
   function activate(d: CodeDiagnostic) { selected = diagnosticKey(d); if (!blocked) onnavigate(d); }
   async function step(direction: number) {
@@ -51,7 +86,8 @@
   const notCurrent = (f: (typeof findings)[number]) => f.entries.every(e => e.diagnostic.freshness !== 'current');
 </script>
 
-<section class="problems" aria-label="Code checks">
+<section class="problems" class:open={expanded} aria-label="Code checks">
+  {#if expanded}<Splitter direction="vertical" ariaLabel="Resize code check details" onResize={resize} />{/if}
   <div class="status-bar">
     <button bind:this={toggle} type="button" class="status tone-{summary.tone}" aria-expanded={expanded} aria-controls={regionId}
       title={summary.title} aria-busy={checks.status === 'attaching' || !!checks.running}
@@ -61,7 +97,8 @@
       <span role="status" aria-live="polite">{summary.text}</span>
     </button>
   </div>
-  <div id={regionId} class="details" role="region" aria-label="Code check details" hidden={!expanded}>
+  <div id={regionId} bind:this={details} class="details" class:sized={height !== undefined} style:height={height ? `${height}px` : undefined}
+    role="region" aria-label="Code check details" hidden={!expanded}>
     {#if expanded}
       <div class="toolbar">
         {#if listing}
@@ -114,6 +151,8 @@
 </section>
 <style>
   .problems { border-top: 1px solid var(--border-color); font-size: 12px; background: var(--bg-secondary); }
+  /* The splitter draws the top edge while open. */
+  .problems.open { border-top: none; }
   .status-bar { display: flex; align-items: center; padding: 0 8px; min-height: 24px; }
   .status { display: inline-flex; align-items: center; gap: 6px; padding: 2px 6px; border-radius: 4px; color: var(--text-secondary); white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
   .status:hover { background: var(--hover-bg); color: var(--text-primary); }
@@ -125,8 +164,10 @@
   .tone-info .dot { background: var(--accent-color); }
   .tone-attention .dot { background: #d29922; }
   :global(:root:not([data-theme='dark'])) .tone-error, :global(:root:not([data-theme='dark'])) .sev-error { color: #cf222e; }
-  /* Bounded so the source area keeps most of the dialog. */
+  /* Bounded so the source area keeps most of the dialog until dragged taller.
+     The only scroll container: nothing inside scrolls on its own. */
   .details { border-top: 1px solid var(--border-color); padding: 4px 12px 6px; max-height: min(38vh, 360px); overflow: auto; background: var(--bg-primary); }
+  .details.sized { max-height: calc(100vh - 240px); }
   .details[hidden] { display: none; }
   .toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 16px; margin: 2px 0 4px; }
   .filters, .nav { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; }
@@ -137,7 +178,6 @@
   .settings-toggle.attention { color: var(--accent-color); }
   .settings { border: 1px solid var(--border-color); border-radius: 4px; margin: 4px 0; }
   .settings[hidden] { display: none; }
-  .results { overflow: auto; }
   button { text-align: left; padding: 4px; color: var(--text-primary); cursor: pointer; border-radius: 4px; }
   .status { color: var(--text-secondary); }
   .tone-error.status { color: #f85149; }

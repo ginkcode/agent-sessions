@@ -33,7 +33,7 @@
     <p role="status" class="muted">{labels[checks.status]}{checks.pending ? ` · ${checks.pending} request pending` : ''}</p>
   {/if}
   {#if checks.error}
-    <p class="bounded">{checks.error.message}</p>
+    <p class="wrapped">{checks.error.message}</p>
     {#if checks.snapshot && checks.status === 'error'}
       <button type="button" disabled={blocked || !!checks.pending} onclick={() => checks.refresh()}>Refresh check status</button>
       {#if checks.revoking}
@@ -111,7 +111,7 @@
     {/if}
     {#if checks.providers.length}
       <h4>Checkers{checks.partial ? ' · partial coverage' : ''}{checks.truncated ? ' · truncated' : ''}</h4>
-      <ul class="rows providers">
+      <ul class="rows">
         {#each checks.providers as provider (provider.providerId)}
           {@const status = providerStatus(provider)}
           {@const note = setupNote(provider.providerId)}
@@ -122,13 +122,13 @@
             {#if checks.approved && provider.phase === 'failed' && provider.availability === 'available' && provider.coverage.kind === 'savedProject'}
               <button type="button" disabled={blocked || !checks.canRetry(provider.providerId)} onclick={() => perform(() => checks.retry(provider.providerId))}>Retry {provider.providerId}</button>
             {/if}
-            {#if provider.failure}<p class="sub bounded">{provider.failure.message} (retained findings are not a successful check)</p>{/if}
+            {#if provider.failure}<p class="sub wrapped">{provider.failure.message} (retained findings are not a successful check)</p>{/if}
             {#if provider.phase === 'canceled'}<p class="sub">Check canceled; retained findings may be stale.</p>{/if}
             {#if checks.approved && provider.phase === 'failed' && provider.availability === 'available' && provider.coverage.kind !== 'savedProject'}
               <p class="sub">No provider restart action is supported here. A failed session can be recreated by a subsequent document open; reopening in a surviving session may remain uncertain until a new isolated session. Refresh check status only reads status.</p>
             {/if}
             {#if provider.availability !== 'available' && note}<p class="sub">{note}</p>{/if}
-            {#if provider.notice}<p class="sub bounded">{provider.notice}</p>{/if}
+            {#if provider.notice}<p class="sub wrapped">{provider.notice}</p>{/if}
           </li>
         {/each}
       </ul>
@@ -149,8 +149,8 @@
     <details aria-label="Go language-server setup" open={setupOpen}>
       <summary>Tools setup · Go language server (gopls)</summary>
       <p class="muted">Installing a tool is separate from trusting this project's execution. Neither approval installs or starts a server automatically. {checks.liveEnabled ? 'Live diagnostics (experimental) use installed, supported language servers on this host for opened files only, after project approval: gopls for Go, vtsls for TypeScript/JavaScript and Ruff for Python (lint and syntax only, not type errors). A missing or unsupported server is shown as its own status; Svelte live diagnostics are not enabled.' : 'Live diagnostics are not available on this connection.'} Revoking project approval also abandons pending setup consent and cancels an owned installation under the backend's conservative policy.</p>
-      {#if checks.managedNotice}<p role="status" class="bounded">{checks.managedNotice}</p>{/if}
-      {#if checks.managed?.message}<p role="status" class="bounded">{checks.managed.message}</p>{/if}
+      {#if checks.managedNotice}<p role="status" class="wrapped">{checks.managedNotice}</p>{/if}
+      {#if checks.managed?.message}<p role="status" class="wrapped">{checks.managed.message}</p>{/if}
       {#if remote}
         <p role="status">Install unavailable for remote hosts: managed setup needs an authenticated host identity, which remote connections do not provide yet. Install gopls on the remote host yourself, then refresh.</p>
       {:else if checks.managed?.state === 'proposed' && checks.managed.proposal && !checks.managedDismissed}
@@ -200,14 +200,13 @@
   h4 { margin: 8px 0 2px; font-size: 12px; font-weight: 600; color: var(--text-secondary); }
   .muted { color: var(--text-secondary); }
   .mono { overflow-wrap: anywhere; font-family: var(--font-mono); font-size: 11px; }
-  .bounded { max-height: 6em; overflow: auto; overflow-wrap: anywhere; white-space: pre-wrap; }
+  .wrapped { overflow-wrap: anywhere; white-space: pre-wrap; }
   .card { border: 1px solid var(--border-color); border-radius: 6px; padding: 6px 8px; margin: 6px 0; background: var(--bg-secondary); }
   .card.warn { border-color: rgba(210, 153, 34, 0.5); }
   .actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 6px 0; }
   .rows { list-style: none; margin: 4px 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
   .rows li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; padding: 3px 6px; border-radius: 4px; }
   .rows li:hover { background: var(--hover-bg); }
-  .providers { max-height: 220px; overflow: auto; }
   .name { font-weight: 600; min-width: 12ch; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .detail { color: var(--text-secondary); min-width: 0; overflow-wrap: anywhere; }
   .rows li > button { margin-left: auto; }
@@ -216,9 +215,11 @@
   .tone-ok { color: #3fb950; border-color: rgba(63, 185, 80, 0.5); }
   .tone-busy { color: var(--accent-color); border-color: var(--accent-color); }
   .tone-bad { color: #f85149; border-color: rgba(248, 81, 73, 0.5); }
+  .tone-warn { color: #d29922; border-color: rgba(210, 153, 34, 0.5); }
   :global(:root:not([data-theme='dark'])) .tone-ok { color: #1a7f37; }
   :global(:root:not([data-theme='dark'])) .tone-bad { color: #cf222e; }
-  .tech { margin: 4px 0; padding-left: 16px; max-height: 160px; overflow: auto; }
+  :global(:root:not([data-theme='dark'])) .tone-warn { color: #9a6700; }
+  .tech { margin: 4px 0; padding-left: 16px; }
   button { padding: 3px 8px; border: 1px solid var(--border-color); border-radius: 4px; cursor: pointer; font-size: 12px; }
   button:disabled { opacity: 0.5; cursor: default; }
   details { margin: 6px 0; }

@@ -43,8 +43,11 @@ const availability: Record<CodeDiagnosticsProvider['availability'], string> = {
   approvalRequired: 'Approval required', available: 'Available', missingTool: 'Not installed', unsupported: 'Unsupported', disabled: 'Disabled',
 };
 /** One short status per provider. Phase only matters for an available provider. */
-export function providerStatus(p: Pick<CodeDiagnosticsProvider, 'availability' | 'phase' | 'failure'>): { text: string; tone: 'ok' | 'busy' | 'bad' | 'muted' } {
-  if (p.availability !== 'available') return { text: availability[p.availability] ?? p.availability, tone: p.availability === 'missingTool' ? 'bad' : 'muted' };
+export function providerStatus(p: Pick<CodeDiagnosticsProvider, 'availability' | 'phase' | 'failure'>): { text: string; tone: 'ok' | 'busy' | 'bad' | 'warn' | 'muted' } {
+  if (p.availability !== 'available') {
+    const tone = p.availability === 'missingTool' ? 'bad' : p.availability === 'unsupported' ? 'warn' : 'muted';
+    return { text: availability[p.availability] ?? p.availability, tone };
+  }
   if (p.failure || p.phase === 'failed') return { text: 'Failed', tone: 'bad' };
   if (p.phase === 'starting') return { text: 'Starting…', tone: 'busy' };
   if (p.phase === 'checking') return { text: 'Checking…', tone: 'busy' };

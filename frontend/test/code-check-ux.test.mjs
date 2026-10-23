@@ -57,6 +57,7 @@ test('label helpers: human tool names, consistent modes, bounded messages, remot
   assert.equal(providerMode({ providerId: 'go-vet', coverage: cov('savedProject', 'unwatched') }), 'saved Go files · on demand');
   assert.equal(providerStatus({ availability: 'available', phase: 'failed' }).text, 'Failed');
   assert.equal(providerStatus({ availability: 'missingTool', phase: 'idle' }).text, 'Not installed');
+  assert.deepEqual(providerStatus({ availability: 'unsupported', phase: 'idle' }), { text: 'Unsupported', tone: 'warn' });
   assert.equal(toolName('typescript'), 'TypeScript/JavaScript language server (vtsls)');
   assert.equal(providerMode({ providerId: 'typescript', coverage: cov('openedDocuments', 'unwatched') }), 'LSP · live, opened TypeScript/JavaScript files');
   const live = (providerId, availability) => ({ providerId, availability, coverage: cov('openedDocuments', 'unwatched') });
@@ -202,4 +203,13 @@ test('severity filters are grouped labels with a gap; rows show pill + location'
   assert.match(html, />Ln 2, Col 3</); assert.match(html, />File-level</);
   const style = readFileSync(new URL('../src/lib/components/common/go-to-file/ProblemsPanel.svelte', import.meta.url), 'utf8');
   assert.match(style, /\.filter \{[^}]*gap: 5px/); assert.match(style, /\.details \{[^}]*max-height: min\(/);
+});
+
+test('open details are resizable from the top edge and are the only scroll container', async () => {
+  const fixture = { checks: { analyzing: true, findings: [finding(diag())] } };
+  assert.match(await renderWithFixture(panel, fixture, { expanded: true, onnavigate() {} }), /role="separator" aria-label="Resize code check details"/);
+  assert.doesNotMatch(await renderWithFixture(panel, fixture, { onnavigate() {} }), /role="separator"/);
+  const read = name => readFileSync(new URL(`../src/lib/components/common/go-to-file/${name}`, import.meta.url), 'utf8').split('<style>')[1];
+  assert.equal(read('ProblemsPanel.svelte').match(/overflow(-y)?: auto/g).length, 1);
+  assert.doesNotMatch(read('CodeChecks.svelte'), /overflow(-y)?: auto/);
 });
