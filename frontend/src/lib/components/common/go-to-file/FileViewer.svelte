@@ -5,6 +5,7 @@
   import type { CodeDiagnostic, CodeDiagnosticRange } from '../../../codeDiagnostics';
   import { problemPath, problemLocation, rangeOffsets, revealSourceRange, matchesProblemNavigation, type ProblemNavigationRequest } from '../../../problemNavigation';
   import type { FilePosition } from '../../../filePosition';
+  import type { EditorSymbols } from '../../../fileEditor';
   import { selectFileLine, type FileLineSelection } from '../../../fileSelection';
   import type { BlameLine } from '../../../types';
   import { formatAbsoluteTime, formatAgo } from '../../../date';
@@ -615,24 +616,36 @@
   }
   // Another file, an edit or a mode change: popups about the old text go.
   $effect(() => {
-    void activeTab; void editing; void showPreview; void text;
+    void activeTab; void editing; void showPreview; void text; void edit?.draft;
     untrack(closeSymbolPopups);
   });
 
   const symbolLabel = (path: string) => externalLabel(path, files.dir);
   const symbolStart = (position: CodeDiagnosticPosition) => ({ start: position, end: position });
+  // How long a request from the draft waits for typing to reach the language server.
+  const DRAFT_SYNC_WAIT = 1000;
 
-  /** Where the user is now: the last place navigation landed, else the selection, else the top line shown. */
+  /**
+   * Where the user is now: the editor's caret or the selection in the source
+   * (both follow the user once they move on), else the last place navigation
+   * landed in this file, else the top line shown.
+   */
   function currentLocation(): SourceLocation | undefined {
     const tab = files.activeTab;
     if (!tab) return undefined;
+    let at: CodeDiagnosticPosition | undefined;
+    if (editing) at = editor?.caret();
+    else {
+      const selection = codeScroll?.ownerDocument.getSelection();
+      at = selection?.anchorNode && codeScroll?.contains(selection.anchorNode) ? sourcePosition(codeScroll, selection.anchorNode, selection.anchorOffset) : undefined;
+    }
+    if (at) return { path: tab.path, external: tab.external, range: symbolStart(at) };
     if (landed && landed.path === tab.path) return landed;
-    const selection = codeScroll?.ownerDocument.getSelection();
-    const at = selection?.anchorNode && codeScroll?.contains(selection.anchorNode) ? sourcePosition(codeScroll, selection.anchorNode, selection.anchorOffset) : undefined;
     const top = sourcePositions.get(tab)?.line;
-    return { path: tab.path, external: tab.external, range: symbolStart(at ?? { line: Math.max(0, (top ?? 1) - 1), character: 0 }) };
+    return { path: tab.path, external: tab.external, range: symbolStart({ line: Math.max(0, (top ?? 1) - 1), character: 0 }) };
   }
   function openLocation(location: SourceLocation, from?: SourceLocation) {
+    if (frozen || blocked || !files.dir) return;
     if (from) {
       history.visit(from);
       historyVersion++;
@@ -642,20 +655,29 @@
     landed = location;
     startNavigation(location.path, 'symbol', location.range, () => '', false, location.external);
   }
+  // While files are busy or the link is blocked nothing can open, so a step is not taken (and lost).
+  let historyBlocked = $derived(frozen || Boolean(blocked) || !files.dir);
   export function goHistory(direction: 'back' | 'forward') {
+    if (historyBlocked) return;
     const to = direction === 'back' ? history.goBack(currentLocation()) : history.goForward(currentLocation());
     historyVersion++;
     if (to) openLocation(to);
   }
 
-  async function askSymbol(op: 'definition' | 'references', position: CodeDiagnosticPosition, at: ViewportPoint) {
+  /**
+   * Definition or references at position. From the editor, current says
+   * whether the draft still reads as when asked: the request then waits for
+   * that text to reach the language server, and an answer about other text
+   * is dropped.
+   */
+  async function askSymbol(op: 'definition' | 'references', position: CodeDiagnosticPosition, at: ViewportPoint, current?: () => boolean) {
     closeSymbolPopups();
     const sequence = symbolSequence;
     const path = files.selected, tab = files.activeTab;
     if (!path || !tab) return;
     if (symbolBlocker) { showSymbolNotice(symbolBlocker, at, 4000); return; }
-    const out = await codeDiagnostics.navigate(path, op, position);
-    if (sequence !== symbolSequence || files.activeTab !== tab || files.selected !== path || out.kind === 'stale') return;
+    const out = await codeDiagnostics.navigate(path, op, position, current && { current, wait: DRAFT_SYNC_WAIT });
+    if (sequence !== symbolSequence || files.activeTab !== tab || files.selected !== path || out.kind === 'stale' || current?.() === false) return;
     if (out.kind !== 'result') { showSymbolNotice(out.reason, at, 4000); return; }
     const { locations, truncated } = out.result;
     const from: SourceLocation = { path, external: tab.external, range: symbolStart(position) };
@@ -664,7 +686,7 @@
     const items: ContextMenuItem[] = locations.map((location: CodeNavigationLocation) => ({
       label: locationText(location, symbolLabel),
       title: location.external ? `${location.path} (read-only, outside the project)` : undefined,
-      onSelect: () => openLocation(location, from),
+      onSelect: () => { if (current?.() !== false) openLocation(location, from); },
     }));
     if (truncated) items.push({ label: 'The language server sent more; only these are shown', disabled: true, onSelect() {}, separator: true });
     symbolPicker = { label: op === 'definition' ? 'Definitions' : 'References', items, ...at };
@@ -680,6 +702,19 @@
     if (out.kind !== 'result' || !out.result.hover?.value) { hoverCard = null; return; }
     hoverCard = { html: hoverHtml(out.result.hover), truncated: Boolean(out.result.truncated), ...at };
   }
+  /** The hover for the editor's own tooltip (CodeMirror places and closes it). */
+  async function draftHover(position: CodeDiagnosticPosition, current: () => boolean) {
+    const path = files.selected, tab = files.activeTab;
+    if (!path || !tab || !editing || symbolBlocker || symbolMenu || symbolPicker) return undefined;
+    const out = await codeDiagnostics.navigate(path, 'hover', position, { current, wait: DRAFT_SYNC_WAIT });
+    if (files.activeTab !== tab || files.selected !== path || !current() || out.kind !== 'result' || !out.result.hover?.value) return undefined;
+    return { html: hoverHtml(out.result.hover), truncated: Boolean(out.result.truncated) };
+  }
+  // Navigation from the draft, read at call time; the same answers as the viewer's.
+  const editorSymbols: EditorSymbols = {
+    ask: (op, position, at, current) => void askSymbol(op, position, at, current),
+    hover: draftHover,
+  };
   function hoverEnded() {
     hoverSequence++;
     clearTimeout(hoverCloseTimer);
@@ -728,7 +763,7 @@
       return true;
     }
     const direction = keyHandled(e) ? null : historyKey(e, isMac);
-    if (direction && (direction === 'back' ? canGoBack : canGoForward)) {
+    if (direction && !historyBlocked && (direction === 'back' ? canGoBack : canGoForward)) {
       e.preventDefault();
       goHistory(direction);
       return true;
@@ -818,8 +853,8 @@
   {:else}
     <div class="viewer-header">
       {#if canGoBack || canGoForward}
-        <button type="button" class="copy-btn icon-btn history-btn" aria-label="Back" title="Back to where code navigation came from ({backShortcut})" disabled={!canGoBack || frozen} onclick={() => goHistory('back')}>←</button>
-        <button type="button" class="copy-btn icon-btn history-btn" aria-label="Forward" title="Forward ({forwardShortcut})" disabled={!canGoForward || frozen} onclick={() => goHistory('forward')}>→</button>
+        <button type="button" class="copy-btn icon-btn history-btn" aria-label="Back" title="Back to where code navigation came from ({backShortcut})" disabled={!canGoBack || historyBlocked} onclick={() => goHistory('back')}>←</button>
+        <button type="button" class="copy-btn icon-btn history-btn" aria-label="Forward" title="Forward ({forwardShortcut})" disabled={!canGoForward || historyBlocked} onclick={() => goHistory('forward')}>→</button>
       {/if}
       <span class="viewer-path" title={files.selected}>{external ? externalLabel(files.selected, files.dir) : files.selected}</span>
       <button
@@ -1022,6 +1057,7 @@
             if (!fileActions.busy && !fileActions.quitting) files.updateDraft(activeTab, next);
           }}
           onsave={saveInPlace}
+          symbols={editorSymbols}
         />
       </div>
     {:else if fileStatus(files.selected) === 'D'}
@@ -1124,7 +1160,7 @@
         bind:this={codeScroll}
         onscroll={(e) => {
           if (files.selected) scrollTops.set(`${files.selected}:${showPreview ? 'preview' : 'source'}`, e.currentTarget.scrollTop);
-          if (!showPreview) rememberSourcePosition(e.currentTarget);
+          if (!showPreview) { landed = null; rememberSourcePosition(e.currentTarget); }
           if (find.findActive) find.schedulePaint();
         }}
       >

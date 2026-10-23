@@ -12,6 +12,18 @@ export type CodeNavigationOutcome =
   | { kind: 'failed'; code: string; reason: string }
   | { kind: 'stale' };
 
+/**
+ * How a request asked from a draft stays exact. `current` says whether the
+ * text the position was taken from is still the one shown; the server has
+ * that text once the document is synced and current still holds, so a
+ * request is sent only then, and an answer that arrives after it stops
+ * holding is `stale`. `wait` bounds the wait for a pending change (ms).
+ */
+export interface CodeNavigationAsk {
+  current?: () => boolean;
+  wait?: number;
+}
+
 /** What the diagnostics store knows about one file, for navigationBlocker. */
 export interface NavigationView {
   status: 'detached' | 'attaching' | 'ready' | 'unsupported' | 'resyncing' | 'disconnected' | 'error';

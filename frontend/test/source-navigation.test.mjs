@@ -141,3 +141,50 @@ test('hover card renders safe pre-rendered content, scroll limit and truncation 
   assert.match(html, /&lt;img onerror=attack&gt;/);
   assert.match(html, /The description was cut short/);
 });
+
+
+test('history reads the live editor/source selection rather than an old landing, and blocked steps preserve stacks', () => {
+  const source = viewerSource.slice(viewerSource.indexOf('  function currentLocation()'), viewerSource.indexOf('  function openLocation('));
+  const js = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText;
+  const tab = { path: 'a.ts' };
+  const ctx = { files: { activeTab: tab }, editing: true, editor: { caret: () => ({ line: 7, character: 9 }) },
+    landed: place('a.ts', 1), codeScroll: undefined, sourcePositions: new WeakMap(), symbolStart: at => ({ start: at, end: at }) };
+  const location = new Function('ctx', `with(ctx) { ${js}; return currentLocation; }`)(ctx);
+  assert.deepEqual(location().range.start, { line: 7, character: 9 });
+  ctx.editing = false;
+  ctx.codeScroll = { ownerDocument: { getSelection: () => ({ anchorNode: {}, anchorOffset: 4 }) }, contains: () => true };
+  ctx.sourcePosition = () => ({ line: 8, character: 4 });
+  assert.deepEqual(location().range.start, { line: 8, character: 4 });
+  ctx.codeScroll = undefined;
+  assert.deepEqual(location(), ctx.landed, 'landing is only a fallback before source selection is available');
+
+  const historySource = viewerSource.slice(viewerSource.indexOf("  export function goHistory("), viewerSource.indexOf('  /**\n   * Definition or references'));
+  const historyJS = ts.transpileModule(historySource.replace('export ', ''), { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText;
+  const history = new SourceHistory(); history.visit(place('before.ts'));
+  const opened = [];
+  const context = { history, historyBlocked: true, currentLocation: location, historyVersion: 0, openLocation: to => opened.push(to) };
+  const go = new Function('ctx', `with(ctx) { ${historyJS}; return goHistory; }`)(context);
+  go('back');
+  assert.equal(history.canGoBack, true, 'blocked back does not consume a place');
+  assert.equal(history.canGoForward, false);
+  assert.equal(opened.length, 0);
+  context.historyBlocked = false;
+  go('back');
+  assert.equal(opened[0].path, 'before.ts');
+  assert.equal(history.canGoForward, true);
+});
+
+test('viewer forwards the draft current guard and one-second sync bound, discarding changed draft answers', async () => {
+  let resolve, args;
+  const h = answers((...a) => { args = a; return new Promise(r => { resolve = r; }); });
+  h.context.DRAFT_SYNC_WAIT = 1000;
+  let current = true;
+  const ask = new Function('ctx', `with(ctx) { ${askJS}; return askSymbol; }`)(h.context);
+  const pending = ask('definition', { line: 2, character: 3 }, { x: 10, y: 20 }, () => current);
+  assert.equal(args[3].wait, 1000);
+  assert.equal(args[3].current(), true);
+  current = false;
+  resolve({ kind: 'result', result: { locations: [place('target.ts')] } });
+  await pending;
+  assert.equal(h.opened.length, 0);
+});

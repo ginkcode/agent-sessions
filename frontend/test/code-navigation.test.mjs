@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { fixtureStore, loadServerModule } from './helpers.mjs';
 import { createAPI } from '../src/lib/api.ts';
+import { LiveDocumentBridge } from '../src/lib/liveDocuments.ts';
 import { CODE_DIAGNOSTICS_EVENT, CodeDiagnosticsError, codeDiagnosticsError } from '../src/lib/codeDiagnostics.ts';
 import { externalLabel, externalReadFailure, navigationBlocker, navigationFailure } from '../src/lib/codeNavigation.ts';
 import { MockBackendAPI } from '../src/lib/mock/mockApi.ts';
@@ -305,4 +306,106 @@ test('an external tab is read through navigation and never becomes a live or edi
   h.store.openExternal('/dep/gone.go', { keep: true });
   await settle();
   assert.match(h.store.fileError, /Go to the definition again/);
+});
+
+
+test('draft asks use the exact synchronized version; changed drafts cancel before sending', async () => {
+  const h = harness();
+  await h.attach();
+  let text = 'name', shown = text;
+  const current = () => text === shown;
+  h.setBasis({ documentId: 'd1', version: 4, synced: false });
+  const asking = h.store.navigate('a.go', 'definition', at, { current, wait: 1000 });
+  assert.equal(h.calls.length, 0);
+  h.setBasis({ documentId: 'd1', version: 5, synced: true });
+  assert.equal((await asking).kind, 'result');
+  assert.equal(h.calls[0][2], 5);
+  assert.deepEqual(h.calls[0][4], at, 'position belongs to the exact unchanged draft');
+
+  h.calls.length = 0;
+  h.setBasis({ documentId: 'd1', version: 5, synced: false });
+  const canceled = h.store.navigate('a.go', 'references', at, { current, wait: 1000 });
+  shown = 'inserted name';
+  h.setBasis({ documentId: 'd1', version: 6, synced: true });
+  assert.deepEqual(await canceled, { kind: 'stale' });
+  assert.equal(h.calls.length, 0, 'must not ask the old position in a newer draft');
+});
+
+test('typing while the answer is in flight makes it stale even before a new version is assigned', async () => {
+  const h = harness();
+  await h.attach();
+  h.answer((c, id, version, op) => {
+    h.setBasis({ documentId: id, version, synced: false });
+    return { op, documentId: id, version, locations: [] };
+  });
+  assert.deepEqual(await h.store.navigate('a.go', 'definition', at), { kind: 'stale' });
+  h.setBasis({ documentId: 'd1', version: 4, synced: true });
+  let current = true;
+  h.answer((c, id, version, op) => {
+    current = false;
+    return { op, documentId: id, version, locations: [] };
+  });
+  assert.deepEqual(await h.store.navigate('a.go', 'hover', at, { current: () => current }), { kind: 'stale' });
+});
+
+test('a pending draft times out after one second without asking the stale version', async t => {
+  const h = harness();
+  await h.attach();
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  h.setBasis({ documentId: 'd1', version: 4, synced: false });
+  let settled = false;
+  const asking = h.store.navigate('a.go', 'hover', at, { current: () => true, wait: 1000 }).then(out => { settled = true; return out; });
+  for (let n = 0; n < 19; n++) { t.mock.timers.tick(50); await Promise.resolve(); }
+  assert.equal(settled, false);
+  t.mock.timers.tick(50);
+  const out = await asking;
+  assert.equal(out.kind, 'unavailable');
+  assert.match(out.reason, /not caught up/);
+  assert.equal(h.calls.length, 0);
+});
+
+
+test('real live bridge: editor positions wait for the exact draft to be acknowledged, not the saved text', async () => {
+  const h = harness();
+  await h.attach();
+  let draft = 'package main\nfunc helper() {}\n', sent, release;
+  const timers = new Map();
+  const bridge = new LiveDocumentBridge({
+    store: h.store, source: () => ({ dir: '/p', documents: [{ path: 'a.go', text: draft }] }), newId: () => 'draft-document',
+    timers: { set(fn) { timers.set(fn, fn); return fn; }, clear(fn) { timers.delete(fn); } },
+    api: {
+      async openCodeDiagnosticDocument(c, path, documentId, version, text) { sent = { text, version }; return { context: c, documentId, version }; },
+      changeCodeDiagnosticDocument(c, documentId, version, text) {
+        return new Promise(r => { release = () => { sent = { text, version }; r({ context: c, documentId, version }); }; });
+      },
+      async closeCodeDiagnosticDocument(c, documentId) { return { context: c, documentId }; },
+    },
+  });
+  h.store.setLiveBasis(path => bridge.basis(path));
+  bridge.onChange(() => h.store.liveChanged());
+  bridge.sync();
+  await new Promise(r => setImmediate(r));
+  assert.equal(bridge.basis('a.go').synced, true);
+  const newDraft = 'package main\n// inserted 😀\nfunc helper() {}\n';
+  draft = newDraft;
+  bridge.changed('/p', 'a.go', draft);
+  const position = { line: 2, character: 6 };
+  h.answer((c, id, version, op, at) => {
+    assert.equal(sent.text, newDraft, 'server sees exactly the text the position came from');
+    assert.equal(sent.version, version);
+    assert.deepEqual(at, position);
+    return { op, documentId: id, version, locations: [] };
+  });
+  const asking = h.store.navigate('a.go', 'definition', position, { current: () => draft === newDraft, wait: 1000 });
+  assert.equal(h.calls.length, 0, 'debounced draft does not ask saved text');
+  for (const fn of [...timers.keys()]) { timers.delete(fn); fn(); }
+  await new Promise(r => setImmediate(r));
+  assert.equal(bridge.basis('a.go').synced, false);
+  assert.equal(h.calls.length, 0, 'sent but unacknowledged draft is not synced');
+  release();
+  assert.equal((await asking).kind, 'result');
+  assert.equal(h.calls[0][1], 'draft-document');
+  assert.equal(h.calls[0][2], 2);
+  await h.store.detach();
+  bridge.sync();
 });

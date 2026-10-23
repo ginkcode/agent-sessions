@@ -6,7 +6,7 @@ import { compile } from 'svelte/compiler';
 import ts from 'typescript';
 import { EditorState } from '@codemirror/state';
 import { forEachDiagnostic, diagnosticCount } from '@codemirror/lint';
-import { EditorView, lineNumberMarkers } from '@codemirror/view';
+import { EditorView, keymap, lineNumberMarkers } from '@codemirror/view';
 import { undo, redo, undoDepth, indentMore, insertNewlineAndIndent } from '@codemirror/commands';
 import { language, indentUnit } from '@codemirror/language';
 import { searchPanelOpen } from '@codemirror/search';
@@ -49,6 +49,7 @@ class FakeEditorView {
   static editable = EditorView.editable;
   static updateListener = EditorView.updateListener;
   static contentAttributes = EditorView.contentAttributes;
+  static domEventHandlers = EditorView.domEventHandlers;
 
   constructor({ parent, state }) {
     this.parent = parent;
@@ -99,6 +100,9 @@ class FakeEditorView {
     const number = Math.min(this.state.doc.lines, Math.floor(height / 20) + 1);
     return this.lineBlockAt(this.state.doc.line(number).from);
   }
+  coordsAtPos() { return { left: 10, right: 10, top: 0, bottom: 20 }; }
+  posAtCoords() { return this.pointerPos ?? this.state.selection.main.head; }
+  defaultCharacterWidth = 8;
   plugin() { return null; }
   focus() { this.focused++; }
   destroy() { this.destroyed = true; }
@@ -107,11 +111,11 @@ class FakeEditorView {
 globalThis.__fileEditorTestView = FakeEditorView;
 
 async function loadEditorModule() {
-  const viewImport = "import { EditorView, GutterMarker, drawSelection, highlightActiveLine, keymap, lineNumberMarkers, lineNumbers, tooltips } from '@codemirror/view';";
+  const viewImport = "import { EditorView, GutterMarker, closeHoverTooltips, drawSelection, hasHoverTooltips, highlightActiveLine, hoverTooltip, keymap, lineNumberMarkers, lineNumbers, tooltips, type KeyBinding, type Tooltip } from '@codemirror/view';";
   let source = readFileSync(EDITOR_URL, 'utf8');
   assert.ok(source.includes(viewImport), 'fileEditor.ts no longer has the expected @codemirror/view import');
   source = source.replace(viewImport, [
-    "import { EditorView as RealEditorView, GutterMarker, drawSelection, highlightActiveLine, keymap, lineNumberMarkers, lineNumbers, tooltips } from '@codemirror/view';",
+    "import { EditorView as RealEditorView, GutterMarker, closeHoverTooltips, drawSelection, hasHoverTooltips, highlightActiveLine, hoverTooltip, keymap, lineNumberMarkers, lineNumbers, tooltips, type KeyBinding, type Tooltip } from '@codemirror/view';",
     'void RealEditorView;',
     'const EditorView = globalThis.__fileEditorTestView;',
   ].join('\n'));
@@ -123,6 +127,8 @@ async function loadEditorModule() {
   source = source.replace("'./problemNavigation'",  JSON.stringify(new URL('problemNavigation.ts', EDITOR_URL).href));
   source = source.replace("'./files'", JSON.stringify(new URL('files.ts', EDITOR_URL).href));
   source = source.replace("'./searchReplace'", JSON.stringify(new URL('searchReplace.ts', EDITOR_URL).href));
+  source = source.replace("'./sourceNavigation'", JSON.stringify(new URL('sourceNavigation.ts', EDITOR_URL).href));
+  source = source.replace("import { handleCopyCodeClick } from './copycode';", "const handleCopyCodeClick = () => {};");
   source = source.replace("'./codeHighlight'", JSON.stringify(new URL('codeHighlight.ts', EDITOR_URL).href));
   source = source.replace("'@replit/codemirror-lang-svelte'", JSON.stringify(import.meta.resolve('@replit/codemirror-lang-svelte')));
   const js = ts.transpileModule(source, {
@@ -132,7 +138,7 @@ async function loadEditorModule() {
   return import(`data:text/javascript,${encodeURIComponent(js)}`);
 }
 
-const { createFileEditor } = await loadEditorModule();
+const { createFileEditor, navigationKeymap, symbolMouseDown, symbolHover, editorPosition, wordAtSide } = await loadEditorModule();
 
 const isMac = /Mac|iPhone|iPad/.test(globalThis.navigator?.platform ?? '');
 
@@ -830,4 +836,104 @@ test('diagnostic range uses exact UTF16 columns without doc/history/blame change
   assert.equal(calls.changes.length, 1);
   assert.equal(editor.revealRange({ start: { line: 0, character: 2 }, end: { line: 0, character: 3 } }), false);
   editor.destroy();
+});
+
+
+// NAV-05: the real CodeMirror keymap, pointer and hover sources. The only
+// stand-in is the view's DOM geometry; positions/state are CodeMirror's.
+test('navigation keymap has F12/Shift-F12 and asks about the live caret in UTF16 units', () => {
+  const asked = [];
+  const { editor, view } = mount({ text: '😀 name();\nβeta()', symbols: { ask: (...args) => asked.push(args), hover: async () => undefined } });
+  view.dispatch({ selection: { anchor: 6 } });
+  const bindings = view.state.facet(keymap).flat();
+  const definition = bindings.find(b => b.key === 'F12');
+  const references = bindings.find(b => b.key === 'Shift-F12');
+  assert.ok(definition && references);
+  assert.equal(navigationKeymap.length, 2);
+  assert.equal(definition.preventDefault, true);
+  assert.equal(references.preventDefault, true);
+  assert.equal(definition.run(view), true);
+  assert.equal(references.run(view), true);
+  assert.deepEqual(asked.map(a => a.slice(0, 3)), [
+    ['definition', { line: 0, character: 3 }, { x: 10, y: 20 }],
+    ['references', { line: 0, character: 3 }, { x: 10, y: 20 }],
+  ]);
+  assert.equal(asked[0][3](), true);
+  view.dispatch({ changes: { from: 0, insert: 'x' } });
+  assert.equal(asked[0][3](), false, 'positions from before typing are no longer current');
+  assert.deepEqual(editor.caret(), { line: 0, character: 7 });
+  editor.destroy();
+  assert.equal(editor.caret(), undefined);
+  assert.equal(asked[1][3](), false);
+});
+
+test('modifier-click uses posAtCoords, checks the word side and does not place the caret', () => {
+  const asked = [];
+  const { editor, view } = mount({ text: '😀 name 2', symbols: { ask: (...args) => asked.push(args), hover: async () => undefined } });
+  const mouse = (overrides = {}) => ({ button: 0, metaKey: isMac, ctrlKey: !isMac, altKey: false, clientX: 11, clientY: 10,
+    prevented: false, preventDefault() { this.prevented = true; }, ...overrides });
+  view.pointerPos = 5;
+  const event = mouse();
+  assert.equal(symbolMouseDown(event, view), true);
+  assert.equal(event.prevented, true);
+  assert.deepEqual(asked[0].slice(0, 3), ['definition', { line: 0, character: 3 }, { x: 11, y: 10 }]);
+  assert.equal(view.state.selection.main.head, 0, 'modifier-click does not move the caret');
+  for (const e of [mouse({ button: 2 }), mouse({ metaKey: false, ctrlKey: false }), mouse({ altKey: true }), mouse({ clientX: 100 })]) {
+    assert.equal(symbolMouseDown(e, view), false);
+    assert.equal(e.prevented, false);
+  }
+  view.pointerPos = 7;
+  assert.equal(symbolMouseDown(mouse(), view), false, 'just after the word is whitespace');
+  assert.equal(symbolMouseDown(mouse({ clientX: 9 }), view), true, 'just before the boundary is the word');
+  view.pointerPos = 8;
+  assert.equal(symbolMouseDown(mouse(), view), false, 'numeric literal');
+  assert.deepEqual(wordAtSide(view.state, 3, 1), { from: 3, to: 7 });
+  assert.equal(wordAtSide(view.state, 3, -1), undefined);
+  assert.deepEqual(editorPosition(view.state, 5), { line: 0, character: 5 });
+  editor.destroy();
+});
+
+test('navigation callbacks are current owners on cached states; old asks and hovers cannot cross tabs or text', async () => {
+  const first = [], second = [];
+  let resolve;
+  const oldSymbols = { ask: (...args) => first.push(args), hover: () => new Promise(r => { resolve = r; }) };
+  const a = mount({ text: 'name()', symbols: oldSymbols });
+  const oldHover = symbolHover(a.view, 2, 1);
+  navigationKeymap[0].run(a.view);
+  assert.equal(first.length, 1);
+  const current = first[0][3];
+  a.editor.destroy();
+  assert.equal(current(), false);
+  const b = mount({ ...a.options, symbols: { ask: (...args) => second.push(args), hover: async () => ({ html: '<pre>new</pre>', truncated: false }) } });
+  navigationKeymap[1].run(b.view);
+  assert.equal(first.length, 1, 'cached extensions have no stale callback closure');
+  assert.equal(second.length, 1);
+  const hover = await symbolHover(b.view, 3, 1);
+  assert.equal(hover.pos, 0);
+  assert.equal(hover.end, 4);
+  assert.equal(hover.above, false);
+  resolve({ html: '<pre>old</pre>', truncated: false });
+  assert.equal(await oldHover, null, 'destroyed editor cannot show a tooltip');
+  assert.equal(await symbolHover(b.view, 4, 1), null, 'no hover over punctuation');
+  const pending = symbolHover(b.view, 2, 1);
+  b.view.dispatch({ changes: { from: 0, insert: 'x' } });
+  assert.equal(await pending, null, 'an asynchronous answer for other text is dropped');
+  b.editor.update({ ...b.options, id: {}, path: 'other.ts' });
+  assert.equal(second[0][3](), false, 'same text in another tab is not the asked document');
+  b.editor.destroy();
+});
+
+test('symbol hover creates a bounded scrollable CodeMirror tooltip with the shared safe HTML and notice', async () => {
+  const h = mount({ text: 'name', symbols: { ask() {}, hover: async () => ({ html: '<pre class="hover-plain">&lt;safe&gt;</pre>', truncated: true }) } });
+  const tooltip = await symbolHover(h.view, 1, 1);
+  const previous = globalThis.document;
+  try {
+    globalThis.document = { createElement: () => ({ children: [], style: {}, appendChild(child) { this.children.push(child); return child; }, addEventListener() {} }) };
+    const created = tooltip.create(h.view);
+    created.mount({ scrollDOM: { clientHeight: 500 } });
+    assert.equal(created.dom.className, 'cm-symbol-hover');
+    assert.equal(created.dom.style.maxHeight, '300px');
+    assert.match(created.dom.children[0].innerHTML, /&lt;safe&gt;/);
+    assert.match(created.dom.children[1].textContent, /cut short/);
+  } finally { globalThis.document = previous; h.editor.destroy(); }
 });

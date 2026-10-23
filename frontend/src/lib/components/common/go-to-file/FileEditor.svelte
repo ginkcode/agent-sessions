@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import type { CodeDiagnosticRange } from '../../../codeDiagnostics';
+  import type { CodeDiagnosticPosition, CodeDiagnosticRange } from '../../../codeDiagnostics';
   let pending: { range: CodeDiagnosticRange; valid: () => boolean } | undefined;
   export function revealRange(range: CodeDiagnosticRange, valid: () => boolean): boolean {
     if (editor) return valid() && editor.revealRange(range);
@@ -10,13 +10,13 @@
   import type { FileEditorController, FileEditorOptions } from '../../../fileEditor';
   import { filePrompt } from '../../../stores/filePrompt.svelte';
 
-  let { id, text, path, version, wrap, disabled = false, diagnostics, position, onposition, selection, onselection, onchange, onsave }: FileEditorOptions = $props();
+  let { id, text, path, version, wrap, disabled = false, diagnostics, position, onposition, selection, onselection, onchange, onsave, symbols }: FileEditorOptions = $props();
   let host: HTMLDivElement;
   let editor = $state<FileEditorController>();
   let error = $state('');
 
   function options(): FileEditorOptions {
-    return { id, text, path, version, wrap, disabled, diagnostics, position, onposition, selection, onselection, onchange, onsave };
+    return { id, text, path, version, wrap, disabled, diagnostics, position, onposition, selection, onselection, onchange, onsave, symbols };
   }
 
   onMount(() => {
@@ -46,6 +46,7 @@
   /** Commands are harmless no-ops until the lazy runtime has mounted. */
   export function focus(): void { editor?.focus(); }
   export function selectedText(): string { return editor?.selectedText() ?? ''; }
+  export function caret(): CodeDiagnosticPosition | undefined { return editor?.caret(); }
   export function find(): boolean { return editor?.find() ?? false; }
   export function closeSearch(): boolean { return editor?.closeSearch() ?? false; }
   export function handleKey(event: KeyboardEvent): boolean { return editor?.handleKey(event) ?? false; }

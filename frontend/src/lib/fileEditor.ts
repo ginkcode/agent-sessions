@@ -2,7 +2,7 @@ import { Annotation, Compartment, EditorState, RangeSet, StateField, type Extens
 import { forEachDiagnostic, lintKeymap, setDiagnostics, setDiagnosticsEffect, type Diagnostic } from '@codemirror/lint';
 import { projectSourceDiagnostics } from './sourceDiagnostics';
 import type { AttributedCodeDiagnostic, LiveDocumentBasis } from './codeDiagnostics';
-import { EditorView, GutterMarker, drawSelection, highlightActiveLine, keymap, lineNumberMarkers, lineNumbers, tooltips } from '@codemirror/view';
+import { EditorView, GutterMarker, closeHoverTooltips, drawSelection, hasHoverTooltips, highlightActiveLine, hoverTooltip, keymap, lineNumberMarkers, lineNumbers, tooltips, type KeyBinding, type Tooltip } from '@codemirror/view';
 import { defaultKeymap, history, historyKeymap, indentWithTab, isolateHistory } from '@codemirror/commands';
 import { LanguageDescription, indentOnInput, indentUnit } from '@codemirror/language';
 import { Decoration, type DecorationSet } from '@codemirror/view';
@@ -16,6 +16,21 @@ import type { FileLineSelection } from './fileSelection';
 import { fileLanguage } from './files';
 import { textChanges } from './searchReplace';
 import { closeSearchPanel, openSearchPanel, search, searchKeymap, searchPanelOpen } from '@codemirror/search';
+import type { CodeDiagnosticPosition } from './codeDiagnostics';
+import { HOVER_DELAY, linkModifier, wordRange, type ViewportPoint } from './sourceNavigation';
+import { handleCopyCodeClick } from './copycode';
+
+/**
+ * Code navigation from the draft. `current` says whether the editor still
+ * shows the text the position was taken from; an answer is wanted only
+ * while it does.
+ */
+export interface EditorSymbols {
+  /** Go to definition (Cmd/Ctrl+click, F12) or find references (Shift+F12). */
+  ask(op: 'definition' | 'references', position: CodeDiagnosticPosition, at: ViewportPoint, current: () => boolean): void;
+  /** The hover for the word at position, as HTML; undefined shows nothing. */
+  hover(position: CodeDiagnosticPosition, current: () => boolean): Promise<{ html: string; truncated: boolean } | undefined>;
+}
 
 export interface FileEditorOptions {
   id: object;
@@ -32,6 +47,8 @@ export interface FileEditorOptions {
   onposition?: (position: FilePosition) => void;
   onchange: (text: string) => void;
   onsave: () => void;
+  /** Read through owners when asked, like every callback here. */
+  symbols?: EditorSymbols;
 }
 
 interface CachedEditor {
@@ -81,6 +98,20 @@ const theme = EditorView.theme({
   },
   // Scrolls when shortened to fit the editor (see fitTooltips).
   '.cm-tooltip': { backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)', border: '1px solid var(--border-color)', overflowY: 'auto' },
+  // A symbol's hover reads as the viewer's hover card (HoverCard.svelte).
+  '.cm-tooltip.cm-symbol-hover': {
+    width: 'max-content', maxWidth: 'min(560px, calc(100vw - 8px))', padding: '6px 10px', borderRadius: '6px',
+    backgroundColor: 'var(--bg-primary)', boxShadow: '0 4px 16px rgba(0, 0, 0, 0.25)',
+    fontFamily: 'var(--font-sans)', fontSize: '12.5px', lineHeight: '1.5', wordBreak: 'break-word', overflow: 'auto',
+  },
+  '.cm-symbol-hover p, .cm-symbol-hover .code-block-container, .cm-symbol-hover ul, .cm-symbol-hover ol': { margin: '0.4em 0' },
+  '.cm-symbol-hover .hover-body > :first-child': { marginTop: '0' },
+  '.cm-symbol-hover .hover-body > :last-child': { marginBottom: '0' },
+  '.cm-symbol-hover ul, .cm-symbol-hover ol': { paddingLeft: '1.4em' },
+  '.cm-symbol-hover .inline-code': { fontFamily: 'var(--font-mono)', fontSize: '0.9em', padding: '0 3px', borderRadius: '3px', backgroundColor: 'var(--bg-tertiary)' },
+  '.cm-symbol-hover a': { color: 'var(--accent-color)' },
+  '.cm-symbol-hover .hover-plain': { margin: '0', fontFamily: 'var(--font-mono)', whiteSpace: 'pre-wrap' },
+  '.cm-symbol-hover .hover-truncated': { marginTop: '4px', fontSize: '11px', color: 'var(--text-secondary)' },
   '.cm-panels': { backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)' },
   '& .cm-panels-bottom': { borderTop: '1px solid var(--border-color)' },
   '& .cm-panels-top': { borderBottom: '1px solid var(--border-color)' },
@@ -213,13 +244,137 @@ const editorLintKeymap = lintKeymap.filter(binding => binding.key !== 'Mod-Shift
 // Marks a draft the store changed (a replace in files), already in the draft.
 const external = Annotation.define<boolean>();
 
+// Code navigation: Cmd/Ctrl+click, F12, Shift+F12 and hover. Positions are
+// LSP's (0-based line, UTF-16 column), taken from the document shown, which
+// counts UTF-16 units as LSP does. Like every handler here, these find the
+// view's current options through owners, never through a closure.
+
+/** The 0-based line and UTF-16 column of a document offset. */
+export function editorPosition(state: EditorState, pos: number): CodeDiagnosticPosition {
+  const line = state.doc.lineAt(pos);
+  return { line: line.number - 1, character: pos - line.from };
+}
+
+/** The word (identifier) the pointer is over: the character after pos when side > 0, else before it. */
+export function wordAtSide(state: EditorState, pos: number, side: number): { from: number; to: number } | undefined {
+  const line = state.doc.lineAt(pos);
+  const at = side < 0 ? pos - 1 : pos;
+  if (at < line.from || at >= line.to) return undefined;
+  const word = wordRange(line.text, at - line.from);
+  // wordRange falls back to the character before; under the pointer only.
+  if (!word || at - line.from < word.start || at - line.from >= word.end) return undefined;
+  return { from: line.from + word.start, to: line.from + word.end };
+}
+
+/**
+ * Whether the editor still shows the text it showed now, in the same tab and
+ * path. While it does, a synced live document holds exactly this text: every
+ * edit goes to the draft (and its document) as it is made.
+ */
+function askedText(view: EditorView): () => boolean {
+  const owner = owners.get(view), doc = view.state.doc;
+  return () => {
+    const now = owners.get(view);
+    return Boolean(owner && now && now.id === owner.id && now.path === owner.path && now.version === owner.version
+      && view.state.doc.eq(doc) && lf(now.text) === doc.toString());
+  };
+}
+
+/** F12 and Shift+F12 at the caret: the word around it, else the caret itself. */
+function navigateAtCaret(op: 'definition' | 'references') {
+  return (view: EditorView): boolean => {
+    const symbols = owners.get(view)?.symbols;
+    if (!symbols) return false;
+    const head = view.state.selection.main.head;
+    const line = view.state.doc.lineAt(head);
+    const word = wordRange(line.text, head - line.from);
+    const coords = view.coordsAtPos(head);
+    symbols.ask(op, editorPosition(view.state, word ? line.from + word.start : head), { x: coords?.left ?? 0, y: coords?.bottom ?? 0 }, askedText(view));
+    return true;
+  };
+}
+
+export const navigationKeymap: readonly KeyBinding[] = [
+  { key: 'F12', run: navigateAtCaret('definition'), preventDefault: true },
+  { key: 'Shift-F12', run: navigateAtCaret('references'), preventDefault: true },
+];
+
+/** The word under viewport coordinates, judged as CodeMirror judges a hover. */
+function wordAtCoords(view: EditorView, x: number, y: number): { from: number; to: number } | undefined {
+  const pos = view.posAtCoords({ x, y });
+  if (pos === null) return undefined;
+  const coords = view.coordsAtPos(pos);
+  if (!coords || y < coords.top || y > coords.bottom
+    || x < coords.left - view.defaultCharacterWidth || x > coords.right + view.defaultCharacterWidth) return undefined;
+  return wordAtSide(view.state, pos, x < coords.left ? -1 : 1);
+}
+
+/** Cmd (macOS) or Ctrl+click on a word goes to its definition instead of placing the caret. */
+export function symbolMouseDown(event: MouseEvent, view: EditorView): boolean {
+  const symbols = owners.get(view)?.symbols;
+  if (!symbols || event.button !== 0 || !linkModifier(event, /Mac|iPhone|iPad/.test(navigator.platform))) return false;
+  const word = wordAtCoords(view, event.clientX, event.clientY);
+  if (!word) return false;
+  event.preventDefault();
+  symbols.ask('definition', editorPosition(view.state, word.from), { x: event.clientX, y: event.clientY }, askedText(view));
+  return true;
+}
+
+/** The hover tooltip of the word under the pointer, from the language server. */
+export async function symbolHover(view: EditorView, pos: number, side: -1 | 1): Promise<Tooltip | null> {
+  const symbols = owners.get(view)?.symbols;
+  const word = symbols && wordAtSide(view.state, pos, side);
+  if (!symbols || !word) return null;
+  const sameText = askedText(view), top = view.scrollDOM.scrollTop, left = view.scrollDOM.scrollLeft;
+  const current = () => sameText() && view.scrollDOM.scrollTop === top && view.scrollDOM.scrollLeft === left;
+  const hover = await symbols.hover(editorPosition(view.state, word.from), current);
+  if (!hover || !current()) return null;
+  return {
+    pos: word.from, end: word.to, above: false,
+    create() {
+      const dom = document.createElement('div');
+      dom.className = 'cm-symbol-hover';
+      const body = dom.appendChild(document.createElement('div'));
+      body.className = 'hover-body';
+      // Markdown through the transcript renderer, or escaped plain text (hoverHtml).
+      body.innerHTML = hover.html;
+      if (hover.truncated) {
+        const note = dom.appendChild(document.createElement('div'));
+        note.className = 'hover-truncated';
+        note.textContent = 'The description was cut short.';
+      }
+      dom.addEventListener('click', handleCopyCodeClick);
+      return {
+        dom,
+        // At most 60% of the editor's height, as in the viewer; it scrolls.
+        mount(view) { dom.style.maxHeight = `${Math.max(80, view.scrollDOM.clientHeight * 0.6)}px`; },
+      };
+    },
+  };
+}
+
+const navigation: Extension = [
+  keymap.of(navigationKeymap),
+  EditorView.domEventHandlers({
+    mousedown(event, view) {
+      if (hasHoverTooltips(view.state)) view.dispatch({ effects: closeHoverTooltips });
+      return symbolMouseDown(event, view);
+    },
+    scroll(_event, view) {
+      if (hasHoverTooltips(view.state)) view.dispatch({ effects: closeHoverTooltips });
+      return false;
+    },
+  }),
+  hoverTooltip(symbolHover, { hoverTime: HOVER_DELAY, hideOnChange: true }),
+];
+
 function freshState(options: FileEditorOptions): EditorState {
   return EditorState.create({
     doc: options.text,
     selection: options.selection ? lineSelection(options.text, options.selection) : undefined,
     extensions: [
       lineNumbers(), history(), drawSelection(), highlightActiveLine(), indentOnInput(),
-      diagnosticLines, clearSavedMarkers,
+      diagnosticLines, clearSavedMarkers, navigation,
       search(), theme, fitTooltips, indentUnit.of(detectIndent(options.text)), EditorState.tabSize.of(4),
       wrapping.of(options.wrap ? EditorView.lineWrapping : []),
       editing.of(editable(options.disabled)), language.of([]), coloring.of([]),
@@ -259,6 +414,10 @@ function handleKey(view: EditorView, event: KeyboardEvent): boolean {
     consumed = true;
   } else if (mod && !event.altKey && !event.shiftKey && key === 'f') {
     openSearchPanel(view);
+    consumed = true;
+  } else if (event.key === 'Escape' && hasHoverTooltips(view.state)) {
+    // A hover (a symbol's, or a diagnostic's) closes before the search panel or the dialog.
+    view.dispatch({ effects: closeHoverTooltips });
     consumed = true;
   } else if (event.key === 'Escape' && searchPanelOpen(view.state)) {
     closeSearchPanel(view);
@@ -404,6 +563,10 @@ export function createFileEditor(parent: HTMLElement, initial: FileEditorOptions
       return true;
     },
     focus() { if (!destroyed) view.focus(); },
+    /** Where the selection starts, for navigation history. */
+    caret(): CodeDiagnosticPosition | undefined {
+      return destroyed ? undefined : editorPosition(view.state, view.state.selection.main.from);
+    },
     selectedText() {
       if (destroyed) return '';
       const { from, to } = view.state.selection.main;

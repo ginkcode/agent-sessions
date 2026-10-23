@@ -8,7 +8,7 @@ import type { BackendAPI } from '../api';
 import type { ConnectionState, FileContent } from '../types';
 import type { LiveDocumentBasis, CodeDiagnosticsContext, CodeDiagnosticsProject, CodeDiagnosticsProvider, CodeDiagnosticsSnapshot, CodeDiagnosticsUpdate, CodeDiagnosticsRun, CodeDiagnosticPosition, CodeNavigationOp } from '../codeDiagnostics';
 import { CODE_DIAGNOSTICS_EVENT, CODE_DIAGNOSTICS_LIMITS as limits, CodeDiagnosticsError, codeDiagnosticsError, sameAttachment, sameContext, encodedBytes, resultSetKey, groupCodeDiagnostics, inlineCodeDiagnostic, liveDocumentEligibility } from '../codeDiagnostics';
-import type { CodeNavigationOutcome } from '../codeNavigation';
+import type { CodeNavigationAsk, CodeNavigationOutcome } from '../codeNavigation';
 import { externalReadFailure, navigationBlocker, navigationFailure } from '../codeNavigation';
 import { preferences } from './preferences.svelte';
 
@@ -280,22 +280,25 @@ export class CodeDiagnosticsStore {
    * Asks the language server about the symbol at position in the displayed
    * file. Typing not yet sent is waited for briefly, so the position means what
    * the server has. Never throws: an answer for a version or attachment that
-   * moved on is `stale`.
+   * moved on, or for text that `ask.current` no longer holds, is `stale`.
    */
-  async navigate(path: string, op: CodeNavigationOp, position: CodeDiagnosticPosition): Promise<CodeNavigationOutcome> {
+  async navigate(path: string, op: CodeNavigationOp, position: CodeDiagnosticPosition, ask: CodeNavigationAsk = {}): Promise<CodeNavigationOutcome> {
     const life = this.lifetime, c = this.context, host = this.host;
+    const current = ask.current ?? (() => true), wait = ask.wait ?? NAV_SYNC_WAIT;
     let blocker = this.navigationBlocker(path), basis = this.liveBasis(path);
-    for (let waited = 0; !blocker && basis && !basis.synced && waited < NAV_SYNC_WAIT; waited += NAV_SYNC_POLL) {
+    for (let waited = 0; !blocker && basis && !basis.synced && waited < wait; waited += NAV_SYNC_POLL) {
       await new Promise(r => setTimeout(r, NAV_SYNC_POLL));
-      if (!this.active(life)) return { kind: 'stale' };
+      if (!this.active(life) || !current()) return { kind: 'stale' };
       blocker = this.navigationBlocker(path); basis = this.liveBasis(path);
     }
+    // The text the position was taken from changed: asking would be about other text.
+    if (!current()) return { kind: 'stale' };
     if (blocker || !basis || !c) return { kind: 'unavailable', reason: blocker ?? 'Code navigation is not available for this file.' };
     if (!basis.synced) return { kind: 'unavailable', reason: 'The language server has not caught up with your edits yet. Try again in a moment.' };
     const asked = basis;
     const moved = () => {
       const now = this.liveBasis(path);
-      return !this.active(life) || !this.context || !sameContext(c, this.context) || now?.documentId !== asked.documentId || now.version !== asked.version;
+      return !this.active(life) || !this.context || !sameContext(c, this.context) || now?.documentId !== asked.documentId || now.version !== asked.version || !now.synced || !current();
     };
     try {
       const result = await this.backend.navigateCode(c, asked.documentId, asked.version, op, position, host);
