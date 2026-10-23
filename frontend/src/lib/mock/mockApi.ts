@@ -48,6 +48,8 @@ import type {
   HostCapabilities,
   BlameLine,
   RepoStatus,
+  GitDiscardRequest,
+  GitCommitRequest,
   SearchQuery,
   SearchResult,
   HostEntry,
@@ -1090,12 +1092,44 @@ export class MockBackendAPI extends MockCodeDiagnostics {
     if (run) run.canceled = true;
   }
 
+  private mockGitEntries: Map<string, RepoStatus['entries']> = new Map();
+
+  private async gitMockWrite(dir: string, host: string | undefined, apply: (entries: RepoStatus['entries']) => RepoStatus['entries']): Promise<void> {
+    if ((host ?? '') !== (this.connState.host ?? '')) throw new Error('The connection changed to another host.');
+    const entries = (await this.gitStatus(dir)).entries;
+    this.mockGitEntries.set(JSON.stringify([host ?? '', dir]), apply(entries.map(e => ({ ...e }))));
+  }
+  async gitStage(dir: string, paths: string[], host: string | undefined): Promise<void> {
+    await this.gitMockWrite(dir, host, entries => entries.map(e => !paths.length || paths.includes(e.path)
+      ? { ...e, index: e.worktree === '?' ? 'A' : e.worktree || e.index, worktree: '' } : e));
+  }
+  async gitUnstage(dir: string, paths: string[], host: string | undefined): Promise<void> {
+    await this.gitMockWrite(dir, host, entries => entries.map(e => !paths.length || paths.includes(e.path)
+      ? { ...e, worktree: e.index === 'A' ? '?' : e.worktree || e.index, index: '' } : e));
+  }
+  async gitDiscard(dir: string, req: GitDiscardRequest, host: string | undefined): Promise<void> {
+    await this.gitMockWrite(dir, host, entries => entries.map(e => {
+      if (req.paths.length && !req.paths.includes(e.path)) return e;
+      if (req.draftPaths?.includes(e.path)) throw new Error(`Cannot discard ${e.path}: unsaved draft`);
+      return { ...e, worktree: '' };
+    }).filter(e => e.index || e.worktree));
+  }
+  async gitCommit(dir: string, req: GitCommitRequest, host: string | undefined): Promise<void> {
+    if (!req.message.trim()) throw new Error('Commit message must not be empty.');
+    if (req.amend) throw new Error('Cannot amend: last commit is already on the upstream.');
+    await this.gitMockWrite(dir, host, entries => {
+      if (!req.stageAll && !entries.some(e => e.index)) throw new Error('No staged changes.');
+      return req.stageAll ? [] : entries.map(e => ({ ...e, index: '' })).filter(e => e.worktree);
+    });
+  }
+
   async gitStatus(dir: string): Promise<RepoStatus> {
     const listing = await this.listFiles(dir);
+    const changed = this.mockGitEntries.get(JSON.stringify([this.connState.host ?? '', dir]));
     return {
       ok: true, branch: 'main', head: 'abc1234', detached: false, hasCommits: true,
       upstream: 'origin/main', ahead: 0, behind: 0, truncated: false,
-      entries: Object.entries(listing.status ?? {}).map(([path, state]) => ({
+      entries: changed?.map(e => ({ ...e })) ?? Object.entries(listing.status ?? {}).map(([path, state]) => ({
         path, index: state === 'A' || state === 'R' ? state : '',
         worktree: state === 'U' ? '?' : state === 'A' || state === 'R' ? '' : state,
         conflict: state === 'C',
@@ -1637,6 +1671,7 @@ export class MockBackendAPI extends MockCodeDiagnostics {
       saveFile: true,
       blame: true,
       gitChanges: true,
+      gitWrite: true,
       searchFiles: true,
       replaceFiles: true,
       newSession: true,

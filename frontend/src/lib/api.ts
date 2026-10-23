@@ -18,6 +18,8 @@ import type {
   FileProbeResult,
   BlameLine,
   RepoStatus,
+  GitDiscardRequest,
+  GitCommitRequest,
   SearchQuery,
   SearchResult,
   FileSaveRequest,
@@ -141,6 +143,10 @@ export interface BackendAPI extends CodeDiagnosticsAPI {
    * host. Rejects when the backend has no blame support.
    */
   gitStatus(dir: string): Promise<RepoStatus>;
+  gitStage(dir: string, paths: string[], host: string | undefined): Promise<void>;
+  gitUnstage(dir: string, paths: string[], host: string | undefined): Promise<void>;
+  gitDiscard(dir: string, req: GitDiscardRequest, host: string | undefined): Promise<void>;
+  gitCommit(dir: string, req: GitCommitRequest, host: string | undefined): Promise<void>;
   blameFile(dir: string, path: string, line: number): Promise<BlameLine>;
   /**
    * Searches the text of the files of dir on the selected host. searchId
@@ -283,6 +289,10 @@ interface WailsAppBinding {
   ProbeFiles?(dir: string, paths: string[], host: string): Promise<FileProbeResult>;
   ReadFile(dir: string, path: string): Promise<FileContent>;
   GitStatus?(dir: string): Promise<RepoStatus>;
+  GitStage?(dir: string, paths: string[], host: string): Promise<void>;
+  GitUnstage?(dir: string, paths: string[], host: string): Promise<void>;
+  GitDiscard?(dir: string, req: GitDiscardRequest, host: string): Promise<void>;
+  GitCommit?(dir: string, req: GitCommitRequest, host: string): Promise<void>;
   BlameFile?(dir: string, path: string, line: number): Promise<BlameLine>;
   SearchFiles?(dir: string, query: SearchQuery, searchId: string): Promise<SearchResult>;
   CancelSearch?(searchId: string): Promise<void>;
@@ -340,6 +350,7 @@ interface WailsAppBinding {
   GetHostEnv(): Promise<Record<string, string>>;
 }
 
+export const GIT_WRITE_UNSUPPORTED = 'Git writes are not supported by this version of the app backend.';
 export const GIT_CHANGES_UNSUPPORTED = 'Git changes are not supported by this version of the app backend.';
 
 export const BLAME_UNSUPPORTED = 'Line blame is not supported by this version of the app backend.';
@@ -785,6 +796,30 @@ class WailsBackendAPI implements BackendAPI {
     } catch (e) {
       throw normalizeError(e);
     }
+  }
+
+  async gitStage(dir: string, paths: string[], host: string | undefined): Promise<void> {
+    if (!this.binding.GitStage) throw new Error(GIT_WRITE_UNSUPPORTED);
+    try { await this.binding.GitStage(dir, paths, host ?? ''); }
+    catch (e) { throw normalizeError(e); }
+  }
+
+  async gitUnstage(dir: string, paths: string[], host: string | undefined): Promise<void> {
+    if (!this.binding.GitUnstage) throw new Error(GIT_WRITE_UNSUPPORTED);
+    try { await this.binding.GitUnstage(dir, paths, host ?? ''); }
+    catch (e) { throw normalizeError(e); }
+  }
+
+  async gitDiscard(dir: string, req: GitDiscardRequest, host: string | undefined): Promise<void> {
+    if (!this.binding.GitDiscard) throw new Error(GIT_WRITE_UNSUPPORTED);
+    try { await this.binding.GitDiscard(dir, req, host ?? ''); }
+    catch (e) { throw normalizeError(e); }
+  }
+
+  async gitCommit(dir: string, req: GitCommitRequest, host: string | undefined): Promise<void> {
+    if (!this.binding.GitCommit) throw new Error(GIT_WRITE_UNSUPPORTED);
+    try { await this.binding.GitCommit(dir, req, host ?? ''); }
+    catch (e) { throw normalizeError(e); }
   }
 
   async gitStatus(dir: string): Promise<RepoStatus> {

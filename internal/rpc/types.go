@@ -54,6 +54,7 @@ type Notification struct {
 type Capabilities struct {
 	// GitChanges supports repository status (and is absent on older servers).
 	GitChanges          bool `json:"gitChanges,omitempty"`
+	GitWrite            bool `json:"gitWrite,omitempty"`
 	CodeDiagnostics     bool `json:"codeDiagnostics,omitempty"`
 	LiveCodeDiagnostics bool `json:"liveCodeDiagnostics,omitempty"`
 	// CodeNavigation: definition, references and hover for live documents.

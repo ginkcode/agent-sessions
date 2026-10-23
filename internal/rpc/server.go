@@ -36,6 +36,7 @@ type Server struct {
 	// keeps initErr and is not retried.
 	initState   int
 	initialized bool
+	gitWrite    bool
 	initErr     error
 	mu          sync.Mutex
 	handlers    sync.WaitGroup
@@ -325,6 +326,10 @@ func (s *Server) initialize(serveCtx context.Context, req Request, starter Start
 		roots, _ = paths.Default()
 	}
 
+	caps.GitWrite = caps.GitWrite && caps.SaveFile
+	s.mu.Lock()
+	s.gitWrite = caps.GitWrite
+	s.mu.Unlock()
 	host := s.initializeDiagnostics(serveCtx, &caps)
 	return InitializeResult{
 		CodeDiagnosticsHostID: host,
@@ -472,6 +477,8 @@ func (s *Server) dispatch(ctx context.Context, req Request) (any, error) {
 		}
 		return backend.ReadFile(ctx, p.Dir, p.Path)
 
+	case "gitStage", "gitUnstage", "gitDiscard", "gitCommit":
+		return s.dispatchGitWrite(ctx, req, backend)
 	case "gitStatus":
 		var p GitStatusParams
 		if err := json.Unmarshal(req.Params, &p); err != nil {

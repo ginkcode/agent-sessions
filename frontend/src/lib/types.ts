@@ -793,6 +793,7 @@ export interface HostCapabilities {
   blame?: boolean;
   /** Absent on older servers; full Git status requires explicit true. */
   gitChanges?: boolean;
+  gitWrite?: boolean;
   /** Absent on older servers; content search requires an explicit true. */
   searchFiles?: boolean;
   /** Absent on older servers; replacing in files requires an explicit true. */
@@ -863,4 +864,15 @@ export interface RepoStatus {
   operation?: string;
   entries: GitChange[];
   truncated: boolean;
+}
+
+export interface GitDiscardRequest {
+  paths: string[];
+  /** Live unsaved drafts, supplied by the Changes UI before confirmation. */
+  draftPaths?: string[];
+}
+export interface GitCommitRequest {
+  message: string;
+  amend: boolean;
+  stageAll: boolean;
 }
