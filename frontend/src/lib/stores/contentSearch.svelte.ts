@@ -1,4 +1,6 @@
 import { api } from '../api';
+import type { CodeNavigationLocation } from '../codeDiagnostics';
+import { referenceResults, type ReferenceSource } from '../referenceResults';
 import type { ReplaceFile, SearchFile, SearchMatch, SearchQuery, SearchResult } from '../types';
 import { errorText } from '../manage';
 import { isStaleReply } from '../link';
@@ -77,6 +79,54 @@ export class ContentSearchStore {
   /** A replace is running. */
   replacing = $state(false);
 
+  references = $state.raw<{ name: string; result: SearchResult; loading: boolean } | null>(null);
+  private referenceSequence = 0;
+  private searchPlace: { active: MatchRef | null; collapsed: Set<string> } | null = null;
+
+  /** Keep the search untouched underneath the temporary references view. */
+  async showReferences(name: string, locations: CodeNavigationLocation[], read: (location: CodeNavigationLocation) => Promise<ReferenceSource>, truncated = false): Promise<void> {
+    this.follow();
+    this.cancel();
+    const sequence = ++this.referenceSequence;
+    const dir = files.dir, host = link.dataHost;
+    this.mode = 'search';
+    if (!this.references) this.searchPlace = { active: this.active, collapsed: this.collapsed };
+    this.active = null;
+    this.collapsed = new Set();
+    this.references = { name, result: referenceResults(locations, new Map(), truncated), loading: true };
+    const sources = new Map<string, ReferenceSource>();
+    const pending = [...new Map(locations.map(l => [l.path, l])).values()];
+    // Bound concurrent host reads even for a large reference answer.
+    await Promise.all(Array.from({ length: Math.min(4, pending.length) }, async () => {
+      while (pending.length && sequence === this.referenceSequence && files.dir === dir && link.dataHost === host) {
+        const location = pending.shift()!;
+        const tab = files.tabs.find(t => t.path === location.path && Boolean(t.external) === Boolean(location.external));
+        if (tab?.edit) sources.set(location.path, { text: tab.edit.draft, draft: true });
+        else {
+          try { sources.set(location.path, await read(location)); }
+          catch (e) { sources.set(location.path, { error: errorText(e, 'Preview unavailable.') }); }
+        }
+      }
+    }));
+    if (sequence !== this.referenceSequence || files.dir !== dir || link.dataHost !== host) return;
+    // A draft can change while another file is being read. Use the latest
+    // in-memory text for previews, while keeping the server's target ranges.
+    for (const location of locations) {
+      const tab = files.tabs.find(t => t.path === location.path && Boolean(t.external) === Boolean(location.external));
+      if (tab?.edit) sources.set(location.path, { text: tab.edit.draft, draft: true });
+    }
+    this.references = { name, result: referenceResults(locations, sources, truncated), loading: false };
+  }
+
+  backToSearch(): void {
+    this.referenceSequence++;
+    this.references = null;
+    this.active = this.searchPlace?.active ?? null;
+    this.collapsed = this.searchPlace?.collapsed ?? new Set();
+    this.searchPlace = null;
+    this.focusRequest++;
+  }
+
   private saved = new Map<string, SearchOptions>();
   private project: string | null = null;
   private timer: ReturnType<typeof setTimeout> | null = null;
@@ -93,6 +143,7 @@ export class ContentSearchStore {
 
   /** The results shown: the host's, with each drafted file searched as drafted. */
   get overlaid() {
+    if (this.references) return { result: this.references.result, unsearched: [] as string[] };
     const result = this.hostResult, query = this.searched;
     if (!result || !query) return { result, unsearched: [] as string[] };
     return overlayDrafts(result, this.drafts, query);
@@ -100,6 +151,7 @@ export class ContentSearchStore {
 
   /** The results less what was dismissed. */
   get result(): SearchResult | null {
+    if (this.references) return this.references.result;
     const result = this.overlaid.result, gone = this.dismissed;
     if (!result || gone.size === 0) return result;
     const files = result.files.flatMap(f => {
@@ -121,12 +173,13 @@ export class ContentSearchStore {
 
   /** The results answer the text and options as they are now. */
   get upToDate(): boolean {
+    if (this.references) return !this.references.loading;
     return !this.searching && sameSearch(this.searched, queryOf(this.options));
   }
 
   /** The text field is empty: nothing to search. */
   get idle(): boolean {
-    return this.options.text === '';
+    return !this.references && this.options.text === '';
   }
 
   /** Shows the Search pane for the open project, optionally searching for text. */
@@ -134,6 +187,7 @@ export class ContentSearchStore {
     this.follow();
     this.requested = true;
     this.mode = 'search';
+    if (this.references) this.backToSearch();
     if (text && text !== this.options.text) {
       this.options = { ...this.options, text };
       this.remember();
@@ -163,7 +217,7 @@ export class ContentSearchStore {
     this.follow();
     this.mode = mode;
     if (mode === 'search') {
-      if (this.options.text && !this.searching) this.schedule(0);
+      if (!this.references && this.options.text && !this.searching) this.schedule(0);
       this.focusRequest++;
     }
   }
@@ -171,6 +225,7 @@ export class ContentSearchStore {
   /** Changes the text or options; a search follows once typing pauses. */
   set(patch: Partial<SearchOptions>): void {
     this.follow();
+    if (this.references) this.backToSearch();
     const before = this.options;
     this.options = { ...before, ...patch };
     this.remember();
@@ -186,6 +241,7 @@ export class ContentSearchStore {
   /** Searches now, as after Enter or Refresh. */
   searchNow(): void {
     this.follow();
+    if (this.references) this.backToSearch();
     this.schedule(0);
   }
 
@@ -222,6 +278,7 @@ export class ContentSearchStore {
    * so a replace leaves it alone. A new search text brings it back.
    */
   dismiss(path: string, ref?: MatchRef): void {
+    if (this.references) return;
     const m = ref ? this.match(ref) : undefined;
     if (ref && !m) return;
     const active = this.active, before = this.order;
@@ -245,6 +302,7 @@ export class ContentSearchStore {
    * file from being changed.
    */
   replaceBlocked(path?: string): string | null {
+    if (this.references) return 'References cannot be replaced. Go back to search to replace text.';
     if (connectionStore.capabilities.replaceFiles !== true) return REPLACE_UNSUPPORTED;
     const blocked = link.blockedReason;
     if (blocked) return blocked;
@@ -373,6 +431,9 @@ export class ContentSearchStore {
   }
 
   private clearResults(): void {
+    this.referenceSequence++;
+    this.references = null;
+    this.searchPlace = null;
     this.hostResult = null;
     this.searched = null;
     this.error = null;

@@ -87,13 +87,14 @@ test('source coordinates count text rather than syntax spans and exclude non-sou
 // Execute the actual result handler, not a parallel implementation. DOM paint
 // and native focus remain manual checks.
 const viewerSource = readFileSync(new URL('../src/lib/components/common/go-to-file/FileViewer.svelte', import.meta.url), 'utf8');
-const askSource = viewerSource.slice(viewerSource.indexOf('  async function askSymbol('), viewerSource.indexOf('  async function askHover('));
+const askSource = viewerSource.slice(viewerSource.indexOf('  async function askSymbol('), viewerSource.indexOf('  export function navigateReference('));
 const askJS = ts.transpileModule(askSource, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText;
 function answers(navigate, blocker) {
   const tab = { path: 'main.ts' }, opened = [], notices = [];
   const context = {
     files: { selected: tab.path, activeTab: tab }, codeDiagnostics: { navigate }, symbolSequence: 0,
-    symbolBlocker: blocker, symbolPicker: null,
+    symbolBlocker: blocker, symbolPicker: null, editing: false, text: '\n\n   symbol', wordRange,
+    contentSearch: { showReferences(...args) { context.references = args; } },
     closeSymbolPopups() { context.symbolSequence++; },
     showSymbolNotice: (...args) => notices.push(args),
     openLocation: (...args) => opened.push(args), symbolStart: p => ({ start: p, end: p }),
@@ -109,9 +110,9 @@ test('viewer opens a single definition, lists multiple results and explains empt
   assert.equal(h.opened[0][0], location);
   assert.equal(h.opened[0][1].path, 'main.ts');
   await h.ask('references');
-  assert.equal(h.context.symbolPicker.label, 'References');
-  h.context.symbolPicker.items[0].onSelect();
-  assert.equal(h.opened.length, 2);
+  assert.equal(h.context.references[0], 'symbol');
+  assert.deepEqual(h.context.references[1], [location]);
+  assert.equal(h.opened.length, 1);
   const empty = answers(async () => ({ kind: 'result', result: { locations: [] } }));
   await empty.ask('definition');
   assert.equal(empty.notices[0][0], 'No definition found');

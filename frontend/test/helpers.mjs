@@ -80,6 +80,11 @@ async function importCompiled(filename, code, replacements) {
       replacements.push([module, JSON.stringify(new URL('../src/lib/contentSearch.ts', import.meta.url).href)]);
     }
   }
+  for (const module of ["'../../referenceResults'", "'../../../referenceResults'"]) {
+    if (code.includes(module) && !replacements.some(([from]) => from === module)) {
+      replacements.push([module, JSON.stringify(new URL('../src/lib/referenceResults.ts', import.meta.url).href)]);
+    }
+  }
   for (const [from, to] of replacements) {
     assert.ok(code.includes(from), `compiled ${filename} no longer contains ${from}`);
     code = code.replace(from, to);

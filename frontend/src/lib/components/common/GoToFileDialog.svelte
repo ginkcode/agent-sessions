@@ -17,6 +17,7 @@
   import CodeChecks from './go-to-file/CodeChecks.svelte';
   import ProblemsPanel from './go-to-file/ProblemsPanel.svelte';
   import { contentSearch } from '../../stores/contentSearch.svelte';
+  import { isReferenceMatch } from '../../referenceResults';
   import { isSearchShortcut, matchRange, matchedText, searchSeed } from '../../contentSearch';
   import type { AgentID, SearchMatch } from '../../types';
   import { newSession } from '../../stores/newSession.svelte';
@@ -244,7 +245,8 @@
   }
 
   function openMatch(path: string, match: SearchMatch, keep = false) {
-    viewer?.navigateMatch(path, matchRange(match), matchedText(match), keep);
+    if (isReferenceMatch(match)) viewer?.navigateReference(match.location, keep);
+    else viewer?.navigateMatch(path, matchRange(match), matchedText(match), keep);
   }
 
   /** F4 and Shift+F4: the next and previous search match, in any file. */

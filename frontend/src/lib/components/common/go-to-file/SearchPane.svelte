@@ -1,5 +1,6 @@
 <script lang="ts">
   import { tick } from 'svelte';
+  import { isReferenceMatch } from '../../../referenceResults';
   import { contentSearch } from '../../../stores/contentSearch.svelte';
   import { connectionStore } from '../../../stores/connection.svelte';
   import { matchKey, searchRegExp, searchSummary, type MatchRef } from '../../../contentSearch';
@@ -28,7 +29,9 @@
   let active = $derived(contentSearch.active);
 
   // Replacing. The preview follows the search the results answer.
-  let previewing = $derived(o.replaceOpen && o.replace !== '');
+  let references = $derived(contentSearch.references);
+  let replaceOpen = $derived(o.replaceOpen && !references);
+  let previewing = $derived(replaceOpen && o.replace !== '');
   let searched = $derived(contentSearch.searched);
   let template = $derived(replacementTemplate(o.replace, !!searched?.regex));
   let sticky = $derived.by(() => {
@@ -136,11 +139,17 @@
 {/snippet}
 
 <div class="search-pane">
-  {#if !supported}
+  {#if !supported && !references}
     <div class="state" role="note">
       This host's agent-sessions server cannot search file contents. Update agent-sessions on the host, then reconnect.
     </div>
   {:else}
+    {#if references}
+      <div class="reference-heading">
+        <strong>References to {references.name}</strong>
+        <button type="button" class="filters-btn" onclick={() => contentSearch.backToSearch()}>← Back to search</button>
+      </div>
+    {:else}
     <div class="fields">
       <button
         type="button"
@@ -173,7 +182,7 @@
           {@render toggle('wholeWord', 'Match whole word', 'ab')}
           {@render toggle('regex', 'Use regular expression', '.*')}
         </div>
-        {#if o.replaceOpen}
+        {#if replaceOpen}
           <div id="search-replace" class="search-field replace-field">
             <input
               class="field-input"
@@ -234,8 +243,13 @@
       </div>
     {/if}
 
+    {/if}
     <div class="summary" role="status" aria-live="polite">
-      {#if contentSearch.replacing}
+      {#if references?.loading}
+        <LoadingSpinner size={12} label="Reading previews…" /> Reading previews…
+      {:else if references}
+        {references.result.matches} references in {references.result.files.length} files{references.result.truncated ? ' · The answer was cut short' : ''}
+      {:else if contentSearch.replacing}
         <LoadingSpinner size={12} label="Replacing…" /> Replacing…
       {:else if contentSearch.searching}
         <LoadingSpinner size={12} label="Searching…" /> Searching…
@@ -252,7 +266,7 @@
     {/if}
 
     <div id="search-results" class="results" role="region" aria-label="Search results" bind:this={resultsEl}>
-      {#if result && !contentSearch.idle && !contentSearch.error}
+      {#if result && !contentSearch.idle && (references || !contentSearch.error)}
         {#each result.files as file (file.path)}
           {@const parts = splitPath(file.path)}
           {@const folded = contentSearch.collapsed.has(file.path)}
@@ -274,13 +288,13 @@
                 <span class="count" aria-label="{file.matches.length}{file.truncated ? '+' : ''} {file.matches.length === 1 && !file.truncated ? 'match' : 'matches'}">{file.matches.length}{file.truncated ? '+' : ''}</span>
               </button>
               <span class="row-actions">
-                {#if o.replaceOpen}
+                {#if replaceOpen}
                   <button type="button" class="row-action" aria-label="Replace all in {file.path}"
                     title={blockedFile ?? 'Replace all in file'} disabled={Boolean(blockedFile)}
                     onclick={() => void contentSearch.replaceFile(file.path)}>{@render icon('replace-all')}</button>
                 {/if}
-                <button type="button" class="row-action" aria-label="Dismiss {file.path}" title="Dismiss"
-                  onclick={() => contentSearch.dismiss(file.path)}>{@render icon('dismiss')}</button>
+                {#if !references}<button type="button" class="row-action" aria-label="Dismiss {file.path}" title="Dismiss"
+                  onclick={() => contentSearch.dismiss(file.path)}>{@render icon('dismiss')}</button>{/if}
               </span>
             </div>
             {#if !folded}
@@ -297,22 +311,24 @@
                     ondblclick={() => open({ path: file.path, index: i }, true)}
                     onkeydown={() => {}}
                   >
-                    {#if previewing}
+                    {#if isReferenceMatch(m) && m.unavailable}
+                      <span class="preview">{m.unavailable}</span>
+                    {:else if previewing}
                       <span class="preview">{m.preview.slice(0, m.previewStart)}<del>{m.preview.slice(m.previewStart, m.previewEnd)}</del><ins>{previewReplacement(m, sticky, template, !!searched?.regex)}</ins>{m.preview.slice(m.previewEnd)}</span>
                     {:else}
                       <span class="preview">{m.preview.slice(0, m.previewStart)}<mark>{m.preview.slice(m.previewStart, m.previewEnd)}</mark>{m.preview.slice(m.previewEnd)}</span>
                     {/if}
                     <span class="line-no">{m.line}</span>
                     <span class="row-actions">
-                      {#if o.replaceOpen}
+                      {#if replaceOpen}
                         <button type="button" class="row-action" aria-label="Replace line {m.line} of {file.path}"
                           title={blockedFile ?? 'Replace'} disabled={Boolean(blockedFile)}
                           onclick={(e) => { e.stopPropagation(); void contentSearch.replaceMatch({ path: file.path, index: i }); }}
                           ondblclick={(e) => e.stopPropagation()}>{@render icon('replace')}</button>
                       {/if}
-                      <button type="button" class="row-action" aria-label="Dismiss line {m.line} of {file.path}" title="Dismiss"
+                      {#if !references}<button type="button" class="row-action" aria-label="Dismiss line {m.line} of {file.path}" title="Dismiss"
                         onclick={(e) => { e.stopPropagation(); contentSearch.dismiss(file.path, { path: file.path, index: i }); }}
-                        ondblclick={(e) => e.stopPropagation()}>{@render icon('dismiss')}</button>
+                        ondblclick={(e) => e.stopPropagation()}>{@render icon('dismiss')}</button>{/if}
                     </span>
                   </li>
                 {/each}
@@ -326,6 +342,7 @@
 </div>
 
 <style>
+  .reference-heading { padding: 10px; display: flex; flex-direction: column; gap: 6px; overflow-wrap: anywhere; font-size: 12px; }
   .search-pane {
     flex: 1;
     min-height: 0;

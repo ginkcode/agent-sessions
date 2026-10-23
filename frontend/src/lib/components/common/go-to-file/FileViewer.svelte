@@ -11,6 +11,7 @@
   import { formatAbsoluteTime, formatAgo } from '../../../date';
   import { preferences } from '../../../stores/preferences.svelte';
   import { files } from '../../../stores/files.svelte';
+  import { contentSearch } from '../../../stores/contentSearch.svelte';
   import type { FileTab } from '../../../stores/files.svelte';
   import { highlightFile, splitHighlightedLines, splitLines } from '../../../codeHighlight';
   import { copyToClipboard } from '../../../portable';
@@ -29,7 +30,7 @@
   import { canEditContent, readOnlyText } from '../../../fileEditing';
   import { externalLabel } from '../../../codeNavigation';
   import type { CodeDiagnosticPosition, CodeNavigationLocation } from '../../../codeDiagnostics';
-  import { SourceHistory, historyKey, hoverHtml, locationText, navigationKey, sourcePosition, type SourceLocation, type SourceSymbols, type ViewportPoint } from '../../../sourceNavigation';
+  import { SourceHistory, historyKey, hoverHtml, locationText, navigationKey, sourcePosition, wordRange, type SourceLocation, type SourceSymbols, type ViewportPoint } from '../../../sourceNavigation';
   import ContextMenu, { type ContextMenuItem } from '../ContextMenu.svelte';
   import HoverCard from './HoverCard.svelte';
   import type { FileContent } from '../../../types';
@@ -682,7 +683,21 @@
     const { locations, truncated } = out.result;
     const from: SourceLocation = { path, external: tab.external, range: symbolStart(position) };
     if (!locations.length) { showSymbolNotice(op === 'definition' ? 'No definition found' : 'No references found', at, 2000); return; }
-    if (op === 'definition' && locations.length === 1) { openLocation(locations[0], from); return; }
+    if (op === 'references') {
+      const source = editing ? tab.edit?.draft ?? text : text;
+      const line = source.split(/\r\n?|\n/)[position.line] ?? '';
+      const word = wordRange(line, position.character);
+      const name = word ? line.slice(word.start, word.end) : `${path}:${position.line + 1}`;
+      const dir = files.dir!;
+      void contentSearch.showReferences(name, locations, async location => {
+        const content = location.external ? await codeDiagnostics.readNavigationFile(location.path) : await api.readFile(dir, location.path);
+        return content.binary || content.tooLarge
+          ? { error: content.tooLarge ? 'File is too large for a preview.' : 'Binary file: no text preview.' }
+          : { text: content.text, revision: content.revision };
+      }, truncated);
+      return;
+    }
+    if (locations.length === 1) { openLocation(locations[0], from); return; }
     const items: ContextMenuItem[] = locations.map((location: CodeNavigationLocation) => ({
       label: locationText(location, symbolLabel),
       title: location.external ? `${location.path} (read-only, outside the project)` : undefined,
@@ -690,6 +705,10 @@
     }));
     if (truncated) items.push({ label: 'The language server sent more; only these are shown', disabled: true, onSelect() {}, separator: true });
     symbolPicker = { label: op === 'definition' ? 'Definitions' : 'References', items, ...at };
+  }
+  export function navigateReference(location: CodeNavigationLocation, keep = false) {
+    openLocation(location, currentLocation());
+    if (keep) files.keepTab(location.path);
   }
   async function askHover(position: CodeDiagnosticPosition, at: ViewportPoint) {
     clearTimeout(hoverCloseTimer);

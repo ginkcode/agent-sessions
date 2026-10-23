@@ -110,6 +110,7 @@ const { ContentSearchStore, REPLACE_UNSUPPORTED, SEARCH_DELAY_MS } = await loadS
   ["import { toast } from './toast.svelte';", fixtureStore('toast', '__searchFixture')],
   ["'../fileEditing'", lib('fileEditing')],
   ["'../searchReplace'", lib('searchReplace')],
+  ["'../referenceResults'", lib('referenceResults')],
 ]);
 
 function scripted() {
@@ -406,6 +407,59 @@ test('a draft whose match moved is skipped, not guessed at', async (t) => {
   assert.match(shown[0].body, /Skipped \(matches changed\): b\.go/);
 });
 
+test('references preserve search results, prefer drafts, keep exact ranges and block replacement', async () => {
+  const { store, fixture } = scripted();
+  store.setMode('files');
+  const original = { files: [], matches: 0, searched: 1 };
+  answered(store, { pattern: 'needle' }, original);
+  fixture.files.tabs = [{ path: 'draft.ts', edit: { draft: 'const symbol = 1;', dirty: true } }];
+  const range = { start: { line: 0, character: 6 }, end: { line: 0, character: 12 } };
+  const read = [];
+  await store.showReferences('symbol', [{ path: 'draft.ts', range }, { path: '/lib.ts', external: true, range }], async l => {
+    read.push(l.path); throw new Error('No longer readable');
+  }, true);
+  assert.deepEqual(read, ['/lib.ts']);
+  assert.equal(store.result.matches, 2);
+  assert.equal(store.result.truncated, true);
+  const draft = store.result.files.find(f => f.path === 'draft.ts');
+  assert.equal(draft.draft, true);
+  assert.equal(draft.matches[0].preview, 'const symbol = 1;');
+  assert.deepEqual(draft.matches[0].location.range, range);
+  assert.match(store.result.files[0].matches[0].unavailable, /No longer readable/);
+  assert.match(store.replaceBlocked(), /References cannot be replaced/);
+  store.backToSearch();
+  assert.equal(store.hostResult, original);
+  assert.equal(store.options.text, 'needle');
+  delete globalThis.__searchFixture;
+});
+
+test('reference previews bound concurrent reads and stop when the project changes', async () => {
+  const { store, fixture } = scripted();
+  const pending = [], calls = [];
+  const range = { start: { line: 0, character: 0 }, end: { line: 0, character: 1 } };
+  const work = store.showReferences('x', Array.from({ length: 20 }, (_, i) => ({ path: `${i}.ts`, range })), l => {
+    calls.push(l.path);
+    return new Promise(resolve => pending.push(resolve));
+  });
+  assert.equal(calls.length, 4);
+  fixture.files.dir = '/other';
+  pending.forEach(resolve => resolve({ text: 'x' }));
+  await work;
+  assert.equal(calls.length, 4);
+  delete globalThis.__searchFixture;
+});
+
+test('leaving references invalidates pending preview reads', async () => {
+  const { store } = scripted();
+  let resolve;
+  const pending = store.showReferences('x', [{ path: 'x', range: { start: { line: 0, character: 0 }, end: { line: 1, character: 2 } } }], () => new Promise(r => resolve = r));
+  store.backToSearch();
+  resolve({ text: 'x\nxy' });
+  await pending;
+  assert.equal(store.references, null);
+  delete globalThis.__searchFixture;
+});
+
 // Rendering.
 
 const base = new URL('../src/lib/components/common/go-to-file/', import.meta.url);
@@ -415,7 +469,20 @@ const pane = await loadServerComponent(new URL('SearchPane.svelte', base), [
   ["import FileIcon from '../FileIcon.svelte';", 'const FileIcon = () => {};'],
   ["import LoadingSpinner from '../LoadingSpinner.svelte';", 'const LoadingSpinner = () => {};'],
   ["'../../../searchReplace'", lib('searchReplace')],
+  ["'../../../referenceResults'", lib('referenceResults')],
 ]);
+
+test('references pane shows title, grouped results and back action without replace controls', async () => {
+  const html = await renderPane(store => {
+    store.references = { name: 'symbol', loading: false, result: { files: [file('src/use.ts', [hit(3, 0, 6, 'symbol()')])], matches: 1, searched: 1, truncated: true } };
+    store.options.replaceOpen = true;
+  }, {});
+  assert.match(html, /References to symbol/);
+  assert.match(html, /Back to search/);
+  assert.match(html, /use.ts/);
+  assert.match(html, /The answer was cut short/);
+  assert.doesNotMatch(html, /aria-label="Toggle replace"|aria-label="Replace all in/);
+});
 
 async function renderPane(setup, capabilities = { searchFiles: true, replaceFiles: true }) {
   const { fixture, store } = scripted();
