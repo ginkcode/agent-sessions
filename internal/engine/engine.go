@@ -12,7 +12,6 @@ import (
 	"github.com/ginkcode/agent-sessions/internal/files"
 	"github.com/ginkcode/agent-sessions/internal/index"
 	"github.com/ginkcode/agent-sessions/internal/manage"
-	"github.com/ginkcode/agent-sessions/internal/managedtools"
 	"github.com/ginkcode/agent-sessions/internal/model"
 	"github.com/ginkcode/agent-sessions/internal/paths"
 	"github.com/ginkcode/agent-sessions/internal/pathutil"
@@ -39,11 +38,13 @@ type Engine struct {
 	emitter         Emitter
 	codeDiagnostics *diagnosticsOwner
 	managedTools    *managedToolsOwner
-	managedGo       *managedtools.ReviewedGo
 	// liveInjection is set only by tests/fixtures; production never sets it.
 	liveInjection *LiveCodeDiagnosticsInjection
 	// localLive enables the production local live route (desktop App only).
 	localLive bool
+	// remoteKind is "ssh" or "wsl" for a headless server that hosts code
+	// diagnostics for that connection, else empty (WithRemoteCodeDiagnostics).
+	remoteKind string
 	// machineID overrides host machine-identity discovery for fixtures only;
 	// nil (production) uses the platform source, which fails closed.
 	machineID func() (string, error)

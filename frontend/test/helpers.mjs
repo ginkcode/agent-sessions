@@ -44,14 +44,20 @@ async function importCompiled(filename, code, replacements) {
     ...replacements,
   ];
   // Pure display-label helpers shared by the diagnostics components resolve to the real module.
-  const labels = "'../../../codeCheckLabels'";
-  if (code.includes(labels) && !replacements.some(([from]) => from === labels)) {
-    replacements.push([labels, JSON.stringify(new URL('../src/lib/codeCheckLabels.ts', import.meta.url).href)]);
+  for (const [module, file] of [["'../../../codeCheckLabels'", 'codeCheckLabels'], ["'../../../managedTools'", 'managedTools'], ["'../managedTools'", 'managedTools']]) {
+    if (code.includes(module) && !replacements.some(([from]) => from === module)) {
+      replacements.push([module, JSON.stringify(new URL(`../src/lib/${file}.ts`, import.meta.url).href)]);
+    }
   }
   // The browser-only splitter renders as a bare separator.
   const splitter = "import Splitter from '../Splitter.svelte';";
   if (code.includes(splitter) && !replacements.some(([from]) => from === splitter)) {
     replacements.push([splitter, `const Splitter = ($$renderer, $$props) => $$renderer.push(\`<div role="separator" aria-label="\${$$props.ariaLabel}"></div>\`);`]);
+  }
+  // The diagnostics store wires its singleton to the saved setting; store tests construct their own.
+  const preferences = "import { preferences } from './preferences.svelte';";
+  if (code.includes(preferences) && !replacements.some(([from]) => from === preferences)) {
+    replacements.push([preferences, 'const preferences = { autoInstallLanguageServers: false, setAutoInstallLanguageServers() {} };']);
   }
   for (const [from, to] of replacements) {
     assert.ok(code.includes(from), `compiled ${filename} no longer contains ${from}`);

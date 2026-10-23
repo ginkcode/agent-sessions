@@ -1,5 +1,7 @@
 # Code diagnostics frontend (CD-10 / CD-11 / CD-12 / CD-13 / CD-14 / CD-15)
 
+> **Update 2026-10-23:** Tools setup now offers a review step and one Install click for each missing gopls, vtsls or Ruff, on local and SSH/WSL hosts, and attaches again once after an install completes. Svelte setup is still not offered. See the [editor (Zed) model](code-diagnostics-zed-model.md).
+
 ## Diagnostics UI polish (screenshot feedback, 2026-10-23)
 
 This change came from a user screenshot. It touches frontend presentation only:

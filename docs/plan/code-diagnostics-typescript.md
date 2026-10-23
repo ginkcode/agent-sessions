@@ -1,5 +1,18 @@
 # Code diagnostics: TypeScript adapter and version spike (CD-23)
 
+> **Inline fix 2026-10-23:** vtsls omits publication versions. Instead of removing
+> those ranges, the backend now retains validated TypeScript ranges and adds
+> `basis.observedVersion` (the mirror version at receipt). Freshness stays
+> `uncertain`; this is not server confirmation. The frontend can draw them only
+> over that same synced document lifecycle/version, hiding them on edits, pending
+> sync, reopen or disconnect. A late unversioned server result can still refer to
+> earlier text: this is best-effort editor positioning, not a freshness guarantee.
+> Go/Ruff version handling is unchanged. This supersedes the panel-only policy
+> below. Covered by fake-server and frontend source-projection tests; native QA pending.
+
+
+> **Update 2026-10-23:** Any `@vtsls/language-server` (project `node_modules`, login-shell PATH or the app's managed copy) is accepted at any version, the workspace TypeScript is used when present, and remote hosts are supported. See the [editor (Zed) model](code-diagnostics-zed-model.md).
+
 Status: **partial**. The production local live route discovers vtsls 0.3.0 with
 TypeScript 5.9.3 from metadata alone. The real server passed a smoke test through
 the Go adapter (2026-10-23). Not done: no approved install on this host, no manual

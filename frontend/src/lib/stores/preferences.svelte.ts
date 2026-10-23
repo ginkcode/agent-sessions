@@ -8,6 +8,7 @@ const STORAGE_KEY = 'agent-sessions:pane-widths';
 const TIME_ZONE_KEY = 'agent-sessions:time-zone';
 // Separate key so the pane-widths JSON format stays unchanged.
 const TRANSCRIPT_MODE_KEY = 'agent-sessions:transcript-mode';
+const AUTO_INSTALL_KEY = 'agent-sessions:auto-install-language-servers';
 
 export interface PaneWidths {
   sidebar: number;
@@ -30,6 +31,8 @@ export class PreferencesStore {
   // Zone for message and session timestamps.
   timeZone = $state<TimeZoneMode>('utc');
   terminalFont = $state('');
+  // Like Zed, download a missing language server a project needs without a click.
+  autoInstallLanguageServers = $state(true);
 
   init(): void {
     if (typeof localStorage === 'undefined') return;
@@ -70,6 +73,12 @@ export class PreferencesStore {
       // Storage disabled; keep the app default.
     }
 
+    try {
+      this.autoInstallLanguageServers = localStorage.getItem(AUTO_INSTALL_KEY) !== 'off';
+    } catch {
+      // Storage disabled; keep automatic downloads on.
+    }
+
     if (typeof window !== 'undefined') {
       window.addEventListener('resize', () => this.handleWindowResize());
       this.handleWindowResize();
@@ -105,6 +114,15 @@ export class PreferencesStore {
       localStorage.setItem(TERMINAL_FONT_KEY, font);
     } catch {
       // Storage disabled; selection still applies for this run.
+    }
+  }
+
+  setAutoInstallLanguageServers(on: boolean): void {
+    this.autoInstallLanguageServers = on;
+    try {
+      localStorage.setItem(AUTO_INSTALL_KEY, on ? 'on' : 'off');
+    } catch {
+      // Storage disabled; the choice still applies for this run.
     }
   }
 

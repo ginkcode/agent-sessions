@@ -38,6 +38,18 @@ test('versioned live ranges share UTF16 multiline/EOF validation without upgradi
   assert.equal(projectSourceDiagnostics('a😀', [live(range(0, 2))], basis).segments.length, 0);
 });
 
+test('unversioned TypeScript observations paint source ranges without claiming confirmed freshness', () => {
+  const f = finding(range(0, 0, 0, 3), { source: 'typescript/ts', freshness: 'uncertain', basis: { kind: 'document', documentId: 'doc', observedVersion: 2 } });
+  const basis = { dirty: false, live: { documentId: 'doc', version: 2, synced: true } };
+  const projected = projectSourceDiagnostics('sdf', [f], basis);
+  assert.deepEqual(projected.segments, [{ line: 0, start: 0, end: 3, finding: 0 }]);
+  assert.equal(projected.messages[0].finding.diagnostic.freshness, 'uncertain');
+  for (const live of [{ ...basis.live, version: 3 }, { ...basis.live, synced: false }, { ...basis.live, documentId: 'new' }]) {
+    assert.equal(projectSourceDiagnostics('sdf', [f], { ...basis, live }).segments.length, 0);
+  }
+  assert.equal(projectSourceDiagnostics('x', [f], basis).segments.length, 0, 'invalid endpoints are still rejected');
+});
+
 test('invalid endpoints never clamp or throw; file-level/stale/unverified/drafts are message-only', () => {
   const invalid = [range(-1, 0), range(0, 2), range(0, 0, 2, 0), range(0, 4, 0, 1), range(0, NaN), range(0, 0.5), { start: null, end: null }];
   for (const r of invalid) {

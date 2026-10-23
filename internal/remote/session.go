@@ -136,12 +136,28 @@ func handshakeErr(parent, run context.Context, err error) error {
 	return err
 }
 
+// DiagnosticsHostEnv names the connection kind ("ssh" or "wsl") to a server
+// started by startServe.
+const DiagnosticsHostEnv = "AGENT_SESSIONS_DIAGNOSTICS_HOST"
+
+func diagnosticsHostKind(alias string) string {
+	if _, ok := ParseWSLTarget(alias); ok {
+		return "wsl"
+	}
+	return "ssh"
+}
+
 func startServe(ctx context.Context, alias string, opts SSHOptions, bin string, clientEnv map[string]string, emitter engine.Emitter) (*Session, error) {
 	nonce := rpc.GenerateNonce()
 	// The preface is printed by the server (--nonce), after the login shell
 	// has written any banner, so WaitForPreface can skip it. exec leaves no
 	// shell behind to outlive the server.
-	script := fmt.Sprintf(`exec %s serve --stdio --nonce %s`, QuotePOSIX(bin), QuotePOSIX(nonce))
+	//
+	// The variable makes the server the code diagnostics host for this kind
+	// of connection (it computes its own identity there). env keeps it
+	// independent of the login shell's syntax; an older server ignores it.
+	script := fmt.Sprintf(`exec env %s=%s %s serve --stdio --nonce %s`,
+		DiagnosticsHostEnv, diagnosticsHostKind(alias), QuotePOSIX(bin), QuotePOSIX(nonce))
 	if dir, ok := buildDir(bin); ok {
 		// Marks the build as in use, so no client's prune removes it.
 		script = fmt.Sprintf(`touch -c %s 2>/dev/null; [ -x %s ] || exit %d; %s`,

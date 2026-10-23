@@ -72,15 +72,16 @@ func TestRuffProjectDiscovery(t *testing.T) {
 	cases := map[string]struct {
 		files             map[string]string
 		projects, configs []string
-		partial           bool
+		partial, sources  bool
 	}{
-		"pyproject":            {map[string]string{"pyproject.toml": "", "a.py": ""}, []string{""}, []string{"pyproject.toml"}, false},
-		"ruff configs bound":   {map[string]string{"ruff.toml": "", "sub/.ruff.toml": ""}, []string{"", "sub"}, []string{"ruff.toml", "sub/.ruff.toml"}, false},
-		"plain markers":        {map[string]string{"requirements.txt": "", "b/setup.py": "", "c/setup.cfg": ""}, []string{"", "b", "c"}, nil, false},
-		"nested no promotion":  {map[string]string{"svc/pyproject.toml": "", "svc/a.py": "", "x.py": ""}, []string{"svc"}, []string{"svc/pyproject.toml"}, false},
-		"environments skipped": {map[string]string{"pyproject.toml": "", ".venv/lib/python3.13/site-packages/x/pyproject.toml": "", "venv/pyproject.toml": "", "__pycache__/ruff.toml": ""}, []string{""}, []string{"pyproject.toml"}, false},
-		"hidden skipped":       {map[string]string{"pyproject.toml": "", ".cache/ruff.toml": ""}, []string{""}, []string{"pyproject.toml"}, true},
-		"none":                 {map[string]string{"a.py": "", "package.json": "{}"}, nil, nil, false},
+		"pyproject":            {map[string]string{"pyproject.toml": "", "a.py": ""}, []string{""}, []string{"pyproject.toml"}, false, true},
+		"ruff configs bound":   {map[string]string{"ruff.toml": "", "sub/.ruff.toml": ""}, []string{"", "sub"}, []string{"ruff.toml", "sub/.ruff.toml"}, false, false},
+		"no plain markers":     {map[string]string{"requirements.txt": "", "b/setup.py": "", "c/setup.cfg": ""}, nil, nil, false, true},
+		"nested no promotion":  {map[string]string{"svc/pyproject.toml": "", "svc/a.py": "", "x.py": ""}, []string{"svc"}, []string{"svc/pyproject.toml"}, false, true},
+		"environments skipped": {map[string]string{"pyproject.toml": "", ".venv/lib/python3.13/site-packages/x/pyproject.toml": "", ".venv/lib/x.py": "", "venv/pyproject.toml": "", "__pycache__/ruff.toml": ""}, []string{""}, []string{"pyproject.toml"}, false, false},
+		"hidden skipped":       {map[string]string{"pyproject.toml": "", ".cache/ruff.toml": ""}, []string{""}, []string{"pyproject.toml"}, true, false},
+		"sources only":         {map[string]string{"a.py": "", "package.json": "{}"}, nil, nil, false, true},
+		"no python":            {map[string]string{"a.ts": "", "package.json": "{}"}, nil, nil, false, false},
 	}
 	for name, c := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -88,7 +89,7 @@ func TestRuffProjectDiscovery(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if !slices.Equal(w.packages, c.projects) || !slices.Equal(w.configs, c.configs) || w.partial != c.partial {
+			if !slices.Equal(w.packages, c.projects) || !slices.Equal(w.configs, c.configs) || w.partial != c.partial || w.sources != c.sources {
 				t.Fatalf("%+v", w)
 			}
 		})
@@ -114,7 +115,8 @@ func TestDiscoverRuffAvailability(t *testing.T) {
 		t.Fatal(err)
 	}
 	st := p.Provider()
-	if st.Coverage.Kind != "openedDocuments" || st.Coverage.Partial || !slices.Equal(st.Coverage.Roots, []string{"", "pkg"}) ||
+	// The whole project is covered; configurations are bound, not boundaries.
+	if st.Coverage.Kind != "openedDocuments" || st.Coverage.Partial || !slices.Equal(st.Coverage.Roots, []string{""}) ||
 		!slices.Equal(st.DocumentExtensions, []string{".py", ".pyi"}) ||
 		!strings.Contains(st.Notice, "not type errors") || !strings.Contains(st.Notice, "not part of approval") || !strings.Contains(st.Notice, "opened documents only") {
 		t.Fatalf("%+v", st)
@@ -139,37 +141,35 @@ func TestDiscoverRuffAvailability(t *testing.T) {
 	writeTree(t, shim, map[string]string{"ruff": "#!/bin/sh\nexec mise x -- ruff \"$@\"\n"})
 	_ = os.Chmod(filepath.Join(shim, "ruff"), 0o755)
 	wrong, _, _ := ruffHost(t, "0.14.0")
+	// Any native ruff binary is used, as editors do; the version is shown only
+	// when wheel metadata vouches for it.
 	for name, tc := range map[string]struct {
-		path          []string
-		state, notice string
+		path                   []string
+		state, notice, version string
 	}{
-		"missing":             {[]string{t.TempDir()}, "missingTool", "uv tool install ruff==0.15.20"},
-		"relative path":       {[]string{"bin", "../bin"}, "missingTool", "Nothing is installed automatically"},
-		"standalone binary":   {[]string{standalone}, "unsupported", "not a verifiable Python wheel install"},
-		"shim":                {[]string{shim}, "unsupported", "not a verifiable Python wheel install"},
-		"shim before install": {append([]string{shim, standalone}, path...), "available", ""},
-		"wrong version":       {wrong, "unsupported", "Found Ruff 0.14.0; only Ruff 0.15.20 is verified"},
+		"missing":             {[]string{t.TempDir()}, "missingTool", "uv tool install ruff", ""},
+		"relative path":       {[]string{"bin", "../bin"}, "missingTool", "Ruff is not installed", ""},
+		"standalone binary":   {[]string{standalone}, "available", "", ""},
+		"shim":                {[]string{shim}, "unsupported", "script or version-manager shim", ""},
+		"shim before install": {append([]string{shim, standalone}, path...), "available", "", ""},
+		"other version":       {wrong, "available", "", "0.14.0"},
 		"hostile version": {host(func(p string) {
 			writeTree(t, p, map[string]string{dist + "/METADATA": "Name: ruff\nVersion: 0.15.20<b>\n"})
-		}), "unsupported", "Found Ruff (unknown)"},
-		"binary modified":          {host(func(p string) { writeTree(t, p, map[string]string{"bin/ruff": fakeRuffBinary + "x"}) }), "unsupported", "does not match its installed package record"},
-		"modified before verified": {append(host(func(p string) { writeTree(t, p, map[string]string{"bin/ruff": "changed"}) }), path...), "available", ""},
-		"record missing":           {host(func(p string) { _ = os.Remove(filepath.Join(p, dist, "RECORD")) }), "unsupported", "not a verifiable"},
-		"record without hash":      {host(func(p string) { writeTree(t, p, map[string]string{dist + "/RECORD": "../../../bin/ruff,,\n"}) }), "unsupported", "does not match"},
-		"other binary listed": {host(func(p string) {
-			writeTree(t, p, map[string]string{dist + "/RECORD": "../../../bin/ruff2,sha256=x,1\n"})
-		}), "unsupported", "not a verifiable"},
+		}), "available", "", ""},
+		"binary modified":          {host(func(p string) { writeTree(t, p, map[string]string{"bin/ruff": fakeRuffBinary + "x"}) }), "available", "", ""},
+		"modified before verified": {append(host(func(p string) { writeTree(t, p, map[string]string{"bin/ruff": "changed"}) }), path...), "available", "", ""},
+		"record missing":           {host(func(p string) { _ = os.Remove(filepath.Join(p, dist, "RECORD")) }), "available", "", ""},
 		"foreign package": {host(func(p string) {
 			writeTree(t, p, map[string]string{dist + "/METADATA": "Name: evil\nVersion: 0.15.20\n"})
-		}), "unsupported", "not a verifiable"},
+		}), "available", "", ""},
 		"renamed binary": {host(func(p string) {
 			_ = os.Rename(filepath.Join(p, "bin/ruff"), filepath.Join(p, "bin/other"))
 			_ = os.Symlink("other", filepath.Join(p, "bin/ruff"))
-		}), "unsupported", "not a verifiable"},
+		}), "unsupported", "not the Ruff program", ""},
 	} {
 		p, err := DiscoverRuff(root, tc.path, env)
-		if err != nil || p.Availability() != tc.state || !strings.Contains(p.Provider().Notice, tc.notice) {
-			t.Errorf("%s: %v %s %q", name, err, p.Availability(), p.Provider().Notice)
+		if err != nil || p.Availability() != tc.state || !strings.Contains(p.Provider().Notice, tc.notice) || p.Version() != tc.version {
+			t.Errorf("%s: %v %s %q %q", name, err, p.Availability(), p.Version(), p.Provider().Notice)
 			continue
 		}
 		if tc.state == "available" {
@@ -179,11 +179,14 @@ func TestDiscoverRuffAvailability(t *testing.T) {
 			t.Errorf("%s: unavailable plan offers a server or full coverage", name)
 		}
 	}
-	// No contained Python project: a muted unsupported, never a request to
-	// install and never promoted to a parent.
+	// Any Python file is enough; without one Ruff is a muted unsupported,
+	// never a request to install.
+	if p, _ = DiscoverRuff(goplsRoot(t, map[string]string{"a.py": ""}), path, env); p.Availability() != "available" {
+		t.Fatal("plain Python file", p.Availability())
+	}
 	for _, path := range [][]string{path, {t.TempDir()}} {
-		if p, _ = DiscoverRuff(goplsRoot(t, map[string]string{"a.py": ""}), path, env); p.Availability() != "unsupported" || !strings.Contains(p.Provider().Notice, "No contained Python project") {
-			t.Fatal("no project", p.Availability())
+		if p, _ = DiscoverRuff(goplsRoot(t, map[string]string{"a.ts": "", "requirements.txt": ""}), path, env); p.Availability() != "unsupported" || !strings.Contains(p.Provider().Notice, "No Python file") {
+			t.Fatal("no Python", p.Availability())
 		}
 	}
 	for _, bad := range []RuffEnvironment{{}, {Home: "relative"}, {Home: "/x/../y"}} {
@@ -209,11 +212,10 @@ func TestRuffProjectVirtualEnvironment(t *testing.T) {
 	if cfg, _ := p.Server(); cfg.Executable != filepath.Join(venv, "bin/ruff") || !slices.Equal(cfg.ConfigPaths, []string{"pyproject.toml"}) {
 		t.Fatalf("%+v", cfg)
 	}
-	// The project's own wrong version is reported, not silently replaced by
-	// another copy.
+	// The project's own copy wins whatever its version, as in editors.
 	_ = os.RemoveAll(venv)
 	writeRuffWheel(t, venv, "python3.12", "0.1.0", fakeRuffBinary+" venv")
-	if p, _ = DiscoverRuff(root, path, env); p.Availability() != "unsupported" || !strings.Contains(p.Provider().Notice, "Found Ruff 0.1.0") {
+	if p, _ = DiscoverRuff(root, path, env); p.Availability() != "available" || !p.ProjectLocal() || p.Version() != "0.1.0" {
 		t.Fatalf("%s %q", p.Availability(), p.Provider().Notice)
 	}
 	_ = os.RemoveAll(venv)
@@ -233,21 +235,22 @@ func TestRuffDocumentResolutionThroughLocalLive(t *testing.T) {
 	path, env, _ := ruffHost(t, "0.15.20")
 	_, goEnv := goplsHost(t, "v0.24.0", goplsModulePath)
 	tsPath, tsEnv := tsHost(t)
-	regs, err := DiscoverLocalLive(root, LocalLiveEnvironment{Path: append(path, tsPath...), Go: goEnv, TS: tsEnv, Ruff: env})
-	if err != nil || len(regs) != 4 || regs[3].ProviderID != ruffProviderID || regs[3].Availability != "available" {
+	regs, err := DiscoverLocalLive(root, LocalLiveEnvironment{Path: append(path, tsPath...), Go: goEnv, TS: tsEnv, Ruff: env, Pyright: PyrightEnvironment{Home: tsEnv.Home, NodeDir: tsEnv.NodeDir}})
+	if err != nil || len(regs) != 5 || regs[3].ProviderID != ruffProviderID || regs[3].Availability != "available" {
 		t.Fatal(err, regs)
 	}
-	// gopls and vtsls are unaffected: no Go module or JS/TS package here.
-	if regs[0].Availability == "available" || regs[1].Availability != "unsupported" {
+	// gopls is unaffected (no Go module); the TypeScript file enables vtsls.
+	if regs[0].Availability == "available" || regs[1].Availability != "available" {
 		t.Fatalf("%s %s", regs[0].Availability, regs[1].Availability)
 	}
 	docs, err := DiscoveryDocuments(root, regs, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	for file, want := range map[string]bool{"svc/app/a.py": true, "svc/a.pyi": true, "x.py": false, "svc/n.ipynb": false, "svc/b.ts": false} {
+	// Ruff covers the whole project, not only the pyproject.toml directory.
+	for file, want := range map[string]string{"svc/app/a.py": ruffProviderID, "svc/a.pyi": ruffProviderID, "x.py": ruffProviderID, "svc/n.ipynb": "", "svc/b.ts": tsProviderID} {
 		server, ok := docs.Resolve(root, file)
-		if ok != want || (ok && (server.LanguageID != "python" || server.Config.ProviderID != ruffProviderID || len(server.Config.ApprovalTools) != 1)) {
+		if ok != (want != "") || (ok && server.Config.ProviderID != want) {
 			t.Errorf("%s: %v %+v", file, ok, server)
 		}
 	}
@@ -346,8 +349,8 @@ func TestRuffEvidenceReplay(t *testing.T) {
 	if err := json.Unmarshal(data, &ev); err != nil {
 		t.Fatal(err)
 	}
-	if ev.Versions["ruff"] != ruffVersion {
-		t.Fatalf("evidence version %v is not the supported %s", ev.Versions, ruffVersion)
+	if ev.Versions["ruff"] == "" {
+		t.Fatalf("evidence names no ruff version: %v", ev.Versions)
 	}
 	root := goplsRoot(t, map[string]string{"a.py": "x", "b.py": "x", "pyproject.toml": ""})
 	codes := []string{}

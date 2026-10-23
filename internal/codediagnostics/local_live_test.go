@@ -15,9 +15,9 @@ func TestDiscoverLocalLiveBindsToolchainAndHoldsOtherLanguages(t *testing.T) {
 		t.Fatal(err)
 	}
 	tsPath, tsEnv := tsHost(t)
-	live := LocalLiveEnvironment{GoPath: []string{bin}, Path: tsPath, Go: env, TS: tsEnv, Ruff: RuffEnvironment{Home: tsEnv.Home}}
+	live := LocalLiveEnvironment{GoPath: []string{bin}, Path: tsPath, Go: env, TS: tsEnv, Ruff: RuffEnvironment{Home: tsEnv.Home}, Pyright: PyrightEnvironment{Home: tsEnv.Home, NodeDir: tsEnv.NodeDir}}
 	regs, err := DiscoverLocalLive(root, live)
-	if err != nil || len(regs) != 4 {
+	if err != nil || len(regs) != 5 {
 		t.Fatal(err, regs)
 	}
 	g := regs[0]
@@ -32,9 +32,12 @@ func TestDiscoverLocalLiveBindsToolchainAndHoldsOtherLanguages(t *testing.T) {
 	if !slices.Equal(ids, []string{goplsProviderID, "gopls-toolchain-bin-go", "gopls-toolchain-VERSION"}) {
 		t.Fatal("toolchain not bound", ids)
 	}
-	// No package.json/tsconfig.json or Python project: TypeScript and Ruff stay
-	// a muted unsupported.
-	for _, r := range regs[1:] {
+	// TypeScript sources make vtsls available without a package.json. No
+	// Python file: Ruff stays a muted unsupported, and Svelte is held.
+	if regs[1].ProviderID != tsProviderID || regs[1].Availability != "available" {
+		t.Fatalf("%+v", regs[1])
+	}
+	for _, r := range regs[2:] {
 		if r.Availability != "unsupported" || r.Live == nil || r.Live.State.Coverage.Kind != "openedDocuments" || (r.ProviderID == svelteLSProviderID && r.Live.Resolve != nil) {
 			t.Fatalf("%+v", r)
 		}
@@ -43,27 +46,7 @@ func TestDiscoverLocalLiveBindsToolchainAndHoldsOtherLanguages(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	server, ok := docs.Resolve(root, "a.go")
-	if !ok || server.LanguageID != "go" || len(server.Config.ApprovalTools) != 3 {
-		t.Fatalf("%v %+v", ok, server)
-	}
-	for _, p := range []string{"b.ts", "c.svelte"} {
-		if _, ok := docs.Resolve(root, p); ok {
-			t.Fatal("unsupported language offered", p)
-		}
-	}
-	// A JS/TS package makes the installed vtsls available beside gopls; the
-	// proposal binds both servers and their toolchains, Svelte stays held.
-	if err := os.WriteFile(filepath.Join(root.Project().Root, "package.json"), []byte("{}"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	regs, err = DiscoverLocalLive(root, live)
-	if err != nil || regs[1].ProviderID != tsProviderID || regs[1].Availability != "available" || regs[2].Availability != "unsupported" {
-		t.Fatal(err, regs)
-	}
-	if docs, err = DiscoveryDocuments(root, regs, nil); err != nil {
-		t.Fatal(err)
-	}
+	// The proposal binds both servers and their toolchains; Svelte is held.
 	for file, want := range map[string]string{"a.go": goplsProviderID, "b.ts": tsProviderID, "x/c.mjs": tsProviderID, "c.svelte": ""} {
 		server, ok := docs.Resolve(root, file)
 		if ok != (want != "") || (ok && (server.Config.ProviderID != want || len(server.Config.ApprovalTools) != 10)) {

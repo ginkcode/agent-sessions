@@ -68,11 +68,12 @@ func DiscoverLive(root AuthorizedRoot, env LiveEnvironment) ([]Registration, err
 
 // LocalLiveEnvironment is the production local route's reviewed host metadata.
 type LocalLiveEnvironment struct {
-	GoPath []string // gopls search, the selected toolchain's bin first
-	Path   []string // reviewed executable directories for vtsls, node and ruff
-	Go     GoplsEnvironment
-	TS     TSEnvironment
-	Ruff   RuffEnvironment
+	GoPath  []string // gopls search, the selected toolchain's bin first
+	Path    []string // reviewed executable directories for vtsls, node and ruff
+	Go      GoplsEnvironment
+	TS      TSEnvironment
+	Ruff    RuffEnvironment
+	Pyright PyrightEnvironment
 }
 
 // DiscoverLocalLive is the production local live route's discovery: gopls,
@@ -95,6 +96,11 @@ func DiscoverLocalLive(root AuthorizedRoot, env LocalLiveEnvironment) ([]Registr
 	if err != nil {
 		return nil, err
 	}
+	pyright, err := DiscoverPyright(root, env.Path, env.Pyright)
+	if err != nil {
+		return nil, err
+	}
+	pyrightConfig, _ := pyright.Server()
 	goConfig, _ := goPlan.Server()
 	tsConfig, _ := ts.Server()
 	ruffConfig, _ := ruff.Server()
@@ -115,6 +121,10 @@ func DiscoverLocalLive(root AuthorizedRoot, env LocalLiveEnvironment) ([]Registr
 		liveRegistration(ruff.Provider(), ruffConfig, func(file string) (string, bool) {
 			lang, ok := PythonLanguageID(file)
 			return lang, ok && ruff.covers(file)
+		}),
+		liveRegistration(pyright.Provider(), pyrightConfig, func(file string) (string, bool) {
+			lang, ok := PythonLanguageID(file)
+			return lang, ok && pyright.covers(file)
 		}),
 	}, nil
 }
@@ -165,26 +175,40 @@ func DiscoveryDocuments(root AuthorizedRoot, registrations []Registration, sessi
 		}
 	}
 	tools = cloneTools(tools)
-	return SessionDocuments{Sessions: sessions, Resolve: func(current AuthorizedRoot, file string) (DocumentServer, bool) {
+	resolveAll := func(current AuthorizedRoot, file string) []DocumentServer {
 		if current.Project() != root.Project() {
-			return DocumentServer{}, false
+			return nil
 		}
 		if _, err := current.ResolvePath(current.Project().HostID, file); err != nil {
-			return DocumentServer{}, false
+			return nil
 		}
-		var result DocumentServer
-		found := false
+		var result []DocumentServer
 		for _, entry := range live {
 			if lang, ok := entry.Resolve(file); ok {
-				if found { // conflicting adapters fail closed, never pick by order
-					return DocumentServer{}, false
-				}
 				cfg := cloneServer(entry.Server)
 				cfg.ApprovalTools = cloneTools(tools)
-				result, found = DocumentServer{Config: cfg, LanguageID: lang}, true
+				result = append(result, DocumentServer{Config: cfg, LanguageID: lang})
 			}
 		}
-		return result, found
+		// Only the reviewed Python lint/type pair may share a document. Arbitrary
+		// overlapping registrations remain conflicts, never an order-based choice.
+		if len(result) > 1 {
+			if len(result) != 2 || result[0].LanguageID != "python" || result[1].LanguageID != "python" {
+				return nil
+			}
+			a, b := result[0].Config.ProviderID, result[1].Config.ProviderID
+			if !((a == "ruff" && b == "pyright") || (a == "pyright" && b == "ruff")) {
+				return nil
+			}
+		}
+		return result
+	}
+	return SessionDocuments{Sessions: sessions, ResolveAll: resolveAll, Resolve: func(current AuthorizedRoot, file string) (DocumentServer, bool) {
+		all := resolveAll(current, file)
+		if len(all) != 1 {
+			return DocumentServer{}, false
+		}
+		return all[0], true
 	}}, nil
 }
 

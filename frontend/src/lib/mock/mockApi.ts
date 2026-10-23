@@ -153,7 +153,7 @@ export class MockBackendAPI extends MockCodeDiagnostics {
   async managedTool(request: import('../managedTools').ManagedToolRequest): Promise<import('../managedTools').ManagedToolState> {
     const connection = await this.connectionState();
     if (!connection.hostId || request.expectedHostId !== connection.hostId) throw new Error('Actual host identity required');
-    return { hostId: connection.hostId, state: 'unavailable', message: 'Mock only: backend operator must review and provision Go >=1.27; no downloads, builds or installs are performed.' };
+    return { hostId: connection.hostId, state: 'unavailable', message: 'Mock only: no downloads, builds or installs are performed.' };
   }
   constructor() { super((name, event) => this.emit(name, event)); }
   private sessions: SessionMeta[] = [...mockSessions];

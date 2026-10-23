@@ -63,7 +63,7 @@ const provider = { providerId: 'go', availability: 'available', phase: 'idle', f
 const required = { approval: { state: 'required' }, proposal: { fingerprint: 'sha256:deadbeef', tools: [{ providerId: 'go', executable: '/usr/bin/go', configPaths: [] }] } };
 const approved = { approval: { state: 'approved', mode: 'session' } };
 const checks = (extra = {}) => ({ status: 'ready', project: { hostId: HOST, root: '/project' }, snapshot: required, providers: [provider], findings: [], counts: { error: 0, warning: 0 },
-  pathCounts: { files: new Map(), folders: new Map(), total: { error: 0, warning: 0 } }, canRetry: () => false, ...extra });
+  pathCounts: { files: new Map(), folders: new Map(), total: { error: 0, warning: 0 } }, canRetry: () => false, managedInstalls: { gopls: 'missingTool', vtsls: 'missingTool', ruff: 'missingTool' }, ...extra });
 const settingsSnippet = createRawSnippet(() => ({ render: () => '<p>SETTINGS-BODY</p>' }));
 const renderPanel = (fixture, props = {}) => renderWithFixture(panel, { checks: checks(fixture) }, { onnavigate() {}, ...props });
 const statusButton = html => /<button[^>]*class="status[^"]*"[^>]*>[\s\S]*?<\/button>/.exec(html)?.[0] ?? '';
@@ -112,9 +112,9 @@ test('expanded details list issues; settings stay behind a second disclosure', a
 test('approval and setup controls are reachable only once disclosed, and never auto-approve', async () => {
   const collapsed = await renderWithFixture(dialog, { files: { open: true, dir: '/project' }, link: {}, checks: checks() });
   assert.doesNotMatch(collapsed, /Enable for this session|Always allow|Review gopls|>Install</);
-  const html = await renderWithFixture(settings, { checks: checks({ managed: { hostId: HOST, state: 'missingTool' } }) });
+  const html = await renderWithFixture(settings, { checks: checks({ managed: { hostId: HOST, state: 'idle' }, providers: [provider, { ...provider, providerId: 'gopls', availability: 'missingTool' }] }) });
   const buttons = renderedButtons(html).map(b => b.text);
-  for (const label of ['Enable for this session', 'Always allow this project', 'Not now', 'Review gopls installation']) assert.ok(buttons.includes(label), label);
+  for (const label of ['Enable for this session', 'Always allow this project', 'Not now', 'Install gopls…']) assert.ok(buttons.includes(label), label);
   assert.ok(!buttons.includes('Install'), 'install needs a reviewed proposal first');
   assert.doesNotMatch(html, /<details[^>]*open/, 'setup and technical details start closed');
   // Opening with nothing to list reveals settings, but only as a disclosure: approving still takes a click.

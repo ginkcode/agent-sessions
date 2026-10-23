@@ -18,11 +18,11 @@ import (
 
 // Commands have exact argv and an allowlisted environment; never a shell,
 // inherited GOFLAGS/GOENV/GOPROXY, project cwd, package script or toolchain fetch.
-func buildGo(ctx context.Context, stage string, tool TrustedGo) error {
-	return buildGoWith(ctx, stage, tool, runGo)
+func buildGo(ctx context.Context, stage string, tool TrustedGo, r goplsRelease) error {
+	return buildGoWith(ctx, stage, tool, r, runGo)
 }
 
-func buildGoWith(ctx context.Context, stage string, tool TrustedGo, command func(context.Context, string, string, []string, ...string) ([]byte, error)) error {
+func buildGoWith(ctx context.Context, stage string, tool TrustedGo, r goplsRelease, command func(context.Context, string, string, []string, ...string) ([]byte, error)) error {
 	if err := noLinks(filepath.Dir(tool.Path)); err != nil {
 		return errors.New("untrusted Go installation")
 	}
@@ -42,7 +42,7 @@ func buildGoWith(ctx context.Context, stage string, tool TrustedGo, command func
 	}
 	env := []string{
 		"GOENV=off", "GOTOOLCHAIN=local", "GOWORK=off", "GO111MODULE=on", "GOFLAGS=",
-		"GOPROXY=" + source, "GOSUMDB=sum.golang.org", "GONOSUMDB=", "GOPRIVATE=", "GONOPROXY=", "GOINSECURE=",
+		"GOPROXY=" + goProxy, "GOSUMDB=sum.golang.org", "GONOSUMDB=", "GOPRIVATE=", "GONOPROXY=", "GOINSECURE=",
 		"GOVCS=*:off", "CGO_ENABLED=0", "GOTELEMETRY=off",
 		"GOOS=" + runtime.GOOS, "GOARCH=" + runtime.GOARCH,
 		"HOME=" + filepath.Join(work, "home"), "TMPDIR=" + filepath.Join(work, "tmp"), "TMP=" + filepath.Join(work, "tmp"), "TEMP=" + filepath.Join(work, "tmp"),
@@ -55,25 +55,34 @@ func buildGoWith(ctx context.Context, stage string, tool TrustedGo, command func
 		return err
 	}
 	fields := strings.Fields(string(data))
-	if len(fields) != 4 || fields[0] != "go" || fields[1] != "version" || !goversion.IsValid(fields[2]) || goversion.Compare(fields[2], "go1.27.0") < 0 || fields[3] != runtime.GOOS+"/"+runtime.GOARCH {
+	if len(fields) != 4 || fields[0] != "go" || fields[1] != "version" || !goversion.IsValid(fields[2]) || goversion.Compare(fields[2], r.MinGo) < 0 || fields[3] != runtime.GOOS+"/"+runtime.GOARCH {
 		return ErrPrerequisite
 	}
 	// The trusted Go command authenticates module graph downloads using the Go
 	// checksum database. Independently compare the catalog's main zip/go.mod sums.
-	data, err = run("mod", "download", "-json", module+"@"+versionPin())
+	data, err = run("mod", "download", "-json", goplsModule+"@"+r.Version)
 	if err != nil {
 		return err
 	}
 	var downloaded struct{ Path, Version, Sum, GoModSum string }
-	if json.Unmarshal(data, &downloaded) != nil || downloaded.Path != module || downloaded.Version != versionPin() || downloaded.Sum != moduleSum || downloaded.GoModSum != modSum {
+	if json.Unmarshal(data, &downloaded) != nil || downloaded.Path != goplsModule || downloaded.Version != r.Version || downloaded.Sum != r.Sum || downloaded.GoModSum != r.ModSum {
 		return errors.New("module integrity mismatch")
 	}
-	_, err = run("install", "-trimpath", module+"@"+versionPin())
+	_, err = run("install", "-trimpath", goplsModule+"@"+r.Version)
 	return err
 }
 
-// Avoid shadowing go/version in the build code.
-func versionPin() string { return version }
+// executableFile is a bounded regular file with an execute bit.
+func executableFile(path string) error {
+	if _, err := fileDigest(path); err != nil {
+		return err
+	}
+	info, err := os.Stat(path)
+	if err != nil || info.Mode().Perm()&0o111 == 0 {
+		return errors.New("nonexecutable output")
+	}
+	return nil
+}
 
 func runGo(ctx context.Context, path, dir string, env []string, args ...string) ([]byte, error) {
 	cmd := exec.CommandContext(ctx, path, args...)
@@ -116,19 +125,15 @@ func copyBounded(dst io.Writer, src io.Reader, limit int64) (int64, error) {
 }
 
 // Read build metadata, never execute the newly built server for validation.
-func validateBinary(path string) error {
-	if _, err := fileDigest(path); err != nil {
+func validateGopls(path string, r goplsRelease) error {
+	if err := executableFile(path); err != nil {
 		return err
-	}
-	info, err := os.Stat(path)
-	if err != nil || info.Mode().Perm()&0o111 == 0 {
-		return errors.New("nonexecutable output")
 	}
 	b, err := buildinfo.ReadFile(path)
 	if err != nil {
 		return err
 	}
-	if b.Path != module || b.Main.Path != module || b.Main.Version != versionPin() || b.Main.Sum != moduleSum || b.Main.Replace != nil {
+	if b.Path != goplsModule || b.Main.Path != goplsModule || b.Main.Version != r.Version || b.Main.Sum != r.Sum || b.Main.Replace != nil {
 		return errors.New("unexpected Go binary metadata")
 	}
 	settings := map[string]string{}

@@ -73,6 +73,48 @@ type OwnedDocumentProvider interface {
 	OwnerSession(root AuthorizedRoot, path string) (DocumentOwnerIdentity, string, ServerCapabilities, error)
 }
 
+// DocumentSession is one independently owned synchronization route. Err is per
+// provider so an unavailable peer cannot suppress a healthy session.
+type DocumentSession struct {
+	Owner        DocumentOwnerIdentity
+	Generation   string
+	Capabilities ServerCapabilities
+	Err          error
+}
+
+type MultiOwnedDocumentProvider interface {
+	DocumentProvider
+	OwnerSessions(AuthorizedRoot, string) []DocumentSession
+}
+
+func (m *Manager) documentSessions(root AuthorizedRoot, path string) []DocumentSession {
+	var entries []DocumentSession
+	if p, ok := m.provider.(MultiOwnedDocumentProvider); ok {
+		entries = p.OwnerSessions(root, path)
+	} else {
+		owner, generation, caps, err := m.documentSession(root, path)
+		entries = []DocumentSession{{owner, generation, caps, err}}
+	}
+	seen := map[string]bool{}
+	for i := range entries {
+		e := &entries[i]
+		if !bounded(e.Owner.ProviderID, 256) || e.Owner.ProviderID == "lsp" || !bounded(e.Owner.Policy, 4096) || seen[e.Owner.ProviderID] || (e.Err == nil && !bounded(e.Generation, 256)) {
+			return []DocumentSession{{Err: failure("unsupported", "Concrete document ownership is unavailable")}}
+		}
+		seen[e.Owner.ProviderID] = true
+	}
+	return entries
+}
+
+func (m *Manager) routeSession(root AuthorizedRoot, path string, owner DocumentOwnerIdentity) (DocumentOwnerIdentity, string, ServerCapabilities, error) {
+	for _, e := range m.documentSessions(root, path) {
+		if e.Owner == owner {
+			return e.Owner, e.Generation, e.Capabilities, e.Err
+		}
+	}
+	return DocumentOwnerIdentity{}, "", ServerCapabilities{}, failure("resyncRequired", "Document owner changed; document must be reopened")
+}
+
 func (m *Manager) documentSession(root AuthorizedRoot, path string) (DocumentOwnerIdentity, string, ServerCapabilities, error) {
 	p, ok := m.provider.(OwnedDocumentProvider)
 	if !ok {
@@ -86,6 +128,7 @@ func (m *Manager) documentSession(root AuthorizedRoot, path string) (DocumentOwn
 }
 
 type documentState struct {
+	routes     []*documentState // non-nil only for a multi-provider frontend lifecycle
 	owner      DocumentOwnerIdentity
 	path       string
 	version    int64
@@ -105,6 +148,17 @@ func (m *Manager) SetDocumentProvider(p DocumentProvider) {
 }
 
 func (m *Manager) docStep(ctx context.Context, a *attachment, d *documentState, step DocumentStep) error {
+	if len(d.routes) > 0 {
+		var first error
+		for _, route := range d.routes {
+			next := step
+			next.Generation = route.generation
+			if err := m.docStep(ctx, a, route, next); err != nil && first == nil {
+				first = err
+			}
+		}
+		return first
+	}
 	step.Root, step.Path, step.Owner = a.root, d.path, d.owner
 	cctx, cancel := context.WithTimeout(ctx, documentIOTimeout)
 	defer cancel()
@@ -172,13 +226,47 @@ func (m *Manager) OpenDocument(ctx context.Context, c Context, path, documentID 
 			return DocumentReceipt{}, err
 		}
 	}
-	owner, generation, _, err := m.documentSession(a.root, path)
-	if err != nil {
-		return DocumentReceipt{}, err
+	entries := m.documentSessions(a.root, path)
+	var routes []*documentState
+	var first error
+	for _, entry := range entries {
+		route := &documentState{owner: entry.Owner, path: path, version: 1, text: text, generation: entry.Generation, revision: revision}
+		sendErr := entry.Err
+		if sendErr == nil {
+			sendErr = m.docStep(ctx, a, route, DocumentStep{Generation: entry.Generation, Kind: "open", Version: 1, Text: text})
+		}
+		if sendErr != nil {
+			route.broken = true
+			if first == nil {
+				first = sendErr
+			}
+		}
+		routes = append(routes, route)
 	}
-	d := &documentState{owner: owner, path: path, version: 1, text: text, generation: generation, revision: revision}
-	if err = m.docStep(ctx, a, d, DocumentStep{Generation: generation, Kind: "open", Version: 1, Text: text}); err != nil {
-		return DocumentReceipt{}, err
+	healthy := false
+	for _, route := range routes {
+		healthy = healthy || !route.broken
+	}
+	if !healthy {
+		// Opens may have reached a server even when delivery reported an error.
+		// Close every attempted generation; transport URI history remains tainted.
+		for _, route := range routes {
+			if route.generation != "" {
+				_ = m.docStep(ctx, a, route, DocumentStep{Generation: route.generation, Kind: "close", Version: 1})
+			}
+		}
+		for _, route := range routes {
+			m.documentRouteFailed(a, route.owner.ProviderID)
+		}
+		m.commit(a)
+		if first == nil {
+			first = failure("unsupported", "No language server owns this file")
+		}
+		return DocumentReceipt{}, first
+	}
+	d := routes[0]
+	if len(routes) > 1 {
+		d = &documentState{path: path, version: 1, text: text, revision: revision, routes: routes}
 	}
 	if a.docs == nil {
 		a.docs = map[string]*documentState{}
@@ -186,7 +274,17 @@ func (m *Manager) OpenDocument(ctx context.Context, c Context, path, documentID 
 	a.docs[documentID] = d
 	for i := range a.snapshot.Providers {
 		p := &a.snapshot.Providers[i]
-		if p.ProviderID == owner.ProviderID && p.Coverage.Kind == "openedDocuments" {
+		if documentHasProvider(d, p.ProviderID) && p.Coverage.Kind == "openedDocuments" {
+			failed := false
+			for _, route := range d.routes {
+				if route.owner.ProviderID == p.ProviderID && route.broken {
+					failed = true
+				}
+			}
+			if failed {
+				m.documentRouteFailed(a, p.ProviderID)
+				continue
+			}
 			p.Phase, p.Freshness, p.Failure = "idle", "uncertain", nil
 			p.Notice = "Diagnostics cover opened documents only; external changes are unwatched."
 		}
@@ -233,6 +331,37 @@ func (m *Manager) ChangeDocument(ctx context.Context, c Context, documentID stri
 	if err = checkText(text); err != nil {
 		return DocumentReceipt{}, err
 	}
+	if len(d.routes) > 0 {
+		if version < d.version || (version == d.version && text != d.text) {
+			return DocumentReceipt{}, failure("invalidArgument", "Document version conflicts")
+		}
+		if version == d.version {
+			return DocumentReceipt{Context: c, DocumentID: documentID, Version: version}, nil
+		}
+		var first error
+		healthy := false
+		for _, route := range d.routes {
+			_, err := m.changeDocumentRoute(ctx, c, a, route, documentID, version, text)
+			if err == nil {
+				healthy = true
+			} else {
+				m.dropProviderDocumentResults(a, documentID, route.owner.ProviderID)
+				if first == nil {
+					first = err
+				}
+			}
+		}
+		if !healthy {
+			return DocumentReceipt{}, first
+		}
+		d.version, d.text = version, text
+		return DocumentReceipt{Context: c, DocumentID: documentID, Version: version}, nil
+	}
+	return m.changeDocumentRoute(ctx, c, a, d, documentID, version, text)
+}
+
+func (m *Manager) changeDocumentRoute(ctx context.Context, c Context, a *attachment, d *documentState, documentID string, version int64, text string) (DocumentReceipt, error) {
+	var err error
 	if d.broken {
 		return DocumentReceipt{}, failure("resyncRequired", "Document must be reopened")
 	}
@@ -245,7 +374,7 @@ func (m *Manager) ChangeDocument(ctx context.Context, c Context, documentID stri
 		}
 		return DocumentReceipt{Context: c, DocumentID: documentID, Version: version}, nil
 	}
-	owner, generation, caps, err := m.documentSession(a.root, d.path)
+	owner, generation, caps, err := m.routeSession(a.root, d.path, d.owner)
 	if err == nil && owner != d.owner {
 		d.broken = true
 		err = failure("resyncRequired", "Document owner changed; document must be reopened")
@@ -289,6 +418,34 @@ func (m *Manager) SaveDocument(ctx context.Context, c Context, documentID string
 	if !bounded(revision, 256) || savedVersion < 1 || savedVersion > d.version {
 		return DocumentReceipt{}, failure("invalidArgument", "Invalid saved version or revision")
 	}
+	if len(d.routes) > 0 {
+		if savedVersion != d.version {
+			return DocumentReceipt{}, failure("resyncRequired", "Saved snapshot is older than the live document")
+		}
+		var first error
+		healthy := false
+		for _, route := range d.routes {
+			_, err := m.saveDocumentRoute(ctx, c, a, route, documentID, savedVersion, revision)
+			if err == nil {
+				healthy = true
+			} else {
+				m.dropProviderDocumentResults(a, documentID, route.owner.ProviderID)
+				if first == nil {
+					first = err
+				}
+			}
+		}
+		if !healthy {
+			return DocumentReceipt{}, first
+		}
+		d.saved, d.revision = savedVersion, revision
+		return DocumentReceipt{Context: c, DocumentID: documentID}, nil
+	}
+	return m.saveDocumentRoute(ctx, c, a, d, documentID, savedVersion, revision)
+}
+
+func (m *Manager) saveDocumentRoute(ctx context.Context, c Context, a *attachment, d *documentState, documentID string, savedVersion int64, revision string) (DocumentReceipt, error) {
+	var err error
 	if d.broken {
 		return DocumentReceipt{}, failure("resyncRequired", "Document must be reopened")
 	}
@@ -299,7 +456,7 @@ func (m *Manager) SaveDocument(ctx context.Context, c Context, documentID string
 	if savedVersion != d.version {
 		return DocumentReceipt{}, failure("resyncRequired", "Saved snapshot is older than the live document")
 	}
-	owner, generation, caps, err := m.documentSession(a.root, d.path)
+	owner, generation, caps, err := m.routeSession(a.root, d.path, d.owner)
 	if err == nil && owner != d.owner {
 		d.broken = true
 		err = failure("resyncRequired", "Document owner changed; document must be reopened")
@@ -358,6 +515,9 @@ func (m *Manager) dropDocument(a *attachment, documentID string) bool {
 		return false
 	}
 	d.text = ""
+	for _, route := range d.routes {
+		route.text = ""
+	}
 	delete(a.docs, documentID)
 	if a.closedDocs == nil {
 		a.closedDocs = map[string]bool{}
@@ -388,7 +548,13 @@ func (m *Manager) releaseDocuments(a *attachment) {
 	steps := []DocumentStep{}
 	for id, d := range a.docs {
 		if m.provider != nil && !d.broken {
-			steps = append(steps, DocumentStep{Root: a.root, Path: d.path, Owner: d.owner, Generation: d.generation, Kind: "close", Version: d.version})
+			routes := d.routes
+			if len(routes) == 0 {
+				routes = []*documentState{d}
+			}
+			for _, route := range routes {
+				steps = append(steps, DocumentStep{Root: a.root, Path: route.path, Owner: route.owner, Generation: route.generation, Kind: "close", Version: route.version})
+			}
 		}
 		m.dropDocument(a, id)
 	}
@@ -423,6 +589,9 @@ func (m *Manager) PublishDocumentResults(c Context, documentID, generation strin
 	// Compatibility for explicit lifecycle callers: derive the owner only from the
 	// bound backend lifecycle, never from a finding's Source. Adapters must use
 	// PublishPathDiagnostics with their concrete notification provenance.
+	if len(d.routes) > 0 {
+		return failure("unsupported", "Publication requires an explicit provider")
+	}
 	return m.publishLocked(a, d, documentID, d.owner.ProviderID, generation, version, diagnostics, false, false)
 }
 
@@ -456,7 +625,15 @@ func (m *Manager) publishPathDiagnostics(project Project, providerID, generation
 				isolation, ok := m.provider.(interface {
 					PublicationIsolated(AuthorizedRoot, string, string) bool
 				})
-				if !ok || !isolation.PublicationIsolated(a.root, path, generation) {
+				isolated := ok && isolation.PublicationIsolated(a.root, path, generation)
+				if plural, ok := m.provider.(interface {
+					PublicationIsolatedFor(AuthorizedRoot, string, string, string) bool
+				}); ok {
+					isolated = plural.PublicationIsolatedFor(a.root, path, providerID, generation)
+				} else if len(d.routes) > 0 {
+					isolated = false
+				}
+				if !isolated {
 					return failure("resyncRequired", "Document publication lifecycle is ambiguous; results are unavailable until session restart")
 				}
 				return m.publishLocked(a, d, id, providerID, generation, version, diagnostics, partial, truncated)
@@ -468,12 +645,25 @@ func (m *Manager) publishPathDiagnostics(project Project, providerID, generation
 }
 
 func (m *Manager) publishLocked(a *attachment, d *documentState, documentID, providerID, generation string, version *int64, diagnostics []Diagnostic, partial, truncated bool) error {
+	if len(d.routes) > 0 {
+		var route *documentState
+		for _, candidate := range d.routes {
+			if candidate.owner.ProviderID == providerID {
+				route = candidate
+				break
+			}
+		}
+		if route == nil || route.version != d.version {
+			return failure("staleContext", "Publication provider is not synchronized")
+		}
+		d = route
+	}
 	if providerID != d.owner.ProviderID {
 		return failure("staleContext", "Publication provider does not own this document")
 	}
 	// The document mirror can outlive an idle-evicted/disconnected session.
 	// A matching historical generation alone is not proof that it is still live.
-	owner, current, _, err := m.documentSession(a.root, d.path)
+	owner, current, _, err := m.routeSession(a.root, d.path, d.owner)
 	if err != nil || owner != d.owner || current != generation {
 		return failure("staleContext", "Language session is no longer current")
 	}
@@ -615,4 +805,37 @@ func diffChange(old, new string) DocumentChange {
 		Range: &Range{Start: positionOf(old, p), End: positionOf(old, len(old)-s)},
 		Text:  new[p : len(new)-s],
 	}
+}
+
+func documentHasProvider(d *documentState, id string) bool {
+	if d.owner.ProviderID == id {
+		return true
+	}
+	for _, route := range d.routes {
+		if route.owner.ProviderID == id {
+			return true
+		}
+	}
+	return false
+}
+
+func (m *Manager) documentRouteFailed(a *attachment, providerID string) {
+	if p := provider(a, providerID); p != nil {
+		p.Phase, p.Freshness, p.Coverage.Partial = "failed", "stale", true
+		p.Failure = &Error{Code: "resyncRequired", Message: "Document synchronization failed"}
+		p.Notice = "Live document synchronization failed; this provider requires a fresh document lifecycle."
+	}
+}
+
+func (m *Manager) dropProviderDocumentResults(a *attachment, documentID, providerID string) {
+	m.documentRouteFailed(a, providerID)
+	kept := a.snapshot.ResultSets[:0]
+	for _, set := range a.snapshot.ResultSets {
+		if set.Origin == "lsp" && set.ProviderID == providerID && set.Scope.DocumentID == documentID {
+			continue
+		}
+		kept = append(kept, set)
+	}
+	a.snapshot.ResultSets = kept
+	m.commit(a)
 }

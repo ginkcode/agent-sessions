@@ -70,12 +70,33 @@ func (d *LiveDocuments) EnsureSession(ctx context.Context, root AuthorizedRoot, 
 	if !ok {
 		return failure("unsupported", "Live discovery is unavailable")
 	}
-	server, ok := p.documents.Resolve(root, path)
-	if !ok {
+	servers := p.documents.servers(root, path)
+	if len(servers) == 0 {
 		return failure("unsupported", "No unique language server owns this file")
 	}
-	_, err := d.Sessions.Attach(ctx, root, server.Config)
-	return err
+	var first error
+	healthy := false
+	for _, server := range servers {
+		if _, err := d.Sessions.Attach(ctx, root, server.Config); err != nil {
+			if first == nil {
+				first = err
+			}
+		} else {
+			healthy = true
+		}
+	}
+	if healthy {
+		return nil
+	}
+	return first
+}
+
+func (d *LiveDocuments) OwnerSessions(root AuthorizedRoot, path string) []DocumentSession {
+	p, ok := d.project(root)
+	if !ok {
+		return nil
+	}
+	return p.documents.OwnerSessions(root, path)
 }
 
 func (d *LiveDocuments) OwnerSession(root AuthorizedRoot, path string) (DocumentOwnerIdentity, string, ServerCapabilities, error) {
@@ -94,6 +115,11 @@ func (d *LiveDocuments) Session(root AuthorizedRoot, path string) (string, Serve
 func (d *LiveDocuments) PublicationIsolated(root AuthorizedRoot, path, generation string) bool {
 	p, ok := d.project(root)
 	return ok && p.documents.PublicationIsolated(root, path, generation)
+}
+
+func (d *LiveDocuments) PublicationIsolatedFor(root AuthorizedRoot, path, providerID, generation string) bool {
+	p, ok := d.project(root)
+	return ok && p.documents.PublicationIsolatedFor(root, path, providerID, generation)
 }
 
 func (d *LiveDocuments) Apply(ctx context.Context, step DocumentStep) error {
@@ -140,6 +166,10 @@ func (d *LiveDocuments) notification(n SessionNotification) {
 		b.Handle(n)
 	case "svelte":
 		b := NewSvelteBridge(p.root, d.manager)
+		b.Notice = notice
+		b.Handle(n)
+	case "pyright":
+		b := NewPyrightBridge(p.root, d.manager)
 		b.Notice = notice
 		b.Handle(n)
 	case "ruff":

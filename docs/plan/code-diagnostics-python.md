@@ -1,4 +1,16 @@
-# Code diagnostics: Python adapter (Ruff)
+# Code diagnostics: Python adapters (Ruff and Pyright)
+
+> **Pyright implementation — 2026-10-23:** Python uses complementary servers:
+> Ruff for lint/syntax and Pyright for type checking. One frontend document
+> lifecycle is synchronized to both, with provider-qualified generations,
+> publication isolation and independently replaced result sets. Missing tools
+> are independent: installing Pyright does not replace Ruff. Pyright follows
+> project → login-shell PATH → app-managed npm discovery and the same separate
+> execution approval as other servers. `.py` and `.pyi` only; no notebooks,
+> completion, formatting or code actions. Real Pyright/editor and SSH/WSL QA
+> remain pending. This supersedes the older no-type-checker decision below.
+
+> **Update 2026-10-23:** Any native `ruff` (project `.venv`, login-shell PATH or the app's managed copy) is accepted at any version, any `.py` file enables it, and remote hosts are supported. See the [editor (Zed) model](code-diagnostics-zed-model.md).
 
 Status: **partial**. The production local live route discovers Ruff 0.15.20 from
 installed wheel metadata. The real server passed a smoke test through the Go

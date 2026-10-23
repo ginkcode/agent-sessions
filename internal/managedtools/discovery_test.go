@@ -5,13 +5,13 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
-	"runtime"
+	"strings"
 	"testing"
 )
 
 func TestReadOnlyDiscoveryValidatesBinaryAndReceipt(t *testing.T) {
 	i, data := fixture(t)
-	if _, err := i.Discover(); !os.IsNotExist(err) {
+	if _, err := i.Discover("gopls"); !os.IsNotExist(err) {
 		t.Fatalf("missing: %v", err)
 	}
 	entries, _ := os.ReadDir(data)
@@ -23,24 +23,35 @@ func TestReadOnlyDiscoveryValidatesBinaryAndReceipt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got, err := i.Discover(); err != nil || got != binary {
+	if got, err := i.Discover("gopls"); err != nil || got != binary {
 		t.Fatalf("%s %v", got, err)
+	}
+	if dirs := i.Dirs(); len(dirs) != 1 || dirs[0] != filepath.Dir(binary) {
+		t.Fatal(dirs)
+	}
+	for _, tool := range []string{"ruff", "vtsls", "pyright", "node"} {
+		if _, err := i.Discover(tool); !os.IsNotExist(err) {
+			t.Fatal(tool, err)
+		}
+	}
+	if _, err := i.Discover("go"); err == nil {
+		t.Fatal("unknown tool")
 	}
 	// Valid-looking metadata never substitutes for checking binary bytes.
 	if err := os.WriteFile(binary, []byte("modified bytes"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := i.Discover(); err == nil {
+	if _, err := i.Discover("gopls"); err == nil {
 		t.Fatal("tampered binary accepted")
 	}
 	if err := os.WriteFile(binary, []byte("fake verified binary"), 0o700); err != nil {
 		t.Fatal(err)
 	}
 	receipt := filepath.Join(filepath.Dir(binary), "receipt.json")
-	if err := os.WriteFile(receipt, []byte(`{"Version":"v0.24.0","Policy":"go-module-sumdb-v1","SHA256":"forged"}`), 0o600); err != nil {
+	if err := os.WriteFile(receipt, []byte(`{"Version":"`+p.Version+`","Policy":"go-module-sumdb-v1","SHA256":"forged"}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := i.Discover(); err == nil {
+	if _, err := i.Discover("gopls"); err == nil {
 		t.Fatal("forged receipt accepted")
 	}
 	if err := os.Remove(receipt); err != nil {
@@ -49,14 +60,17 @@ func TestReadOnlyDiscoveryValidatesBinaryAndReceipt(t *testing.T) {
 	if err := os.Symlink(binary, receipt); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := i.Discover(); err == nil {
+	if _, err := i.Discover("gopls"); err == nil {
 		t.Fatal("receipt symlink accepted")
+	}
+	if len(i.Dirs()) != 0 {
+		t.Fatal("invalid install searched")
 	}
 }
 
 func TestPrerequisiteRemainsActionableAfterConsent(t *testing.T) {
 	i, _ := fixture(t)
-	i.build = func(context.Context, string, TrustedGo) error { return ErrPrerequisite }
+	i.build = func(context.Context, string, TrustedGo, goplsRelease) error { return ErrPrerequisite }
 	p := propose(t, i)
 	if _, err := i.Install(context.Background(), i.binding, p.Token); !errors.Is(err, ErrPrerequisite) {
 		t.Fatalf("%v", err)
@@ -66,25 +80,20 @@ func TestPrerequisiteRemainsActionableAfterConsent(t *testing.T) {
 	}
 }
 
-func TestReviewInstalledGoNoExecution(t *testing.T) {
-	// Reads the already installed compiler entrypoint only. Never runs Go.
-	// Go 1.26 on the development host is rejected before a proposal/upgrade.
-	//nolint:staticcheck // Test intentionally reads this host's build tree; no discovery/probe.
-	root, err := filepath.EvalSymlinks(runtime.GOROOT())
+func TestHostGoReadsMetadataOnly(t *testing.T) {
+	// Reads the installed compiler entrypoint only. Never runs Go.
+	root, err := hostGoRoot()
 	if err != nil {
 		t.Fatal(err)
 	}
-	reviewed, err := ReviewInstalledGo(root)
-	if runtime.Version() == "go1.26.8" && !errors.Is(err, ErrPrerequisite) {
-		t.Fatalf("old Go: %v", err)
+	g, v, err := hostGo(root)
+	if err != nil || g.Path != filepath.Join(root, "bin", "go") || !strings.HasPrefix(v, "go1.") {
+		t.Fatal(g, v, err)
 	}
-	if err == nil && reviewed.tool.Path != filepath.Join(root, "bin", "go") {
-		t.Fatal("unbound executable")
+	if sum, _ := fileDigest(g.Path); sum != g.SHA256 {
+		t.Fatal("unpinned executable")
 	}
-	if _, err := ReviewInstalledGo(filepath.Join(t.TempDir(), "missing")); err == nil {
-		t.Fatal("missing tree")
-	}
-	if _, err := NewReviewed(t.TempDir(), Binding{"local:" + string(make([]byte, 64)), "one"}, ReviewedGo{}); err == nil {
-		t.Fatal("zero review")
+	if _, _, err := hostGo(filepath.Join(t.TempDir(), "missing")); !errors.Is(err, ErrNoGo) {
+		t.Fatal(err)
 	}
 }

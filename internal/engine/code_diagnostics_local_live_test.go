@@ -34,6 +34,14 @@ func TestLocalExecutableDirsAbsoluteBoundedDeduplicated(t *testing.T) {
 	if got := localExecutableDirs(home); len(got) != 64 {
 		t.Fatal("unbounded search", len(got))
 	}
+	// The login shell's PATH follows the inherited one, before conventional
+	// locations.
+	loginShellPath = func(string) []string { return []string{"/login/bin", "/usr/bin"} }
+	t.Cleanup(func() { loginShellPath = func(string) []string { return nil } })
+	t.Setenv("PATH", "/usr/bin")
+	if got := localExecutableDirs(home); len(got) < 3 || !slices.Equal(got[:3], []string{"/usr/bin", "/login/bin", filepath.Join(home, "go", "bin")}) {
+		t.Fatal(got)
+	}
 }
 
 func TestLocalGoRootFollowsResolvedExecutable(t *testing.T) {
@@ -85,8 +93,8 @@ func TestDiscoverLocalLiveMissingToolsIsStatusNotError(t *testing.T) {
 			t.Skip("host has gopls in a conventional directory")
 		}
 	}
-	regs, err := discoverLocalLive(root)
-	if err != nil || len(regs) != 4 || regs[0].ProviderID != "gopls" || regs[0].Availability != "missingTool" {
+	regs, err := discoverLocalLiveWith(root, nil)
+	if err != nil || len(regs) != 5 || regs[0].ProviderID != "gopls" || regs[0].Availability != "missingTool" {
 		t.Fatal(err, regs)
 	}
 	for _, r := range regs {
@@ -110,7 +118,7 @@ func TestLocalLiveOptionOnlyThroughExplicitOption(t *testing.T) {
 }
 
 // Real installed-gopls smoke on a disposable synthetic module through the
-// production local route: discoverLocalLive (metadata only) + HostSessionLaunch,
+// production local route: discoverLocalLiveWith (metadata only) + HostSessionLaunch,
 // composite approval, an unsaved draft with a syntax error, then the fixed text
 // and its empty publication. Nothing is saved, installed or downloaded:
 // GOTOOLCHAIN=local GOPROXY=off GOSUMDB=off GOWORK=off GOENV=off are fixed in
@@ -136,7 +144,7 @@ func TestLocalLiveRealGoplsSmoke(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	regs, err := discoverLocalLive(root)
+	regs, err := discoverLocalLiveWith(root, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

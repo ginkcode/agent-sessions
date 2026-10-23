@@ -135,8 +135,10 @@ const providers = [
   { providerId: 'typescript', availability: 'missingTool', phase: 'idle', freshness: 'uncertain', coverage: cov('openedDocuments', 'unwatched'), truncated: false, notice: 'No TypeScript language server (vtsls) is installed.' },
   { providerId: 'ruff', availability: 'missingTool', phase: 'idle', freshness: 'uncertain', coverage: cov('openedDocuments', 'unwatched'), truncated: false, notice: 'Ruff is not installed.' },
 ];
+// What the backend reports when the app has installed nothing.
+const noApp = { gopls: 'missingTool', vtsls: 'missingTool', ruff: 'missingTool' };
 const checks = (extra = {}) => ({ status: 'ready', project: { hostId: 'local:abc123', root: '/p' }, snapshot: { approval: { state: 'approved', mode: 'session' }, proposal: { fingerprint: 'sha256:fp', tools: [] } },
-  providers, approved: true, canRun: true, canRetry: () => true, liveEnabled: true, liveDocuments: [], managed: { hostId: 'local:abc123', state: 'missingTool' }, ...extra });
+  providers, approved: true, canRun: true, canRetry: () => true, liveEnabled: true, liveDocuments: [], managed: { hostId: 'local:abc123', state: 'idle' }, managedInstalls: noApp, ...extra });
 
 test('checker rows use human names, status pills and consistent modes; technical text stays disclosed', async () => {
   const html = await renderWithFixture(checksComponent, { checks: checks() });
@@ -148,6 +150,7 @@ test('checker rows use human names, status pills and consistent modes; technical
   assert.doesNotMatch(head, /local:abc123|sha256:fp|roots:/);
   assert.match(html.slice(html.indexOf('Technical details')), /local:abc123/);
   assert.match(html, /Setup not supported here: install it on the host yourself/);
+  assert.doesNotMatch(html, /under Tools setup/, 'the install action is on the row, not in a collapsed section');
   // A missing vtsls is its own status with a manual command; live copy names only running languages.
   assert.match(html, /TypeScript\/JavaScript language server \(vtsls\)/);
   assert.match(html, /No TypeScript language server \(vtsls\) is installed/);
@@ -157,19 +160,50 @@ test('checker rows use human names, status pills and consistent modes; technical
   assert.doesNotMatch(html, /Opened [^.]*Python[^.]* files are checked live/);
   assert.match(html, /Opened Go files are checked live as you type/);
   assert.doesNotMatch(html, /Opened [^.]*TypeScript[^.]* files are checked live/);
+  // Missing servers with a managed install get a review step; ready ones and Svelte get none.
   const buttons = renderedButtons(html).map(b => b.text);
-  assert.ok(buttons.includes('Review gopls installation'));
-  assert.ok(!buttons.some(b => /Install (TypeScript|Svelte)|Install$/.test(b)), 'no fake TS/Svelte installers; Install needs a proposal');
+  assert.ok(buttons.includes('Install vtsls…') && buttons.includes('Install ruff…'));
+  assert.ok(!buttons.includes('Install gopls…'), 'gopls is already found');
+  assert.ok(!buttons.some(b => /Install (TypeScript|Svelte)|svelte|Install$/.test(b)), 'no Svelte installer; Install needs a proposal');
+  assert.match(html, /looked up in the project first/);
 });
 
-test('remote host: gopls setup is explicitly unavailable, never offered', async () => {
+test('managed setup states: app copies, verification failures and hosts without managed installs', async () => {
+  const rows = async extra => renderedButtons(await renderWithFixture(checksComponent, { checks: checks(extra) })).map(b => b.text);
+  const installed = await renderWithFixture(checksComponent, { checks: checks({ managedInstalls: { gopls: 'available', vtsls: 'available', ruff: 'unavailable' } }) });
+  assert.match(installed, /Ready · app copy installed/);
+  assert.match(installed, /App copy installed · refresh check status/);
+  assert.match(installed, /App copy failed verification and is not used/);
+  assert.ok(!renderedButtons(installed).some(b => /^Install \w+…/.test(b.text)));
+  assert.ok(!(await rows({ managed: { hostId: 'local:abc123', state: 'unavailable', message: 'Managed installation is unavailable on this host' } })).some(b => /^Install \w+…/.test(b)));
+  assert.ok(!(await rows({ managed: undefined })).some(b => /^Install \w+…/.test(b)), 'no offer before status is known');
+  // A tool-specific refusal (no Go for gopls) keeps the other offers.
+  assert.ok((await rows({ managed: { hostId: 'local:abc123', state: 'unavailable', tool: 'gopls', message: 'no Go' } })).includes('Install ruff…'));
+});
+
+test('nothing approvable yet: the approval card and the missing row both offer Install; review shows near the top', async () => {
+  const ts = [providers[4], { ...providers[0], availability: 'unsupported' }];
+  const unapproved = { snapshot: { approval: { state: 'none' }, proposal: { tools: [] } }, approved: false, approvalBlocker: 'Nothing to approve: no supported checker was found on this host (typescript: not installed).' };
+  const html = await renderWithFixture(checksComponent, { checks: checks({ ...unapproved, providers: ts }) });
+  assert.equal(renderedButtons(html).filter(b => b.text === 'Install vtsls…').length, 2);
+  assert.match(html, /Install a language server on this computer first/);
+  const proposal = { token: 't', hostId: 'local:abc123', connectionId: 'c', tool: 'vtsls', version: '0.3.0', source: 'npm', integrity: 'lockfile', destination: '/d', expires: '2099-01-01T00:00:00Z' };
+  const review = await renderWithFixture(checksComponent, { checks: checks({ ...unapproved, providers: ts, managed: { hostId: 'local:abc123', state: 'proposed', proposal } }) });
+  assert.ok(!renderedButtons(review).some(b => b.text === 'Install vtsls…'), 'the review card replaces the offer');
+  assert.ok(review.indexOf('Install vtsls 0.3.0 on this computer?') < review.indexOf('Checkers'), 'review card is above the checker list');
+  assert.ok(review.indexOf('Install vtsls 0.3.0') < review.indexOf('Tools setup'));
+});
+
+test('remote host: managed setup installs on the remote host', async () => {
   const host = 'ssh:' + 'a'.repeat(64);
-  const html = await renderWithFixture(checksComponent, { checks: checks({ project: { hostId: host, root: '/p' }, managed: { hostId: host, state: 'missingTool' }, providers: [{ ...providers[0], availability: 'missingTool' }] }) });
-  assert.match(html, /Install unavailable for remote hosts/);
-  assert.match(html, /installing on a remote host is not supported/);
+  const proposal = { token: 't', hostId: host, connectionId: 'c', tool: 'ruff', version: '0.15.20', source: 'https://example.invalid/ruff.tar.gz', integrity: 'sha256:abc', destination: '/home/u/.local/share/agent-sessions/tools/ruff-0.15.20', expires: '2099-01-01T00:00:00Z' };
+  const offer = await renderWithFixture(checksComponent, { checks: checks({ project: { hostId: host, root: '/p' }, managed: { hostId: host, state: 'idle' }, providers: [{ ...providers[0], availability: 'missingTool' }] }) });
+  assert.ok(renderedButtons(offer).map(b => b.text).includes('Install gopls…'));
+  assert.match(offer, /install folder on the remote host/);
+  const html = await renderWithFixture(checksComponent, { checks: checks({ project: { hostId: host, root: '/p' }, managed: { hostId: host, state: 'proposed', proposal } }) });
+  for (const text of ['Install ruff 0.15.20 on the remote host?', proposal.source, proposal.integrity, proposal.destination, 'checks its SHA-256 before unpacking', host]) assert.ok(html.includes(text), text);
   const buttons = renderedButtons(html).map(b => b.text);
-  assert.ok(!buttons.includes('Review gopls installation') && !buttons.includes('Install'));
-  assert.ok(buttons.includes('Refresh setup status'), 'read-only status stays available');
+  assert.ok(buttons.includes('Install') && buttons.includes('Not now') && buttons.includes('Refresh setup status'));
 });
 
 test('live sync failures are grouped, concise and escaped with a labelled Reopen per file', async () => {

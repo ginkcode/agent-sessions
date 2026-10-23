@@ -17,20 +17,21 @@ import (
 // Execution remains gated per project by the composite approval fingerprint;
 // the launcher is reached only through SessionManager after that gate.
 //
-// Remote hosts never use this route: a headless server's Engine is constructed
-// by `agent-sessions-cli serve` and stays fail-closed through rpc
-// initializeDiagnostics (verified SSH/WSL identity required, CD-09 blocked).
+// An SSH or WSL host runs the same route inside its headless server
+// (WithRemoteCodeDiagnostics), next to the files, as editors do.
 
-// localLiveSupported reports the platforms where server behavior, host identity
-// and process-tree ownership have been verified together.
-func localLiveSupported() bool { return runtime.GOOS == "darwin" && runtime.GOARCH == "arm64" }
+// localLiveSupported reports the platforms with host identity and process-group
+// ownership of server trees: macOS and Linux (including WSL), any architecture.
+func localLiveSupported() bool { return runtime.GOOS == "darwin" || runtime.GOOS == "linux" }
 
 // localExecutableDirs returns the absolute, de-duplicated search directories:
-// the app's inherited PATH first, then conventional per-user and system install
-// locations (a GUI app launched from Finder does not inherit a login PATH).
-// Relative or parent-escaping entries are dropped; the list is bounded.
+// the app's inherited PATH first, then the user's login shell PATH (a GUI app
+// launched from Finder does not inherit it), then conventional per-user and
+// system install locations. Relative or parent-escaping entries are dropped;
+// the list is bounded.
 func localExecutableDirs(home string) []string {
 	dirs := filepath.SplitList(os.Getenv("PATH"))
+	dirs = append(dirs, loginShellPath(home)...)
 	if home != "" {
 		dirs = append(dirs, filepath.Join(home, "go", "bin"), filepath.Join(home, ".local", "bin"),
 			// mise's default per-user Go install ("latest" is mise's own link).
@@ -75,13 +76,38 @@ func localGoRoot(dirs []string) string {
 	return ""
 }
 
+// hostGoRoot is the Go toolchain a managed gopls is built with: the one the
+// go vet checker and gopls discovery use.
+func (e *Engine) hostGoRoot() string {
+	home, err := os.UserHomeDir()
+	if err != nil || !filepath.IsAbs(home) {
+		return ""
+	}
+	return localGoRoot(localExecutableDirs(home))
+}
+
+// hostNode is the Node.js the TypeScript server would run on; a managed
+// vtsls install uses it instead of downloading one.
+func hostNode() (prefix, version string) {
+	home, err := os.UserHomeDir()
+	if err != nil || !filepath.IsAbs(home) {
+		return "", ""
+	}
+	return cd.HostNode(localExecutableDirs(home))
+}
+
 // discoverLocalLive is the production discovery function for the local route.
 // gopls is searched next to the selected toolchain first so a matching install
 // wins over an unrelated one earlier on PATH. vtsls and node use the plain
 // reviewed directories; node is taken from a global vtsls install's prefix
 // when there is one. ruff uses the same directories (uv tool and pipx link
-// into ~/.local/bin).
-func discoverLocalLive(root cd.AuthorizedRoot) ([]cd.Registration, error) {
+// into ~/.local/bin). App-managed installs come last, after the project's
+// and the user's own copies.
+func (e *Engine) discoverLocalLive(root cd.AuthorizedRoot) ([]cd.Registration, error) {
+	return discoverLocalLiveWith(root, e.managedDirs())
+}
+
+func discoverLocalLiveWith(root cd.AuthorizedRoot, managed []string) ([]cd.Registration, error) {
 	home, err := os.UserHomeDir()
 	if err != nil || !filepath.IsAbs(home) {
 		return nil, diagnosticError("unsupported", "Home directory unavailable")
@@ -90,7 +116,9 @@ func discoverLocalLive(root cd.AuthorizedRoot) ([]cd.Registration, error) {
 	if err != nil || !filepath.IsAbs(cache) {
 		return nil, diagnosticError("unsupported", "Cache directory unavailable")
 	}
+	// Managed installs keep their place within the search budget.
 	dirs := localExecutableDirs(home)
+	dirs = append(dirs[:min(len(dirs), 64-len(managed))], managed...)
 	goroot := localGoRoot(dirs)
 	search := dirs
 	if goroot != "" {
@@ -101,8 +129,9 @@ func discoverLocalLive(root cd.AuthorizedRoot) ([]cd.Registration, error) {
 	}
 	return cd.DiscoverLocalLive(root, cd.LocalLiveEnvironment{
 		GoPath: search, Path: dirs,
-		Go:   cd.GoplsEnvironment{Home: home, Cache: filepath.Join(cache, "go-build"), ModuleCache: filepath.Join(home, "go", "pkg", "mod"), GoRoot: goroot},
-		TS:   cd.TSEnvironment{Home: home},
-		Ruff: cd.RuffEnvironment{Home: home},
+		Go:      cd.GoplsEnvironment{Home: home, Cache: filepath.Join(cache, "go-build"), ModuleCache: filepath.Join(home, "go", "pkg", "mod"), GoRoot: goroot},
+		TS:      cd.TSEnvironment{Home: home},
+		Ruff:    cd.RuffEnvironment{Home: home},
+		Pyright: cd.PyrightEnvironment{Home: home},
 	})
 }

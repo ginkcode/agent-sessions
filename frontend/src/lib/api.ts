@@ -301,7 +301,7 @@ class WailsBackendAPI implements BackendAPI {
   }
   managedTool(request: ManagedToolRequest): Promise<ManagedToolState> {
     const b = this.binding;
-    if (!b.ManagedTool) return Promise.reject(new CodeDiagnosticsError('unsupported', 'Managed tool setup is unavailable on this older backend; backend operator review and Go >=1.27 provisioning are required'));
+    if (!b.ManagedTool) return Promise.reject(new CodeDiagnosticsError('unsupported', 'Managed tool setup is unavailable on this older backend'));
     return this.diagnosticsCall(() => b.ManagedTool!(request));
   }
   attachCodeDiagnostics(dir: string, version: 1, host: string): Promise<CodeDiagnosticsAttachment> {

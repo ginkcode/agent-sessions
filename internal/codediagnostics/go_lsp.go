@@ -6,8 +6,9 @@ package codediagnostics
 // discovery, a fixed-argv server identity (independent availability), and
 // publishDiagnostics normalization. Process launch, trust and the document
 // protocol stay in CD-19/CD-20. Nothing here installs or downloads a tool, runs
-// a version probe, or widens the authorized root. Supported versions and the
-// observed behavior are recorded in docs/plan/code-diagnostics-gopls.md and
+// a version probe, or widens the authorized root. Any gopls build is accepted,
+// as editors do (docs/plan/code-diagnostics-zed-model.md); the observed behavior
+// is recorded in docs/plan/code-diagnostics-gopls.md and
 // testdata/gopls/evidence.json.
 
 import (
@@ -31,7 +32,7 @@ import (
 const (
 	goplsProviderID  = "gopls"
 	goplsModulePath  = "golang.org/x/tools/gopls"
-	goplsPolicy      = "gopls-v1:v0.24.0:darwin/arm64:push-only:gowork-off:no-edits:opened-documents"
+	goplsPolicy      = "gopls-v2:any-version:" + runtime.GOOS + "/" + runtime.GOARCH + ":push-only:gowork-off:no-edits:opened-documents"
 	maxGoplsModules  = 24
 	maxGoplsConfigs  = 128
 	maxGoplsEntries  = 4096
@@ -39,10 +40,6 @@ const (
 	partialGoNotice  = "Some Go diagnostics could not be verified; results are partial."
 	goplsOpenedNotic = "Go diagnostics cover opened documents only; unopened files are not continuously synchronized."
 )
-
-// supportedGoplsVersions lists exactly the versions whose push/sync behavior
-// was observed. Anything else is unsupported until a spike adds it.
-var supportedGoplsVersions = []string{"v0.24.0"}
 
 // GoplsEnvironment is reviewed host metadata, not the inherited environment.
 type GoplsEnvironment struct {
@@ -87,9 +84,6 @@ func DiscoverGopls(root AuthorizedRoot, reviewedPath []string, env GoplsEnvironm
 		p.availability, p.notice, p.partial = state, notice, true
 		return p, nil
 	}
-	if runtime.GOOS != "darwin" || runtime.GOARCH != "arm64" {
-		return unavailable("unsupported", "Go language server support has not been verified on this platform.")
-	}
 	executable := firstExecutable(reviewedPath, "gopls")
 	if executable == "" {
 		return unavailable("missingTool", "The gopls language server is not installed.")
@@ -104,9 +98,6 @@ func DiscoverGopls(root AuthorizedRoot, reviewedPath []string, env GoplsEnvironm
 	module, version, err := versionOf(executable)
 	if err != nil || module != goplsModulePath {
 		return unavailable("unsupported", "The gopls version could not be verified.")
-	}
-	if !slices.Contains(supportedGoplsVersions, version) {
-		return unavailable("unsupported", "This gopls version is not supported.")
 	}
 	p.version = version
 	w, err := discoverGoWorkspace(root)
@@ -127,7 +118,7 @@ func DiscoverGopls(root AuthorizedRoot, reviewedPath []string, env GoplsEnvironm
 		Env: []string{
 			"HOME=" + env.Home, "GOCACHE=" + env.Cache, "GOMODCACHE=" + env.ModuleCache, "GOROOT=" + env.GoRoot,
 			"PATH=" + filepath.Join(env.GoRoot, "bin") + ":/usr/bin:/bin", "GOENV=off", "GOWORK=off", "GOFLAGS=",
-			"GOOS=darwin", "GOARCH=arm64",
+			"GOOS=" + runtime.GOOS, "GOARCH=" + runtime.GOARCH,
 		},
 		AdapterPolicy: goplsPolicy,
 		ConfigPaths:   w.configs,

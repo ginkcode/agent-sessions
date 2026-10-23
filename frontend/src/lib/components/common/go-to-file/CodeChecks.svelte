@@ -3,6 +3,8 @@
   // disclosed bottom details; the compact status button owns the summary.
   import { codeDiagnostics as checks } from '../../../stores/codeDiagnostics.svelte';
   import { liveLanguages, providerMode, providerStatus, remoteHost, syncFailureReason, toolName } from '../../../codeCheckLabels';
+  import { MANAGED_TOOL_FOR_PROVIDER, type ManagedToolName } from '../../../managedTools';
+  import type { CodeDiagnosticsProvider } from '../../../codeDiagnostics';
   let { blocked = false }: { blocked?: boolean } = $props();
   let dismissed = $state(false);
   // A new attachment gets its own approval choice. Not now never calls the backend.
@@ -13,20 +15,58 @@
     disconnected: 'Code checks disconnected; retained results are stale', error: 'Code checks unavailable; status uncertain', ready: 'Code checks',
   };
   function perform(work: () => Promise<unknown>) { void work().catch(() => {}); } // Store owns bounded, textual errors.
-  let setupOpen = $derived(checks.managed?.state === 'proposed' || checks.managed?.state === 'installing');
   let remote = $derived(remoteHost(checks.project?.hostId));
   let watching = $derived(checks.providers.some(p => p.availability === 'available' && p.coverage.externalChanges === 'watching'));
   let failedDocuments = $derived((checks.liveDocuments ?? []).filter(d => d.failure));
   // Live languages offered for approval, and those running once approved.
   let proposedLive = $derived(liveLanguages(checks.providers, ['available', 'approvalRequired']));
   let activeLive = $derived(liveLanguages(checks.providers));
-  /** Managed setup exists only for gopls on this computer; everything else says why it is not offered. */
-  function setupNote(providerId: string): string {
-    if (providerId === 'gopls') return remote ? 'Setup unavailable: installing on a remote host is not supported (no authenticated remote identity).' : '';
-    if (providerId === 'typescript' || providerId === 'ruff' || providerId === 'svelte' || providerId === 'svelte-check') return 'Setup not supported here: install it on the host yourself, then refresh.';
+  let where = $derived(remote ? 'the remote host' : 'this computer');
+  // A status that is unavailable without a tool means this host offers no managed installs at all.
+  let canOffer = $derived(!!checks.managed && !(checks.managed.state === 'unavailable' && !checks.managed.tool));
+  /** The app-managed install a missing language server can get here, if any. */
+  function offerFor(provider: CodeDiagnosticsProvider): ManagedToolName | undefined {
+    const tool = MANAGED_TOOL_FOR_PROVIDER[provider.providerId];
+    if (!tool || !canOffer || provider.availability !== 'missingTool') return undefined;
+    // An app copy that exists (verified or not) is not offered again; "missingTool" means none.
+    const install = checks.managedInstalls?.[tool];
+    return !install || install === 'missingTool' ? tool : undefined;
+  }
+  /** The tool whose review card is open; its Install button is replaced by the card. */
+  let reviewing = $derived(checks.managed?.state === 'proposed' && !checks.managedDismissed && !checks.autoPending ? checks.managed.proposal?.tool : undefined);
+  // With nothing approvable, the approval card leads with the installs that would change that.
+  let installFirst = $derived(checks.snapshot?.proposal?.fingerprint ? [] : checks.providers.flatMap(p => offerFor(p) ?? []).filter(t => t !== reviewing));
+  /** Why a server is missing and how to get it, when no Install button says so; Svelte has no managed install. */
+  function setupNote(provider: CodeDiagnosticsProvider): string {
+    const tool = MANAGED_TOOL_FOR_PROVIDER[provider.providerId];
+    if (tool) return provider.availability === 'missingTool' && checks.managed && !canOffer ? 'No app-managed install is offered on this host: install it yourself, then refresh.' : '';
+    if (provider.providerId === 'svelte' || provider.providerId === 'svelte-check') return 'Setup not supported here: install it on the host yourself, then refresh.';
     return '';
   }
+  /** Language servers this project uses, with their app-managed install where one exists. */
+  let setupRows = $derived(checks.providers.flatMap(p => {
+    const tool = MANAGED_TOOL_FOR_PROVIDER[p.providerId];
+    if (!tool || !['available', 'missingTool'].includes(p.availability)) return [];
+    const install = checks.managedInstalls[tool];
+    const text = p.availability === 'available' ? (install === 'available' ? 'Ready · app copy installed' : 'Ready')
+      : install === 'available' ? 'App copy installed · refresh check status'
+      : install === 'unavailable' ? 'App copy failed verification and is not used'
+      : 'Not found';
+    return [{ providerId: p.providerId, text }];
+  }));
+  /** Brings a card that appears after a click into view in the scrolled panel. */
+  function reveal(node: HTMLElement) { node.scrollIntoView({ block: 'nearest' }); }
+  const installWork: Record<ManagedToolName, string> = {
+    gopls: "Downloads gopls source and its dependencies through the Go module proxy, verified by the Go checksum database, and builds it with this host's Go. Go itself is never downloaded or upgraded.",
+    ruff: 'Downloads one release archive and checks its SHA-256 before unpacking anything.',
+    vtsls: 'Runs npm ci against a lockfile shipped with this app, with install scripts disabled; every package is checked against its recorded hash.',
+    pyright: 'Runs npm ci against a lockfile shipped with this app, with install scripts disabled; uses the host Node.js or downloads an app-managed copy.',
+  };
 </script>
+
+{#snippet installButton(tool: ManagedToolName)}
+  <button type="button" title="Shows what would be downloaded; nothing is installed until you confirm" disabled={blocked || checks.managedPending || checks.managed?.state === 'installing'} onclick={() => perform(() => checks.managedAction('propose', tool))}>Install {tool}…</button>
+{/snippet}
 
 <section class="code-checks" aria-label="Code check settings" aria-busy={!!checks.pending || checks.status === 'attaching'}>
   {#if checks.status !== 'ready' || checks.pending}
@@ -66,7 +106,9 @@
             {/each}
           </ul>
           {#if checks.approvalBlocker}<p role="status" class="muted">{checks.approvalBlocker}</p>{/if}
+          {#if installFirst.length}<p>Install a language server on {where} first, or install one yourself and refresh. Installing asks for confirmation and approves nothing.</p>{/if}
           <div class="actions">
+            {#each installFirst as tool (tool)}{@render installButton(tool)}{/each}
             <button type="button" disabled={blocked || !!checks.approvalBlocker || !checks.snapshot.proposal?.fingerprint} onclick={() => perform(() => checks.approve('session'))}>Enable for this session</button>
             <button type="button" disabled={blocked || !!checks.approvalBlocker || !checks.snapshot.proposal?.fingerprint} onclick={() => perform(() => checks.approve('persistent'))}>Always allow this project</button>
             <button type="button" disabled={!!checks.pending} onclick={() => (dismissed = true)}>Not now</button>
@@ -85,6 +127,37 @@
         <button type="button" disabled={blocked || checks.pending === 'revoke' || checks.revoking} onclick={() => perform(() => checks.revoke())}>Revoke approval</button>
       </div>
       <p class="muted">{watching ? 'Saved Go files are checked automatically when they change on disk.' : ''}{checks.liveEnabled && activeLive ? ` Opened ${activeLive} files are checked live as you type.` : ''} Check Project runs the on-demand checkers on saved files.</p>
+    {/if}
+  {/if}
+  {#if checks.project && checks.status === 'ready'}
+    {#if checks.managedNotice}<p role="status" class="wrapped">{checks.managedNotice}</p>{/if}
+    {#if checks.managed?.message}<p role="status" class="wrapped">{checks.managed.message}</p>{/if}
+    {#if reviewing && checks.managed?.proposal}
+      {@const proposal = checks.managed.proposal}
+      <div class="card" role="group" aria-label="Installation review" use:reveal>
+        <p><strong>Install {proposal.tool} {proposal.version} on {where}?</strong></p>
+        <p class="wrapped">Source: {proposal.source}</p>
+        <p class="wrapped">Integrity: {proposal.integrity}</p>
+        {#if proposal.note}<p class="wrapped">{proposal.note}</p>{/if}
+        <p>{installWork[proposal.tool]} The download needs network access. Nothing is installed globally or into the project, and no project configuration is used.</p>
+        <p class="wrapped">App-private destination: {proposal.destination}</p>
+        <p>This offer expires: {proposal.expires}. Installation does not approve running it; code checks are rediscovered afterwards and ask for approval separately.</p>
+        <p class="mono">Target host identity: {proposal.hostId}</p>
+        <div class="actions">
+          <button type="button" disabled={blocked || checks.managedPending} onclick={() => perform(() => checks.managedAction('install'))}>Install</button>
+          <button type="button" disabled={checks.managedPending} onclick={() => perform(() => checks.managedAction('dismiss'))}>Not now</button>
+        </div>
+      </div>
+    {:else if checks.managed?.state === 'installing' || checks.autoPending}
+      <div class="card" role="group" aria-label="Installation progress">
+        <p role="status">Downloading {checks.managed?.tool ?? checks.autoPending ?? 'the tool'} into this app's folder on {where}… Progress is coarse; no percentage is available. Disconnecting cancels it. Code checks are rediscovered when it finishes; running it still needs your approval.</p>
+        {#if checks.autoInstall}<p class="muted">Missing language servers are downloaded automatically. Turn this off under Tools setup.</p>{/if}
+        <button type="button" disabled={blocked || checks.managedPending || checks.managed?.state !== 'installing'} onclick={() => perform(() => checks.managedAction('cancel'))}>Cancel download</button>
+      </div>
+    {:else if checks.managed?.state === 'installed' && checks.managed.tool}
+      <p role="status">{checks.managed.tool} is installed for this app on {where}. Code checks were rediscovered; approve them to use it. Setup started no server.</p>
+    {:else if checks.managedDismissed}
+      <p>Setup dismissed. No installation requested.</p>
     {/if}
   {/if}
   {#if checks.snapshot}
@@ -114,11 +187,13 @@
       <ul class="rows">
         {#each checks.providers as provider (provider.providerId)}
           {@const status = providerStatus(provider)}
-          {@const note = setupNote(provider.providerId)}
+          {@const note = setupNote(provider)}
+          {@const offer = checks.status === 'ready' ? offerFor(provider) : undefined}
           <li>
             <span class="name">{toolName(provider.providerId)}</span>
             <span class="pill tone-{status.tone}">{status.text}</span>
             <span class="detail">{providerMode(provider)}{provider.freshness !== 'current' && provider.availability === 'available' ? ` · ${provider.freshness}` : ''}</span>
+            {#if offer && offer !== reviewing}{@render installButton(offer)}{/if}
             {#if checks.approved && provider.phase === 'failed' && provider.availability === 'available' && provider.coverage.kind === 'savedProject'}
               <button type="button" disabled={blocked || !checks.canRetry(provider.providerId)} onclick={() => perform(() => checks.retry(provider.providerId))}>Retry {provider.providerId}</button>
             {/if}
@@ -146,43 +221,22 @@
     {/if}
   {/if}
   {#if checks.project && checks.status === 'ready'}
-    <details aria-label="Go language-server setup" open={setupOpen}>
-      <summary>Tools setup · Go language server (gopls)</summary>
-      <p class="muted">Installing a tool is separate from trusting this project's execution. Neither approval installs or starts a server automatically. {checks.liveEnabled ? 'Live diagnostics (experimental) use installed, supported language servers on this host for opened files only, after project approval: gopls for Go, vtsls for TypeScript/JavaScript and Ruff for Python (lint and syntax only, not type errors). A missing or unsupported server is shown as its own status; Svelte live diagnostics are not enabled.' : 'Live diagnostics are not available on this connection.'} Revoking project approval also abandons pending setup consent and cancels an owned installation under the backend's conservative policy.</p>
-      {#if checks.managedNotice}<p role="status" class="wrapped">{checks.managedNotice}</p>{/if}
-      {#if checks.managed?.message}<p role="status" class="wrapped">{checks.managed.message}</p>{/if}
-      {#if remote}
-        <p role="status">Install unavailable for remote hosts: managed setup needs an authenticated host identity, which remote connections do not provide yet. Install gopls on the remote host yourself, then refresh.</p>
-      {:else if checks.managed?.state === 'proposed' && checks.managed.proposal && !checks.managedDismissed}
-        {@const proposal = checks.managed.proposal}
-        <p>Install {proposal.tool} {proposal.version} on this host?</p>
-        <p>Source: {proposal.source} · Integrity: {proposal.integrity}</p>
-        <p>App-private destination: {proposal.destination}</p>
-        <p>Requires an explicitly reviewed installed Go &gt;=1.27 tree provisioned by the backend operator. No automatic Go download or upgrade. Installation downloads pinned source and dependencies over the network, builds with Go, and writes private staging/build/module caches and the app-private tool directory. It does not use project configuration or install globally.</p>
-        <p>Approval expires: {proposal.expires}. Installation does not approve project execution. Reattach and review execution approval separately after installation.</p>
-        <p class="mono">Target host identity: {proposal.hostId}</p>
-        <div class="actions">
-          <button type="button" disabled={blocked || checks.managedPending} onclick={() => perform(() => checks.managedAction('install'))}>Install</button>
-          <button type="button" disabled={checks.managedPending} onclick={() => perform(() => checks.managedAction('dismiss'))}>Not now</button>
-        </div>
-      {:else if checks.managed?.state === 'installing'}
-        <p role="status">Installing gopls on this host… Download/build progress is coarse; no percentage is available. Hiding this panel stops polling, not the approved installation. Disconnecting cancels backend-owned work.</p>
-        <button type="button" disabled={blocked || checks.managedPending} onclick={() => perform(() => checks.managedAction('cancel'))}>Cancel installation</button>
-      {:else if checks.managed?.state === 'installed' || checks.managed?.state === 'available'}
-        <p>Managed gopls is installed. Reopen project diagnostics to rediscover tools and review separate execution approval. No server has been started by setup.</p>
-      {:else if checks.managed?.state === 'missingTool' || checks.managed?.state === 'failed' || checks.managed?.state === 'canceled' || checks.managed?.state === 'idle'}
-        {#if checks.managedDismissed}
-          <p>Setup dismissed. No installation requested.</p>
-        {:else}
-          <button type="button" disabled={blocked || checks.managedPending} onclick={() => perform(() => checks.managedAction('propose'))}>Review gopls installation</button>
-        {/if}
-      {:else if !checks.managedNotice}
-        <p>Managed setup unavailable. Backend operator review and provisioning of Go &gt;=1.27 is required. Remote setup requires authenticated host identity; older backends may not support setup.</p>
+    <details aria-label="Language-server setup">
+      <summary>Tools setup · language servers</summary>
+      <p class="muted">Like Zed, each language server is looked up in the project first (node_modules/.bin, .venv), then on your login shell's PATH, then in this app's own install folder on {where}. {checks.liveEnabled ? 'Live diagnostics (experimental) use them for opened files only, after project approval: gopls for Go, vtsls for TypeScript/JavaScript and Ruff plus Pyright for Python (lint/syntax and type errors, respectively). Svelte live diagnostics are not enabled.' : 'Live diagnostics are not available on this connection.'} Like Zed, a missing server that this project's files need is downloaded into this app's folder automatically, at most once per app session; turn that off below to review each download first. Installing is separate from trusting this project: it never approves or starts a server. Revoking project approval also abandons a pending installation offer and cancels an owned installation.</p>
+      <label class="toggle"><input type="checkbox" checked={checks.autoInstall} onchange={e => checks.setAutoInstall(e.currentTarget.checked)} /> Download missing language servers automatically</label>
+      {#if setupRows.length}
+        <ul class="rows">
+          {#each setupRows as row (row.providerId)}
+            <li><span class="name">{toolName(row.providerId)}</span><span class="detail">{row.text}</span></li>
+          {/each}
+        </ul>
       {/if}
+      {#if !checks.managed && !checks.managedNotice}<p class="muted">Setup status not loaded yet.</p>{/if}
       <div class="actions">
         <button type="button" disabled={blocked || checks.managedPending} onclick={() => perform(() => checks.refreshManaged())}>Refresh setup status</button>
       </div>
-      <p class="muted">TypeScript/JavaScript, Python and Svelte setup is not offered. For live TypeScript/JavaScript diagnostics, install vtsls on the host yourself with <span class="mono">npm install -g @vtsls/language-server@0.3.0</span>; for Python, install Ruff with <span class="mono">uv tool install ruff==0.15.20</span>. Then refresh.</p>
+      <p class="muted">Svelte setup is not offered. To install a server yourself instead, add it to the project or put it on your PATH: gopls with your Go toolchain, <span class="mono">npm install -g @vtsls/language-server@0.3.0</span> <span class="mono">uv tool install ruff==0.15.20</span> or <span class="mono">npm install -g pyright</span>. Then refresh check status.</p>
     </details>
   {/if}
   {#if checks.project}
@@ -220,6 +274,7 @@
   :global(:root:not([data-theme='dark'])) .tone-bad { color: #cf222e; }
   :global(:root:not([data-theme='dark'])) .tone-warn { color: #9a6700; }
   .tech { margin: 4px 0; padding-left: 16px; }
+  .toggle { display: flex; align-items: center; gap: 6px; margin: 6px 0; }
   button { padding: 3px 8px; border: 1px solid var(--border-color); border-radius: 4px; cursor: pointer; font-size: 12px; }
   button:disabled { opacity: 0.5; cursor: default; }
   details { margin: 6px 0; }

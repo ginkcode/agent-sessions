@@ -1,5 +1,7 @@
 # Code diagnostics: gopls adapter and supported-version decision (CD-22)
 
+> **Update 2026-10-23:** Any gopls build is accepted; a managed gopls is built with the host's Go at the release that Go supports; remote hosts are supported. See the [editor (Zed) model](code-diagnostics-zed-model.md).
+
 Status: **partial** — spike and adapter seam complete with automated tests; **local
 experimental production route active in the desktop app (2026-10-23)** with a real
 installed-gopls smoke through the production adapter; remote stays fail-closed; no UI/native

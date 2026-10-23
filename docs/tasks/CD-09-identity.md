@@ -1,5 +1,7 @@
 # CD-09 identity activation — scoped follow-up split
 
+> **Update 2026-10-23:** This split is replaced by a host-side identity; the client no longer verifies an SSH host key or WSL distro tuple. Real SSH/WSL QA remains. See the [editor (Zed) model](../plan/code-diagnostics-zed-model.md).
+
 - **Status:** Not started; blocks CD-09 production remote activation and completion
 - **Parent:** [CD-09](CD-09.md); not counted as completed tasks in the 28-task tracker
 - **Reason for split:** authenticated launch identity is not currently available to

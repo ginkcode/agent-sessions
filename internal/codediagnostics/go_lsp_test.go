@@ -63,8 +63,8 @@ func TestGoplsEvidenceMatchesSupportedVersion(t *testing.T) {
 	if err := json.Unmarshal(data, &ev); err != nil {
 		t.Fatal(err)
 	}
-	if !slices.Contains(supportedGoplsVersions, ev.Versions["gopls"]) {
-		t.Fatalf("evidence version %q is not in the supported list", ev.Versions["gopls"])
+	if ev.Versions["gopls"] == "" {
+		t.Fatalf("evidence names no gopls version")
 	}
 	sync := ev.Initialize.Capabilities.TextDocumentSync
 	if sync["openClose"] != true || sync["change"] != float64(2) {
@@ -363,10 +363,14 @@ func TestDiscoverGoplsAvailability(t *testing.T) {
 	if p, _ = DiscoverGopls(root, []string{"bin", "../bin"}, env); p.Availability() != "missingTool" {
 		t.Fatal("relative path accepted")
 	}
-	// Unsupported versions and foreign binaries.
+	// Any gopls version is accepted, as editors do; a foreign binary is not.
 	for name, v := range map[string][2]string{"old": {goplsModulePath, "v0.1.0"}, "newer": {goplsModulePath, "v9.9.9"}, "devel": {goplsModulePath, "(devel)"}, "other": {"example.test/other", "v0.24.0"}} {
 		bin, env := goplsHost(t, v[1], v[0])
-		if p, _ = DiscoverGopls(root, []string{bin}, env); p.Availability() != "unsupported" {
+		want := "available"
+		if name == "other" {
+			want = "unsupported"
+		}
+		if p, _ = DiscoverGopls(root, []string{bin}, env); p.Availability() != want {
 			t.Errorf("%s: %s", name, p.Availability())
 		}
 	}

@@ -2,6 +2,9 @@ package app
 
 import (
 	"context"
+	"os"
+	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/ginkcode/agent-sessions/internal/engine"
@@ -42,16 +45,34 @@ func TestManagedAppRouting(t *testing.T) {
 	}
 }
 
-func TestManagedAppRealEngineUnavailable(t *testing.T) {
-	e := engine.NewEngine(engine.WithCacheEnabled(false), engine.WithRoots(paths.Roots{Config: t.TempDir()}), engine.WithFixtureMachineIdentity(testMachineID))
+// A real engine answers a proposal with metadata only: no download, no app
+// data written and no live route enabled.
+func TestManagedAppRealEngineProposalOnly(t *testing.T) {
+	data, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	e := engine.NewEngine(engine.WithCacheEnabled(false), engine.WithRoots(paths.Roots{Claude: t.TempDir(), Config: t.TempDir(), Data: data}), engine.WithFixtureMachineIdentity(testMachineID))
 	defer func() { _ = e.Close() }()
 	host, err := e.CodeDiagnosticsHostID(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
 	a := &App{backend: e}
-	out, err := a.ManagedTool(engine.ManagedToolRequest{Action: "propose", ExpectedHostID: host, Tool: "gopls"})
-	if err != nil || out.State != "unavailable" || out.Proposal != nil || e.LiveCodeDiagnosticsReady() {
+	out, err := a.ManagedTool(engine.ManagedToolRequest{Action: "propose", ExpectedHostID: host, Tool: "ruff"})
+	if runtime.GOOS != "darwin" && runtime.GOOS != "linux" {
+		if err != nil || out.State != "unavailable" || out.Proposal != nil {
+			t.Fatalf("%+v %v", out, err)
+		}
+		return
+	}
+	if err != nil || out.State != "proposed" || out.Proposal == nil || out.Proposal.HostID != host || e.LiveCodeDiagnosticsReady() {
+		t.Fatalf("%+v %v", out, err)
+	}
+	if entries, _ := os.ReadDir(data); len(entries) != 0 {
+		t.Fatal("proposal wrote app data")
+	}
+	if out, err = a.ManagedTool(engine.ManagedToolRequest{Action: "dismiss", ExpectedHostID: host}); err != nil || out.State != "idle" {
 		t.Fatalf("%+v %v", out, err)
 	}
 }

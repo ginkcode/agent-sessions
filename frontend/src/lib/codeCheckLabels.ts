@@ -10,8 +10,9 @@ const toolNames: Record<string, string> = {
   svelte: 'Svelte language server',
   'svelte-check': 'svelte-check',
   ruff: 'Python linter (Ruff)',
+  pyright: 'Python type checker (Pyright)',
 };
-const languages: Record<string, string> = { gopls: 'Go', 'go-syntax': 'Go', 'go-vet': 'Go', typescript: 'TypeScript/JavaScript', svelte: 'Svelte', 'svelte-check': 'Svelte', ruff: 'Python' };
+const languages: Record<string, string> = { gopls: 'Go', 'go-syntax': 'Go', 'go-vet': 'Go', typescript: 'TypeScript/JavaScript', svelte: 'Svelte', 'svelte-check': 'Svelte', ruff: 'Python', pyright: 'Python' };
 
 export function toolName(providerId: string): string {
   if (toolNames[providerId]) return toolNames[providerId];
@@ -19,7 +20,7 @@ export function toolName(providerId: string): string {
   return providerId;
 }
 
-/** Hosts reached over SSH/WSL. Managed setup only supports this computer (backend-enforced too). */
+/** Hosts reached over SSH/WSL, where managed installs go to the remote host. */
 export function remoteHost(hostId: string | undefined): boolean { return !!hostId && /^(ssh|wsl):/.test(hostId); }
 
 /** How a provider runs, consistent with the watcher: live LSP, automatic saved-file watching, or Check Project. */

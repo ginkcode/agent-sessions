@@ -1,5 +1,9 @@
 # Consent-based managed tools — independent backlog
 
+> **Update 2026-10-23:** TI-03's remote fail-closed route is replaced: `managedTool` is forwarded to the connected SSH/WSL host, which installs into its own app data. The operator-reviewed Go gate is gone; the gopls release follows the host's Go. Not verified on a real remote host or with a real download. See the [editor (Zed) model](../plan/code-diagnostics-zed-model.md).
+
+> **Update 2026-10-23 (later):** at the user's request downloads are automatic, like Zed: a missing server the project needs is proposed and installed without a click, once per host and tool per app session, with a setting to turn it off (then every download goes through the review card). vtsls reuses the host's Node.js 18 or newer when found. Running a server still needs project approval. Frontend unit tests only.
+
 Date: 2026-10-22. This is independent of diagnostics **19/28** and R01–R20.
 No task here clears CD-09, Stage 1/2 HOLDs, or enables live capability.
 Each task includes tests/evidence and is at most four developer hours; split again

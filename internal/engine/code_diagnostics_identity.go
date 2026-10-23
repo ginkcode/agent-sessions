@@ -18,6 +18,13 @@ import (
 // machineID is the host machine-identity source; nil means the platform
 // default (diagnosticsMachineID), which fails closed where unverified.
 func localDiagnosticsIdentity(config string, machineID func() (string, error)) (string, error) {
+	return diagnosticsIdentity("local", config, machineID)
+}
+
+// diagnosticsIdentity is computed by the host that runs the checks: a headless
+// server on an SSH or WSL host uses its own machine, account and installation
+// ID, with the kind its launcher named. kind never comes from a client request.
+func diagnosticsIdentity(kind, config string, machineID func() (string, error)) (string, error) {
 	if machineID == nil {
 		machineID = diagnosticsMachineID
 	}
@@ -52,5 +59,5 @@ func localDiagnosticsIdentity(config string, machineID func() (string, error)) (
 		return "", diagnosticError("unsupported", "Host installation identity is invalid")
 	}
 	authority, _ := json.Marshal([]string{strings.TrimSpace(machine), account.Uid})
-	return (cd.HostIdentity{Kind: "local", Authority: string(authority), Endpoint: string(data)}).ID()
+	return (cd.HostIdentity{Kind: kind, Authority: string(authority), Endpoint: string(data)}).ID()
 }

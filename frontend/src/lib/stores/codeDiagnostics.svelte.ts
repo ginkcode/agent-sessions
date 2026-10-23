@@ -1,5 +1,6 @@
 import { api } from '../api';
-import type { ManagedToolRequest, ManagedToolState } from '../managedTools';
+import type { ManagedToolAvailability, ManagedToolName, ManagedToolRequest, ManagedToolState } from '../managedTools';
+import { MANAGED_TOOLS, MANAGED_TOOL_FOR_PROVIDER } from '../managedTools';
 import type { LiveDocumentStatus } from '../liveDocuments';
 import { aggregateCodeDiagnostics } from '../codeDiagnosticCounts';
 import { epoch } from '../link';
@@ -7,6 +8,11 @@ import type { BackendAPI } from '../api';
 import type { ConnectionState } from '../types';
 import type { LiveDocumentBasis, CodeDiagnosticsContext, CodeDiagnosticsProject, CodeDiagnosticsSnapshot, CodeDiagnosticsUpdate, CodeDiagnosticsRun } from '../codeDiagnostics';
 import { CODE_DIAGNOSTICS_EVENT, CODE_DIAGNOSTICS_LIMITS as limits, CodeDiagnosticsError, codeDiagnosticsError, sameAttachment, sameContext, encodedBytes, resultSetKey, groupCodeDiagnostics, inlineCodeDiagnostic, liveDocumentEligibility } from '../codeDiagnostics';
+import { preferences } from './preferences.svelte';
+
+/** Whether missing language servers are downloaded without a click; kept by the caller. */
+export interface AutoInstallSetting { readonly on: boolean; set(on: boolean): void }
+const autoInstallOff: AutoInstallSetting = { on: false, set() {} };
 
 type Assembly = { parts: Map<number, CodeDiagnosticsUpdate>; bytes: number; timer: ReturnType<typeof setTimeout> };
 
@@ -25,12 +31,34 @@ export class CodeDiagnosticsStore {
   managedPending = $state(false);
   managedNotice = $state('');
   managedDismissed = $state(false);
+  /** Last reported app-managed installs on this host; survives proposals, which carry none. */
+  managedInstalls = $state.raw<Partial<Record<ManagedToolName, ManagedToolAvailability>>>({});
+  /** Like Zed, a missing language server the project needs is downloaded without a click. */
+  get autoInstall() { return this.autoSetting.on; }
+  /** The tool being proposed and installed automatically, until the install starts. */
+  autoPending = $state<ManagedToolName | undefined>(undefined);
+  /** Host and tool pairs installed automatically this app session; a failure is retried only by a click. */
+  private autoTried = new Set<string>();
   private managedTimer?: ReturnType<typeof setTimeout>;
   private managedPolls = 0;
+  private connection?: ConnectionState;
+  /** Completed job already rediscovered; kept across reattach so it happens once. */
+  private rediscoveredJob?: string;
   private clearManaged() {
     clearTimeout(this.managedTimer); this.managedTimer = undefined;
     this.managed = undefined; this.managedPending = false; this.managedNotice = ''; this.managedDismissed = false;
+    this.managedInstalls = {};
     this.managedPolls = 0;
+  }
+  /**
+   * The backend drops its diagnostics session when an install completes, so the
+   * new server is found only by attaching again. Discovery approves and starts nothing.
+   */
+  private rediscover(jobId: string) {
+    const dir = this.directory, connection = this.connection;
+    if (this.rediscoveredJob === jobId || !dir || !connection) return;
+    this.rediscoveredJob = jobId;
+    void this.attach(dir, connection);
   }
   /** Only bounded read-only polling is repeated; consent mutations are never replayed. */
   private scheduleManaged() {
@@ -40,7 +68,7 @@ export class CodeDiagnosticsStore {
     const life = this.lifetime;
     this.managedTimer = setTimeout(() => { if (this.active(life) && this.context) void this.managedAction('status'); }, 2000);
   }
-  async managedAction(action: ManagedToolRequest['action']) {
+  async managedAction(action: ManagedToolRequest['action'], tool?: ManagedToolName) {
     if (!this.context || !this.active() || this.managedPending) return;
     const life = this.lifetime, c = this.context, host = this.host;
     const current = this.managed;
@@ -50,7 +78,7 @@ export class CodeDiagnosticsStore {
       this.managed = undefined; this.managedNotice = 'Approval expired. Review a fresh installation proposal.'; return;
     }
     if (action === 'cancel' && (!current?.jobId || current.state !== 'installing')) return;
-    if (action === 'propose' && current?.state === 'installing') return;
+    if (action === 'propose' && (current?.state === 'installing' || !tool || !MANAGED_TOOLS.includes(tool))) return;
     this.managedPending = true; this.managedNotice = '';
     clearTimeout(this.managedTimer);
     // Consume locally before sending. Lost acknowledgements require status, never token replay.
@@ -58,19 +86,48 @@ export class CodeDiagnosticsStore {
     if (action === 'dismiss') { this.managedDismissed = true; this.managed = undefined; }
     const valid = () => this.active(life) && !!this.context && sameContext(c, this.context!);
     try {
-      if (!this.backend.managedTool) throw new Error('Managed setup unavailable on this older backend. Ask the backend operator to provision reviewed Go >=1.27.');
+      if (!this.backend.managedTool) throw new Error('Managed setup unavailable on this older backend. Install the language servers on the host yourself, then refresh.');
       const out = await this.backend.managedTool({ action, expectedHostId: host,
-        ...(action === 'propose' ? { tool: 'gopls' as const } : {}),
+        ...(action === 'propose' ? { tool } : {}),
         ...(action === 'install' ? { token: proposal!.token } : {}),
         ...(['status', 'cancel'].includes(action) && current?.jobId ? { jobId: current.jobId } : {}) });
       if (!valid()) return;
-      if (out.hostId !== host || (out.proposal && (out.state !== 'proposed' || out.proposal.hostId !== host || out.proposal.tool !== 'gopls' || !out.proposal.token || !out.proposal.connectionId || !Number.isFinite(Date.parse(out.proposal.expires))))) throw new Error('Managed setup identity mismatch. Reconnect to the intended host.');
+      if (out.hostId !== host || (out.proposal && (out.state !== 'proposed' || out.proposal.hostId !== host || action !== 'propose' || out.proposal.tool !== tool || !out.proposal.token || !out.proposal.connectionId || !Number.isFinite(Date.parse(out.proposal.expires))))) throw new Error('Managed setup identity mismatch. Reconnect to the intended host.');
       if (out.state === 'installing' && (!out.jobId || (current?.jobId && action === 'status' && out.jobId !== current.jobId))) throw new Error('Installation job identity mismatch. Refresh status explicitly.');
       this.managed = out;
-      this.scheduleManaged();
+      if (out.tools) this.managedInstalls = Object.fromEntries(MANAGED_TOOLS.flatMap(t => ['available', 'missingTool', 'unavailable'].includes(out.tools![t] ?? '') ? [[t, out.tools![t]]] : []));
+      if (out.state === 'installed' && out.jobId) this.rediscover(out.jobId);
+      else this.scheduleManaged();
     } catch (e) {
       if (valid()) { this.managed = undefined; this.managedNotice = `Managed setup unavailable: ${codeDiagnosticsError(e).message}. Refresh status before retrying; no installation request will be replayed.`; }
     } finally { if (valid()) this.managedPending = false; }
+    if (valid() && !this.autoPending) this.maybeAutoInstall();
+  }
+  setAutoInstall(on: boolean) {
+    this.autoSetting.set(on);
+    this.maybeAutoInstall();
+  }
+  /**
+   * Starts the first missing server this project needs, once per host and tool
+   * per app session. Discovery reports a server missing only when the project
+   * has files of its language. Installing approves and starts nothing.
+   */
+  private maybeAutoInstall() {
+    const m = this.managed, host = this.host;
+    if (!this.autoInstall || this.status !== 'ready' || this.managedPending || !m || !host || ['proposed', 'installing'].includes(m.state) || (m.state === 'unavailable' && !m.tool)) return;
+    const tool = this.providers.flatMap(p => {
+      const t = MANAGED_TOOL_FOR_PROVIDER[p.providerId], app = t && this.managedInstalls[t];
+      return t && p.availability === 'missingTool' && (!app || app === 'missingTool') && !this.autoTried.has(`${host}\0${t}`) ? [t] : [];
+    })[0];
+    if (!tool) return;
+    this.autoTried.add(`${host}\0${tool}`);
+    this.autoPending = tool;
+    void (async () => {
+      try {
+        await this.managedAction('propose', tool);
+        if (this.autoInstall && this.managed?.state === 'proposed' && this.managed.proposal?.tool === tool) await this.managedAction('install');
+      } finally { if (this.autoPending === tool) this.autoPending = undefined; }
+    })();
   }
   refreshManaged() { this.managedPolls = 0; this.managedDismissed = false; return this.managedAction('status'); }
 
@@ -190,7 +247,7 @@ export class CodeDiagnosticsStore {
   }
   private emit() { for (const l of [...this.listeners]) { try { l(); } catch { /* observers never affect protocol state */ } } }
 
-  constructor(private backend: BackendAPI = api, private currentEpoch: () => number = epoch) {}
+  constructor(private backend: BackendAPI = api, private currentEpoch: () => number = epoch, private autoSetting: AutoInstallSetting = autoInstallOff) {}
 
   get resultSets() {
     const failedProviders = new Set(this.providers.filter(p => p.failure || p.availability !== 'available' || ['failed', 'canceled', 'disconnected'].includes(p.phase)).map(p => p.providerId));
@@ -221,14 +278,14 @@ export class CodeDiagnosticsStore {
     });
   }
   /**
-   * Live document findings drawn over the displayed text: only versioned results
-   * of the same document lifecycle whose version equals the confirmed, unchanged
-   * version. Everything else stays panel-only (see liveDocumentEligibility).
+   * Draw confirmed live ranges and uncertain TypeScript observations over the
+   * same unchanged document mirror. Other versions/lifecycles stay panel-only
+   * (see liveDocumentEligibility).
    */
   liveInline(path: string, doc: LiveDocumentBasis | undefined) {
     if (this.status !== 'ready' || !doc) return [];
     return this.findings.flatMap(f => {
-      const eligible = f.entries.find(e => e.diagnostic.path === path && liveDocumentEligibility(e.diagnostic, doc) === 'current');
+      const eligible = f.entries.find(e => e.diagnostic.path === path && ['current', 'observed'].includes(liveDocumentEligibility(e.diagnostic, doc)));
       return eligible ? [{ ...f, diagnostic: eligible.diagnostic }] : [];
     });
   }
@@ -279,7 +336,7 @@ export class CodeDiagnosticsStore {
       this.status = 'unsupported'; return;
     }
     this.liveCapable = !!connection.capabilities.liveCodeDiagnostics;
-    this.host = connection.hostId; this.status = 'attaching'; this.earlyOverflow = false; this.retiredGenerations.clear();
+    this.host = connection.hostId; this.connection = connection; this.status = 'attaching'; this.earlyOverflow = false; this.retiredGenerations.clear();
     this.off = this.backend.onEvent(CODE_DIAGNOSTICS_EVENT, (event: CodeDiagnosticsUpdate) => {
       if (!this.active(life)) return;
       if (!this.context) {
@@ -334,6 +391,7 @@ export class CodeDiagnosticsStore {
     this.snapshot = structuredClone(s); this.status = 'ready'; this.error = undefined;
     this.pruneAssemblies(s.sequence);
     this.emit();
+    this.maybeAutoInstall();
     return true;
   }
   private pruneAssemblies(sequence: number) {
@@ -475,4 +533,7 @@ export class CodeDiagnosticsStore {
   }
 }
 
-export const codeDiagnostics = new CodeDiagnosticsStore();
+export const codeDiagnostics = new CodeDiagnosticsStore(api, epoch, {
+  get on() { return preferences.autoInstallLanguageServers; },
+  set(on) { preferences.setAutoInstallLanguageServers(on); },
+});

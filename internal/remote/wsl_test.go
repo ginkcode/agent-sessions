@@ -48,6 +48,13 @@ func TestValidateHost(t *testing.T) {
 	if _, ok := ParseWSLTarget("devbox"); ok {
 		t.Error("SSH alias parsed as WSL")
 	}
+	// The server started for a target hosts diagnostics as that kind.
+	if k := diagnosticsHostKind(WSLTarget("Debian")); k != "wsl" {
+		t.Error(k)
+	}
+	if k := diagnosticsHostKind("devbox"); k != "ssh" {
+		t.Error(k)
+	}
 }
 
 func TestRemoteLine(t *testing.T) {

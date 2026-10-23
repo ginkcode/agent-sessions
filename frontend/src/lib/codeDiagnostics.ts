@@ -10,7 +10,7 @@ export interface CodeDiagnostic {
   message: string;
   source: string;
   freshness: CodeDiagnosticFreshness;
-  basis: { kind: 'saved'; revision?: string } | { kind: 'document'; documentId: string; version?: number };
+  basis: { kind: 'saved'; revision?: string } | { kind: 'document'; documentId: string; version?: number; observedVersion?: number };
   range?: CodeDiagnosticRange;
   code?: string;
   locationIssue?: 'invalidRange';
@@ -71,13 +71,18 @@ export interface LiveDocumentBasis { documentId: string; version: number; synced
 /**
  * Whether a document-basis finding may be drawn over the displayed text.
  * `current`: same lifecycle, version equals the confirmed unchanged version and the
- * producer verified it. `uncertain`: unversioned or unverified, panel only.
+ * producer verified it. `observed`: an unversioned TypeScript position bound to
+ * the mirror at receipt, drawable but still uncertain. `uncertain`: panel only.
  * `hidden`: another lifecycle or an older/newer version (never reuse stale ranges).
  */
-export function liveDocumentEligibility(d: CodeDiagnostic, doc: LiveDocumentBasis): 'current' | 'uncertain' | 'hidden' {
+export function liveDocumentEligibility(d: CodeDiagnostic, doc: LiveDocumentBasis): 'current' | 'observed' | 'uncertain' | 'hidden' {
   const b = d.basis;
   if (b.kind !== 'document' || b.documentId !== doc.documentId) return 'hidden';
-  if (b.version === undefined) return 'uncertain';
+  if (b.version === undefined) {
+    if (b.observedVersion === undefined) return 'uncertain';
+    if (b.observedVersion !== doc.version) return 'hidden';
+    return doc.synced && d.freshness === 'uncertain' && !!d.range && !d.locationIssue ? 'observed' : 'uncertain';
+  }
   if (b.version !== doc.version) return b.version < doc.version ? 'hidden' : 'uncertain';
   if (!doc.synced || d.freshness !== 'current' || !d.range || d.locationIssue) return 'uncertain';
   return 'current';

@@ -3,15 +3,48 @@ package managedtools
 import (
 	"context"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/ginkcode/agent-sessions/internal/filelock"
 )
+
+// hostGoRoot is a private copy of the Go that runs the tests: Propose reads
+// its build metadata, never runs it, and the fake build never touches it.
+var hostGoRoot = sync.OnceValues(func() (string, error) {
+	//nolint:staticcheck // Tests read this host's toolchain metadata; no probe.
+	src := filepath.Join(runtime.GOROOT(), "bin", "go")
+	data, err := os.ReadFile(src)
+	if err != nil {
+		return "", err
+	}
+	dir, err := os.MkdirTemp("", "managedtools-go-")
+	if err != nil {
+		return "", err
+	}
+	if dir, err = filepath.EvalSymlinks(dir); err != nil {
+		return "", err
+	}
+	if err = os.Mkdir(filepath.Join(dir, "bin"), 0o700); err != nil {
+		return "", err
+	}
+	return dir, os.WriteFile(filepath.Join(dir, "bin", "go"), data, 0o700)
+})
+
+func TestMain(m *testing.M) {
+	code := m.Run()
+	if dir, err := hostGoRoot(); err == nil {
+		_ = os.RemoveAll(dir)
+	}
+	os.Exit(code)
+}
 
 func fixture(t *testing.T) (*Installer, string) {
 	t.Helper()
@@ -24,15 +57,19 @@ func fixture(t *testing.T) (*Installer, string) {
 	if err := os.Chmod(data, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	b := Binding{"local:" + strings.Repeat("a", 64), "connection-1"}
-	i, err := New(data, b, TrustedGo{filepath.Join(data, "go"), strings.Repeat("b", 64)})
+	goRoot, err := hostGoRoot()
 	if err != nil {
 		t.Fatal(err)
 	}
-	i.build = func(_ context.Context, stage string, _ TrustedGo) error {
+	b := Binding{"local:" + strings.Repeat("a", 64), "connection-1"}
+	i, err := New(data, b, func() string { return goRoot })
+	if err != nil {
+		t.Fatal(err)
+	}
+	i.build = func(_ context.Context, stage string, _ TrustedGo, _ goplsRelease) error {
 		return os.WriteFile(filepath.Join(stage, "gopls"), []byte("fake verified binary"), 0o700)
 	}
-	i.validate = func(path string) error {
+	i.gopls = func(path string, _ goplsRelease) error {
 		data, err := os.ReadFile(path)
 		if err != nil {
 			return err
@@ -41,6 +78,11 @@ func fixture(t *testing.T) (*Installer, string) {
 			return errors.New("invalid binary")
 		}
 		return nil
+	}
+	i.fetch = func(context.Context, string, io.Writer) error { t.Fatal("unexpected download"); return nil }
+	i.command = func(context.Context, string, string, []string, ...string) ([]byte, error) {
+		t.Fatal("unexpected command")
+		return nil, nil
 	}
 	return i, data
 }
@@ -56,12 +98,24 @@ func propose(t *testing.T, i *Installer) Proposal {
 
 func TestNoConsentNoIO(t *testing.T) {
 	i, data := fixture(t)
-	i.build = func(context.Context, string, TrustedGo) error { t.Fatal("unexpected build"); return nil }
-	if _, err := i.Propose("https://attacker/tool"); err == nil {
-		t.Fatal("unknown tool accepted")
+	i.build = func(context.Context, string, TrustedGo, goplsRelease) error { t.Fatal("unexpected build"); return nil }
+	for _, tool := range []string{"https://attacker/tool", "node", "go", ""} {
+		if _, err := i.Propose(tool); err == nil {
+			t.Fatal("unknown tool accepted", tool)
+		}
+	}
+	_, goVersion, err := hostGo(i.goRoot())
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, ok := goplsFor(goVersion)
+	if !ok {
+		t.Skip("the Go running the tests cannot build any catalog gopls")
 	}
 	p := propose(t, i)
-	if p.Version != version || p.Source != source || p.Integrity != policy || p.HostID != i.binding.HostID || p.ConnectionID != i.binding.ConnectionID || !strings.HasPrefix(p.Destination, i.root+string(os.PathSeparator)) {
+	if p.Tool != "gopls" || p.Version != r.Version || !strings.Contains(p.Source, goplsModule+"@"+r.Version) || !strings.Contains(p.Integrity, r.Sum) ||
+		!strings.Contains(p.Note, "Built with "+goVersion) || p.HostID != i.binding.HostID || p.ConnectionID != i.binding.ConnectionID ||
+		p.Destination != filepath.Join(i.root, installDir("gopls", r.Version)) {
 		t.Fatalf("proposal: %+v", p)
 	}
 	if _, err := i.Install(context.Background(), i.binding, "wrong"); err == nil {
@@ -79,6 +133,40 @@ func TestNoConsentNoIO(t *testing.T) {
 	entries, err := os.ReadDir(data)
 	if err != nil || len(entries) != 0 {
 		t.Fatalf("preconsent IO: %v %v", entries, err)
+	}
+}
+
+// Without a usable host Go, a gopls proposal is never made.
+func TestGoplsProposalNeedsHostGo(t *testing.T) {
+	i, _ := fixture(t)
+	for _, root := range []string{"", "relative", t.TempDir()} {
+		i.goRoot = func() string { return root }
+		if _, err := i.Propose("gopls"); !errors.Is(err, ErrNoGo) {
+			t.Fatalf("%q: %v", root, err)
+		}
+	}
+	// A non-Go executable named go is not a toolchain.
+	root := t.TempDir()
+	if err := os.Mkdir(filepath.Join(root, "bin"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "bin", "go"), []byte("#!/bin/sh\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	i.goRoot = func() string { return root }
+	if _, err := i.Propose("gopls"); !errors.Is(err, ErrNoGo) {
+		t.Fatal(err)
+	}
+}
+
+func TestGoplsReleaseForHostGo(t *testing.T) {
+	for goVersion, want := range map[string]string{
+		"go1.28.1": "v0.24.0", "go1.27.0": "v0.24.0", "go1.26.8": "v0.23.0", "go1.26rc1": "v0.21.1", "go1.25.0": "v0.21.1", "go1.24.9": "", "devel": "",
+	} {
+		r, ok := goplsFor(goVersion)
+		if ok != (want != "") || r.Version != want {
+			t.Errorf("%s: %v %s", goVersion, ok, r.Version)
+		}
 	}
 }
 
@@ -112,7 +200,10 @@ func TestPublishReuseAndTamper(t *testing.T) {
 	i, _ := fixture(t)
 	var builds int
 	build := i.build
-	i.build = func(c context.Context, s string, g TrustedGo) error { builds++; return build(c, s, g) }
+	i.build = func(c context.Context, s string, g TrustedGo, r goplsRelease) error {
+		builds++
+		return build(c, s, g, r)
+	}
 	p := propose(t, i)
 	path, err := i.Install(context.Background(), i.binding, p.Token)
 	if err != nil {
@@ -145,12 +236,18 @@ func TestFailureCleanupAndRedaction(t *testing.T) {
 			defer cancel()
 			switch kind {
 			case "build":
-				i.build = func(context.Context, string, TrustedGo) error { return errors.New("SECRET project/path raw output") }
+				i.build = func(context.Context, string, TrustedGo, goplsRelease) error {
+					return errors.New("SECRET project/path raw output")
+				}
 			case "validate":
-				i.validate = func(string) error { return errors.New("SECRET invalid metadata") }
+				i.gopls = func(string, goplsRelease) error { return errors.New("SECRET invalid metadata") }
 			case "canceled":
 				build := i.build
-				i.build = func(c context.Context, s string, g TrustedGo) error { err := build(c, s, g); cancel(); return err }
+				i.build = func(c context.Context, s string, g TrustedGo, r goplsRelease) error {
+					err := build(c, s, g, r)
+					cancel()
+					return err
+				}
 			}
 			p := propose(t, i)
 			if _, err := i.Install(ctx, i.binding, p.Token); err == nil || strings.Contains(err.Error(), "SECRET") {
@@ -183,11 +280,11 @@ func TestConcurrentInstallAndProcessLock(t *testing.T) {
 	done := make(chan error, 1)
 	build := i.build
 	var calls atomic.Int32
-	i.build = func(c context.Context, s string, g TrustedGo) error {
+	i.build = func(c context.Context, s string, g TrustedGo, r goplsRelease) error {
 		calls.Add(1)
 		close(started)
 		<-release
-		return build(c, s, g)
+		return build(c, s, g, r)
 	}
 	go func() { _, err := i.Install(context.Background(), i.binding, p.Token); done <- err }()
 	<-started
@@ -212,6 +309,27 @@ func TestConcurrentInstallAndProcessLock(t *testing.T) {
 	p = propose(t, i)
 	if _, err = i.Install(context.Background(), i.binding, p.Token); err == nil {
 		t.Fatal("cross-process lock ignored")
+	}
+}
+
+// A fresh host may lack the app data directory and its parent.
+func TestInstallCreatesMissingAppData(t *testing.T) {
+	i, base := fixture(t)
+	data := filepath.Join(base, "share", "agent-sessions")
+	n, err := New(data, i.binding, i.goRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	n.build, n.gopls = i.build, i.gopls
+	if _, err := n.Discover("gopls"); !os.IsNotExist(err) {
+		t.Fatal(err)
+	}
+	p := propose(t, n)
+	if _, err := n.Install(context.Background(), n.binding, p.Token); err != nil {
+		t.Fatal(err)
+	}
+	if st, err := os.Stat(data); err != nil || st.Mode().Perm() != 0o700 {
+		t.Fatal(st, err)
 	}
 }
 
@@ -275,12 +393,27 @@ func TestUnsafeFilesystem(t *testing.T) {
 	}
 }
 
-func TestUnsupportedBinding(t *testing.T) {
+// Host-computed identities of every kind are accepted; labels are not.
+func TestBinding(t *testing.T) {
 	data := t.TempDir()
-	for _, host := range []string{"local:label", "ssh:" + strings.Repeat("a", 64), "wsl:" + strings.Repeat("a", 64), ""} {
-		if _, err := New(data, Binding{host, "c"}, TrustedGo{filepath.Join(data, "go"), strings.Repeat("b", 64)}); err == nil {
+	goRoot := func() string { return "" }
+	for _, host := range []string{"local:label", "ftp:" + strings.Repeat("a", 64), "ssh:" + strings.Repeat("A", 64), "wsl:", ""} {
+		if _, err := New(data, Binding{host, "c"}, goRoot); err == nil {
 			t.Fatal(host)
 		}
+	}
+	for _, host := range []string{"local:", "ssh:", "wsl:"} {
+		if _, err := New(data, Binding{host + strings.Repeat("a", 64), "c"}, goRoot); err != nil {
+			t.Fatal(host, err)
+		}
+	}
+	for _, c := range []string{"", "a\nb", strings.Repeat("c", 257)} {
+		if _, err := New(data, Binding{"ssh:" + strings.Repeat("a", 64), c}, goRoot); err == nil {
+			t.Fatalf("connection %q", c)
+		}
+	}
+	if _, err := New("relative", Binding{"ssh:" + strings.Repeat("a", 64), "c"}, goRoot); err == nil {
+		t.Fatal("relative data")
 	}
 }
 
@@ -295,7 +428,7 @@ func TestBoundedOutputAndBinaryValidation(t *testing.T) {
 	if err = os.WriteFile(path, []byte("not a Go binary"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err = validateBinary(path); err == nil {
+	if err = validateGopls(path, goplsReleases[0]); err == nil {
 		t.Fatal("fake binary accepted")
 	}
 }

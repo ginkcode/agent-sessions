@@ -7,8 +7,10 @@ package codediagnostics
 // publishDiagnostics bridging (normalization is shared with CD-22). Process
 // launch, trust and the document protocol stay in CD-19/CD-20. Nothing here
 // installs, downloads, runs npx/package scripts, or probes a version by
-// executing the tool: versions come from package.json and node_version.h. The
-// spike evidence and its limits are recorded in
+// executing the tool: versions come from package.json and node_version.h. Any
+// vtsls version is accepted and a workspace TypeScript is used when present, as
+// editors do (docs/plan/code-diagnostics-zed-model.md). The spike evidence and
+// its limits are recorded in
 // docs/plan/code-diagnostics-typescript.md and testdata/typescript/evidence.json.
 // Fake-server tests in ts_lsp_test.go are SYNTHETIC; they prove this adapter's
 // handling, not the behavior of any real server.
@@ -31,11 +33,11 @@ const (
 	tsProviderID     = "typescript"
 	vtslsName        = "@vtsls/language-server"
 	vtslsServiceName = "@vtsls/language-service"
-	// tsPolicy binds the verified tuple and launch shape: node runs the
-	// package's own bin/vtsls.js directly (no shell, npx or version-manager
-	// shim), TypeScript is the copy vtsls resolves for itself (never the
-	// workspace's), and automatic type acquisition is off (tsSettings).
-	tsPolicy          = "vtsls-v2:0.3.0:ts5.9.3:darwin/arm64:node-direct:push-only:no-edits:opened-documents:bundled-typescript:ata-off"
+	// tsPolicy binds the launch shape: node runs the package's own
+	// bin/vtsls.js directly (no shell, npx or version-manager shim) and
+	// automatic type acquisition is off (tsSettings). The suffix names the
+	// TypeScript used: the workspace's or the one vtsls ships with.
+	tsPolicy          = "vtsls-v3:any-version:" + runtime.GOOS + "/" + runtime.GOARCH + ":node-direct:push-only:no-edits:opened-documents:ata-off:"
 	tsToolchainPolicy = "vtsls-toolchain-v1"
 	minTSNodeMajor    = 18 // @vtsls/language-server 0.3.0 engines
 	maxTSPackages     = 48
@@ -44,22 +46,33 @@ const (
 	partialTSNotice   = "Some TypeScript diagnostics could not be verified; results are partial."
 	tsOpenedNotice    = "TypeScript diagnostics cover opened documents only; unopened files are not continuously synchronized."
 	tsUncertainNotice = "vtsls reports results without a document version, so they are listed as uncertain and not drawn inline."
-	tsInstallHint     = "Install it yourself with: npm install -g @vtsls/language-server@0.3.0 (this brings TypeScript 5.9.3), then refresh. Nothing is installed automatically."
+	tsInstallHint     = "The app downloads vtsls into its own folder (using your Node.js 18 or newer, or its own), or install it yourself with npm install -g @vtsls/language-server, then refresh."
 )
-
-// supportedVtslsVersions pairs a wrapper version with the TypeScript version it
-// was observed with. Anything else is unsupported until a spike adds it.
-var supportedVtslsVersions = []struct{ Wrapper, TypeScript string }{{"0.3.0", "5.9.3"}}
 
 // tsSettings is the fixed workspace/configuration answer. vtsls reads settings
 // only from a client that advertises the capability; otherwise its defaults
 // enable automatic type acquisition, which runs npm from the node directory.
-// Workspace TypeScript and plugin paths are never used.
-var tsSettings = json.RawMessage(`{"typescript":{"disableAutomaticTypeAcquisition":true,"tsserver":{"log":"off","pluginPaths":[]}},"vtsls":{"autoUseWorkspaceTsdk":false}}`)
+// Plugin paths are never used. With tsdk, vtsls loads the workspace's
+// TypeScript (as editors do), whose files are bound into approval.
+func tsSettings(tsdk string) json.RawMessage {
+	settings := map[string]any{
+		"typescript": map[string]any{"disableAutomaticTypeAcquisition": true, "tsserver": map[string]any{"log": "off", "pluginPaths": []string{}}},
+		"vtsls":      map[string]any{"autoUseWorkspaceTsdk": tsdk != ""},
+	}
+	if tsdk != "" {
+		settings["typescript"].(map[string]any)["tsdk"] = tsdk
+	}
+	data, _ := json.Marshal(settings)
+	return data
+}
 
 // tsToolchainNames label the loaded entry points bound into approval, in the
-// order vtslsInstall.files lists them.
-var tsToolchainNames = []string{"vtsls-entry", "vtsls-server", "vtsls-service", "tsserver", "tsserver-impl", "typescript"}
+// order vtslsInstall.files lists them; tsWorkspaceNames label the workspace
+// TypeScript files that replace the last three.
+var (
+	tsToolchainNames = []string{"vtsls-entry", "vtsls-server", "vtsls-service", "tsserver", "tsserver-impl", "typescript"}
+	tsWorkspaceNames = []string{"workspace-tsserver", "workspace-tsserver-impl", "workspace-typescript"}
+)
 
 var tsVersionText = regexp.MustCompile(`^[0-9A-Za-z.+-]{1,32}$`)
 
@@ -101,19 +114,17 @@ func DiscoverTypeScript(root AuthorizedRoot, reviewedPath []string, env TSEnviro
 		p.availability, p.notice, p.partial = state, notice, true
 		return p, nil
 	}
-	if runtime.GOOS != "darwin" || runtime.GOARCH != "arm64" {
-		return unavailable("unsupported", "TypeScript language server support has not been verified on this platform.")
-	}
-	// Packages first: a project without JS/TS stays a muted "unsupported"
+	// Sources first: a project without JS/TS stays a muted "unsupported"
 	// rather than asking for an install it does not need.
 	w, err := discoverTSPackages(root)
 	if err != nil {
 		return nil, err
 	}
-	p.packages, p.partial = w.packages, w.partial
-	if len(w.packages) == 0 {
-		return unavailable("unsupported", "No contained TypeScript or JavaScript package was found.")
+	p.partial = w.partial
+	if !w.sources && len(w.configs) == 0 {
+		return unavailable("unsupported", "No TypeScript or JavaScript file was found in this project.")
 	}
+	p.packages = []string{""}
 	entry, local, foreign := resolveVtsls(root, reviewedPath)
 	if entry == "" {
 		if foreign {
@@ -146,15 +157,24 @@ func DiscoverTypeScript(root AuthorizedRoot, reviewedPath []string, env TSEnviro
 	for i, f := range inst.files {
 		tools[i] = ToolInput{ProviderID: "typescript-toolchain-" + tsToolchainNames[i], Executable: f, Policy: tsToolchainPolicy}
 	}
+	typescript := "bundled-typescript"
+	tsdk, wsVersion, wsFiles := workspaceTypeScript(root)
+	if tsdk != "" {
+		typescript, p.ts = "workspace-typescript", wsVersion
+		tools = tools[:3]
+		for i, f := range wsFiles {
+			tools = append(tools, ToolInput{ProviderID: "typescript-toolchain-" + tsWorkspaceNames[i], Executable: f, Policy: tsToolchainPolicy})
+		}
+	}
 	p.config = ServerConfig{
 		ProviderID:    tsProviderID,
 		Executable:    node,
 		Args:          []string{entry, "--stdio"},
 		Env:           []string{"HOME=" + env.Home, "PATH=" + nodeBin + ":/usr/bin:/bin", "NODE_DISABLE_COMPILE_CACHE=1"},
-		AdapterPolicy: tsPolicy,
+		AdapterPolicy: tsPolicy + typescript,
 		ConfigPaths:   w.configs,
 		Toolchain:     tools,
-		Settings:      tsSettings,
+		Settings:      tsSettings(tsdk),
 		// vtsls sends no diagnostics to a client that does not declare them.
 		DeclareDiagnostics: true,
 	}
@@ -229,9 +249,8 @@ func inspectVtsls(entry string) (vtslsInstall, string, string) {
 	if tsDir == "" || readJSONFile(filepath.Join(tsDir, "package.json"), &ts) != nil || ts.Name != "typescript" {
 		return vtslsInstall{}, "missingTool", "The TypeScript package required by the language server is not installed. " + tsInstallHint
 	}
-	if service.Version != server.Version || !slices.Contains(supportedVtslsVersions, struct{ Wrapper, TypeScript string }{server.Version, ts.Version}) {
-		return vtslsInstall{}, "unsupported", "Found vtsls " + versionText(server.Version) + " (language service " + versionText(service.Version) + ") with TypeScript " + versionText(ts.Version) +
-			"; only vtsls 0.3.0 with TypeScript 5.9.3 is verified. " + tsInstallHint
+	if service.Version != server.Version {
+		return vtslsInstall{}, "unsupported", "Found vtsls " + versionText(server.Version) + " with a different language service (" + versionText(service.Version) + "); reinstall vtsls. " + tsInstallHint
 	}
 	files := []string{
 		entry, filepath.Join(serverDir, "dist", "main.js"), filepath.Join(serviceDir, "dist", "index.js"),
@@ -243,6 +262,33 @@ func inspectVtsls(entry string) (vtslsInstall, string, string) {
 		}
 	}
 	return vtslsInstall{serverDir: serverDir, wrapper: server.Version, typescript: ts.Version, files: files}, "", ""
+}
+
+// workspaceTypeScript finds the project's own TypeScript at
+// <root>/node_modules/typescript, contained in the root after symlink
+// resolution. It returns the tsdk directory (lib), its version and the
+// files tsserver loads, in tsWorkspaceNames order. Metadata only.
+func workspaceTypeScript(root AuthorizedRoot) (tsdk, version string, files []string) {
+	base := root.Project().Root
+	dir, err := filepath.EvalSymlinks(filepath.Join(base, "node_modules", "typescript"))
+	if err != nil {
+		return "", "", nil
+	}
+	if rel, err := filepath.Rel(base, dir); err != nil || !filepath.IsLocal(rel) {
+		return "", "", nil
+	}
+	var pkg struct{ Name, Version string }
+	if readJSONFile(filepath.Join(dir, "package.json"), &pkg) != nil || pkg.Name != "typescript" {
+		return "", "", nil
+	}
+	lib := filepath.Join(dir, "lib")
+	files = []string{filepath.Join(lib, "tsserver.js"), filepath.Join(lib, "_tsserver.js"), filepath.Join(lib, "typescript.js")}
+	for _, f := range files {
+		if st, err := os.Lstat(f); err != nil || !st.Mode().IsRegular() {
+			return "", "", nil
+		}
+	}
+	return lib, pkg.Version, files
 }
 
 func versionText(v string) string {
@@ -295,6 +341,21 @@ func tsNode(env TSEnvironment, serverDir string, reviewedPath []string) string {
 		}
 	}
 	return ""
+}
+
+// HostNode returns the install prefix and version of the Node.js vtsls would
+// run on from dirs (the first real node, as tsNode picks it), when it is new
+// enough. Metadata only; nothing is executed. Managed installs reuse it.
+func HostNode(dirs []string) (prefix, version string) {
+	for _, dir := range dirs {
+		if node := realNode(dir); node != "" {
+			if major, v := nodeVersion(node); major >= minTSNodeMajor {
+				return filepath.Dir(filepath.Dir(node)), v
+			}
+			return "", ""
+		}
+	}
+	return "", ""
 }
 
 // realNode accepts only an executable named node after symlink resolution
@@ -421,6 +482,7 @@ func TSLanguageID(file string) (string, bool) {
 type tsWorkspace struct {
 	packages, configs []string
 	partial           bool
+	sources           bool // a file with one of projectMarkers.sources was seen
 }
 
 // projectMarkers selects the files that make a directory a project root.
@@ -430,9 +492,10 @@ type tsWorkspace struct {
 type projectMarkers struct {
 	configs, plain []string
 	skipDir        []string
+	sources        []string // lower-case extensions of the language's source files
 }
 
-var tsProjectMarkers = projectMarkers{configs: []string{"package.json", "tsconfig.json", "jsconfig.json"}, skipDir: []string{"node_modules"}}
+var tsProjectMarkers = projectMarkers{configs: []string{"package.json", "tsconfig.json", "jsconfig.json"}, skipDir: []string{"node_modules"}, sources: tsDocumentExtensions}
 
 // discoverTSPackages walks only inside the authorized root with bounded rooted
 // reads. A directory containing package.json, tsconfig.json or jsconfig.json is
@@ -494,6 +557,9 @@ func discoverProjectDirs(root AuthorizedRoot, markers projectMarkers) (tsWorkspa
 				walk(rel, depth+1)
 				continue
 			}
+			if !w.sources && slices.Contains(markers.sources, strings.ToLower(filepath.Ext(d.Name()))) {
+				w.sources = true
+			}
 			if slices.Contains(markers.plain, d.Name()) {
 				found = true
 				continue
@@ -551,8 +617,8 @@ func coversDir(dirs []string, file string) bool {
 // TSBridge turns session notifications into document-set replacements. It
 // reuses the CD-22 normalizer with the "typescript" attribution prefix. It
 // publishes nothing for unowned, unopened, closed or out-of-root files. A
-// server that never sends versions yields uncertain, panel-only results via the
-// manager's unversioned rule; absence of a push is not "clean".
+// server that never sends versions yields uncertain ranges bound to the mirror
+// version at receipt, not server-confirmed freshness; absence of a push is not "clean".
 type TSBridge struct {
 	root   AuthorizedRoot
 	sink   goplsSink

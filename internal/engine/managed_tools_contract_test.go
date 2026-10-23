@@ -2,9 +2,15 @@ package engine
 
 import (
 	"context"
+	"maps"
+	"os"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
+
+	cd "github.com/ginkcode/agent-sessions/internal/codediagnostics"
 
 	"github.com/ginkcode/agent-sessions/internal/paths"
 )
@@ -80,15 +86,43 @@ func TestManagedContractScopeProgressCancel(t *testing.T) {
 	}
 }
 
-func TestManagedContractUnavailable(t *testing.T) {
-	e := NewEngine(WithCacheEnabled(false), WithRoots(paths.Roots{Config: t.TempDir()}), WithFixtureMachineIdentity(testMachineID))
+// Status on a fresh host lists every tool as missing and creates nothing; an
+// injected (fixture) host never installs.
+func TestManagedContractStatusAndUnavailable(t *testing.T) {
+	// Managed installs refuse symlinked ancestors, such as macOS's /var.
+	data, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil || os.Chmod(data, 0o700) != nil {
+		t.Fatal(err)
+	}
+	e := NewEngine(WithCacheEnabled(false), WithRoots(paths.Roots{Claude: t.TempDir(), Config: t.TempDir(), Data: data}), WithFixtureMachineIdentity(testMachineID))
 	defer func() { _ = e.Close() }()
 	host, err := e.CodeDiagnosticsHostID(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
 	out, err := e.ManagedTool(context.Background(), ManagedToolRequest{Action: "status", ExpectedHostID: host})
-	if err != nil || out.State != "unavailable" || !strings.Contains(out.Message, "explicitly review") || e.managedTools != nil || e.LiveCodeDiagnosticsReady() {
+	if runtime.GOOS != "darwin" && runtime.GOOS != "linux" {
+		if err != nil || out.State != "unavailable" {
+			t.Fatalf("%+v %v", out, err)
+		}
+		return
+	}
+	want := map[string]string{"gopls": "missingTool", "ruff": "missingTool", "vtsls": "missingTool", "pyright": "missingTool"}
+	if err != nil || out.State != "idle" || !maps.Equal(out.Tools, want) || e.LiveCodeDiagnosticsReady() {
+		t.Fatalf("%+v %v", out, err)
+	}
+	if entries, _ := os.ReadDir(data); len(entries) != 0 {
+		t.Fatal("status wrote app data")
+	}
+
+	in := NewEngine(WithCacheEnabled(false), WithRoots(paths.Roots{Claude: t.TempDir(), Config: t.TempDir(), Data: data}), WithFixtureMachineIdentity(testMachineID),
+		WithInjectedLiveCodeDiagnostics(LiveCodeDiagnosticsInjection{Host: "ssh:" + strings.Repeat("a", 64), Discover: func(cd.AuthorizedRoot) ([]cd.Registration, error) { return nil, nil }}))
+	defer func() { _ = in.Close() }()
+	if host, err = in.CodeDiagnosticsHostID(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	out, err = in.ManagedTool(context.Background(), ManagedToolRequest{Action: "status", ExpectedHostID: host})
+	if err != nil || out.State != "unavailable" || in.managedTools != nil {
 		t.Fatalf("%+v %v", out, err)
 	}
 }

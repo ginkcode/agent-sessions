@@ -245,9 +245,10 @@ func TestGoVetSupervisorOutcomes(t *testing.T) {
 				proc := newFakeProcess()
 				text := "{}\n"
 				if calls == 1 {
-					text = "go version go1.26.8 darwin/arm64\n"
+					text = "go version go1.26.8 " + runtime.GOOS + "/" + runtime.GOARCH + "\n"
 					if mode == "version" {
-						text = "go version go1.99 darwin/arm64\n"
+						// Any Go version is accepted; another platform is not.
+						text = "go version go1.99 plan9/386\n"
 					}
 				} else {
 					switch mode {

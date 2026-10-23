@@ -175,7 +175,7 @@ func TestDiscoverTypeScriptAvailability(t *testing.T) {
 	if want := []string{"HOME=" + env.Home, "PATH=" + filepath.Join(prefix, "bin") + ":/usr/bin:/bin", "NODE_DISABLE_COMPILE_CACHE=1"}; !slices.Equal(cfg.Env, want) {
 		t.Fatalf("env %v", cfg.Env)
 	}
-	if string(cfg.Settings) != string(tsSettings) || !strings.Contains(cfg.Policy(), "ata-off") || !strings.Contains(cfg.Policy(), `\"disableAutomaticTypeAcquisition\":true`) {
+	if string(cfg.Settings) != string(tsSettings("")) || !strings.Contains(cfg.Policy(), "ata-off") || !strings.Contains(cfg.Policy(), `\"disableAutomaticTypeAcquisition\":true`) {
 		t.Fatalf("policy %s", cfg.Policy())
 	}
 	ids, files := []string{}, []string{}
@@ -227,8 +227,8 @@ func TestDiscoverTypeScriptAvailability(t *testing.T) {
 		state  string
 		notice string
 	}{
-		"missing wrapper":      {[]string{t.TempDir()}, "", "missingTool", "npm install -g @vtsls/language-server@0.3.0"},
-		"relative path":        {[]string{"bin", "../bin"}, "", "missingTool", "Nothing is installed automatically"},
+		"missing wrapper":      {[]string{t.TempDir()}, "", "missingTool", "npm install -g @vtsls/language-server"},
+		"relative path":        {[]string{"bin", "../bin"}, "", "missingTool", "The app downloads vtsls"},
 		"version-manager shim": {[]string{shim}, "", "unsupported", "version-manager shim"},
 		"shim before install":  {append([]string{shim}, path...), "", "available", ""},
 		"missing node":         {host(func(p, _, _ string) { _ = os.Remove(filepath.Join(p, "bin", "node")) }), "", "missingTool", "Node.js 18 or newer"},
@@ -237,16 +237,17 @@ func TestDiscoverTypeScriptAvailability(t *testing.T) {
 		"unverified node":      {path, filepath.Join(noHeader, "bin"), "unsupported", "could not be verified"},
 		"missing typescript":   {host(func(_, _, d string) { _ = os.RemoveAll(filepath.Join(d, "typescript")) }), "", "missingTool", "TypeScript package"},
 		"missing service":      {host(func(_, _, d string) { _ = os.RemoveAll(filepath.Join(d, "@vtsls")) }), "", "missingTool", "language-service"},
+		// Any consistent vtsls and TypeScript version is used, as editors do.
 		"old wrapper": {host(func(_, s, d string) {
 			writeTree(t, s, map[string]string{"package.json": pkgJSON(vtslsName, "0.1.0")})
 			writeTree(t, d, map[string]string{"@vtsls/language-service/package.json": pkgJSON(vtslsServiceName, "0.1.0")})
-		}), "", "unsupported", "Found vtsls 0.1.0 (language service 0.1.0) with TypeScript 5.9.3"},
+		}), "", "available", ""},
 		"other typescript": {host(func(_, _, d string) {
 			writeTree(t, d, map[string]string{"typescript/package.json": pkgJSON("typescript", "6.0.0")})
-		}), "", "unsupported", "TypeScript 6.0.0"},
+		}), "", "available", ""},
 		"service mismatch": {host(func(_, _, d string) {
 			writeTree(t, d, map[string]string{"@vtsls/language-service/package.json": pkgJSON(vtslsServiceName, "0.2.9")})
-		}), "", "unsupported", "language service 0.2.9"},
+		}), "", "unsupported", "different language service (0.2.9)"},
 		"hostile version text": {host(func(_, s, _ string) {
 			writeTree(t, s, map[string]string{"package.json": pkgJSON(vtslsName, "0.3.0\n<b>x</b>")})
 		}), "", "unsupported", "Found vtsls (unknown)"},
@@ -269,11 +270,14 @@ func TestDiscoverTypeScriptAvailability(t *testing.T) {
 			t.Errorf("%s: unavailable plan offers a server or full coverage", name)
 		}
 	}
-	// No contained package: a muted unsupported, never a request to install
-	// and never promoted to a parent.
+	// Sources alone are enough; without any TypeScript or JavaScript file
+	// vtsls is a muted unsupported, never a request to install.
+	if p, _ = DiscoverTypeScript(goplsRoot(t, map[string]string{"a.ts": ""}), path, env); p.Availability() != "available" {
+		t.Fatal("no package", p.Availability())
+	}
 	for _, path := range [][]string{path, {t.TempDir()}} {
-		if p, _ = DiscoverTypeScript(goplsRoot(t, map[string]string{"a.ts": ""}), path, env); p.Availability() != "unsupported" {
-			t.Fatal("no package", p.Availability())
+		if p, _ = DiscoverTypeScript(goplsRoot(t, map[string]string{"a.py": ""}), path, env); p.Availability() != "unsupported" {
+			t.Fatal("no sources", p.Availability())
 		}
 	}
 	for _, bad := range []TSEnvironment{{Home: env.Home, NodeDir: "relative"}, {Home: "", NodeDir: ""}} {
@@ -416,7 +420,7 @@ func TestTSDocumentResolution(t *testing.T) {
 	d := p.Documents(&SessionManager{})
 	for file, want := range map[string]bool{
 		"web/src/a.ts": true, "web/x.jsx": true,
-		"other/b.ts": false, "c.ts": false, // no parent promotion: root has no package
+		"other/b.ts": true, "c.ts": true, // the whole project, not only the package
 		"web/a.svelte": false, "web/a.go": false,
 	} {
 		if _, ok := d.Resolve(root, file); ok != want {
@@ -453,7 +457,7 @@ func TestTSEvidenceReplay(t *testing.T) {
 	if err := json.Unmarshal(data, &ev); err != nil {
 		t.Fatal(err)
 	}
-	if !slices.Contains(supportedVtslsVersions, struct{ Wrapper, TypeScript string }{ev.Versions["@vtsls/language-server"], ev.Versions["typescript"]}) {
+	if ev.Versions["@vtsls/language-server"] == "" || ev.Versions["typescript"] == "" {
 		t.Fatalf("evidence versions %v are not in the supported list", ev.Versions)
 	}
 	if ev.Initialize.Capabilities.TextDocumentSync["change"] != float64(2) {
@@ -544,10 +548,10 @@ func TestTSBridgeFreshnessSynthetic(t *testing.T) {
 	b.push("a.ts", "2", errAt+`,{"message":"second"}`)
 	b.await(t, "stale guarded", func(r []ResultSet) bool { return len(r[0].Diagnostics) == 2 })
 
-	// Unversioned (what the observed vtsls does): uncertain, never positioned.
+	// Unversioned vtsls positions stay uncertain and are bound to the mirror at receipt.
 	b.push("a.ts", "", errAt)
 	b.await(t, "unversioned", func(r []ResultSet) bool {
-		return len(r[0].Diagnostics) == 1 && r[0].Diagnostics[0].Freshness == "uncertain" && r[0].Diagnostics[0].Range == nil && r[0].Diagnostics[0].Basis.Version == nil
+		return len(r[0].Diagnostics) == 1 && r[0].Diagnostics[0].Freshness == "uncertain" && r[0].Diagnostics[0].Range != nil && r[0].Diagnostics[0].Basis.Version == nil && r[0].Diagnostics[0].Basis.ObservedVersion != nil && *r[0].Diagnostics[0].Basis.ObservedVersion == 2
 	})
 	// Config files and unowned/unopened files never create state.
 	b.push("tsconfig.json", "", errAt)
@@ -590,7 +594,7 @@ func TestTSBridgeUnversionedJavaScriptClears(t *testing.T) {
 			return len(r) == i+1 && len(r[i].Diagnostics) == 1 && r[i].Scope.Path == name
 		})
 		d := b.sets(t)[i].Diagnostics[0]
-		if d.Freshness != "uncertain" || d.Range != nil || d.Basis.Version != nil || d.Code != "1109" || d.Source != "typescript/ts" {
+		if d.Freshness != "uncertain" || d.Range == nil || d.Basis.Version != nil || d.Basis.ObservedVersion == nil || *d.Basis.ObservedVersion != 1 || d.Code != "1109" || d.Source != "typescript/ts" {
 			t.Fatalf("%+v", d)
 		}
 		if _, err := b.h.ChangeDocument(ctx, c, "d"+name, 2, "let x = 1;\n"); err != nil {
@@ -614,5 +618,26 @@ func TestTSBridgeIgnoresOtherProviders(t *testing.T) {
 	}
 	if got := b.sets(t); len(got) != 0 {
 		t.Fatalf("%+v", got)
+	}
+}
+
+// HostNode follows tsNode: the first real node decides, and only a new
+// enough one is offered to managed installs.
+func TestHostNode(t *testing.T) {
+	base, _ := filepath.EvalSymlinks(t.TempDir())
+	old, cur, empty := filepath.Join(base, "old"), filepath.Join(base, "cur"), filepath.Join(base, "empty")
+	writeNode(t, old, "16.20.2")
+	writeNode(t, cur, "22.23.2")
+	if err := os.Mkdir(empty, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if prefix, v := HostNode([]string{empty, filepath.Join(cur, "bin"), filepath.Join(old, "bin")}); prefix != cur || v != "22.23.2" {
+		t.Fatal(prefix, v)
+	}
+	if prefix, _ := HostNode([]string{filepath.Join(old, "bin"), filepath.Join(cur, "bin")}); prefix != "" {
+		t.Fatal("an older node that vtsls would run on was skipped", prefix)
+	}
+	if prefix, _ := HostNode([]string{empty}); prefix != "" {
+		t.Fatal(prefix)
 	}
 }

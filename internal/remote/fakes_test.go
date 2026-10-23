@@ -235,6 +235,15 @@ func fakeServe(args []string) int {
 		_, _ = os.Stderr.WriteString("not a serve command: " + script + "\n")
 		return 2
 	}
+	// The server learns which kind of connection it hosts diagnostics for.
+	kind := "ssh"
+	if slices.Contains(args, "--exec") {
+		kind = "wsl"
+	}
+	if !strings.Contains(script, "exec env "+DiagnosticsHostEnv+"="+kind+" ") {
+		_, _ = os.Stderr.WriteString("no " + kind + " diagnostics host in: " + script + "\n")
+		return 2
+	}
 	nonce, ok := nonceFromServe(script)
 	if !ok {
 		_, _ = os.Stderr.WriteString("no nonce in: " + script + "\n")

@@ -13,6 +13,7 @@ import (
 )
 
 func TestBuildPolicyExactCommands(t *testing.T) {
+	r := goplsReleases[0] // needs go1.27.0
 	for _, scenario := range []string{"ok", "old-go", "development-go", "wrong-sum", "wrong-mod-sum", "download-fails", "untrusted-go"} {
 		t.Run(scenario, func(t *testing.T) {
 			stage, err := filepath.EvalSymlinks(t.TempDir())
@@ -41,7 +42,7 @@ func TestBuildPolicyExactCommands(t *testing.T) {
 					k, v, _ := strings.Cut(entry, "=")
 					values[k] = v
 				}
-				for k, want := range map[string]string{"GOTOOLCHAIN": "local", "GOENV": "off", "GOWORK": "off", "GOPROXY": source, "GOSUMDB": "sum.golang.org", "GOVCS": "*:off", "CGO_ENABLED": "0", "GONOSUMDB": "", "GOPRIVATE": "", "GONOPROXY": "", "GOINSECURE": "", "GOFLAGS": "", "GOTELEMETRY": "off"} {
+				for k, want := range map[string]string{"GOTOOLCHAIN": "local", "GOENV": "off", "GOWORK": "off", "GOPROXY": goProxy, "GOSUMDB": "sum.golang.org", "GOVCS": "*:off", "CGO_ENABLED": "0", "GONOSUMDB": "", "GOPRIVATE": "", "GONOPROXY": "", "GOINSECURE": "", "GOFLAGS": "", "GOTELEMETRY": "off"} {
 					if got, ok := values[k]; !ok || got != want {
 						t.Fatalf("%s=%q", k, got)
 					}
@@ -68,14 +69,14 @@ func TestBuildPolicyExactCommands(t *testing.T) {
 					if scenario == "download-fails" {
 						return nil, errors.New("offline")
 					}
-					s, m := moduleSum, modSum
+					s, m := r.Sum, r.ModSum
 					if scenario == "wrong-sum" {
 						s = "bad"
 					}
 					if scenario == "wrong-mod-sum" {
 						m = "bad"
 					}
-					return json.Marshal(map[string]string{"Path": module, "Version": version, "Sum": s, "GoModSum": m})
+					return json.Marshal(map[string]string{"Path": goplsModule, "Version": r.Version, "Sum": s, "GoModSum": m})
 				case "install":
 					return nil, nil
 				default:
@@ -83,11 +84,11 @@ func TestBuildPolicyExactCommands(t *testing.T) {
 					return nil, nil
 				}
 			}
-			err = buildGoWith(context.Background(), stage, TrustedGo{path, sum}, command)
+			err = buildGoWith(context.Background(), stage, TrustedGo{path, sum}, r, command)
 			if (err == nil) != (scenario == "ok") {
 				t.Fatalf("result: %v", err)
 			}
-			expected := [][]string{{"version"}, {"mod", "download", "-json", module + "@" + version}, {"install", "-trimpath", module + "@" + version}}
+			expected := [][]string{{"version"}, {"mod", "download", "-json", goplsModule + "@" + r.Version}, {"install", "-trimpath", goplsModule + "@" + r.Version}}
 			n := 3
 			switch scenario {
 			case "untrusted-go":

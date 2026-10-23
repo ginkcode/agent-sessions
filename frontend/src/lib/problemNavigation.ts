@@ -72,6 +72,7 @@ export function problemLocationStatus(d: CodeDiagnostic, saved: DiagnosticDispla
     if (!saved.live) return { kind: 'staleDocument', notice: 'From a live session that is no longer open for this tab; position not shown.' };
     const eligibility = liveDocumentEligibility(d, saved.live);
     if (eligibility === 'current') return { kind: 'shown', notice: '' };
+    if (eligibility === 'observed') return { kind: 'shown', notice: '' };
     if (eligibility === 'hidden') return { kind: 'staleDocument', notice: 'From an older version of this file; waiting for a newer result.' };
     if (d.freshness === 'stale') return { kind: 'staleDocument', notice: 'Stale: live sync stopped after this result; position not shown.' };
     return { kind: 'unverified', notice: 'Waiting for the language server to confirm the current text; position not shown yet.' };

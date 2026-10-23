@@ -20,28 +20,69 @@ type DocumentServer struct {
 type SessionDocuments struct {
 	Sessions *SessionManager
 	// Resolve is supplied by concrete adapters (CD-22…CD-24). Nil resolves nothing.
-	Resolve func(root AuthorizedRoot, path string) (DocumentServer, bool)
+	Resolve    func(root AuthorizedRoot, path string) (DocumentServer, bool)
+	ResolveAll func(root AuthorizedRoot, path string) []DocumentServer
+}
+
+func (d SessionDocuments) servers(root AuthorizedRoot, path string) []DocumentServer {
+	if d.ResolveAll != nil {
+		return d.ResolveAll(root, path)
+	}
+	if d.Resolve != nil {
+		if server, ok := d.Resolve(root, path); ok {
+			return []DocumentServer{server}
+		}
+	}
+	return nil
+}
+
+func (d SessionDocuments) serverFor(root AuthorizedRoot, path string, owner DocumentOwnerIdentity) (DocumentServer, *lspSession, error) {
+	if d.Sessions == nil {
+		return DocumentServer{}, nil, failure("unsupported", "No language server adapter is available")
+	}
+	servers := d.servers(root, path)
+	for _, server := range servers {
+		if owner.ProviderID != "" && owner != (DocumentOwnerIdentity{server.Config.ProviderID, server.Config.Policy()}) {
+			continue
+		}
+		d.Sessions.mu.Lock()
+		e := d.Sessions.entries[keyOf(root, server.Config)]
+		var s *lspSession
+		if e != nil {
+			s = e.session
+		}
+		d.Sessions.mu.Unlock()
+		if s == nil || !live(s.phaseNow()) || !s.current() {
+			return DocumentServer{}, nil, failure("staleContext", "Language session is not running")
+		}
+		return server, s, nil
+	}
+	return DocumentServer{}, nil, failure("unsupported", "No language server adapter is available for this file")
 }
 
 func (d SessionDocuments) server(root AuthorizedRoot, path string) (DocumentServer, *lspSession, error) {
-	if d.Sessions == nil || d.Resolve == nil {
-		return DocumentServer{}, nil, failure("unsupported", "No language server adapter is available")
+	if len(d.servers(root, path)) != 1 {
+		return DocumentServer{}, nil, failure("unsupported", "No unique language server owns this file")
 	}
-	server, ok := d.Resolve(root, path)
-	if !ok {
-		return DocumentServer{}, nil, failure("unsupported", "No language server adapter is available for this file")
+	return d.serverFor(root, path, DocumentOwnerIdentity{})
+}
+
+func (d SessionDocuments) OwnerSessions(root AuthorizedRoot, path string) []DocumentSession {
+	var out []DocumentSession
+	for _, server := range d.servers(root, path) {
+		owner := DocumentOwnerIdentity{server.Config.ProviderID, server.Config.Policy()}
+		_, s, err := d.serverFor(root, path, owner)
+		entry := DocumentSession{Owner: owner, Err: err}
+		if err == nil {
+			info := s.info()
+			entry.Generation, entry.Capabilities = s.generation, info.Capabilities
+			if info.Phase == phaseStarting {
+				entry.Err = failure("busy", "Language session is starting")
+			}
+		}
+		out = append(out, entry)
 	}
-	d.Sessions.mu.Lock()
-	e := d.Sessions.entries[keyOf(root, server.Config)]
-	var s *lspSession
-	if e != nil {
-		s = e.session
-	}
-	d.Sessions.mu.Unlock()
-	if s == nil || !live(s.phaseNow()) || !s.current() {
-		return DocumentServer{}, nil, failure("staleContext", "Language session is not running")
-	}
-	return server, s, nil
+	return out
 }
 
 // OwnerSession preserves the resolver's concrete provider and exact policy.
@@ -99,8 +140,22 @@ func (s *lspSession) recordPublicationURI(uri string) {
 // PublicationIsolated proves that exactly one open was attempted for this wire
 // URI on the current transport. Matching versions cannot provide this proof.
 func (d SessionDocuments) PublicationIsolated(root AuthorizedRoot, path, generation string) bool {
-	_, s, err := d.server(root, path)
-	if err != nil || s.generation != generation {
+	entries := d.OwnerSessions(root, path)
+	if len(entries) != 1 {
+		return false
+	}
+	return d.PublicationIsolatedFor(root, path, entries[0].Owner.ProviderID, generation)
+}
+
+func (d SessionDocuments) PublicationIsolatedFor(root AuthorizedRoot, path, providerID, generation string) bool {
+	var s *lspSession
+	for _, entry := range d.OwnerSessions(root, path) {
+		if entry.Err == nil && entry.Owner.ProviderID == providerID && entry.Generation == generation {
+			_, s, _ = d.serverFor(root, path, entry.Owner)
+			break
+		}
+	}
+	if s == nil {
 		return false
 	}
 	target, err := root.ResolvePath(root.Project().HostID, path)
@@ -176,7 +231,7 @@ type lspItem struct {
 // Apply sends one ordered notification. Transport failures are reported as
 // bounded errors, so a dropped change is never acknowledged.
 func (d SessionDocuments) Apply(ctx context.Context, step DocumentStep) error {
-	server, s, err := d.server(step.Root, step.Path)
+	server, s, err := d.serverFor(step.Root, step.Path, step.Owner)
 	if err != nil {
 		return err
 	}

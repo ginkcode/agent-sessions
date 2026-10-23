@@ -185,3 +185,37 @@ func TestLiveDiscoveryBoundedAndNoParentPromotion(t *testing.T) {
 	_, err = DiscoverLive(root, env)
 	code(t, err, "limitExceeded")
 }
+
+func TestDiscoveryResolverAllowsOnlyExplicitPythonPair(t *testing.T) {
+	root, tools, _ := fixture(t)
+	if err := os.WriteFile(filepath.Join(root.Project().Root, "source.py"), nil, 0600); err != nil {
+		t.Fatal(err)
+	}
+	var regs []Registration
+	for _, id := range []string{"ruff", "pyright"} {
+		regs = append(regs, liveRegistration(ProviderState{ProviderID: id, Availability: "available", Coverage: Coverage{Kind: "openedDocuments"}}, ServerConfig{ProviderID: id, Executable: tools[0].Executable, AdapterPolicy: "fixed"}, func(string) (string, bool) { return "python", true }))
+	}
+	docs, err := DiscoveryDocuments(root, regs, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := docs.Resolve(root, "source.py"); ok {
+		t.Fatal("singular resolver selected an arbitrary owner")
+	}
+	if all := docs.ResolveAll(root, "source.py"); len(all) != 2 {
+		t.Fatalf("pair not resolved: %+v", all)
+	}
+	if all := docs.ResolveAll(root, "../source.py"); len(all) != 0 {
+		t.Fatal("plural resolver escaped containment")
+	}
+	regs[1].ProviderID = "other"
+	regs[1].Live.State.ProviderID = "other"
+	regs[1].Live.Server.ProviderID = "other"
+	docs, err = DiscoveryDocuments(root, regs, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if all := docs.ResolveAll(root, "source.py"); len(all) != 0 {
+		t.Fatal("arbitrary overlap allowed")
+	}
+}

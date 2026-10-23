@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"os"
+	"strings"
 	"time"
 
 	mt "github.com/ginkcode/agent-sessions/internal/managedtools"
@@ -30,7 +31,11 @@ type ManagedToolState struct {
 	State    string       `json:"state"`
 	Message  string       `json:"message,omitempty"`
 	JobID    string       `json:"jobId,omitempty"`
+	Tool     string       `json:"tool,omitempty"`
 	Proposal *mt.Proposal `json:"proposal,omitempty"`
+	// Tools maps each installable tool to "available", "missingTool" or
+	// "unavailable" (an install exists but is invalid). status only.
+	Tools map[string]string `json:"tools,omitempty"`
 }
 
 type managedJob struct {
@@ -55,12 +60,28 @@ func (e *Engine) ManagedTool(ctx context.Context, p ManagedToolRequest) (Managed
 	}
 	host, err := e.CodeDiagnosticsHostID(ctx)
 	if err != nil || host != p.ExpectedHostID {
-		return ManagedToolState{}, diagnosticError("staleContext", "Actual local host identity required")
+		return ManagedToolState{}, diagnosticError("staleContext", "Actual host identity required")
 	}
-	out := ManagedToolState{HostID: host, State: "unavailable", Message: "Backend operator must explicitly review and provision an installed Go >=1.27 tree; automatic provisioning is disabled"}
+	out := ManagedToolState{HostID: host, State: "unavailable", Message: "Managed installation is unavailable on this host"}
 	o, err := e.managedOwner(ctx)
 	if err != nil {
 		return out, nil
+	}
+	var tools map[string]string
+	if p.Action == "status" {
+		// Reads and hashes installs, so outside Engine.mu.
+		tools = map[string]string{}
+		for _, tool := range []string{"gopls", "ruff", "vtsls", "pyright"} {
+			_, discoverErr := o.installer.Discover(tool)
+			switch {
+			case discoverErr == nil:
+				tools[tool] = "available"
+			case os.IsNotExist(discoverErr):
+				tools[tool] = "missingTool"
+			default:
+				tools[tool] = "unavailable"
+			}
+		}
 	}
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -74,27 +95,26 @@ func (e *Engine) ManagedTool(ctx context.Context, p ManagedToolRequest) (Managed
 			if p.JobID != "" && p.JobID != o.job.state.JobID {
 				return ManagedToolState{}, managedFailure()
 			}
-			return o.job.state, nil
+			state := o.job.state
+			state.Tools = tools
+			return state, nil
 		}
-		_, discoverErr := o.installer.Discover()
-		switch {
-		case discoverErr == nil:
-			out.State = "available"
-		case os.IsNotExist(discoverErr):
-			out.State = "missingTool"
-		default:
-			out.State, out.Message = "unavailable", "Managed installation is invalid; backend operator review is required"
-		}
+		out.State, out.Tools = "idle", tools
 	case "propose":
-		if p.Tool != "gopls" || (o.job != nil && o.job.state.State == "installing") {
+		if !mt.Proposable(p.Tool) || (o.job != nil && o.job.state.State == "installing") {
 			return ManagedToolState{}, managedFailure()
 		}
 		proposal, err := o.installer.Propose(p.Tool)
+		if errors.Is(err, mt.ErrNoGo) || errors.Is(err, mt.ErrPrerequisite) {
+			// A safe, actionable reason (no Go, or too old), not a failure.
+			out.State, out.Tool, out.Message = "unavailable", p.Tool, strings.TrimPrefix(err.Error(), "managed tools: ")+"."
+			return out, nil
+		}
 		if err != nil {
 			return ManagedToolState{}, managedFailure()
 		}
 		o.pending = &proposal
-		out.State, out.Proposal = "proposed", &proposal
+		out.State, out.Tool, out.Proposal = "proposed", p.Tool, &proposal
 	case "dismiss":
 		o.pending = nil
 		o.installer.Dismiss()
@@ -108,14 +128,15 @@ func (e *Engine) ManagedTool(ctx context.Context, p ManagedToolRequest) (Managed
 		if o.pending == nil || p.Token != o.pending.Token || !time.Now().Before(o.pending.Expires) || (o.job != nil && o.job.state.State == "installing") {
 			return ManagedToolState{}, managedFailure()
 		}
+		tool := o.pending.Tool
 		o.pending = nil // reserve/consume synchronously before acknowledging the job
 		var id [16]byte
 		if _, err := rand.Read(id[:]); err != nil {
 			o.installer.Dismiss()
 			return ManagedToolState{}, managedFailure()
 		}
-		jobCtx, cancel := context.WithTimeout(o.ctx, 10*time.Minute)
-		out.State, out.JobID = "installing", hex.EncodeToString(id[:])
+		jobCtx, cancel := context.WithTimeout(o.ctx, 15*time.Minute)
+		out.State, out.JobID, out.Tool = "installing", hex.EncodeToString(id[:]), tool
 		job := &managedJob{state: out, cancel: cancel}
 		o.job = job
 		o.workers.Add(1) // admission is serialized with owner removal
@@ -133,7 +154,9 @@ func (e *Engine) ManagedTool(ctx context.Context, p ManagedToolRequest) (Managed
 					job.state.State = "canceled"
 					job.state.Message = "Installation canceled"
 				} else if errors.Is(installErr, mt.ErrPrerequisite) {
-					job.state.Message = "Reviewed Go >=1.27 is required; automatic upgrades are disabled"
+					job.state.Message = "The Go on this host cannot build gopls; automatic toolchain downloads are disabled"
+				} else if f := (*mt.InstallFailure)(nil); errors.As(installErr, &f) {
+					job.state.Message = "Installation failed while " + f.Step + "; request fresh approval to retry"
 				}
 			}
 		}()

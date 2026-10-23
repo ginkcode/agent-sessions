@@ -5,23 +5,78 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"runtime"
 )
 
 // Discover is read-only: no directory creation, probes, network or repair. A
-// receipt alone is never authority: validate the binary metadata AND its bytes.
-// Missing and corrupt installs are deliberately distinct and fail closed.
-func (i *Installer) Discover() (string, error) {
-	path := filepath.Join(i.root, "gopls-"+version+"-"+runtime.GOOS+"-"+runtime.GOARCH, "gopls")
-	for _, dir := range []string{filepath.Dir(i.root), i.root, filepath.Dir(path)} {
-		if err := readPrivateTree(dir); err != nil {
+// receipt alone is never authority: validate the install AND its main file's
+// bytes. Missing (os.IsNotExist) and corrupt installs are deliberately
+// distinct. tool is a catalog name, including "node".
+func (i *Installer) Discover(tool string) (string, error) {
+	switch tool {
+	case "gopls":
+		// Any catalog release counts: the host Go decides which one a
+		// proposal builds, and a later Go upgrade must not hide it.
+		var first error
+		for _, r := range goplsReleases {
+			path, err := i.discover(goplsSpec(i, TrustedGo{}, r))
+			if err == nil {
+				return path, nil
+			}
+			if first == nil || (os.IsNotExist(first) && !os.IsNotExist(err)) {
+				first = err
+			}
+		}
+		return "", first
+	case "ruff":
+		return i.discover(ruffSpec())
+	case "vtsls":
+		return i.discover(vtslsSpec())
+	case "pyright":
+		return i.discover(pyrightSpec())
+	case "node":
+		return i.discover(nodeSpec())
+	}
+	return "", errors.New("managed tools: unknown tool")
+}
+
+func (i *Installer) discover(s spec) (string, error) {
+	dir := filepath.Join(i.root, installDir(s.name, s.version))
+	for _, d := range []string{filepath.Dir(i.root), i.root, dir} {
+		if err := readPrivateTree(d); err != nil {
 			return "", err
 		}
 	}
-	if err := i.existing(path); err != nil {
+	path, err := i.existing(s, dir)
+	if err != nil {
 		return "", errors.New("managed tools: invalid installation")
 	}
 	return path, nil
+}
+
+// Dirs returns the directories of valid installs that tool discovery searches
+// after the user's own: gopls's and Ruff's directories, npm servers'
+// node_modules/.bin and Node.js's bin.
+func (i *Installer) Dirs() []string {
+	var dirs []string
+	for _, tool := range []string{"gopls", "ruff", "vtsls", "pyright", "node"} {
+		path, err := i.Discover(tool)
+		if err != nil {
+			continue
+		}
+		switch tool {
+		case "vtsls", "pyright":
+			// Both main files live below the package root; command shims are
+			// in node_modules/.bin rather than next to those main files.
+			pkg := vtslsPackage()
+			if tool == "pyright" {
+				pkg = pyrightPackage()
+			}
+			dirs = append(dirs, filepath.Join(i.root, installDir(pkg.name, pkg.version), "node_modules", ".bin"))
+		default:
+			dirs = append(dirs, filepath.Dir(path))
+		}
+	}
+	return dirs
 }
 
 func readPrivateTree(path string) error {
@@ -38,7 +93,8 @@ func readPrivateTree(path string) error {
 	return nil
 }
 
-func readReceipt(path string) ([]byte, error) {
+// readBounded reads a regular file of at most limit bytes.
+func readBounded(path string, limit int64) ([]byte, error) {
 	if err := regularOrAbsent(path); err != nil {
 		return nil, err
 	}
@@ -48,12 +104,12 @@ func readReceipt(path string) ([]byte, error) {
 	}
 	defer func() { _ = f.Close() }()
 	st, err := f.Stat()
-	if err != nil || !st.Mode().IsRegular() || st.Size() > 4096 {
-		return nil, errors.New("invalid receipt")
+	if err != nil || !st.Mode().IsRegular() || st.Size() > limit {
+		return nil, errors.New("invalid file")
 	}
-	data, err := io.ReadAll(io.LimitReader(f, 4097))
-	if err != nil || len(data) > 4096 {
-		return nil, errors.New("invalid receipt")
+	data, err := io.ReadAll(io.LimitReader(f, limit+1))
+	if err != nil || int64(len(data)) > limit {
+		return nil, errors.New("invalid file")
 	}
 	return data, nil
 }

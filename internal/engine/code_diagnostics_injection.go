@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"context"
 	"time"
 
 	cd "github.com/ginkcode/agent-sessions/internal/codediagnostics"
@@ -26,12 +27,41 @@ func WithInjectedLiveCodeDiagnostics(in LiveCodeDiagnosticsInjection) Option {
 }
 
 // WithLocalLiveCodeDiagnostics enables the production local live route
-// (experimental, CD-22): gopls discovered from host metadata and launched only
-// after per-project approval. Only the desktop App's local Engine passes it; the
-// headless `serve` Engine does not, so remotes stay fail-closed independently
-// of the rpc identity gate. A fixture injection takes precedence.
+// (experimental, CD-22): language servers discovered from host metadata and
+// launched only after per-project approval. The desktop App's local Engine
+// passes it; a headless `serve` Engine gets it through
+// WithRemoteCodeDiagnostics. A fixture injection takes precedence.
 func WithLocalLiveCodeDiagnostics() Option {
 	return func(e *Engine) { e.localLive = true }
+}
+
+// WithRemoteCodeDiagnostics makes a headless `serve` Engine the code
+// diagnostics host for an SSH or WSL connection: the identity this host
+// computes gets that kind, and the live route runs here, on the remote host.
+// kind comes from the launcher's command line environment, never from a
+// request; anything other than "ssh" or "wsl" leaves diagnostics unsupported.
+func WithRemoteCodeDiagnostics(kind string) Option {
+	return func(e *Engine) {
+		if kind == "ssh" || kind == "wsl" {
+			e.remoteKind, e.localLive = kind, true
+		}
+	}
+}
+
+func (e *Engine) hostKind() string {
+	if e.remoteKind != "" {
+		return e.remoteKind
+	}
+	return "local"
+}
+
+// RemoteCodeDiagnosticsHostID is the identity rpc initialize advertises. Only
+// an Engine composed with WithRemoteCodeDiagnostics has one.
+func (e *Engine) RemoteCodeDiagnosticsHostID(ctx context.Context) (string, error) {
+	if e.remoteKind == "" {
+		return "", diagnosticError("unsupported", "Not a remote diagnostics host")
+	}
+	return e.CodeDiagnosticsHostID(ctx)
 }
 
 // WithFixtureMachineIdentity replaces platform machine-identity discovery with a

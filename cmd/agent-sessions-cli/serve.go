@@ -6,11 +6,13 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"os"
 	"sync/atomic"
 	"time"
 
 	"github.com/ginkcode/agent-sessions/internal/engine"
 	"github.com/ginkcode/agent-sessions/internal/paths"
+	"github.com/ginkcode/agent-sessions/internal/remote"
 	"github.com/ginkcode/agent-sessions/internal/rpc"
 )
 
@@ -80,6 +82,9 @@ func serveCmd(ctx context.Context, args []string, resolveRoots func() (paths.Roo
 			engine.WithCacheDir(roots.Cache),
 			engine.WithCacheEnabled(true),
 			engine.WithEmitter(emitter),
+			// Set by the desktop's launcher (remote.DiagnosticsHostEnv);
+			// without it code diagnostics stay unsupported.
+			engine.WithRemoteCodeDiagnostics(os.Getenv(remote.DiagnosticsHostEnv)),
 		)
 		if err := e.Start(sctx); err != nil {
 			initErr = fmt.Errorf("start engine: %w", err)

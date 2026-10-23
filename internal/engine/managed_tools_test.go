@@ -3,6 +3,12 @@ package engine
 import (
 	"context"
 	"errors"
+	"maps"
+	"os"
+	"path/filepath"
+	"runtime"
+	"slices"
+	"strings"
 	"sync/atomic"
 	"testing"
 
@@ -20,9 +26,16 @@ func (f *fakeManagedInstaller) Propose(tool string) (mt.Proposal, error) {
 	return mt.Proposal{Tool: tool, Token: "consent"}, nil
 }
 func (f *fakeManagedInstaller) Dismiss() {}
-func (f *fakeManagedInstaller) Discover() (string, error) {
-	return "", errors.New("invalid receipt/binary")
+func (f *fakeManagedInstaller) Discover(tool string) (string, error) {
+	switch tool {
+	case "gopls":
+		return "", errors.New("invalid receipt/binary")
+	case "ruff":
+		return "/backend/private/ruff", nil
+	}
+	return "", os.ErrNotExist
 }
+func (f *fakeManagedInstaller) Dirs() []string { return []string{"/backend/private"} }
 
 func (f *fakeManagedInstaller) Install(ctx context.Context, _ mt.Binding, token string) (string, error) {
 	if token != "consent" {
@@ -48,14 +61,61 @@ func fakeManagedEngine(t *testing.T) (*Engine, *fakeManagedInstaller, *managedTo
 	return e, f, o
 }
 
+// A proposal is metadata only: it never downloads, installs, writes app data
+// or enables the live route.
 func TestManagedNoImplicitProvisioningOrLive(t *testing.T) {
-	e := NewEngine(WithCacheEnabled(false))
+	data := t.TempDir()
+	e := NewEngine(WithCacheEnabled(false), WithRoots(paths.Roots{Claude: t.TempDir(), Config: t.TempDir(), Data: data}), WithFixtureMachineIdentity(testMachineID))
 	defer func() { _ = e.Close() }()
-	if _, err := e.ProposeManagedTool(context.Background(), "gopls"); !errors.Is(err, mt.ErrPrerequisite) {
-		t.Fatalf("%v", err)
+	if !mt.Proposable("ruff") {
+		t.Fatal("catalog")
 	}
-	if e.LiveCodeDiagnosticsReady() || e.codeDiagnostics != nil || e.managedTools != nil {
+	p, err := e.ProposeManagedTool(context.Background(), "ruff")
+	if err != nil {
+		if runtime.GOOS != "darwin" && runtime.GOOS != "linux" {
+			t.Skip("managed tools platform gate")
+		}
+		t.Fatal(err)
+	}
+	if p.Tool != "ruff" || !strings.HasPrefix(p.Destination, data) || !strings.HasPrefix(p.Source, "https://") {
+		t.Fatalf("%+v", p)
+	}
+	if entries, _ := os.ReadDir(data); len(entries) != 0 {
+		t.Fatal("proposal wrote app data")
+	}
+	if e.LiveCodeDiagnosticsReady() || e.codeDiagnostics != nil {
 		t.Fatal("implicit activation")
+	}
+}
+
+// Without a host Go, a gopls proposal is a safe "unavailable" state with the
+// next step, not a failure.
+func TestManagedGoplsWithoutGoIsUnavailable(t *testing.T) {
+	if runtime.GOOS != "darwin" && runtime.GOOS != "linux" {
+		t.Skip("managed tools platform gate")
+	}
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("PATH", t.TempDir())
+	t.Setenv("GOPATH", "")
+	for _, d := range []string{"/opt/homebrew/bin", "/usr/local/go/bin", "/usr/local/bin"} {
+		if _, err := os.Stat(filepath.Join(d, "go")); err == nil {
+			t.Skip("host has Go in a conventional directory")
+		}
+	}
+	e := NewEngine(WithCacheEnabled(false), WithRoots(paths.Roots{Claude: t.TempDir(), Config: t.TempDir(), Data: t.TempDir()}), WithFixtureMachineIdentity(testMachineID))
+	defer func() { _ = e.Close() }()
+	host, err := e.CodeDiagnosticsHostID(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, err := e.ManagedTool(context.Background(), ManagedToolRequest{Action: "propose", ExpectedHostID: host, Tool: "gopls"})
+	if err != nil || out.State != "unavailable" || out.Tool != "gopls" || out.Proposal != nil || !strings.Contains(out.Message, "Go is not installed") || strings.HasPrefix(out.Message, "managed tools") {
+		t.Fatalf("%+v %v", out, err)
+	}
+	for _, tool := range []string{"node", "../gopls", ""} {
+		if _, err := e.ManagedTool(context.Background(), ManagedToolRequest{Action: "propose", ExpectedHostID: host, Tool: tool}); err == nil {
+			t.Fatal("unlisted tool proposed", tool)
+		}
 	}
 }
 
@@ -93,11 +153,25 @@ func TestManagedConsentAndTeardown(t *testing.T) {
 	}
 }
 
-func TestManagedAvailabilityDoesNotTrustReceipt(t *testing.T) {
+// Status reports each tool from validated installs only: an invalid install
+// is "unavailable", never "available"; nothing is installed by asking.
+func TestManagedStatusReportsEachTool(t *testing.T) {
 	e, f, _ := fakeManagedEngine(t)
-	state, err := e.ManagedToolAvailability(context.Background())
-	if err == nil || state != "unsupported" || f.calls.Load() != 0 {
-		t.Fatalf("%s %v", state, err)
+	e.roots = paths.Roots{Config: t.TempDir()}
+	host, err := e.CodeDiagnosticsHostID(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, err := e.ManagedTool(context.Background(), ManagedToolRequest{Action: "status", ExpectedHostID: host})
+	want := map[string]string{"gopls": "unavailable", "ruff": "available", "vtsls": "missingTool", "pyright": "missingTool"}
+	if err != nil || out.State != "idle" || !maps.Equal(out.Tools, want) || f.calls.Load() != 0 {
+		t.Fatalf("%+v %v", out, err)
+	}
+	if dirs := e.managedDirs(); !slices.Equal(dirs, []string{"/backend/private"}) {
+		t.Fatal(dirs)
+	}
+	if _, err := e.ManagedTool(context.Background(), ManagedToolRequest{Action: "status", ExpectedHostID: "local:other"}); err == nil {
+		t.Fatal("stale host accepted")
 	}
 }
 

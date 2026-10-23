@@ -64,9 +64,16 @@ func normalizeLiveDiagnostic(in Diagnostic, d *documentState, documentID string,
 	if in.LocationIssue == "invalidRange" {
 		partial = true
 	}
+	// vtsls omits the optional publication version. Keep its ranges as uncertain
+	// observations of this mirror, never as server-confirmed current results.
+	observed := version == nil && d.owner.ProviderID == tsProviderID
+	if observed {
+		v := d.version
+		in.Basis.ObservedVersion = &v
+	}
 	if in.Range != nil {
 		switch {
-		case version == nil:
+		case version == nil && !observed:
 			in.Range = nil
 		case !rangeInText(d.text, *in.Range):
 			in.Range, in.LocationIssue, partial = nil, "invalidRange", true

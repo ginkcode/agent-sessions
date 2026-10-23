@@ -6,9 +6,9 @@ package codediagnostics
 // server identity with independent availability, extension ownership and
 // publishDiagnostics bridging (normalization is shared with CD-22). Ruff is a
 // native binary that never imports or runs project code. Nothing here installs,
-// downloads or executes the tool to learn its version: the version comes from
-// the wheel's installed METADATA, and the binary is accepted only when the
-// wheel's RECORD lists it with a matching hash. The spike evidence and its
+// downloads or executes the tool. Any native ruff binary is accepted, as
+// editors do (docs/plan/code-diagnostics-zed-model.md); the version is shown
+// when a wheel's METADATA and RECORD identify it. The spike evidence and its
 // limits are recorded in docs/plan/code-diagnostics-python.md and
 // testdata/ruff/evidence.json. Fake-server tests in ruff_lsp_test.go are
 // SYNTHETIC; they prove this adapter's handling, not the behavior of any real
@@ -30,24 +30,25 @@ import (
 
 const (
 	ruffProviderID = "ruff"
-	// ruffPolicy binds the verified version and launch shape: the wheel's own
-	// native binary runs "ruff server" directly (no shell, uvx or pipx run).
-	ruffPolicy        = "ruff-v1:0.15.20:darwin/arm64:native-wheel:push-only:no-edits:opened-documents"
-	ruffVersion       = "0.15.20"
+	// ruffPolicy binds the launch shape: a native binary runs "ruff server"
+	// directly (no shell, uvx or pipx run). The binary's bytes are bound by
+	// the approval fingerprint, so an upgrade asks for approval again.
+	ruffPolicy        = "ruff-v2:any-version:" + runtime.GOOS + "/" + runtime.GOARCH + ":native:push-only:no-edits:opened-documents"
 	partialRuffNotice = "Some Python diagnostics could not be verified; results are partial."
 	ruffOpenedNotice  = "Python diagnostics cover opened documents only; unopened files are not continuously synchronized."
 	ruffScopeNotice   = "Ruff reports lint and syntax problems, not type errors. Ruff settings outside the project (parent directories, extend targets, your user configuration) still apply but are not part of approval."
-	ruffInstallHint   = "Install it yourself with: uv tool install ruff==0.15.20 (or pipx install ruff==0.15.20), then refresh. Nothing is installed automatically."
+	ruffInstallHint   = "The app downloads Ruff into its own folder, or install it yourself (for example uv tool install ruff), then refresh."
 	maxRuffDistInfo   = 64
 )
 
-// ruffProjectMarkers: Ruff's configuration files are bound into approval;
-// common Python project files only mark a project. Virtual environments and
-// other dependency trees are skipped silently.
+// ruffProjectMarkers: Ruff's configuration files are bound into approval. Any
+// Python source or configuration enables Ruff for the whole project, as in
+// editors; a project needs no pyproject.toml. Virtual environments and other
+// dependency trees are skipped silently.
 var ruffProjectMarkers = projectMarkers{
 	configs: []string{"pyproject.toml", "ruff.toml", ".ruff.toml"},
-	plain:   []string{"setup.py", "setup.cfg", "requirements.txt"},
 	skipDir: []string{".venv", "venv", "__pycache__", "site-packages", "node_modules", ".tox", ".nox"},
+	sources: ruffDocumentExtensions,
 }
 
 // RuffEnvironment is reviewed host metadata, not the inherited environment.
@@ -82,30 +83,23 @@ func DiscoverRuff(root AuthorizedRoot, reviewedPath []string, env RuffEnvironmen
 		p.availability, p.notice, p.partial = state, notice, true
 		return p, nil
 	}
-	if runtime.GOOS != "darwin" || runtime.GOARCH != "arm64" {
-		return unavailable("unsupported", "Python language server support has not been verified on this platform.")
-	}
-	// Projects first: a root without Python stays a muted "unsupported" rather
+	// Python first: a root without Python stays a muted "unsupported" rather
 	// than asking for an install it does not need.
 	w, err := discoverProjectDirs(root, ruffProjectMarkers)
 	if err != nil {
 		return nil, err
 	}
-	p.projects, p.partial = w.packages, w.partial
-	if len(w.packages) == 0 {
-		return unavailable("unsupported", "No contained Python project (pyproject.toml, ruff.toml, setup.py, setup.cfg or requirements.txt) was found.")
+	p.partial = w.partial
+	if !w.sources && len(w.configs) == 0 {
+		return unavailable("unsupported", "No Python file was found in this project.")
 	}
+	p.projects = []string{""}
 	bin, version, local, state := resolveRuff(root, reviewedPath)
 	switch state {
 	case "missing":
 		return unavailable("missingTool", "Ruff is not installed. "+ruffInstallHint)
 	case "foreign":
-		return unavailable("unsupported", "The ruff command found is not a verifiable Python wheel install (for example a standalone, Homebrew or version-manager copy), so it is not used. "+ruffInstallHint)
-	case "modified":
-		return unavailable("unsupported", "The ruff binary does not match its installed package record. "+ruffInstallHint)
-	}
-	if version != ruffVersion {
-		return unavailable("unsupported", "Found Ruff "+versionText(version)+"; only Ruff "+ruffVersion+" is verified. "+ruffInstallHint)
+		return unavailable("unsupported", "The ruff command found is a script or version-manager shim, not the Ruff program, so it is not used. "+ruffInstallHint)
 	}
 	p.version, p.projectLocal = version, local
 	p.config = ServerConfig{
@@ -126,53 +120,49 @@ func DiscoverRuff(root AuthorizedRoot, reviewedPath []string, env RuffEnvironmen
 	return p, nil
 }
 
-// resolveRuff finds a ruff binary installed from a wheel. The contained
-// project virtual environment (.venv, project content covered by CD-02 trust)
-// is tried first, then reviewed absolute PATH directories. A command that is
-// not a verifiable wheel install is skipped and reported as foreign; nothing
-// is ever executed. state is "", "missing", "foreign" or "modified".
+// resolveRuff finds a native ruff binary. The contained project virtual
+// environments (.venv, venv: project content covered by CD-02 trust) are
+// tried first, then reviewed absolute PATH directories, which include the
+// app-managed copy last. A script or shim (mise links to its own binary) is
+// skipped and reported as foreign; nothing is ever executed. The version is
+// read from wheel metadata when the binary came from a wheel, else empty.
+// state is "", "missing" or "foreign".
 func resolveRuff(root AuthorizedRoot, reviewedPath []string) (bin, version string, local bool, state string) {
 	state = "missing"
-	try := func(link string) (string, string, bool) {
+	try := func(link string) string {
 		real, err := filepath.EvalSymlinks(link)
-		if err != nil || filepath.Base(real) != "ruff" || !isExecutable(real) || isScript(real) {
-			if err == nil && state == "missing" {
-				state = "foreign"
-			}
-			return "", "", false
+		if err != nil {
+			return ""
 		}
-		version, s := inspectRuffWheel(real)
-		switch s {
-		case "":
-			return real, version, true
-		case "modified":
-			state = s
-		default:
-			if state == "missing" {
-				state = s
-			}
+		if filepath.Base(real) != "ruff" || !isExecutable(real) || isScript(real) {
+			state = "foreign"
+			return ""
 		}
-		return "", "", false
+		return real
 	}
 	base := root.Project().Root
-	if real, v, ok := try(filepath.Join(base, ".venv", "bin", "ruff")); ok {
-		if rel, err := filepath.Rel(base, real); err == nil && filepath.IsLocal(rel) {
-			return real, v, true, ""
+	for _, venv := range []string{".venv", "venv"} {
+		if real := try(filepath.Join(base, venv, "bin", "ruff")); real != "" {
+			if rel, err := filepath.Rel(base, real); err == nil && filepath.IsLocal(rel) {
+				v, _ := inspectRuffWheel(real)
+				return real, v, true, ""
+			}
 		}
 	}
 	for _, dir := range reviewedPath {
 		if !filepath.IsAbs(dir) || hasParent(dir) {
 			continue
 		}
-		if real, v, ok := try(filepath.Join(dir, "ruff")); ok {
+		if real := try(filepath.Join(dir, "ruff")); real != "" {
+			v, _ := inspectRuffWheel(real)
 			return real, v, false, ""
 		}
 	}
 	return "", "", false, state
 }
 
-// inspectRuffWheel accepts real only when it is the bin/ruff of an installed
-// ruff wheel: <prefix>/lib/python*/site-packages (or the macOS user-site
+// inspectRuffWheel identifies real as the bin/ruff of an installed ruff
+// wheel: <prefix>/lib/python*/site-packages (or the macOS user-site
 // lib/python/site-packages) holds ruff-*.dist-info whose RECORD lists this
 // exact file with a matching sha256. uv tool, pipx, pip and virtual
 // environments share that layout. The version is METADATA's. Metadata only.
@@ -211,7 +201,7 @@ func inspectRuffWheel(real string) (version, state string) {
 				continue
 			}
 			name, v := wheelMetadata(filepath.Join(dist, "METADATA"))
-			if !strings.EqualFold(name, "ruff") || v == "" {
+			if !strings.EqualFold(name, "ruff") || !plainVersion(v) {
 				continue
 			}
 			return v, ""
@@ -261,6 +251,19 @@ func fileSHA256(file string) string {
 		return ""
 	}
 	return base64.RawURLEncoding.EncodeToString(h.Sum(nil))
+}
+
+// plainVersion admits a displayable version string only.
+func plainVersion(v string) bool {
+	if v == "" || len(v) > 64 {
+		return false
+	}
+	for _, c := range v {
+		if !(c >= '0' && c <= '9' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c == '.' || c == '+' || c == '-') {
+			return false
+		}
+	}
+	return true
 }
 
 // wheelMetadata reads Name and Version from the METADATA header block.

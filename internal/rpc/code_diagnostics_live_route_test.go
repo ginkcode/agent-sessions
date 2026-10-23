@@ -419,7 +419,7 @@ func TestRouteTwoProvidersPushesClearsReconcileAndBounds(t *testing.T) {
 		t.Fatalf("versioned push: %+v", g)
 	}
 	u := x.set(s, "typescript", "b.ts")
-	if len(u.Diagnostics) != 1 || u.Diagnostics[0].Freshness != "uncertain" || u.Diagnostics[0].Range != nil || u.Diagnostics[0].Basis.Version != nil {
+	if len(u.Diagnostics) != 1 || u.Diagnostics[0].Freshness != "uncertain" || u.Diagnostics[0].Range == nil || u.Diagnostics[0].Basis.Version != nil || u.Diagnostics[0].Basis.ObservedVersion == nil || *u.Diagnostics[0].Basis.ObservedVersion != 1 {
 		t.Fatalf("unversioned push became current: %+v", u)
 	}
 	// Events traverse pump -> Server.Notify -> Client emitter and match the snapshot.

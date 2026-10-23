@@ -5,27 +5,18 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
-	"os"
-	"path/filepath"
 	"sync"
 
-	cd "github.com/ginkcode/agent-sessions/internal/codediagnostics"
 	mt "github.com/ginkcode/agent-sessions/internal/managedtools"
 	"github.com/ginkcode/agent-sessions/internal/paths"
 )
-
-// WithReviewedManagedGo provisions an explicitly reviewed installed tree through
-// trusted backend composition. Never deserialize this option from client input.
-// No default/PATH/toolchain download fallback exists; production remains unwired.
-func WithReviewedManagedGo(goTree mt.ReviewedGo) Option {
-	return func(e *Engine) { e.managedGo = &goTree }
-}
 
 type managedInstaller interface {
 	Propose(string) (mt.Proposal, error)
 	Dismiss()
 	Install(context.Context, mt.Binding, string) (string, error)
-	Discover() (string, error)
+	Discover(string) (string, error)
+	Dirs() []string
 }
 
 type managedToolsOwner struct {
@@ -44,6 +35,24 @@ func (o *managedToolsOwner) close() {
 	o.workers.Wait()
 }
 
+// appRoots fills in this host's default config and data directories.
+func (e *Engine) appRoots() (paths.Roots, error) {
+	roots := e.roots
+	if roots.Config == "" || roots.Data == "" {
+		defaults, err := paths.Default()
+		if err != nil {
+			return roots, diagnosticError("unsupported", "App directories unavailable")
+		}
+		if roots.Config == "" {
+			roots.Config = defaults.Config
+		}
+		if roots.Data == "" {
+			roots.Data = defaults.Data
+		}
+	}
+	return roots, nil
+}
+
 func (e *Engine) managedOwner(ctx context.Context) (*managedToolsOwner, error) {
 	if ctx.Err() != nil {
 		return nil, diagnosticError("canceled", "Request canceled")
@@ -57,26 +66,14 @@ func (e *Engine) managedOwner(ctx context.Context) (*managedToolsOwner, error) {
 	if e.managedTools != nil {
 		return e.managedTools, nil
 	}
-	if e.managedGo == nil {
-		return nil, mt.ErrPrerequisite
-	}
 	if e.liveInjection != nil && e.liveInjection.Host != "" {
-		return nil, diagnosticError("unsupported", "Managed remote installation is unavailable")
+		return nil, diagnosticError("unsupported", "Managed installation is unavailable for an injected host")
 	}
-	roots := e.roots
-	if roots.Config == "" || roots.Data == "" {
-		defaults, err := paths.Default()
-		if err != nil {
-			return nil, diagnosticError("unsupported", "Local app directories unavailable")
-		}
-		if roots.Config == "" {
-			roots.Config = defaults.Config
-		}
-		if roots.Data == "" {
-			roots.Data = defaults.Data
-		}
+	roots, err := e.appRoots()
+	if err != nil {
+		return nil, err
 	}
-	host, err := localDiagnosticsIdentity(roots.Config, e.machineID)
+	host, err := diagnosticsIdentity(e.hostKind(), roots.Config, e.machineID)
 	if err != nil {
 		return nil, err
 	}
@@ -85,10 +82,11 @@ func (e *Engine) managedOwner(ctx context.Context) (*managedToolsOwner, error) {
 		return nil, errors.New("managed tools: connection unavailable")
 	}
 	binding := mt.Binding{HostID: host, ConnectionID: hex.EncodeToString(id[:])}
-	installer, err := mt.NewReviewed(roots.Data, binding, *e.managedGo)
+	installer, err := mt.New(roots.Data, binding, e.hostGoRoot)
 	if err != nil {
 		return nil, err
 	}
+	installer.UseHostNode(hostNode)
 	lifetime, cancel := context.WithCancel(context.Background())
 	o := &managedToolsOwner{installer: installer, binding: binding, ctx: lifetime, cancel: cancel}
 	e.managedTools = o
@@ -163,41 +161,12 @@ func (e *Engine) RevokeManagedTools() {
 	}
 }
 
-// ManagedToolAvailability is read-only metadata; it never offers a grant/probe.
-func (e *Engine) ManagedToolAvailability(ctx context.Context) (string, error) {
-	o, err := e.managedOwner(ctx)
+// managedDirs lists the directories of valid managed installs on this host,
+// searched after the user's own. Read-only; empty when nothing is installed.
+func (e *Engine) managedDirs() []string {
+	o, err := e.managedOwner(context.Background())
 	if err != nil {
-		return "unsupported", err
+		return nil
 	}
-	_, err = o.installer.Discover()
-	if os.IsNotExist(err) {
-		return "missingTool", nil
-	}
-	if err != nil {
-		return "unsupported", diagnosticError("unsupported", "Managed installation is invalid")
-	}
-	return "available", nil
-}
-
-// DiscoverManagedGopls supplies metadata only to an explicitly reviewed caller.
-// Validates receipt AND binary before passing the private directory to adapter
-// discovery; no fallback to inherited PATH and no production live flag change.
-func (e *Engine) DiscoverManagedGopls(ctx context.Context, root cd.AuthorizedRoot, env cd.GoplsEnvironment) (*cd.GoplsPlan, error) {
-	o, err := e.managedOwner(ctx)
-	if err != nil {
-		return nil, err
-	}
-	if root.Project().HostID != o.binding.HostID {
-		return nil, diagnosticError("unsupported", "Authenticated local host required")
-	}
-	if e.managedGo == nil || !e.managedGo.MatchesRoot(env.GoRoot) {
-		return nil, diagnosticError("unsupported", "Reviewed Go installation changed or unavailable")
-	}
-	executable, err := o.installer.Discover()
-	if err != nil {
-		return nil, diagnosticError("unsupported", "Managed gopls installation unavailable or invalid")
-	}
-	// Adapter adds executable bytes, fixed argv/env and workspace configuration to
-	// the independent project execution fingerprint.
-	return cd.DiscoverGopls(root, []string{filepath.Dir(executable)}, env)
+	return o.installer.Dirs()
 }

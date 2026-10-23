@@ -25,6 +25,9 @@ type (
 		Revision   string `json:"revision,omitempty"`
 		DocumentID string `json:"documentId,omitempty"`
 		Version    *int64 `json:"version,omitempty"`
+		// ObservedVersion binds an unversioned TypeScript push to the mirror at receipt,
+		// not to a version confirmed by the server.
+		ObservedVersion *int64 `json:"observedVersion,omitempty"`
 	}
 	Diagnostic struct {
 		Path          string     `json:"path"`

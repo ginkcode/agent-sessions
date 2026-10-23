@@ -15,6 +15,18 @@ import (
 	"golang.org/x/mod/modfile"
 )
 
+// goVetPolicy accepts any Go release for this host's platform (the version
+// probe checks it), as editors do; see docs/plan/code-diagnostics-zed-model.md.
+const goVetPolicy = "go-vet-v2:any-go:" + runtime.GOOS + "/" + runtime.GOARCH + ":saved-uncertain:gowork-off:cgo-off"
+
+// goVersionLine accepts "go version go1.N[.P] <os>/<arch>" for this host only:
+// a release (not a devel build) that targets the platform the plan binds.
+func goVersionLine(out string) bool {
+	f := strings.Fields(out)
+	return strings.HasSuffix(out, "\n") && len(f) == 4 && f[0] == "go" && f[1] == "version" &&
+		strings.HasPrefix(f[2], "go1.") && f[3] == runtime.GOOS+"/"+runtime.GOARCH
+}
+
 // GoVetEnvironment is reviewed host metadata, not inherited process environment.
 // Cache directories may be written by Go; this adapter is not a sandbox.
 type GoVetEnvironment struct{ Home, Cache, ModuleCache string }
@@ -43,9 +55,6 @@ func (p *GoVetPlan) Tools() []ToolInput {
 func DiscoverGoVet(root AuthorizedRoot, reviewedPath []string, env GoVetEnvironment) (*GoVetPlan, error) {
 	if err := root.Revalidate(); err != nil {
 		return nil, err
-	}
-	if runtime.GOOS != "darwin" || runtime.GOARCH != "arm64" {
-		return nil, failure("unsupported", "Go vet platform has not been verified")
 	}
 	for _, path := range []string{env.Home, env.Cache, env.ModuleCache} {
 		if !filepath.IsAbs(path) || !bounded(path, 4096) || hasParent(path) {
@@ -79,7 +88,7 @@ func DiscoverGoVet(root AuthorizedRoot, reviewedPath []string, env GoVetEnvironm
 		return nil, failure("unsupported", "No contained Go module was found")
 	}
 	goroot := filepath.Dir(filepath.Dir(executable))
-	baseEnv := []string{"HOME=" + env.Home, "GOCACHE=" + env.Cache, "GOMODCACHE=" + env.ModuleCache, "GOROOT=" + goroot, "PATH=" + filepath.Join(goroot, "bin") + ":/usr/bin:/bin", "GOENV=off", "GOWORK=off", "GOFLAGS=", "GOOS=darwin", "GOARCH=arm64", "CGO_ENABLED=0"}
+	baseEnv := []string{"HOME=" + env.Home, "GOCACHE=" + env.Cache, "GOMODCACHE=" + env.ModuleCache, "GOROOT=" + goroot, "PATH=" + filepath.Join(goroot, "bin") + ":/usr/bin:/bin", "GOENV=off", "GOWORK=off", "GOFLAGS=", "GOOS=" + runtime.GOOS, "GOARCH=" + runtime.GOARCH, "CGO_ENABLED=0"}
 	// Every launch has its own exact Command.Policy identity, including the probe.
 	dirs := append([]string{""}, p.modules...)
 	for i, dir := range dirs {
@@ -88,13 +97,14 @@ func DiscoverGoVet(root AuthorizedRoot, reviewedPath []string, env GoVetEnvironm
 		if i == 0 {
 			args = []string{"version"}
 		}
-		c := Command{ProviderID: id, Executable: executable, Args: args, Env: baseEnv, Directory: dir, AdapterPolicy: "go-vet-v1:go1.26.8:darwin/arm64:saved-uncertain:gowork-off:cgo-off", AcceptedExits: []int{0}}
+		c := Command{ProviderID: id, Executable: executable, Args: args, Env: baseEnv, Directory: dir, AdapterPolicy: goVetPolicy, AcceptedExits: []int{0}}
 		p.commands = append(p.commands, c)
 		p.tools = append(p.tools, ToolInput{ProviderID: id, Executable: executable, ConfigPaths: slices.Clone(p.configs), Policy: c.Policy()})
 	}
 	// Bind installed toolchain helpers and metadata, not only the go launcher.
 	// This is enumerated identity, not transitive attestation of every standard library.
-	for _, name := range []string{"VERSION", "go.env", "pkg/tool/darwin_arm64/vet", "pkg/tool/darwin_arm64/compile", "pkg/tool/darwin_arm64/asm", "pkg/tool/darwin_arm64/link"} {
+	tool := "pkg/tool/" + runtime.GOOS + "_" + runtime.GOARCH + "/"
+	for _, name := range []string{"VERSION", "go.env", tool + "vet", tool + "compile", tool + "asm", tool + "link"} {
 		p.tools = append(p.tools, ToolInput{ProviderID: "go-toolchain-" + strings.ReplaceAll(name, "/", "-"), Executable: filepath.Join(goroot, filepath.FromSlash(name)), Policy: "go-vet-toolchain-v1"})
 	}
 	if _, err := Fingerprint(root, p.tools); err != nil {
@@ -261,7 +271,7 @@ func (p *GoVetPlan) RunApproved(ctx context.Context, s *Supervisor, runID string
 			return fail("toolFailed")
 		}
 		if i == 0 {
-			if string(o.Stdout) != "go version go1.26.8 darwin/arm64\n" {
+			if !goVersionLine(string(o.Stdout)) {
 				out.Availability = "unsupported"
 				return fail("unsupported")
 			}

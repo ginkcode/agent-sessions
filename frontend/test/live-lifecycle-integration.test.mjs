@@ -261,6 +261,15 @@ test('vtsls shape: TS/JS extensions go live inside covered packages; unversioned
   assert.equal(checks.countsUnder('web'), 1); assert.equal(checks.countsUnder('web/b.mjs'), 1);
   assert.equal(checks.pathCounts.folders.get('web').uncertain, true);
   assert.equal(checks.liveInline('web/b.mjs', { documentId: 'd1', version: 1, synced: true }).length, 0);
+  // A newer backend retains unversioned vtsls ranges as uncertain observations.
+  const observed = { ...d, range: { start: { line: 0, character: 4 }, end: { line: 0, character: 5 } }, basis: { ...d.basis, observedVersion: 1 } };
+  const positioned = snapshot([{ providerId: 'typescript', origin: 'lsp', scope: { kind: 'document', path: 'web/b.mjs', documentId: 'd1' }, diagnostics: [observed] }]);
+  listeners.get('codeDiagnostics:updated')({ contractVersion: 1, context, sequence: positioned.sequence, updateId: 'observed', partIndex: 0, partCount: 1, snapshot: positioned });
+  assert.equal(checks.liveInline('web/b.mjs', { documentId: 'd1', version: 1, synced: true }).length, 1);
+  assert.equal(checks.liveInline('web/b.mjs', { documentId: 'd1', version: 2, synced: true }).length, 0, 'edit hides the old observation');
+  assert.equal(checks.liveInline('web/b.mjs', { documentId: 'd1', version: 1, synced: false }).length, 0, 'pending sync hides it');
+  assert.equal(checks.liveInline('web/b.mjs', { documentId: 'reopened', version: 1, synced: true }).length, 0, 'reopen never reuses it');
+  assert.equal(checks.pathCounts.folders.get('web').uncertain, true, 'not misrepresented as server-confirmed');
   // The empty publication clears it.
   const clear = snapshot([{ providerId: 'typescript', origin: 'lsp', scope: { kind: 'document', path: 'web/b.mjs', documentId: 'd1' }, diagnostics: [] }]);
   listeners.get('codeDiagnostics:updated')({ contractVersion: 1, context, sequence: clear.sequence, updateId: 'clear', partIndex: 0, partCount: 1, snapshot: clear });

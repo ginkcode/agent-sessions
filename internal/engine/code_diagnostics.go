@@ -120,7 +120,7 @@ func (e *Engine) diagnostics(ctx context.Context) (*diagnosticsOwner, error) {
 	if in := e.liveInjection; in != nil {
 		host = in.Host
 		if host == "" {
-			if host, err = localDiagnosticsIdentity(roots.Config, e.machineID); err != nil {
+			if host, err = diagnosticsIdentity(e.hostKind(), roots.Config, e.machineID); err != nil {
 				return nil, err
 			}
 		}
@@ -129,13 +129,13 @@ func (e *Engine) diagnostics(ctx context.Context) (*diagnosticsOwner, error) {
 		}
 		owner.tick = in.Tick
 	} else {
-		if host, err = localDiagnosticsIdentity(roots.Config, e.machineID); err != nil {
+		if host, err = diagnosticsIdentity(e.hostKind(), roots.Config, e.machineID); err != nil {
 			return nil, err
 		}
 		if e.localLive && localLiveSupported() {
 			// Production local route: metadata-only discovery and the host
 			// launcher, reached only after per-project composite approval.
-			owner, err = newDiagnosticsOwnerWithLive(roots.Config, host, discoverLocalLive, cd.SessionOptions{Launch: cd.HostSessionLaunch})
+			owner, err = newDiagnosticsOwnerWithLive(roots.Config, host, e.discoverLocalLive, cd.SessionOptions{Launch: cd.HostSessionLaunch})
 		} else {
 			owner, err = newDiagnosticsOwner(roots.Config, host)
 		}

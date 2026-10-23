@@ -42,9 +42,11 @@ type codeDiagnosticsParams struct {
 
 func cdError(code, message string) error { return &cd.Error{Code: code, Message: message} }
 
-// A headless connection may not reuse the local machine identity. Until the
-// transport supplies verified SSH/WSL tuples, production remote support stays
-// unavailable. In particular neither picker labels nor client assertions count.
+// A headless connection may not reuse the local machine identity. A server
+// that its launcher started as an SSH or WSL diagnostics host computes an
+// "ssh:" or "wsl:" identity from its own machine, account and installation ID
+// (engine.WithRemoteCodeDiagnostics). Any other server, including an older
+// one, stays unsupported. Neither picker labels nor client assertions count.
 func (s *Server) initializeDiagnostics(ctx context.Context, caps *Capabilities) string {
 	caps.CodeDiagnostics, caps.LiveCodeDiagnostics = false, false
 	if _, ok := s.backend.(engine.CodeDiagnosticsBackend); !ok {
@@ -64,9 +66,8 @@ func (s *Server) initializeDiagnostics(ctx context.Context, caps *Capabilities) 
 	s.diagnostics.host = host
 	s.diagnostics.mu.Unlock()
 	caps.CodeDiagnostics = true
-	// liveCodeDiagnostics is separate and opt-in by the backend. The production
-	// Engine never reports ready (no concrete language server adapter exists
-	// before CD-22…CD-24), so it stays unadvertised.
+	// liveCodeDiagnostics is separate and opt-in by the backend: the language
+	// servers run on this host, next to the files.
 	if live, ok := s.backend.(interface{ LiveCodeDiagnosticsReady() bool }); ok && live.LiveCodeDiagnosticsReady() {
 		if _, ok := s.backend.(engine.LiveCodeDiagnosticsBackend); ok {
 			caps.LiveCodeDiagnostics = true

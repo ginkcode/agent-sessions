@@ -1,5 +1,7 @@
 # Managed language-server installation — TI-01/TI-03 design and evidence
 
+> **Update 2026-10-23:** Managed installs now cover gopls, Ruff and vtsls (with Node.js), need no operator review, pick the gopls release from the host's Go (v0.24.0/v0.23.0/v0.21.1 for Go 1.27/1.26/1.25) and run on SSH/WSL hosts through the `managedTool` RPC. The fail-closed remote rule and the Go >=1.27 operator gate below are history. See the [editor (Zed) model](code-diagnostics-zed-model.md).
+
 Date: 2026-10-22. Status: **backend core and Engine ownership, offline tested**. Task split:
 [TI-01–TI-05](../tasks/tool-installation.md). Diagnostics progress stays **19/28**;
 CD-09, Stage 1/2 release HOLDs and production live capability are unchanged.
