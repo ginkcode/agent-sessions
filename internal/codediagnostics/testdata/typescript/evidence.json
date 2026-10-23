@@ -148,5 +148,57 @@
         }
       ]
     }
-  ]
+  ],
+  "goAdapterSmoke": {
+    "date": "2026-10-23",
+    "provenance": "observed through the Go adapter: DiscoverLocalLive metadata resolution, HostSessionLaunch, composite approval, Engine open/change/close and the shared normalizer (internal/engine/code_diagnostics_vtsls_smoke_test.go, opt-in via AGENT_SESSIONS_VTSLS_DIR/AGENT_SESSIONS_VTSLS_NODE_DIR)",
+    "install": "same Zed-managed private copy, explicitly supplied to the opt-in test only; production discovery never searches it",
+    "invocation": {
+      "executable": "<node 22.23.2>/bin/node",
+      "argv": [
+        "<vtsls>/node_modules/@vtsls/language-server/bin/vtsls.js",
+        "--stdio"
+      ],
+      "env": [
+        "HOME=<temp dir>",
+        "PATH=<node bin>:/usr/bin:/bin",
+        "NODE_DISABLE_COMPILE_CACHE=1"
+      ],
+      "noShellNpxOrShim": true
+    },
+    "client": {
+      "capabilities": {
+        "general": {
+          "positionEncodings": [
+            "utf-16"
+          ]
+        },
+        "workspace": {
+          "configuration": true
+        },
+        "textDocument": {
+          "publishDiagnostics": {}
+        }
+      },
+      "settingsAnsweredForSectionEmpty": {
+        "typescript": {
+          "disableAutomaticTypeAcquisition": true,
+          "tsserver": {
+            "log": "off",
+            "pluginPaths": []
+          }
+        },
+        "vtsls": {
+          "autoUseWorkspaceTsdk": false
+        }
+      }
+    },
+    "findings": [
+      "vtsls requests workspace/configuration with a single empty section (the whole configuration); rejecting it fails initialization.",
+      "vtsls binds diagnostics only when the client declares textDocument.publishDiagnostics; without it the TS servers start but nothing is published.",
+      "Unsaved a.ts and b.mjs drafts 'export const x = ;' each produced 'Expression expected.' code 1109 severity error in ~0.7-0.9 s, unversioned, normalized as uncertain with no range; the fixed draft produced an empty push (clear) in ~0.5 s.",
+      "Bundled TypeScript 5.9.3 tsserver (syntax and semantic) was used; the project had no typescript dependency.",
+      "The temp HOME stayed empty: no typings cache (ATA off), no compile cache; project files on disk were unchanged."
+    ]
+  }
 }

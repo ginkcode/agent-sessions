@@ -8,7 +8,6 @@ package codediagnostics
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"os"
 	"path/filepath"
 	"slices"
@@ -16,24 +15,65 @@ import (
 	"testing"
 )
 
-func tsHost(t *testing.T, name, wrapper, typescript string) ([]string, TSEnvironment) {
+// writeTree writes SYNTHETIC files below base; package.json bodies are metadata,
+// .js bodies are never loaded.
+func writeTree(t *testing.T, base string, files map[string]string) {
+	t.Helper()
+	for name, body := range files {
+		p := filepath.Join(base, filepath.FromSlash(name))
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func pkgJSON(name, version string) string {
+	data, _ := json.Marshal(map[string]string{"name": name, "version": version})
+	return string(data)
+}
+
+// writeVtsls lays out a vtsls package at server with its dependencies in deps
+// (nested for a global npm install, the shared node_modules when flattened).
+func writeVtsls(t *testing.T, server, deps, name, wrapper, service, typescript string) {
+	t.Helper()
+	writeTree(t, server, map[string]string{"package.json": pkgJSON(name, wrapper), "bin/vtsls.js": "#!/usr/bin/env node\nrequire(\"../dist/main.js\");\n", "dist/main.js": "synthetic"})
+	writeTree(t, deps, map[string]string{
+		"@vtsls/language-service/package.json": pkgJSON(vtslsServiceName, service), "@vtsls/language-service/dist/index.js": "synthetic",
+		"typescript/package.json": pkgJSON("typescript", typescript), "typescript/lib/tsserver.js": "synthetic",
+		"typescript/lib/_tsserver.js": "synthetic", "typescript/lib/typescript.js": "synthetic",
+	})
+}
+
+// writeNode creates a fake (never executed) node binary under prefix/bin and
+// the installed header that carries its version.
+func writeNode(t *testing.T, prefix, version string) {
+	t.Helper()
+	v := strings.Split(version, ".")
+	writeTree(t, prefix, map[string]string{"include/node/node_version.h": "#ifndef SRC_NODE_VERSION_H_\n#define NODE_MAJOR_VERSION " + v[0] + "\n#define NODE_MINOR_VERSION " + v[1] + "\n#define NODE_PATCH_VERSION " + v[2] + "\n#define NODE_VERSION_IS_RELEASE 1\n"})
+	writeTree(t, prefix, map[string]string{"bin/node": "\xcf\xfa\xed\xfe synthetic"})
+	if err := os.Chmod(filepath.Join(prefix, "bin", "node"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// tsHost builds a SYNTHETIC global npm install: <prefix>/bin/vtsls links to
+// <prefix>/lib/node_modules/@vtsls/language-server/bin/vtsls.js with nested
+// dependencies, beside <prefix>/bin/node, at the verified versions. Nothing in
+// it is ever executed.
+func tsHost(t *testing.T) ([]string, TSEnvironment) {
 	t.Helper()
 	base, _ := filepath.EvalSymlinks(t.TempDir())
-	bin, node := filepath.Join(base, "bin"), filepath.Join(base, "node")
-	for _, d := range []string{bin, node} {
-		if err := os.MkdirAll(d, 0o755); err != nil {
-			t.Fatal(err)
-		}
+	prefix := filepath.Join(base, "prefix")
+	server := filepath.Join(prefix, "lib", "node_modules", "@vtsls", "language-server")
+	writeVtsls(t, server, filepath.Join(server, "node_modules"), vtslsName, "0.3.0", "0.3.0", "5.9.3")
+	writeNode(t, prefix, "22.23.2")
+	if err := os.Symlink("../lib/node_modules/@vtsls/language-server/bin/vtsls.js", filepath.Join(prefix, "bin", "vtsls")); err != nil {
+		t.Fatal(err)
 	}
-	for _, p := range []string{filepath.Join(bin, "vtsls"), filepath.Join(node, "node")} {
-		if err := os.WriteFile(p, []byte("synthetic"), 0o755); err != nil {
-			t.Fatal(err)
-		}
-	}
-	return []string{bin}, TSEnvironment{
-		Home: base, NodeDir: node,
-		versionOf: func(string) (string, string, string, error) { return name, wrapper, typescript, nil },
-	}
+	return []string{filepath.Join(prefix, "bin")}, TSEnvironment{Home: base}
 }
 
 func TestTSLanguageOwnership(t *testing.T) {
@@ -114,122 +154,264 @@ func TestTSPackageLimitsAndSymlinks(t *testing.T) {
 func TestDiscoverTypeScriptAvailability(t *testing.T) {
 	skipUnlessProduction(t)
 	root := goplsRoot(t, map[string]string{"package.json": "{}", "a.ts": ""})
-	path, env := tsHost(t, vtslsName, "0.3.0", "5.9.3")
+	path, env := tsHost(t)
+	prefix := filepath.Dir(path[0])
+	server := filepath.Join(prefix, "lib/node_modules/@vtsls/language-server")
+	deps := filepath.Join(server, "node_modules")
 
 	p, err := DiscoverTypeScript(root, path, env)
 	if err != nil || p.Availability() != "available" || p.ProjectLocal() {
 		t.Fatalf("%v %+v", err, p)
 	}
-	if w, ts := p.Version(); w != "0.3.0" || ts != "5.9.3" {
-		t.Fatal(w, ts)
+	if w, ts := p.Version(); w != "0.3.0" || ts != "5.9.3" || p.NodeVersion() != "22.23.2" {
+		t.Fatal(w, ts, p.NodeVersion())
 	}
 	cfg, ok := p.Server()
-	if !ok || !slices.Equal(cfg.Args, []string{"--stdio"}) || cfg.ProviderID != tsProviderID {
+	// node runs the package's own entry: no shell, npx or bin shim in argv.
+	if !ok || cfg.ProviderID != tsProviderID || cfg.Executable != filepath.Join(prefix, "bin", "node") ||
+		!slices.Equal(cfg.Args, []string{filepath.Join(server, "bin", "vtsls.js"), "--stdio"}) {
 		t.Fatalf("%+v", cfg)
 	}
-	if err := validateCommand(root, []ToolInput{cfg.Tool()}, cfg.command()); err != nil {
+	if want := []string{"HOME=" + env.Home, "PATH=" + filepath.Join(prefix, "bin") + ":/usr/bin:/bin", "NODE_DISABLE_COMPILE_CACHE=1"}; !slices.Equal(cfg.Env, want) {
+		t.Fatalf("env %v", cfg.Env)
+	}
+	if string(cfg.Settings) != string(tsSettings) || !strings.Contains(cfg.Policy(), "ata-off") || !strings.Contains(cfg.Policy(), `\"disableAutomaticTypeAcquisition\":true`) {
+		t.Fatalf("policy %s", cfg.Policy())
+	}
+	ids, files := []string{}, []string{}
+	for _, tool := range cfg.Toolchain {
+		ids, files = append(ids, tool.ProviderID), append(files, tool.Executable)
+	}
+	wantFiles := []string{
+		filepath.Join(server, "bin/vtsls.js"), filepath.Join(server, "dist/main.js"), filepath.Join(deps, "@vtsls/language-service/dist/index.js"),
+		filepath.Join(deps, "typescript/lib/tsserver.js"), filepath.Join(deps, "typescript/lib/_tsserver.js"), filepath.Join(deps, "typescript/lib/typescript.js"),
+	}
+	if len(ids) != 6 || ids[0] != "typescript-toolchain-vtsls-entry" || !slices.Equal(files, wantFiles) {
+		t.Fatalf("toolchain %v %v", ids, files)
+	}
+	if err := validateCommand(root, cfg.Tools(), cfg.command()); err != nil {
 		t.Fatal(err)
 	}
-	if st := p.Provider(); st.Coverage.Kind != "openedDocuments" || st.Coverage.ExternalChanges != "unwatched" || st.Coverage.Partial || !strings.Contains(st.Notice, "opened documents only") {
+	st := p.Provider()
+	if st.Coverage.Kind != "openedDocuments" || st.Coverage.ExternalChanges != "unwatched" || st.Coverage.Partial ||
+		!strings.Contains(st.Notice, "opened documents only") || !strings.Contains(st.Notice, "uncertain") {
 		t.Fatalf("%+v", st)
+	}
+	// A loaded TypeScript file changing changes the composite fingerprint.
+	before, _ := Fingerprint(root, cfg.Tools())
+	writeTree(t, deps, map[string]string{"typescript/lib/typescript.js": "changed"})
+	if after, err := Fingerprint(root, cfg.Tools()); err != nil || after == before {
+		t.Fatal("typescript change kept the fingerprint", err)
 	}
 
 	// Independent unavailability: never a server, never a process.
+	host := func(mutate func(prefix, server, deps string)) []string {
+		path, _ := tsHost(t)
+		prefix := filepath.Dir(path[0])
+		server := filepath.Join(prefix, "lib/node_modules/@vtsls/language-server")
+		mutate(prefix, server, filepath.Join(server, "node_modules"))
+		return path
+	}
+	shim := t.TempDir()
+	writeTree(t, shim, map[string]string{"mise": "\xcf\xfa\xed\xfe launcher", "node": "#!/bin/sh\nexec mise x -- node \"$@\"\n"})
+	_ = os.Chmod(filepath.Join(shim, "mise"), 0o755)
+	_ = os.Chmod(filepath.Join(shim, "node"), 0o755)
+	_ = os.Symlink("mise", filepath.Join(shim, "vtsls"))
+	oldNode, noHeader := t.TempDir(), t.TempDir()
+	writeNode(t, oldNode, "16.20.2")
+	writeNode(t, noHeader, "22.0.0")
+	_ = os.RemoveAll(filepath.Join(noHeader, "include"))
 	for name, tc := range map[string]struct {
-		path  []string
-		env   func(TSEnvironment) TSEnvironment
-		state string
+		path   []string
+		node   string
+		state  string
+		notice string
 	}{
-		"missing wrapper": {[]string{t.TempDir()}, func(e TSEnvironment) TSEnvironment { return e }, "missingTool"},
-		"relative path":   {[]string{"bin", "../bin"}, func(e TSEnvironment) TSEnvironment { return e }, "missingTool"},
-		"missing node":    {path, func(e TSEnvironment) TSEnvironment { e.NodeDir = t.TempDir(); return e }, "missingTool"},
-		"missing typescript": {path, func(e TSEnvironment) TSEnvironment {
-			e.versionOf = func(string) (string, string, string, error) { return vtslsName, "0.3.0", "", nil }
-			return e
-		}, "missingTool"},
-		"old wrapper": {path, func(e TSEnvironment) TSEnvironment {
-			e.versionOf = func(string) (string, string, string, error) { return vtslsName, "0.1.0", "5.9.3", nil }
-			return e
-		}, "unsupported"},
-		"other typescript": {path, func(e TSEnvironment) TSEnvironment {
-			e.versionOf = func(string) (string, string, string, error) { return vtslsName, "0.3.0", "6.0.0", nil }
-			return e
-		}, "unsupported"},
-		"foreign package": {path, func(e TSEnvironment) TSEnvironment {
-			e.versionOf = func(string) (string, string, string, error) { return "evil", "0.3.0", "5.9.3", nil }
-			return e
-		}, "unsupported"},
-		"unreadable metadata": {path, func(e TSEnvironment) TSEnvironment {
-			e.versionOf = func(string) (string, string, string, error) { return "", "", "", errors.New("no") }
-			return e
-		}, "unsupported"},
+		"missing wrapper":      {[]string{t.TempDir()}, "", "missingTool", "npm install -g @vtsls/language-server@0.3.0"},
+		"relative path":        {[]string{"bin", "../bin"}, "", "missingTool", "Nothing is installed automatically"},
+		"version-manager shim": {[]string{shim}, "", "unsupported", "version-manager shim"},
+		"shim before install":  {append([]string{shim}, path...), "", "available", ""},
+		"missing node":         {host(func(p, _, _ string) { _ = os.Remove(filepath.Join(p, "bin", "node")) }), "", "missingTool", "Node.js 18 or newer"},
+		"node shim only":       {path, shim, "missingTool", "Node.js 18 or newer"},
+		"old node":             {path, filepath.Join(oldNode, "bin"), "unsupported", "Node.js 16.20.2 is too old"},
+		"unverified node":      {path, filepath.Join(noHeader, "bin"), "unsupported", "could not be verified"},
+		"missing typescript":   {host(func(_, _, d string) { _ = os.RemoveAll(filepath.Join(d, "typescript")) }), "", "missingTool", "TypeScript package"},
+		"missing service":      {host(func(_, _, d string) { _ = os.RemoveAll(filepath.Join(d, "@vtsls")) }), "", "missingTool", "language-service"},
+		"old wrapper": {host(func(_, s, d string) {
+			writeTree(t, s, map[string]string{"package.json": pkgJSON(vtslsName, "0.1.0")})
+			writeTree(t, d, map[string]string{"@vtsls/language-service/package.json": pkgJSON(vtslsServiceName, "0.1.0")})
+		}), "", "unsupported", "Found vtsls 0.1.0 (language service 0.1.0) with TypeScript 5.9.3"},
+		"other typescript": {host(func(_, _, d string) {
+			writeTree(t, d, map[string]string{"typescript/package.json": pkgJSON("typescript", "6.0.0")})
+		}), "", "unsupported", "TypeScript 6.0.0"},
+		"service mismatch": {host(func(_, _, d string) {
+			writeTree(t, d, map[string]string{"@vtsls/language-service/package.json": pkgJSON(vtslsServiceName, "0.2.9")})
+		}), "", "unsupported", "language service 0.2.9"},
+		"hostile version text": {host(func(_, s, _ string) {
+			writeTree(t, s, map[string]string{"package.json": pkgJSON(vtslsName, "0.3.0\n<b>x</b>")})
+		}), "", "unsupported", "Found vtsls (unknown)"},
+		"foreign package": {host(func(_, s, _ string) {
+			writeTree(t, s, map[string]string{"package.json": pkgJSON("evil", "0.3.0")})
+		}), "", "unsupported", "could not be verified"},
+		"incomplete install": {host(func(_, _, d string) { _ = os.Remove(filepath.Join(d, "typescript/lib/_tsserver.js")) }), "", "unsupported", "incomplete"},
 	} {
-		p, err := DiscoverTypeScript(root, tc.path, tc.env(env))
-		if err != nil || p.Availability() != tc.state {
-			t.Errorf("%s: %v %s", name, err, p.Availability())
+		e := env
+		e.NodeDir = tc.node
+		p, err := DiscoverTypeScript(root, tc.path, e)
+		if err != nil || p.Availability() != tc.state || !strings.Contains(p.Provider().Notice, tc.notice) {
+			t.Errorf("%s: %v %s %q", name, err, p.Availability(), p.Provider().Notice)
+			continue
+		}
+		if tc.state == "available" {
 			continue
 		}
 		if _, ok := p.Server(); ok || !p.Provider().Coverage.Partial {
 			t.Errorf("%s: unavailable plan offers a server or full coverage", name)
 		}
 	}
-	// No contained package: unsupported, never promoted to a parent.
-	if p, _ = DiscoverTypeScript(goplsRoot(t, map[string]string{"a.ts": ""}), path, env); p.Availability() != "unsupported" {
-		t.Fatal("no package")
+	// No contained package: a muted unsupported, never a request to install
+	// and never promoted to a parent.
+	for _, path := range [][]string{path, {t.TempDir()}} {
+		if p, _ = DiscoverTypeScript(goplsRoot(t, map[string]string{"a.ts": ""}), path, env); p.Availability() != "unsupported" {
+			t.Fatal("no package", p.Availability())
+		}
 	}
-	bad := env
-	bad.NodeDir = "relative"
-	if _, err := DiscoverTypeScript(root, path, bad); errCode(err) != "invalidArgument" {
-		t.Fatal(err)
+	for _, bad := range []TSEnvironment{{Home: env.Home, NodeDir: "relative"}, {Home: "", NodeDir: ""}} {
+		if _, err := DiscoverTypeScript(root, path, bad); errCode(err) != "invalidArgument" {
+			t.Fatal(err)
+		}
 	}
 }
 
-func TestTSProjectLocalBinaryResolution(t *testing.T) {
+// A flattened project-local install (npm i -D @vtsls/language-server) is
+// executable project content; node comes from the reviewed path, skipping a
+// version-manager shim, and an explicit NodeDir wins over both.
+func TestTSProjectLocalFlattenedLayout(t *testing.T) {
 	skipUnlessProduction(t)
-	root := goplsRoot(t, map[string]string{
-		"package.json": "{}",
-		"node_modules/@vtsls/language-server/bin/vtsls.js": "x",
-	})
+	root := goplsRoot(t, map[string]string{"package.json": "{}", "src/a.mts": ""})
 	base := root.Project().Root
-	if err := os.Chmod(filepath.Join(base, "node_modules/@vtsls/language-server/bin/vtsls.js"), 0o755); err != nil {
+	nm := filepath.Join(base, "node_modules")
+	writeVtsls(t, filepath.Join(nm, "@vtsls/language-server"), nm, vtslsName, "0.3.0", "0.3.0", "5.9.3")
+	if err := os.MkdirAll(filepath.Join(nm, ".bin"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.MkdirAll(filepath.Join(base, "node_modules/.bin"), 0o755); err != nil {
+	if err := os.Symlink("../@vtsls/language-server/bin/vtsls.js", filepath.Join(nm, ".bin/vtsls")); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Symlink("../@vtsls/language-server/bin/vtsls.js", filepath.Join(base, "node_modules/.bin/vtsls")); err != nil {
-		t.Skip("symlinks unavailable")
+	shim, nodeA, nodeB := t.TempDir(), t.TempDir(), t.TempDir()
+	writeTree(t, shim, map[string]string{"node": "#!/bin/sh\n"})
+	_ = os.Chmod(filepath.Join(shim, "node"), 0o755)
+	writeNode(t, nodeA, "20.11.1")
+	writeNode(t, nodeB, "24.1.0")
+	nodeA, _ = filepath.EvalSymlinks(nodeA)
+	nodeB, _ = filepath.EvalSymlinks(nodeB)
+	path := []string{shim, filepath.Join(nodeA, "bin")}
+	p, err := DiscoverTypeScript(root, path, TSEnvironment{Home: base})
+	if err != nil || p.Availability() != "available" || !p.ProjectLocal() || p.NodeVersion() != "20.11.1" {
+		t.Fatalf("%v %s %q", err, p.Availability(), p.Provider().Notice)
 	}
-	exe, local := resolveVtsls(root, nil)
-	if !local || !strings.HasSuffix(exe, "bin/vtsls.js") {
-		t.Fatalf("%q %v", exe, local)
+	cfg, _ := p.Server()
+	if cfg.Executable != filepath.Join(nodeA, "bin/node") || cfg.Args[0] != filepath.Join(nm, "@vtsls/language-server/bin/vtsls.js") ||
+		cfg.Toolchain[5].Executable != filepath.Join(nm, "typescript/lib/typescript.js") || !slices.Equal(cfg.ConfigPaths, []string{"package.json"}) {
+		t.Fatalf("%+v", cfg)
 	}
-	// A project-local link that escapes the root is ignored.
-	outside := t.TempDir()
-	_ = os.WriteFile(filepath.Join(outside, "vtsls"), []byte("x"), 0o755)
+	if p, _ = DiscoverTypeScript(root, path, TSEnvironment{Home: base, NodeDir: filepath.Join(nodeB, "bin")}); p.NodeVersion() != "24.1.0" {
+		t.Fatal(p.NodeVersion())
+	}
+	// A project-local link that escapes the root is not project content.
+	outside, _ := filepath.EvalSymlinks(t.TempDir())
+	writeVtsls(t, filepath.Join(outside, "node_modules/@vtsls/language-server"), filepath.Join(outside, "node_modules"), vtslsName, "0.3.0", "0.3.0", "5.9.3")
 	root2 := goplsRoot(t, map[string]string{"package.json": "{}"})
 	_ = os.MkdirAll(filepath.Join(root2.Project().Root, "node_modules/.bin"), 0o755)
-	_ = os.Symlink(filepath.Join(outside, "vtsls"), filepath.Join(root2.Project().Root, "node_modules/.bin/vtsls"))
-	if exe, _ := resolveVtsls(root2, nil); exe != "" {
-		t.Fatalf("escaped link resolved: %s", exe)
+	_ = os.Symlink(filepath.Join(outside, "node_modules/@vtsls/language-server/bin/vtsls.js"), filepath.Join(root2.Project().Root, "node_modules/.bin/vtsls"))
+	if entry, local, _ := resolveVtsls(root2, nil); entry != "" || local {
+		t.Fatalf("escaped link resolved: %s", entry)
 	}
-	// Package metadata is read, not executed; names/versions come from package.json files.
-	nm := filepath.Join(base, "node_modules")
-	_ = os.WriteFile(filepath.Join(nm, "@vtsls/language-server/package.json"), []byte(`{"name":"@vtsls/language-server","version":"0.3.0"}`), 0o600)
-	if name, w, ts, err := vtslsVersions(exe); err != nil || name != vtslsName || w != "0.3.0" || ts != "" {
-		t.Fatalf("%q %q %q %v", name, w, ts, err)
+}
+
+// The fixed adapter settings are bound into approval, launched exactly as
+// discovered (no shell), advertised in initialize and the only
+// workspace/configuration answer; gopls (no settings) keeps its policy.
+func TestTSSessionTrustLaunchAndSettings(t *testing.T) {
+	skipUnlessProduction(t)
+	e := newEnv(t, SessionOptions{})
+	var params map[string]any
+	replies := make(chan map[string]any, 4)
+	ask := make(chan [3]string)
+	e.script = func(f *fakeSrv) {
+		m, _ := f.read()
+		params, _ = m["params"].(map[string]any)
+		id, _ := json.Marshal(m["id"])
+		f.send(`{"jsonrpc":"2.0","id":` + string(id) + `,"result":` + defaultInit + `}`)
+		f.read() // initialized
+		for q := range ask {
+			replies <- f.request(q[0], q[1], q[2])
+		}
+		serveInit(defaultInit)(f)
 	}
-	_ = os.MkdirAll(filepath.Join(nm, "typescript"), 0o755)
-	_ = os.WriteFile(filepath.Join(nm, "typescript/package.json"), []byte(`{"name":"typescript","version":"5.9.3"}`), 0o600)
-	if _, _, ts, err := vtslsVersions(exe); err != nil || ts != "5.9.3" {
-		t.Fatal(ts, err)
+	root := goplsRoot(t, map[string]string{"package.json": "{}", "a.ts": ""})
+	path, env := tsHost(t)
+	p, _ := DiscoverTypeScript(root, path, env)
+	cfg, ok := p.Server()
+	if !ok {
+		t.Fatal(p.Provider().Notice)
+	}
+	if _, err := e.mgr.Attach(context.Background(), root, cfg); errCode(err) != "approvalRequired" {
+		t.Fatal("unapproved server attached", err)
+	}
+	if e.launches() != 0 {
+		t.Fatal("launched before approval")
+	}
+	// Approving without the settings (an older grant) is not this server.
+	stale := cfg
+	stale.Settings = nil
+	fp, _ := Fingerprint(root, stale.Tools())
+	approve(t, e.trust, root, stale.Tools(), fp, "session")
+	if _, err := e.mgr.Attach(context.Background(), root, cfg); err == nil {
+		t.Fatal("grant without fixed settings accepted")
+	}
+	fp, _ = Fingerprint(root, cfg.Tools())
+	approve(t, e.trust, root, cfg.Tools(), fp, "session")
+	if _, err := e.mgr.Attach(context.Background(), root, cfg); err != nil {
+		t.Fatal(err)
+	}
+	defer close(ask)
+	f := e.next()
+	if f.inv.Executable != cfg.Executable || !slices.Equal(f.inv.Args, cfg.Args) || !slices.Equal(f.inv.Env, cfg.command().environment()) {
+		t.Fatalf("%+v", f.inv)
+	}
+	for _, v := range append(append([]string{f.inv.Executable}, f.inv.Args...), f.inv.Env...) {
+		if strings.Contains(v, "npx") || strings.HasSuffix(v, "/sh") || strings.Contains(v, "shims") {
+			t.Fatalf("shell or shim in launch: %q", v)
+		}
+	}
+	caps, _ := params["capabilities"].(map[string]any)
+	ws, _ := caps["workspace"].(map[string]any)
+	td, _ := caps["textDocument"].(map[string]any)
+	if ws["configuration"] != true || td["publishDiagnostics"] == nil || len(caps) != 3 {
+		t.Fatalf("configuration or diagnostics not advertised: %v", caps)
+	}
+	ask <- [3]string{"1", "workspace/configuration", `{"items":[{"section":"typescript"},{"section":"vtsls.autoUseWorkspaceTsdk"},{"section":"javascript"},{"scopeUri":"` + uriOf(root, "a.ts") + `"},{"section":"typescript.tsserver.pluginPaths"},{"section":""}]}`}
+	r := <-replies
+	res, _ := r["result"].([]any)
+	if len(res) != 6 {
+		t.Fatalf("%v", r)
+	}
+	ts, _ := res[0].(map[string]any)
+	whole, _ := res[3].(map[string]any)
+	if ts["disableAutomaticTypeAcquisition"] != true || res[1] != false || res[2] != nil || whole["vtsls"] == nil || len(res[4].([]any)) != 0 || res[5].(map[string]any)["typescript"] == nil {
+		t.Fatalf("%v", res)
+	}
+	g := ServerConfig{ProviderID: goplsProviderID, Executable: "/x/gopls", AdapterPolicy: "gopls-v1"}
+	if c := g.command(); c.AdapterPolicy != "gopls-v1" || !strings.Contains(cfg.command().AdapterPolicy, "|client:publish-diagnostics|settings:{") {
+		t.Fatal("settings-free policy changed", c.AdapterPolicy)
 	}
 }
 
 func TestTSDocumentResolution(t *testing.T) {
 	skipUnlessProduction(t)
 	root := goplsRoot(t, map[string]string{"web/package.json": "{}", "web/src/a.ts": "", "other/b.ts": "", "c.ts": ""})
-	path, env := tsHost(t, vtslsName, "0.3.0", "5.9.3")
+	path, env := tsHost(t)
 	p, _ := DiscoverTypeScript(root, path, env)
 	d := p.Documents(&SessionManager{})
 	for file, want := range map[string]bool{
@@ -391,6 +573,31 @@ func TestTSBridgeFreshnessSynthetic(t *testing.T) {
 	}
 	if _, err := b.h.ChangeDocument(ctx, c, "d1", 4, "y"); errCode(err) != "resyncRequired" {
 		t.Fatal(err)
+	}
+}
+
+// Synthetic: what the observed vtsls sends for an opened .mjs/.ts draft (no
+// version). Results are uncertain and unpositioned; the empty push clears.
+func TestTSBridgeUnversionedJavaScriptClears(t *testing.T) {
+	b := newTSBridgeEnv(t, map[string]string{"a.mjs": "x", "b.ts": "x"})
+	ctx, c := context.Background(), b.h.snap.Context
+	for i, name := range []string{"a.mjs", "b.ts"} {
+		if _, err := b.h.OpenDocument(ctx, c, name, "d"+name, 1, "let x = ;\n", ""); err != nil {
+			t.Fatal(err)
+		}
+		b.push(name, "", `{"range":{"start":{"line":0,"character":8},"end":{"line":0,"character":9}},"severity":1,"code":1109,"source":"ts","message":"Expression expected."}`)
+		b.await(t, name+" uncertain", func(r []ResultSet) bool {
+			return len(r) == i+1 && len(r[i].Diagnostics) == 1 && r[i].Scope.Path == name
+		})
+		d := b.sets(t)[i].Diagnostics[0]
+		if d.Freshness != "uncertain" || d.Range != nil || d.Basis.Version != nil || d.Code != "1109" || d.Source != "typescript/ts" {
+			t.Fatalf("%+v", d)
+		}
+		if _, err := b.h.ChangeDocument(ctx, c, "d"+name, 2, "let x = 1;\n"); err != nil {
+			t.Fatal(err)
+		}
+		b.push(name, "", ``)
+		b.await(t, name+" cleared", func(r []ResultSet) bool { return len(r) == i+1 && len(r[i].Diagnostics) == 0 })
 	}
 }
 

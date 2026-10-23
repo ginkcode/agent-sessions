@@ -1,6 +1,7 @@
 package codediagnostics
 
 import (
+	"encoding/json"
 	"path/filepath"
 	"strings"
 )
@@ -65,31 +66,47 @@ func DiscoverLive(root AuthorizedRoot, env LiveEnvironment) ([]Registration, err
 	}, nil
 }
 
-// DiscoverGoLive is the production local live route's discovery: gopls only.
-// TypeScript and Svelte language servers have no verified host install
-// (CD-23/CD-24), so they are registered as independently unsupported
-// opened-document providers and never offered for execution. Metadata only.
-func DiscoverGoLive(root AuthorizedRoot, reviewedPath []string, env GoplsEnvironment) ([]Registration, error) {
-	if len(reviewedPath) > 64 {
+// LocalLiveEnvironment is the production local route's reviewed host metadata.
+type LocalLiveEnvironment struct {
+	GoPath []string // gopls search, the selected toolchain's bin first
+	Path   []string // reviewed executable directories for vtsls and node
+	Go     GoplsEnvironment
+	TS     TSEnvironment
+}
+
+// DiscoverLocalLive is the production local live route's discovery: gopls and
+// vtsls (CD-23), each with independent availability. Svelte has no verified
+// language server (CD-24), so it is registered as an independently unsupported
+// opened-documents provider and never offered for execution. Metadata only.
+func DiscoverLocalLive(root AuthorizedRoot, env LocalLiveEnvironment) ([]Registration, error) {
+	if len(env.GoPath) > 64 || len(env.Path) > 64 {
 		return nil, failure("limitExceeded", "Reviewed executable search budget exceeded")
 	}
-	goPlan, err := DiscoverGopls(root, reviewedPath, env)
+	goPlan, err := DiscoverGopls(root, env.GoPath, env.Go)
+	if err != nil {
+		return nil, err
+	}
+	ts, err := DiscoverTypeScript(root, env.Path, env.TS)
 	if err != nil {
 		return nil, err
 	}
 	goConfig, _ := goPlan.Server()
-	regs := []Registration{liveRegistration(goPlan.Provider(), goConfig, func(file string) (string, bool) {
-		return "go", strings.HasSuffix(file, ".go") && coversPackage(goPlan.modules, file)
-	})}
-	for _, id := range []string{tsProviderID, svelteLSProviderID} {
-		state := ProviderState{
-			ProviderID: id, Availability: "unsupported", Phase: "idle", Freshness: "uncertain",
-			Coverage: Coverage{Kind: "openedDocuments", Roots: []string{}, Partial: true, ExternalChanges: CoverageExternalChanges},
-			Notice:   "Live diagnostics for this language are not enabled: no language server version has been verified.",
-		}
-		regs = append(regs, liveRegistration(state, ServerConfig{}, nil))
+	tsConfig, _ := ts.Server()
+	svelte := ProviderState{
+		ProviderID: svelteLSProviderID, Availability: "unsupported", Phase: "idle", Freshness: "uncertain",
+		Coverage: Coverage{Kind: "openedDocuments", Roots: []string{}, Partial: true, ExternalChanges: CoverageExternalChanges},
+		Notice:   "Live diagnostics for Svelte are not enabled: no Svelte language server version has been verified.",
 	}
-	return regs, nil
+	return []Registration{
+		liveRegistration(goPlan.Provider(), goConfig, func(file string) (string, bool) {
+			return "go", strings.HasSuffix(file, ".go") && coversPackage(goPlan.modules, file)
+		}),
+		liveRegistration(ts.Provider(), tsConfig, func(file string) (string, bool) {
+			lang, ok := TSLanguageID(file)
+			return lang, ok && ts.covers(file)
+		}),
+		liveRegistration(svelte, ServerConfig{}, nil),
+	}, nil
 }
 
 func liveRegistration(state ProviderState, cfg ServerConfig, resolve func(string) (string, bool)) Registration {
@@ -167,6 +184,7 @@ func cloneServer(cfg ServerConfig) ServerConfig {
 	cfg.ConfigPaths = append([]string(nil), cfg.ConfigPaths...)
 	cfg.Toolchain = cloneTools(cfg.Toolchain)
 	cfg.ApprovalTools = cloneTools(cfg.ApprovalTools)
+	cfg.Settings = append(json.RawMessage(nil), cfg.Settings...)
 	return cfg
 }
 

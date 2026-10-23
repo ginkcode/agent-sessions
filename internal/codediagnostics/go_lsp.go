@@ -192,7 +192,7 @@ func (p *GoplsPlan) Modules() []string    { return slices.Clone(p.modules) }
 // Server is the fixed server identity, only when the plan is available.
 func (p *GoplsPlan) Server() (ServerConfig, bool) { return p.config, p.availability == "available" }
 
-// Provider describes honest opened-documents coverage. DiscoverGoLive registers
+// Provider describes honest opened-documents coverage. DiscoverLocalLive registers
 // it for the desktop local live route (experimental), and neither
 // successful initialization nor an empty publication is reported as clean Go.
 func (p *GoplsPlan) Provider() ProviderState {
@@ -577,6 +577,6 @@ func (b *GoplsBridge) Handle(n SessionNotification) {
 	}
 }
 
-// goDocumentExtensions is the client-side hint matching Documents/DiscoverGoLive
+// goDocumentExtensions is the client-side hint matching Documents/DiscoverLocalLive
 // resolution (".go" under a discovered module root).
 var goDocumentExtensions = []string{".go"}

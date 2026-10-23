@@ -7,7 +7,8 @@ package codediagnostics
 // publishDiagnostics bridging (normalization is shared with CD-22). Process
 // launch, trust and the document protocol stay in CD-19/CD-20. Nothing here
 // installs, downloads, runs npx/package scripts, or probes a version by
-// executing the tool. The spike evidence and its limits are recorded in
+// executing the tool: versions come from package.json and node_version.h. The
+// spike evidence and its limits are recorded in
 // docs/plan/code-diagnostics-typescript.md and testdata/typescript/evidence.json.
 // Fake-server tests in ts_lsp_test.go are SYNTHETIC; they prove this adapter's
 // handling, not the behavior of any real server.
@@ -19,34 +20,56 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"slices"
+	"strconv"
 	"strings"
 )
 
 const (
-	tsProviderID    = "typescript"
-	vtslsName       = "@vtsls/language-server"
-	tsPolicy        = "vtsls-v1:0.3.0:ts5.9.3:darwin/arm64:push-only:no-edits:opened-documents"
-	maxTSPackages   = 48
-	maxTSConfigs    = 192
-	maxTSEntries    = 4096
-	partialTSNotice = "Some TypeScript diagnostics could not be verified; results are partial."
-	tsOpenedNotice  = "TypeScript diagnostics cover opened documents only; unopened files are not continuously synchronized."
+	tsProviderID     = "typescript"
+	vtslsName        = "@vtsls/language-server"
+	vtslsServiceName = "@vtsls/language-service"
+	// tsPolicy binds the verified tuple and launch shape: node runs the
+	// package's own bin/vtsls.js directly (no shell, npx or version-manager
+	// shim), TypeScript is the copy vtsls resolves for itself (never the
+	// workspace's), and automatic type acquisition is off (tsSettings).
+	tsPolicy          = "vtsls-v2:0.3.0:ts5.9.3:darwin/arm64:node-direct:push-only:no-edits:opened-documents:bundled-typescript:ata-off"
+	tsToolchainPolicy = "vtsls-toolchain-v1"
+	minTSNodeMajor    = 18 // @vtsls/language-server 0.3.0 engines
+	maxTSPackages     = 48
+	maxTSConfigs      = 128 // the CD-02 per-tool configuration identity limit
+	maxTSEntries      = 4096
+	partialTSNotice   = "Some TypeScript diagnostics could not be verified; results are partial."
+	tsOpenedNotice    = "TypeScript diagnostics cover opened documents only; unopened files are not continuously synchronized."
+	tsUncertainNotice = "vtsls reports results without a document version, so they are listed as uncertain and not drawn inline."
+	tsInstallHint     = "Install it yourself with: npm install -g @vtsls/language-server@0.3.0 (this brings TypeScript 5.9.3), then refresh. Nothing is installed automatically."
 )
 
 // supportedVtslsVersions pairs a wrapper version with the TypeScript version it
 // was observed with. Anything else is unsupported until a spike adds it.
 var supportedVtslsVersions = []struct{ Wrapper, TypeScript string }{{"0.3.0", "5.9.3"}}
 
+// tsSettings is the fixed workspace/configuration answer. vtsls reads settings
+// only from a client that advertises the capability; otherwise its defaults
+// enable automatic type acquisition, which runs npm from the node directory.
+// Workspace TypeScript and plugin paths are never used.
+var tsSettings = json.RawMessage(`{"typescript":{"disableAutomaticTypeAcquisition":true,"tsserver":{"log":"off","pluginPaths":[]}},"vtsls":{"autoUseWorkspaceTsdk":false}}`)
+
+// tsToolchainNames label the loaded entry points bound into approval, in the
+// order vtslsInstall.files lists them.
+var tsToolchainNames = []string{"vtsls-entry", "vtsls-server", "vtsls-service", "tsserver", "tsserver-impl", "typescript"}
+
+var tsVersionText = regexp.MustCompile(`^[0-9A-Za-z.+-]{1,32}$`)
+
 // TSEnvironment is reviewed host metadata, not the inherited environment.
 type TSEnvironment struct {
-	Home    string
-	NodeDir string // reviewed directory containing the node runtime
-
-	// versionOf reads wrapper/TypeScript versions from package metadata without
-	// executing anything. Nil reads the installed package.json files.
-	versionOf func(executable string) (name, wrapper, typescript string, err error)
+	Home string
+	// NodeDir optionally pins the reviewed directory containing the node
+	// runtime. Empty uses the node beside a global npm install, then the first
+	// real node in the reviewed path.
+	NodeDir string
 }
 
 // TSPlan is the discovery result. Availability is independent of every other
@@ -57,6 +80,7 @@ type TSPlan struct {
 	notice       string
 	config       ServerConfig
 	wrapper, ts  string
+	node         string
 	packages     []string
 	partial      bool
 	projectLocal bool
@@ -68,12 +92,11 @@ func DiscoverTypeScript(root AuthorizedRoot, reviewedPath []string, env TSEnviro
 	if err := root.Revalidate(); err != nil {
 		return nil, err
 	}
-	for _, p := range []string{env.Home, env.NodeDir} {
-		if !filepath.IsAbs(p) || !bounded(p, 4096) || hasParent(p) {
-			return nil, failure("invalidArgument", "Reviewed absolute home and node paths are required")
-		}
+	reviewed := func(p string) bool { return filepath.IsAbs(p) && bounded(p, 4096) && !hasParent(p) }
+	if !reviewed(env.Home) || (env.NodeDir != "" && !reviewed(env.NodeDir)) {
+		return nil, failure("invalidArgument", "Reviewed absolute home and node paths are required")
 	}
-	p := &TSPlan{root: root, availability: "available"}
+	p := &TSPlan{root: root, availability: "available", notice: tsUncertainNotice}
 	unavailable := func(state, notice string) (*TSPlan, error) {
 		p.availability, p.notice, p.partial = state, notice, true
 		return p, nil
@@ -81,28 +104,8 @@ func DiscoverTypeScript(root AuthorizedRoot, reviewedPath []string, env TSEnviro
 	if runtime.GOOS != "darwin" || runtime.GOARCH != "arm64" {
 		return unavailable("unsupported", "TypeScript language server support has not been verified on this platform.")
 	}
-	executable, local := resolveVtsls(root, reviewedPath)
-	if executable == "" {
-		return unavailable("missingTool", "No TypeScript language server (vtsls) is installed.")
-	}
-	if !isExecutable(filepath.Join(env.NodeDir, "node")) {
-		return unavailable("missingTool", "The Node runtime required by the TypeScript language server is not installed.")
-	}
-	versionOf := env.versionOf
-	if versionOf == nil {
-		versionOf = vtslsVersions
-	}
-	name, wrapper, typescript, err := versionOf(executable)
-	if err != nil || name != vtslsName {
-		return unavailable("unsupported", "The TypeScript language server version could not be verified.")
-	}
-	if typescript == "" {
-		return unavailable("missingTool", "The TypeScript package required by the language server is not installed.")
-	}
-	if !slices.Contains(supportedVtslsVersions, struct{ Wrapper, TypeScript string }{wrapper, typescript}) {
-		return unavailable("unsupported", "This TypeScript language server and TypeScript combination is not supported.")
-	}
-	p.wrapper, p.ts, p.projectLocal = wrapper, typescript, local
+	// Packages first: a project without JS/TS stays a muted "unsupported"
+	// rather than asking for an install it does not need.
 	w, err := discoverTSPackages(root)
 	if err != nil {
 		return nil, err
@@ -111,52 +114,239 @@ func DiscoverTypeScript(root AuthorizedRoot, reviewedPath []string, env TSEnviro
 	if len(w.packages) == 0 {
 		return unavailable("unsupported", "No contained TypeScript or JavaScript package was found.")
 	}
+	entry, local, foreign := resolveVtsls(root, reviewedPath)
+	if entry == "" {
+		if foreign {
+			return unavailable("unsupported", "The vtsls command found is not a directly installed @vtsls/language-server package (for example a version-manager shim), so it is not used. "+tsInstallHint)
+		}
+		return unavailable("missingTool", "No TypeScript language server (vtsls) is installed. "+tsInstallHint)
+	}
+	inst, state, notice := inspectVtsls(entry)
+	if state != "" {
+		return unavailable(state, notice)
+	}
+	p.wrapper, p.ts, p.projectLocal = inst.wrapper, inst.typescript, local
+	node := tsNode(env, inst.serverDir, reviewedPath)
+	if node == "" {
+		return unavailable("missingTool", "Node.js 18 or newer, required by the TypeScript language server, was not found. Install Node.js, then refresh.")
+	}
+	major, version := nodeVersion(node)
+	switch {
+	case version == "":
+		return unavailable("unsupported", "The Node.js version could not be verified from its installed metadata.")
+	case major < minTSNodeMajor:
+		return unavailable("unsupported", "Node.js "+version+" is too old for the TypeScript language server; version 18 or newer is required.")
+	}
+	p.node = version
+	nodeBin := filepath.Dir(node)
+	if strings.Contains(nodeBin, ":") {
+		return unavailable("unsupported", "The Node.js directory cannot be placed on a fixed search path.")
+	}
+	tools := make([]ToolInput, len(inst.files))
+	for i, f := range inst.files {
+		tools[i] = ToolInput{ProviderID: "typescript-toolchain-" + tsToolchainNames[i], Executable: f, Policy: tsToolchainPolicy}
+	}
 	p.config = ServerConfig{
 		ProviderID:    tsProviderID,
-		Executable:    executable,
-		Args:          []string{"--stdio"},
-		Env:           []string{"HOME=" + env.Home, "PATH=" + env.NodeDir + ":/usr/bin:/bin"},
+		Executable:    node,
+		Args:          []string{entry, "--stdio"},
+		Env:           []string{"HOME=" + env.Home, "PATH=" + nodeBin + ":/usr/bin:/bin", "NODE_DISABLE_COMPILE_CACHE=1"},
 		AdapterPolicy: tsPolicy,
 		ConfigPaths:   w.configs,
+		Toolchain:     tools,
+		Settings:      tsSettings,
+		// vtsls sends no diagnostics to a client that does not declare them.
+		DeclareDiagnostics: true,
 	}
-	if _, err := Fingerprint(root, []ToolInput{p.config.Tool()}); err != nil {
-		return nil, err
+	if _, err := Fingerprint(root, p.config.Tools()); err != nil {
+		if err := root.Revalidate(); err != nil {
+			return nil, err
+		}
+		p.config = ServerConfig{}
+		return unavailable("unsupported", "The TypeScript language server files could not be identified for approval.")
 	}
 	return p, nil
 }
 
-// resolveVtsls prefers the contained project-local binary (executable project
-// content, covered by CD-02 trust) and then reviewed absolute PATH directories.
-// The project-local path must stay inside the root after symlink resolution.
-func resolveVtsls(root AuthorizedRoot, reviewedPath []string) (string, bool) {
+// resolveVtsls finds the package's own bin/vtsls.js. The contained
+// project-local link (project content covered by CD-02 trust) is tried first,
+// then reviewed absolute PATH directories. A command that does not resolve to
+// a real @vtsls/language-server entry (a mise/asdf/volta shim or any other
+// wrapper) is skipped and reported as foreign; nothing is ever executed.
+func resolveVtsls(root AuthorizedRoot, reviewedPath []string) (entry string, local, foreign bool) {
+	try := func(link string) string {
+		real, err := filepath.EvalSymlinks(link)
+		if err != nil {
+			return ""
+		}
+		if st, err := os.Stat(real); err != nil || !st.Mode().IsRegular() {
+			return ""
+		}
+		if !strings.HasSuffix(filepath.ToSlash(real), "/node_modules/@vtsls/language-server/bin/vtsls.js") {
+			foreign = true
+			return ""
+		}
+		return real
+	}
 	base := root.Project().Root
-	if real, err := filepath.EvalSymlinks(filepath.Join(base, "node_modules", ".bin", "vtsls")); err == nil && isExecutable(real) {
+	if real := try(filepath.Join(base, "node_modules", ".bin", "vtsls")); real != "" {
 		if rel, err := filepath.Rel(base, real); err == nil && filepath.IsLocal(rel) {
-			return real, true
+			return real, true, false
 		}
 	}
-	if exe := firstExecutable(reviewedPath, "vtsls"); exe != "" {
-		return exe, false
+	for _, dir := range reviewedPath {
+		if !filepath.IsAbs(dir) || hasParent(dir) {
+			continue
+		}
+		if real := try(filepath.Join(dir, "vtsls")); real != "" {
+			return real, false, false
+		}
 	}
-	return "", false
+	return "", false, foreign
 }
 
-// vtslsVersions reads package metadata next to the resolved entry point:
-// <node_modules>/@vtsls/language-server/bin/vtsls.js and
-// <node_modules>/typescript/package.json. It never executes the server.
-func vtslsVersions(executable string) (string, string, string, error) {
-	pkgDir := filepath.Dir(filepath.Dir(executable))
-	var pkg struct{ Name, Version string }
-	if err := readJSONFile(filepath.Join(pkgDir, "package.json"), &pkg); err != nil {
-		return "", "", "", err
+type vtslsInstall struct {
+	serverDir, wrapper, typescript string
+	files                          []string // see tsToolchainNames
+}
+
+// inspectVtsls reads package metadata along the path Node itself takes:
+// bin/vtsls.js loads dist/main.js, which requires @vtsls/language-service,
+// whose dist/index.js resolves typescript and forks lib/tsserver.js (a shim
+// for _tsserver.js, which loads typescript.js). Works for nested global npm
+// installs and flattened project installs alike. Nothing is executed.
+func inspectVtsls(entry string) (vtslsInstall, string, string) {
+	serverDir := filepath.Dir(filepath.Dir(entry))
+	var server, service, ts struct{ Name, Version string }
+	if readJSONFile(filepath.Join(serverDir, "package.json"), &server) != nil || server.Name != vtslsName {
+		return vtslsInstall{}, "unsupported", "The TypeScript language server version could not be verified."
 	}
-	var ts struct{ Name, Version string }
-	nodeModules := filepath.Dir(filepath.Dir(pkgDir))
-	// A missing or foreign typescript package is reported as an empty version.
-	if err := readJSONFile(filepath.Join(nodeModules, "typescript", "package.json"), &ts); err != nil || ts.Name != "typescript" {
-		ts.Version = ""
+	serviceDir := nodeResolvePackage(filepath.Join(serverDir, "dist"), vtslsServiceName)
+	if serviceDir == "" || readJSONFile(filepath.Join(serviceDir, "package.json"), &service) != nil || service.Name != vtslsServiceName {
+		return vtslsInstall{}, "missingTool", "The @vtsls/language-service package required by vtsls is not installed. " + tsInstallHint
 	}
-	return pkg.Name, pkg.Version, ts.Version, nil
+	tsDir := nodeResolvePackage(filepath.Join(serviceDir, "dist"), "typescript")
+	if tsDir == "" || readJSONFile(filepath.Join(tsDir, "package.json"), &ts) != nil || ts.Name != "typescript" {
+		return vtslsInstall{}, "missingTool", "The TypeScript package required by the language server is not installed. " + tsInstallHint
+	}
+	if service.Version != server.Version || !slices.Contains(supportedVtslsVersions, struct{ Wrapper, TypeScript string }{server.Version, ts.Version}) {
+		return vtslsInstall{}, "unsupported", "Found vtsls " + versionText(server.Version) + " (language service " + versionText(service.Version) + ") with TypeScript " + versionText(ts.Version) +
+			"; only vtsls 0.3.0 with TypeScript 5.9.3 is verified. " + tsInstallHint
+	}
+	files := []string{
+		entry, filepath.Join(serverDir, "dist", "main.js"), filepath.Join(serviceDir, "dist", "index.js"),
+		filepath.Join(tsDir, "lib", "tsserver.js"), filepath.Join(tsDir, "lib", "_tsserver.js"), filepath.Join(tsDir, "lib", "typescript.js"),
+	}
+	for _, f := range files {
+		if st, err := os.Stat(f); err != nil || !st.Mode().IsRegular() {
+			return vtslsInstall{}, "unsupported", "The TypeScript language server installation is incomplete. " + tsInstallHint
+		}
+	}
+	return vtslsInstall{serverDir: serverDir, wrapper: server.Version, typescript: ts.Version, files: files}, "", ""
+}
+
+func versionText(v string) string {
+	if tsVersionText.MatchString(v) {
+		return v
+	}
+	return "(unknown)"
+}
+
+// nodeResolvePackage mirrors Node's lookup of a bare package name from a
+// directory: each ancestor's node_modules, nearest first, skipping ancestors
+// that are themselves node_modules. Results are real paths, as Node resolves
+// by default. Metadata only; nothing is loaded.
+func nodeResolvePackage(fromDir, name string) string {
+	dir := fromDir
+	for range 64 {
+		if filepath.Base(dir) != "node_modules" {
+			if real, err := filepath.EvalSymlinks(filepath.Join(dir, "node_modules", filepath.FromSlash(name))); err == nil {
+				if st, err := os.Stat(filepath.Join(real, "package.json")); err == nil && st.Mode().IsRegular() {
+					return real
+				}
+			}
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			break
+		}
+		dir = parent
+	}
+	return ""
+}
+
+// tsNode picks the runtime without executing anything: the reviewed NodeDir
+// when given, else the node beside a global npm install
+// (<prefix>/lib/node_modules/@vtsls/language-server -> <prefix>/bin/node), else
+// the first real node in the reviewed path.
+func tsNode(env TSEnvironment, serverDir string, reviewedPath []string) string {
+	var dirs []string
+	if env.NodeDir != "" {
+		dirs = []string{env.NodeDir}
+	} else {
+		if prefix, ok := strings.CutSuffix(serverDir, filepath.Join("lib", "node_modules", "@vtsls", "language-server")); ok {
+			dirs = append(dirs, filepath.Join(prefix, "bin"))
+		}
+		dirs = append(dirs, reviewedPath...)
+	}
+	for _, dir := range dirs {
+		if node := realNode(dir); node != "" {
+			return node
+		}
+	}
+	return ""
+}
+
+// realNode accepts only an executable named node after symlink resolution
+// that is not a script. Version-manager shims (mise links to the mise binary,
+// volta to volta-shim, asdf/nodenv are shell scripts) are skipped.
+func realNode(dir string) string {
+	if !filepath.IsAbs(dir) || hasParent(dir) {
+		return ""
+	}
+	real, err := filepath.EvalSymlinks(filepath.Join(dir, "node"))
+	if err != nil || filepath.Base(real) != "node" || !isExecutable(real) {
+		return ""
+	}
+	f, err := os.Open(real)
+	if err != nil {
+		return ""
+	}
+	defer func() { _ = f.Close() }()
+	head := make([]byte, 2)
+	if n, _ := io.ReadFull(f, head); n == 2 && string(head) == "#!" {
+		return ""
+	}
+	return real
+}
+
+// nodeVersion reads <prefix>/include/node/node_version.h, which every official,
+// Homebrew and version-manager Node install ships. It never runs node.
+func nodeVersion(node string) (int, string) {
+	f, err := os.Open(filepath.Join(filepath.Dir(filepath.Dir(node)), "include", "node", "node_version.h"))
+	if err != nil {
+		return 0, ""
+	}
+	defer func() { _ = f.Close() }()
+	data, err := io.ReadAll(io.LimitReader(f, 64<<10))
+	if err != nil {
+		return 0, ""
+	}
+	parts := map[string]string{}
+	for _, line := range strings.Split(string(data), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) == 3 && fields[0] == "#define" && strings.HasPrefix(fields[1], "NODE_") && strings.HasSuffix(fields[1], "_VERSION") {
+			if _, err := strconv.Atoi(fields[2]); err == nil {
+				parts[fields[1]] = fields[2]
+			}
+		}
+	}
+	major, minor, patch := parts["NODE_MAJOR_VERSION"], parts["NODE_MINOR_VERSION"], parts["NODE_PATCH_VERSION"]
+	if major == "" || minor == "" || patch == "" {
+		return 0, ""
+	}
+	n, _ := strconv.Atoi(major)
+	return n, major + "." + minor + "." + patch
 }
 
 func readJSONFile(file string, v any) error {
@@ -178,14 +368,17 @@ func (p *TSPlan) Version() (wrapper, typescript string) {
 }
 func (p *TSPlan) Packages() []string { return slices.Clone(p.packages) }
 
+// NodeVersion is the runtime version read from installed metadata.
+func (p *TSPlan) NodeVersion() string { return p.node }
+
 // ProjectLocal reports that the binary is executable project content.
 func (p *TSPlan) ProjectLocal() bool { return p.projectLocal }
 
 // Server is the fixed server identity, only when the plan is available.
 func (p *TSPlan) Server() (ServerConfig, bool) { return p.config, p.availability == "available" }
 
-// Provider describes honest opened-documents coverage. Data only: no production
-// route consumes it, and an empty push is never reported as clean TypeScript.
+// Provider describes honest opened-documents coverage for DiscoverLocalLive. An
+// empty push is never reported as clean TypeScript.
 func (p *TSPlan) Provider() ProviderState {
 	notice := tsOpenedNotice
 	if p.notice != "" {

@@ -243,7 +243,7 @@ func TestOwnedDocumentsMixedPackages(t *testing.T) {
 		"lib/package.json": "{}", "lib/x.ts": "", "lib/y.svelte": "",
 		"other/z.ts": "", "other/z.svelte": "",
 	})
-	tsPath, tsEnv := tsHost(t, vtslsName, "0.3.0", "5.9.3")
+	tsPath, tsEnv := tsHost(t)
 	tsPlan, _ := DiscoverTypeScript(root, tsPath, tsEnv)
 	svPath, svEnv := svelteHost(t, svelteLSName, syntheticSvelteVersion)
 	svPlan, _ := DiscoverSvelteLS(root, svPath, svEnv)

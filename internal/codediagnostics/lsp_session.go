@@ -85,10 +85,25 @@ type ServerConfig struct {
 	// ApprovalTools is the complete attachment proposal, not a subset grant.
 	// Nil preserves the standalone single-server seam used by adapter tests.
 	ApprovalTools []ToolInput
+	// Settings is the adapter-owned, fixed answer to workspace/configuration (a
+	// JSON object). Nil advertises no configuration capability and answers every
+	// item null. It is bound into the policy, so changing it requires approval.
+	Settings json.RawMessage
+	// DeclareDiagnostics advertises textDocument.publishDiagnostics. vtsls
+	// publishes only to a client that declares it; gopls pushes regardless and
+	// keeps its unchanged initialize. Bound into the policy like Settings.
+	DeclareDiagnostics bool
 }
 
 func (c ServerConfig) command() Command {
-	return Command{ProviderID: c.ProviderID, Executable: c.Executable, Args: c.Args, Env: c.Env, Directory: c.Directory, AdapterPolicy: c.AdapterPolicy, AcceptedExits: []int{0}}
+	policy := c.AdapterPolicy
+	if c.DeclareDiagnostics {
+		policy += "|client:publish-diagnostics"
+	}
+	if c.Settings != nil {
+		policy += "|settings:" + string(c.Settings)
+	}
+	return Command{ProviderID: c.ProviderID, Executable: c.Executable, Args: c.Args, Env: c.Env, Directory: c.Directory, AdapterPolicy: policy, AcceptedExits: []int{0}}
 }
 
 // Policy is the ToolInput.Policy that approval must bind (CD-02 fingerprint).
@@ -742,15 +757,24 @@ func (s *lspSession) initialize() (ServerCapabilities, error) {
 }
 
 // initializeParams advertises only what this client implements: the UTF-16
-// position encoding. No workspace/textDocument/window capability, no dynamic
-// registration, no watchers, no edits, no workspace folders. rootUri is the
-// authorized canonical root; nothing is expanded outside it.
+// position encoding, plus workspace/configuration when the adapter supplies
+// fixed settings and publishDiagnostics (no versionSupport) when it declares
+// diagnostics. No other textDocument or window capability, no dynamic
+// registration, no watchers, no edits, no workspace folders. rootUri is the authorized canonical
+// root; nothing is expanded outside it.
 func (s *lspSession) initializeParams() map[string]any {
+	capabilities := map[string]any{"general": map[string]any{"positionEncodings": []string{"utf-16"}}}
+	if s.config.Settings != nil {
+		capabilities["workspace"] = map[string]any{"configuration": true}
+	}
+	if s.config.DeclareDiagnostics {
+		capabilities["textDocument"] = map[string]any{"publishDiagnostics": map[string]any{}}
+	}
 	return map[string]any{
 		"processId":    nil,
 		"clientInfo":   map[string]string{"name": clientName, "version": clientVersion},
 		"rootUri":      fileURI(s.root.Project().Root),
-		"capabilities": map[string]any{"general": map[string]any{"positionEncodings": []string{"utf-16"}}},
+		"capabilities": capabilities,
 	}
 }
 
@@ -804,7 +828,7 @@ func (s *lspSession) handle(tr *LSPTransport, msg LSPMessage) {
 	const methodNotFound, invalidParams = -32601, -32602
 	switch msg.Method {
 	case "workspace/configuration":
-		if result, ok := boundedConfiguration(s.root, msg.Params); ok {
+		if result, ok := boundedConfiguration(s.root, msg.Params, s.config.Settings); ok {
 			_ = tr.Respond(ctx, msg.ID, result)
 		} else {
 			_ = tr.RespondError(ctx, msg.ID, invalidParams, "configuration request rejected")
@@ -982,10 +1006,12 @@ func negotiateCapabilities(raw json.RawMessage) (ServerCapabilities, error) {
 	return caps, nil
 }
 
-// boundedConfiguration answers workspace/configuration. This client serves no
-// settings, so every requested item is null; the request is still validated:
-// bounded size/items/sections and every scope must lie inside the approved root.
-func boundedConfiguration(root AuthorizedRoot, params json.RawMessage) ([]any, bool) {
+// boundedConfiguration answers workspace/configuration from the adapter's fixed
+// settings only: the empty section is the whole object, a dotted section is the
+// nested value, anything absent is null. Without settings every item is null.
+// The request is still validated: bounded size/items/sections and every scope
+// must lie inside the approved root. Scopes never select different settings.
+func boundedConfiguration(root AuthorizedRoot, params json.RawMessage, settings json.RawMessage) ([]any, bool) {
 	if len(params) == 0 || len(params) > maxServerParams {
 		return nil, false
 	}
@@ -999,14 +1025,42 @@ func boundedConfiguration(root AuthorizedRoot, params json.RawMessage) ([]any, b
 		return nil, false
 	}
 	for _, item := range req.Items {
-		if item.Section != nil && !bounded(*item.Section, maxConfigSect) {
+		// vtsls asks for the empty section (the whole configuration).
+		if item.Section != nil && *item.Section != "" && !bounded(*item.Section, maxConfigSect) {
 			return nil, false
 		}
 		if item.ScopeURI != nil && !insideRoot(root, *item.ScopeURI) {
 			return nil, false
 		}
 	}
-	return make([]any, len(req.Items)), true
+	out := make([]any, len(req.Items))
+	if settings == nil {
+		return out, true
+	}
+	var whole any
+	if json.Unmarshal(settings, &whole) != nil {
+		return nil, false
+	}
+	for i, item := range req.Items {
+		out[i] = whole
+		if item.Section != nil && *item.Section != "" {
+			out[i] = settingsSection(whole, *item.Section)
+		}
+	}
+	return out, true
+}
+
+func settingsSection(v any, section string) any {
+	for _, key := range strings.Split(section, ".") {
+		m, ok := v.(map[string]any)
+		if !ok {
+			return nil
+		}
+		if v, ok = m[key]; !ok {
+			return nil
+		}
+	}
+	return v
 }
 
 // insideRoot is a lexical, metadata-free containment check on file URIs.

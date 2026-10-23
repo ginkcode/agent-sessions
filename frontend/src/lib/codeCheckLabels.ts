@@ -6,11 +6,11 @@ const toolNames: Record<string, string> = {
   gopls: 'Go language server (gopls)',
   'go-syntax': 'Go syntax',
   'go-vet': 'Go vet',
-  typescript: 'TypeScript language server',
+  typescript: 'TypeScript/JavaScript language server (vtsls)',
   svelte: 'Svelte language server',
   'svelte-check': 'svelte-check',
 };
-const languages: Record<string, string> = { gopls: 'Go', 'go-syntax': 'Go', 'go-vet': 'Go', typescript: 'TypeScript', svelte: 'Svelte', 'svelte-check': 'Svelte' };
+const languages: Record<string, string> = { gopls: 'Go', 'go-syntax': 'Go', 'go-vet': 'Go', typescript: 'TypeScript/JavaScript', svelte: 'Svelte', 'svelte-check': 'Svelte' };
 
 export function toolName(providerId: string): string {
   if (toolNames[providerId]) return toolNames[providerId];
@@ -32,8 +32,14 @@ export function providerMode(p: Pick<CodeDiagnosticsProvider, 'providerId' | 'co
   return `saved ${files} · on demand`;
 }
 
+/** Languages of live (opened-documents) providers in the given availabilities, e.g. "Go and TypeScript/JavaScript". */
+export function liveLanguages(providers: Pick<CodeDiagnosticsProvider, 'providerId' | 'coverage' | 'availability'>[], states: CodeDiagnosticsProvider['availability'][] = ['available']): string {
+  const names = [...new Set(providers.filter(p => p.coverage.kind === 'openedDocuments' && states.includes(p.availability)).map(p => languages[p.providerId] ?? p.providerId))];
+  return names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names.at(-1)}` : names[0] ?? '';
+}
+
 const availability: Record<CodeDiagnosticsProvider['availability'], string> = {
-  approvalRequired: 'Approval required', available: 'Available', missingTool: 'Tool missing', unsupported: 'Unsupported', disabled: 'Disabled',
+  approvalRequired: 'Approval required', available: 'Available', missingTool: 'Not installed', unsupported: 'Unsupported', disabled: 'Disabled',
 };
 /** One short status per provider. Phase only matters for an available provider. */
 export function providerStatus(p: Pick<CodeDiagnosticsProvider, 'availability' | 'phase' | 'failure'>): { text: string; tone: 'ok' | 'busy' | 'bad' | 'muted' } {

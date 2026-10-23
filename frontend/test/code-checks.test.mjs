@@ -26,11 +26,15 @@ test('approval choices expose canonical scope, tools and non-sandbox risk withou
   assert.doesNotMatch(html, /Check Project/);
   assert.match(html, /Only saved files are checked/);
   assert.match(html, /Live diagnostics are not available on this connection/);
-  const live = await render({ liveEnabled: true, approved: false, snapshot: { approval: { state: 'required' }, proposal: { fingerprint: 'fp', tools: [] } } });
-  assert.match(live, /opened Go files are also sent unsaved to the listed gopls/);
+  const lsp = id => ({ ...provider, providerId: id, availability: 'approvalRequired', coverage: { ...provider.coverage, kind: 'openedDocuments' } });
+  const live = await render({ liveEnabled: true, approved: false, providers: [provider, lsp('gopls'), lsp('typescript')], snapshot: { approval: { state: 'required' }, proposal: { fingerprint: 'fp', tools: [] } } });
+  assert.match(live, /opened Go and TypeScript\/JavaScript files are also sent unsaved to the listed language servers/);
   assert.match(live, /drafts are never saved/);
   assert.match(live, /Live diagnostics \(experimental\)/);
-  assert.match(live, /TypeScript and Svelte live diagnostics are not enabled/);
+  assert.match(live, /vtsls for TypeScript\/JavaScript/);
+  assert.match(live, /Svelte live diagnostics are not enabled/);
+  const noLive = await render({ liveEnabled: true, approved: false, snapshot: { approval: { state: 'required' }, proposal: { fingerprint: 'fp', tools: [] } } });
+  assert.match(noLive, /Only saved files are checked/, 'no live claim without a live provider');
   assert.doesNotMatch(live, /Only saved files are checked/);
   const noProposal = await render({ approved: false, snapshot: { approval: { state: 'required' } } });
   assert.deepEqual(executionButtons(noProposal).map(b => b.disabled), [true, true, false]);

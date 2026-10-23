@@ -23,8 +23,10 @@ directories are the inherited PATH, then `~/go/bin`, `~/.local/bin`, `$GOPATH/bi
 are kept, de-duplicated, up to 64. GOROOT is the parent of the `bin` directory of the
 first resolved regular executable `go`, and gopls is searched in `GOROOT/bin` first. The
 caches are `UserCacheDir/go-build` and `~/go/pkg/mod`. Nothing is executed, installed or
-downloaded. `cd.DiscoverGoLive` registers gopls plus TypeScript and Svelte as independent
-`unsupported` opened-documents providers (CD-23/CD-24 are not activated). A missing gopls or Go
+downloaded. `cd.DiscoverGoLive` registered gopls plus TypeScript and Svelte as independent
+`unsupported` opened-documents providers. (Since 2026-10-23, `cd.DiscoverLocalLive` replaces it
+and also discovers vtsls; see [CD-23](code-diagnostics-typescript.md#production-wiring-2026-10-23).
+Svelte is still unsupported.) A missing gopls or Go
 gives `missingTool`, and any version other than v0.24.0 gives `unsupported`. Both are provider
 statuses, not errors. The supported list was not widened. A managed install
 (`managedtools.ReviewInstalledGo`) still needs Go ≥1.27 that an operator has reviewed. This
@@ -48,7 +50,8 @@ the displayed **unsaved** text of opened Go files to gopls through `didOpen`/`di
 accept only versioned publications that match the document version. Drafts are never saved.
 The two providers stay distinct (`go` vs `gopls`) and are not deduplicated. The CodeChecks
 copy now says so whenever live is advertised. Otherwise it keeps "Only saved files are
-checked". It also says TypeScript and Svelte live diagnostics are not enabled.
+checked". It also said TypeScript and Svelte live diagnostics were not enabled; since
+2026-10-23 the copy names the live languages actually offered, and only Svelte is not enabled.
 
 **Evidence (2026-10-23, darwin/arm64).** Host gopls is `v0.24.0` (`golang.org/x/tools/gopls`,
 built with go1.27.2), at the mise install `…/go/1.26.8/bin/gopls`. The toolchain is go1.26.8
@@ -68,7 +71,7 @@ darwin/arm64, and the GOROOT has `VERSION` and `go.env`.
   before approval, approve, open the draft, the real SessionManager/LSP transport/gopls bridge,
   a framed fake-server push, a `codeDiagnostics:updated` event, change, and the empty clear.
   `TestLocalCapabilitiesWithoutLiveRoute` checks that a non-desktop Engine omits live.
-- `TestDiscoverGoLiveBindsToolchainAndHoldsOtherLanguages`,
+- `TestDiscoverGoLiveBindsToolchainAndHoldsOtherLanguages` (now `TestDiscoverLocalLiveBindsToolchainAndHoldsOtherLanguages`),
   `TestHostSessionLaunchFixedArgvAndProcessGroup` (grandchild killed with the group) and the
   engine discovery unit tests (`localExecutableDirs`, `localGoRoot`, missing tool ⇒ status).
 - Frontend tests cover the local capability merge and the CodeChecks live/saved copy.

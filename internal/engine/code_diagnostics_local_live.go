@@ -11,7 +11,8 @@ import (
 
 // The production local live route (CD-22, experimental). Discovery reads
 // metadata only: executable lookup in absolute host directories, gopls build
-// info, and the toolchain root derived from the resolved go executable. It never
+// info, the toolchain root derived from the resolved go executable, and vtsls,
+// TypeScript and Node package/header metadata. It never
 // runs a version probe, installs, downloads or reads a project-controlled PATH.
 // Execution remains gated per project by the composite approval fingerprint;
 // the launcher is reached only through SessionManager after that gate.
@@ -20,7 +21,7 @@ import (
 // by `agent-sessions-cli serve` and stays fail-closed through rpc
 // initializeDiagnostics (verified SSH/WSL identity required, CD-09 blocked).
 
-// localLiveSupported reports the platforms where gopls behavior, host identity
+// localLiveSupported reports the platforms where server behavior, host identity
 // and process-tree ownership have been verified together.
 func localLiveSupported() bool { return runtime.GOOS == "darwin" && runtime.GOARCH == "arm64" }
 
@@ -35,7 +36,9 @@ func localExecutableDirs(home string) []string {
 			// mise's default per-user Go install ("latest" is mise's own link).
 			// Finder-launched apps never see mise's shell activation PATH, and
 			// its shims resolve to the mise launcher, not a Go toolchain.
-			filepath.Join(home, ".local", "share", "mise", "installs", "go", "latest", "bin"))
+			filepath.Join(home, ".local", "share", "mise", "installs", "go", "latest", "bin"),
+			// Likewise mise's Node; its bin also holds global npm commands.
+			filepath.Join(home, ".local", "share", "mise", "installs", "node", "latest", "bin"))
 		for _, p := range filepath.SplitList(os.Getenv("GOPATH")) {
 			if filepath.IsAbs(p) {
 				dirs = append(dirs, filepath.Join(p, "bin"))
@@ -74,7 +77,9 @@ func localGoRoot(dirs []string) string {
 
 // discoverLocalLive is the production discovery function for the local route.
 // gopls is searched next to the selected toolchain first so a matching install
-// wins over an unrelated one earlier on PATH.
+// wins over an unrelated one earlier on PATH. vtsls and node use the plain
+// reviewed directories; node is taken from a global vtsls install's prefix
+// when there is one.
 func discoverLocalLive(root cd.AuthorizedRoot) ([]cd.Registration, error) {
 	home, err := os.UserHomeDir()
 	if err != nil || !filepath.IsAbs(home) {
@@ -93,7 +98,9 @@ func discoverLocalLive(root cd.AuthorizedRoot) ([]cd.Registration, error) {
 			search = search[:64]
 		}
 	}
-	return cd.DiscoverGoLive(root, search, cd.GoplsEnvironment{
-		Home: home, Cache: filepath.Join(cache, "go-build"), ModuleCache: filepath.Join(home, "go", "pkg", "mod"), GoRoot: goroot,
+	return cd.DiscoverLocalLive(root, cd.LocalLiveEnvironment{
+		GoPath: search, Path: dirs,
+		Go: cd.GoplsEnvironment{Home: home, Cache: filepath.Join(cache, "go-build"), ModuleCache: filepath.Join(home, "go", "pkg", "mod"), GoRoot: goroot},
+		TS: cd.TSEnvironment{Home: home},
 	})
 }

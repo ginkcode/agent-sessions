@@ -2,7 +2,7 @@
   // Code check settings: approval, runs and optional setup. Mounted only inside the
   // disclosed bottom details; the compact status button owns the summary.
   import { codeDiagnostics as checks } from '../../../stores/codeDiagnostics.svelte';
-  import { providerMode, providerStatus, remoteHost, syncFailureReason, toolName } from '../../../codeCheckLabels';
+  import { liveLanguages, providerMode, providerStatus, remoteHost, syncFailureReason, toolName } from '../../../codeCheckLabels';
   let { blocked = false }: { blocked?: boolean } = $props();
   let dismissed = $state(false);
   // A new attachment gets its own approval choice. Not now never calls the backend.
@@ -17,6 +17,9 @@
   let remote = $derived(remoteHost(checks.project?.hostId));
   let watching = $derived(checks.providers.some(p => p.availability === 'available' && p.coverage.externalChanges === 'watching'));
   let failedDocuments = $derived((checks.liveDocuments ?? []).filter(d => d.failure));
+  // Live languages offered for approval, and those running once approved.
+  let proposedLive = $derived(liveLanguages(checks.providers, ['available', 'approvalRequired']));
+  let activeLive = $derived(liveLanguages(checks.providers));
   /** Managed setup exists only for gopls on this computer; everything else says why it is not offered. */
   function setupNote(providerId: string): string {
     if (providerId === 'gopls') return remote ? 'Setup unavailable: installing on a remote host is not supported (no authenticated remote identity).' : '';
@@ -52,7 +55,7 @@
           {:else}
             <p>Code checks run the listed tools on this host with your account's permissions. Project configuration and plugins can execute code. Tools may read files and dependencies, access the network, and write caches or other files. This is not a sandbox or a read-only guarantee. Only approve projects and tools you trust.</p>
           {/if}
-          <p class="muted">{checks.liveEnabled ? 'Check Project runs on saved files. After approval, opened Go files are also sent unsaved to the listed gopls for live diagnostics; drafts are never saved.' : 'Only saved files are checked; drafts are never saved or checked automatically.'} Session approval lasts until this connection or app session ends. Always allow remembers this host, project and tool/config identity; relevant changes require approval again. Approval does not start a check.</p>
+          <p class="muted">{checks.liveEnabled && proposedLive ? `Check Project runs on saved files. After approval, opened ${proposedLive} files are also sent unsaved to the listed language servers for live diagnostics; drafts are never saved.` : 'Only saved files are checked; drafts are never saved or checked automatically.'} Session approval lasts until this connection or app session ends. Always allow remembers this host, project and tool/config identity; relevant changes require approval again. Approval does not start a check.</p>
           {#if checks.snapshot.approval.state === 'revoked'}<p>Permission revoked. Pending and running checks are being canceled; previous findings have been cleared.</p>{/if}
           <ul class="rows">
             {#each checks.snapshot.proposal?.analyzers ?? [] as analyzer}
@@ -81,7 +84,7 @@
         {/if}
         <button type="button" disabled={blocked || checks.pending === 'revoke' || checks.revoking} onclick={() => perform(() => checks.revoke())}>Revoke approval</button>
       </div>
-      <p class="muted">{watching ? 'Saved Go files are checked automatically when they change on disk.' : ''}{checks.liveEnabled ? ' Opened Go files are checked live by gopls as you type.' : ''} Check Project runs the on-demand checkers on saved files.</p>
+      <p class="muted">{watching ? 'Saved Go files are checked automatically when they change on disk.' : ''}{checks.liveEnabled && activeLive ? ` Opened ${activeLive} files are checked live as you type.` : ''} Check Project runs the on-demand checkers on saved files.</p>
     {/if}
   {/if}
   {#if checks.snapshot}
@@ -145,7 +148,7 @@
   {#if checks.project && checks.status === 'ready'}
     <details aria-label="Go language-server setup" open={setupOpen}>
       <summary>Tools setup · Go language server (gopls)</summary>
-      <p class="muted">Installing a tool is separate from trusting this project's execution. Neither approval installs or starts a server automatically. {checks.liveEnabled ? 'Live diagnostics (experimental) use an installed, supported gopls on this host for opened Go files only, after project approval. A missing or unsupported gopls is shown as its own status; TypeScript and Svelte live diagnostics are not enabled.' : 'Live diagnostics are not available on this connection.'} Revoking project approval also abandons pending setup consent and cancels an owned installation under the backend's conservative policy.</p>
+      <p class="muted">Installing a tool is separate from trusting this project's execution. Neither approval installs or starts a server automatically. {checks.liveEnabled ? 'Live diagnostics (experimental) use installed, supported language servers on this host for opened files only, after project approval: gopls for Go and vtsls for TypeScript/JavaScript. A missing or unsupported server is shown as its own status; Svelte live diagnostics are not enabled.' : 'Live diagnostics are not available on this connection.'} Revoking project approval also abandons pending setup consent and cancels an owned installation under the backend's conservative policy.</p>
       {#if checks.managedNotice}<p role="status" class="bounded">{checks.managedNotice}</p>{/if}
       {#if checks.managed?.message}<p role="status" class="bounded">{checks.managed.message}</p>{/if}
       {#if remote}
@@ -179,7 +182,7 @@
       <div class="actions">
         <button type="button" disabled={blocked || checks.managedPending} onclick={() => perform(() => checks.refreshManaged())}>Refresh setup status</button>
       </div>
-      <p class="muted">TypeScript and Svelte setup is not offered; install those tools on the host yourself.</p>
+      <p class="muted">TypeScript/JavaScript and Svelte setup is not offered. For live TypeScript/JavaScript diagnostics, install vtsls on the host yourself with <span class="mono">npm install -g @vtsls/language-server@0.3.0</span>, then refresh.</p>
     </details>
   {/if}
   {#if checks.project}

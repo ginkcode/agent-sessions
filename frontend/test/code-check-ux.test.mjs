@@ -8,7 +8,7 @@ import { readFileSync } from 'node:fs';
 import { fixtureStore, loadServerComponent, renderWithFixture, renderedButtons } from './helpers.mjs';
 import { problemLocationStatus, fileLevelFinding } from '../src/lib/problemNavigation.ts';
 import { projectSourceDiagnostics } from '../src/lib/sourceDiagnostics.ts';
-import { locationLabel, longMessage, messagePreview, providerMode, providerStatus, remoteHost, staleKind, syncFailureReason, toolName } from '../src/lib/codeCheckLabels.ts';
+import { liveLanguages, locationLabel, longMessage, messagePreview, providerMode, providerStatus, remoteHost, staleKind, syncFailureReason, toolName } from '../src/lib/codeCheckLabels.ts';
 
 const range = (a, b, c = a, d = b) => ({ start: { line: a, character: b }, end: { line: c, character: d } });
 const diag = (extra = {}) => ({ path: 'a.go', severity: 'error', message: 'undefined: x', source: 'compiler', freshness: 'current', basis: { kind: 'saved', revision: 'r1' }, range: range(1, 2, 1, 3), ...extra });
@@ -56,7 +56,14 @@ test('label helpers: human tool names, consistent modes, bounded messages, remot
   assert.equal(providerMode({ providerId: 'go-syntax', coverage: cov('savedProject', 'watching') }), 'saved Go files · automatic');
   assert.equal(providerMode({ providerId: 'go-vet', coverage: cov('savedProject', 'unwatched') }), 'saved Go files · on demand');
   assert.equal(providerStatus({ availability: 'available', phase: 'failed' }).text, 'Failed');
-  assert.equal(providerStatus({ availability: 'missingTool', phase: 'idle' }).text, 'Tool missing');
+  assert.equal(providerStatus({ availability: 'missingTool', phase: 'idle' }).text, 'Not installed');
+  assert.equal(toolName('typescript'), 'TypeScript/JavaScript language server (vtsls)');
+  assert.equal(providerMode({ providerId: 'typescript', coverage: cov('openedDocuments', 'unwatched') }), 'LSP · live, opened TypeScript/JavaScript files');
+  const live = (providerId, availability) => ({ providerId, availability, coverage: cov('openedDocuments', 'unwatched') });
+  const both = [live('gopls', 'available'), live('typescript', 'missingTool'), live('svelte', 'unsupported'), { ...live('go-vet', 'available'), coverage: cov('savedProject', 'unwatched') }];
+  assert.equal(liveLanguages(both), 'Go', 'a missing vtsls is never described as checking');
+  assert.equal(liveLanguages([live('gopls', 'approvalRequired'), live('typescript', 'approvalRequired')], ['available', 'approvalRequired']), 'Go and TypeScript/JavaScript');
+  assert.equal(liveLanguages([]), '');
   assert.equal(locationLabel(range(9, 4)), 'Ln 10, Col 5'); assert.equal(locationLabel(undefined), 'File'); assert.equal(locationLabel(range(0, 0), 'fileLevel'), 'File');
   assert.equal(longMessage('short'), false); assert.equal(longMessage('a\nb'), true); assert.equal(longMessage('x'.repeat(200)), true);
   assert.equal(messagePreview('first\nsecond'), 'first'); assert.ok(messagePreview('y'.repeat(300)).length <= 141);
@@ -120,13 +127,14 @@ const providers = [
   { providerId: 'go-syntax', availability: 'available', phase: 'idle', freshness: 'current', coverage: cov('savedProject', 'watching'), truncated: false },
   { providerId: 'go-vet', availability: 'available', phase: 'idle', freshness: 'current', coverage: cov('savedProject', 'unwatched'), truncated: false },
   { providerId: 'svelte-check', availability: 'missingTool', phase: 'idle', freshness: 'uncertain', coverage: cov('savedProject', 'unwatched'), truncated: false },
+  { providerId: 'typescript', availability: 'missingTool', phase: 'idle', freshness: 'uncertain', coverage: cov('openedDocuments', 'unwatched'), truncated: false, notice: 'No TypeScript language server (vtsls) is installed.' },
 ];
 const checks = (extra = {}) => ({ status: 'ready', project: { hostId: 'local:abc123', root: '/p' }, snapshot: { approval: { state: 'approved', mode: 'session' }, proposal: { fingerprint: 'sha256:fp', tools: [] } },
   providers, approved: true, canRun: true, canRetry: () => true, liveEnabled: true, liveDocuments: [], managed: { hostId: 'local:abc123', state: 'missingTool' }, ...extra });
 
 test('checker rows use human names, status pills and consistent modes; technical text stays disclosed', async () => {
   const html = await renderWithFixture(checksComponent, { checks: checks() });
-  for (const text of ['Go language server (gopls)', 'Go syntax', 'Go vet', 'LSP · live, opened Go files', 'saved Go files · automatic', 'saved Go files · on demand', '>Ready<', 'Tool missing'])
+  for (const text of ['Go language server (gopls)', 'Go syntax', 'Go vet', 'LSP · live, opened Go files', 'saved Go files · automatic', 'saved Go files · on demand', '>Ready<', 'Not installed'])
     assert.ok(html.includes(text), text);
   assert.doesNotMatch(html, /Checks run only when requested/, 'no generic on-request claim contradicting the watcher');
   assert.match(html, /checked automatically when they change on disk/);
@@ -134,6 +142,12 @@ test('checker rows use human names, status pills and consistent modes; technical
   assert.doesNotMatch(head, /local:abc123|sha256:fp|roots:/);
   assert.match(html.slice(html.indexOf('Technical details')), /local:abc123/);
   assert.match(html, /Setup not supported here: install it on the host yourself/);
+  // A missing vtsls is its own status with a manual command; live copy names only running languages.
+  assert.match(html, /TypeScript\/JavaScript language server \(vtsls\)/);
+  assert.match(html, /No TypeScript language server \(vtsls\) is installed/);
+  assert.match(html, /npm install -g @vtsls\/language-server@0\.3\.0/);
+  assert.match(html, /Opened Go files are checked live as you type/);
+  assert.doesNotMatch(html, /Opened [^.]*TypeScript[^.]* files are checked live/);
   const buttons = renderedButtons(html).map(b => b.text);
   assert.ok(buttons.includes('Review gopls installation'));
   assert.ok(!buttons.some(b => /Install (TypeScript|Svelte)|Install$/.test(b)), 'no fake TS/Svelte installers; Install needs a proposal');

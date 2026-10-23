@@ -1,8 +1,10 @@
 # Code diagnostics: TypeScript adapter and version spike (CD-23)
 
-Status: **partial / blocked** — adapter seam and observed spike with automated tests; no
-production route, no host-approved server, no UI/native QA. Parent plan:
-[code-diagnostics.md](code-diagnostics.md). Pattern: [code-diagnostics-gopls.md](code-diagnostics-gopls.md).
+Status: **partial**. The production local live route discovers vtsls 0.3.0 with
+TypeScript 5.9.3 from metadata alone. The real server passed a smoke test through
+the Go adapter (2026-10-23). Not done: no approved install on this host, no manual
+editor QA, remote stays fail-closed. Parent plan: [code-diagnostics.md](code-diagnostics.md).
+Pattern: [code-diagnostics-gopls.md](code-diagnostics-gopls.md).
 Fixtures: `internal/codediagnostics/testdata/typescript/evidence.json`. Code:
 `internal/codediagnostics/ts_lsp.go` (+ shared normalizer in `go_lsp.go`).
 
@@ -22,16 +24,19 @@ depend on another editor's private directory.
 
 ## Supported-version decision
 
-| Wrapper | TypeScript | Decision |
-|---|---|---|
-| `@vtsls/language-server` 0.3.0 | 5.9.3 | **Observed, provisionally listed** in `supportedVtslsVersions` so the adapter has one verified pairing. **Not verified through the Go adapter/real session, not on `PATH`, no approved install.** Treat as "none verified for production". |
-| anything else, other package name, TypeScript missing | — | **Unsupported** / `missingTool` |
-| not darwin/arm64 | — | **Unsupported** |
+| Wrapper | Language service | TypeScript | Node | Decision |
+|---|---|---|---|---|
+| `@vtsls/language-server` 0.3.0 | `@vtsls/language-service` 0.3.0 | 5.9.3 (bundled with the wrapper) | ≥ 18 | **Verified** through the Go adapter on darwin/arm64 (policy `vtsls-v2:0.3.0:ts5.9.3:darwin/arm64:…`) |
+| any other version, mismatched service, other package name | | | | **Unsupported**, with the found versions in the notice |
+| missing wrapper, TypeScript or service; no usable `node` | | | | **missingTool** ("Not installed"), with a manual install command |
+| version-manager shim only (mise/asdf/volta/nodenv) | | | | **Unsupported**; shims are never executed |
+| not darwin/arm64 | | | | **Unsupported** |
 
-`typescript-language-server` and the Svelte server are **not verified at all** (CD-24 owns Svelte).
-Versions are read from package metadata next to the resolved entry point
-(`@vtsls/language-server/package.json`, sibling `typescript/package.json`); the server is **not
-executed** to probe a version.
+Versions come from package metadata only: the wrapper's `package.json`, then
+`@vtsls/language-service` and `typescript` resolved the way Node would (nested for
+global npm installs, flattened for project and editor installs). Node's version
+comes from `<prefix>/include/node/node_version.h`. Nothing is executed to probe a
+version. `typescript-language-server` and Svelte servers are unverified (CD-24 owns Svelte).
 
 ## Observed behavior (vtsls 0.3.0 / TS 5.9.3, Python stdio driver)
 
@@ -64,14 +69,14 @@ server requests were answered `-32601`.
   a package root; nested-only roots are fine. `node_modules` is skipped silently; hidden directories
   and symlinks are skipped ⇒ `partial`. `extends`/`references` are never read or followed, so
   out-of-root projects are never touched. Monorepo selection is limited to these counts.
-- **Binary resolution** (`resolveVtsls`): contained `node_modules/.bin/vtsls` (symlink must resolve
-  inside the root; project-local = executable project content, flagged `ProjectLocal`) then reviewed
-  absolute `PATH` directories. Fixed argv `["--stdio"]`, explicit env (`HOME`, `PATH` with the reviewed
-  node dir), bound through the CD-02 tool fingerprint with `package.json`/`tsconfig`/`jsconfig` identities.
-  No `npx`, package scripts, shell, install or download.
+- **Binary resolution** (`resolveVtsls`): contained `node_modules/.bin/vtsls` (its link must resolve
+  inside the root; a project-local install is executable project content, flagged `ProjectLocal`),
+  then reviewed absolute directories. The server is launched as `node <entry> --stdio` with the real
+  `node` binary, never the `vtsls` script, so shebang/`env` lookup cannot pick another runtime. All of it
+  is bound through the CD-02 composite fingerprint. No `npx`, package scripts, shell, install or download.
 - **Availability** (independent of Go/Svelte/checker providers): `missingTool` (no wrapper, no node, no
-  TypeScript package), `unsupported` (platform, other package, unknown version pair, unreadable metadata,
-  no contained package). Unavailable plans offer no server and report partial coverage.
+  TypeScript package), `unsupported` (platform, other package, unverified versions, Node < 18 or unverifiable,
+  shims only, no contained package). Unavailable plans offer no server and report partial coverage.
 - **Normalization** reuses the CD-22 normalizer (`normalizeLSPPublication`, provider-prefixed
   attribution `typescript/<source>`), `TSBridge` mirrors `GoplsBridge`: matching-version pushes replace
   the document set (empty clears), stale/future versions are rejected by the manager, unversioned ⇒
@@ -79,21 +84,60 @@ server requests were answered `-32601`.
   (e.g. `tsconfig.json`) ignored.
 - **Coverage** `openedDocuments`, `externalChanges: "unwatched"`; no push is not "clean".
 
+## Go adapter smoke (2026-10-23)
+
+`TestLocalLiveRealVtslsSmoke` (`internal/engine/code_diagnostics_vtsls_smoke_test.go`)
+is opt-in. It runs only when `AGENT_SESSIONS_VTSLS_DIR` and `AGENT_SESSIONS_VTSLS_NODE_DIR`
+are set, and was run against the Zed copy above. It uses a disposable synthetic
+module (no dependencies, no project scripts) and a temp `HOME`. The run goes through
+`DiscoverLocalLive`, the composite approval, `HostSessionLaunch`, Engine
+open/change/close and the shared normalizer:
+
+- Invocation `node <…>/@vtsls/language-server/bin/vtsls.js --stdio`. The env is
+  exactly `HOME`, `PATH=<node bin>:/usr/bin:/bin` and `NODE_DISABLE_COMPILE_CACHE=1`.
+  No shell, `npx` or shim.
+- Opening before approval returns `approvalRequired`, and no process starts.
+- Two requirements were found and fixed. First, vtsls asks `workspace/configuration`
+  for the empty section (the whole configuration). The fixed settings answer turns
+  automatic type acquisition off, tsserver logging off, plugin paths empty, and
+  never switches to a workspace TypeScript. Second, vtsls sends diagnostics only to
+  a client that declares `textDocument.publishDiagnostics`. Both are bound into the
+  approval policy and enabled only for TypeScript; gopls' initialize is unchanged.
+- Unsaved `a.ts` and `b.mjs` drafts containing `export const x = ;` each produced
+  "Expression expected." (1109, error) in under 1 s. The results were unversioned,
+  so they are uncertain, carry no range and are shown in the panel and tree only.
+  The fixed draft cleared them in about 0.5 s.
+- Drafts were never written. The temp `HOME` stayed empty: no typings cache and no
+  compile cache.
+
+## Production wiring (2026-10-23)
+
+`DiscoverLocalLive` replaces `DiscoverGoLive` on the local route. It registers
+gopls, vtsls, and Svelte as an unsupported placeholder, each with independent
+availability. vtsls is searched for in project `node_modules/.bin`, then in the
+reviewed executable directories: `PATH`, plus mise's `node/latest/bin` for
+Finder-launched apps. It is never searched for in editor caches. Its approval
+inputs are `node` plus six toolchain files (wrapper entry and package, service,
+tsserver, its implementation, and the TypeScript package), together with
+package/tsconfig/jsconfig identities (≤ 128). Projects without
+`package.json`/`tsconfig.json`/`jsconfig.json` show a muted "unsupported" instead
+of a missing tool. Remote hosts still have no live route.
+
 ## Test labeling
 
 - `TestTSEvidenceReplay` replays **observed** vtsls payloads from `evidence.json`.
-- Everything using `tsHost`, the fake session server (`TestTSBridgeFreshnessSynthetic`) or fake
-  package trees is **synthetic** and proves adapter handling only, not real-server behavior.
+- `TestLocalLiveRealVtslsSmoke` is the **real-server** run. It is opt-in and skipped by default.
+- Everything using `tsHost`, the fake session server or fake package trees is
+  **synthetic**. It proves adapter handling only, not real-server behavior.
 
-## Not done — required to complete CD-23
+## Not done
 
-1. An **approved, installed** LSP wrapper on the host (`PATH` or project-local), e.g. vtsls or
-   typescript-language-server, with its TypeScript dependency; then **re-run the spike** driving it
-   through the Go adapter (not Python), recording versions, argv, nonzero-exit/crash behavior, and
-   whether any version publishes `version`.
-2. Decide whether a server-specific strategy can promote unversioned pushes beyond `uncertain`.
-3. Production wiring: no `Registration`/`SessionManager`/`Notifications` caller,
-   `liveCodeDiagnostics` stays unadvertised, `TSPlan.Provider()` is not consumed by the manager.
-4. Manual QA: edit/fix an unsaved TS error with panel/marker coherence and editor undo.
-5. Monorepo/`extends` semantics against a real server, load/size tests, and Windows/Linux platforms.
-6. `typescript-language-server` compatibility is entirely unverified.
+1. No approved install on this host: production reports "Not installed". Install
+   with `npm install -g @vtsls/language-server@0.3.0` (mise Node 22 puts it in
+   `node/latest/bin`, which is searched), then do manual editor QA: edit and fix
+   an unsaved TS error, check that the panel and tree agree, and check that editor
+   undo still works.
+2. No server-specific strategy promotes unversioned pushes beyond `uncertain`.
+3. Monorepo/`extends` semantics against a real server, load/size tests, and
+   Linux/Windows platforms are untested.
+4. `typescript-language-server` is unverified. There is no managed installer for vtsls.

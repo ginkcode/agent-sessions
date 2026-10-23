@@ -164,7 +164,7 @@ test('R08 provider crash/truncation propagates through actual store, panel, coun
   assert.equal(projectSourceDiagnostics(h.files.content.text, h.checks.findings, basis, true).segments.length, 0);
   assert.equal(editorDiagnostics(EditorState.create({ doc: h.files.content.text }), { id: 't', path: 'a.go', diagnostics: { tab: 't', path: 'a.go', findings: h.checks.findings, ...basis, current: true } }).length, 0);
   const html = await renderWithFixture(checksComponent, { checks: h.checks });
-  for (const text of ['failed', 'Tool missing', 'partial coverage', 'truncated', '&lt;script>', '&lt;img', 'No provider restart action']) assert.ok(html.includes(text), text);
+  for (const text of ['failed', 'Not installed', 'partial coverage', 'truncated', '&lt;script>', '&lt;img', 'No provider restart action']) assert.ok(html.includes(text), text);
   assert.doesNotMatch(html, /<script>|<img|Retry lsp/);
   const panel = await renderWithFixture(problemsComponent, { checks: h.checks }, { expanded: true, onnavigate() {} });
   assert.match(panel, /stale/); assert.match(panel, /results truncated/); assert.doesNotMatch(panel, /<script>/);
@@ -239,4 +239,31 @@ test('old remote missing live flag keeps bridge entirely inert through edit/save
   assert.equal(h.timers.size, 0);
   assert.equal(h.checks.liveAttachment, undefined);
   h.off(); await h.checks.detach();
+});
+
+test('vtsls shape: TS/JS extensions go live inside covered packages; unversioned pushes count in the tree but never draw inline', async () => {
+  const listeners = new Map();
+  let seq = 0;
+  const lsp = (providerId, extra) => ({ ...provider(providerId), coverage: { kind: 'openedDocuments', roots: [''], partial: true, externalChanges: 'unwatched' }, ...extra });
+  const providers = [lsp('gopls', { documentExtensions: ['.go'] }), lsp('typescript', { coverage: { kind: 'openedDocuments', roots: ['web'], partial: true, externalChanges: 'unwatched' }, documentExtensions: ['.ts', '.mts', '.cts', '.tsx', '.js', '.mjs', '.cjs', '.jsx'] }),
+    lsp('svelte', { availability: 'unsupported' })];
+  const snapshot = sets => ({ contractVersion: 1, context, sequence: seq++, approval: { state: 'approved', mode: 'session', fingerprint: 'fp' }, providers, resultSets: sets });
+  const api = { onEvent(n, fn) { listeners.set(n, fn); return () => listeners.delete(n); }, async attachCodeDiagnostics() { return { project: { hostId: 'h', root: '/p' }, context, snapshot: snapshot([]) }; }, async detachCodeDiagnostics() { return { context }; } };
+  const checks = new CodeDiagnosticsStore(api, () => 0);
+  await checks.attach('/p', { phase: 'connected', generation: 1, hostId: 'h', capabilities: { codeDiagnostics: true, liveCodeDiagnostics: true } });
+  for (const [path, live] of [['web/b.mjs', true], ['web/src/a.TS', true], ['web/c.cjs', true], ['a.go', true], ['b.mjs', false], ['web/c.svelte', false], ['web/readme.md', false]])
+    assert.equal(checks.liveSupports(path), live, path);
+  // vtsls publishes without a version: uncertain, no range, still a red tree count.
+  const d = { path: 'web/b.mjs', severity: 'error', message: 'Expression expected.', code: '1109', source: 'typescript/ts', freshness: 'uncertain', basis: { kind: 'document', documentId: 'd1' } };
+  const s = snapshot([{ providerId: 'typescript', origin: 'lsp', scope: { kind: 'document', path: 'web/b.mjs', documentId: 'd1' }, diagnostics: [d] }]);
+  listeners.get('codeDiagnostics:updated')({ contractVersion: 1, context, sequence: s.sequence, updateId: 'ts', partIndex: 0, partCount: 1, snapshot: s });
+  assert.equal(checks.counts.error, 1);
+  assert.equal(checks.countsUnder('web'), 1); assert.equal(checks.countsUnder('web/b.mjs'), 1);
+  assert.equal(checks.pathCounts.folders.get('web').uncertain, true);
+  assert.equal(checks.liveInline('web/b.mjs', { documentId: 'd1', version: 1, synced: true }).length, 0);
+  // The empty publication clears it.
+  const clear = snapshot([{ providerId: 'typescript', origin: 'lsp', scope: { kind: 'document', path: 'web/b.mjs', documentId: 'd1' }, diagnostics: [] }]);
+  listeners.get('codeDiagnostics:updated')({ contractVersion: 1, context, sequence: clear.sequence, updateId: 'clear', partIndex: 0, partCount: 1, snapshot: clear });
+  assert.equal(checks.counts.error, 0); assert.equal(checks.countsUnder('web'), 0);
+  await checks.detach();
 });
