@@ -15,8 +15,13 @@ import (
 
 // Identity discovery is host-owned metadata, never a friendly picker label.
 // Missing machine/account identity disables diagnostics rather than guessing.
-func localDiagnosticsIdentity(config string) (string, error) {
-	machine, err := diagnosticsMachineID()
+// machineID is the host machine-identity source; nil means the platform
+// default (diagnosticsMachineID), which fails closed where unverified.
+func localDiagnosticsIdentity(config string, machineID func() (string, error)) (string, error) {
+	if machineID == nil {
+		machineID = diagnosticsMachineID
+	}
+	machine, err := machineID()
 	if err != nil || strings.TrimSpace(machine) == "" {
 		return "", diagnosticError("unsupported", "Stable machine identity is unavailable")
 	}

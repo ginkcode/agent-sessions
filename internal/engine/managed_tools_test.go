@@ -39,7 +39,7 @@ func (f *fakeManagedInstaller) Install(ctx context.Context, _ mt.Binding, token 
 
 func fakeManagedEngine(t *testing.T) (*Engine, *fakeManagedInstaller, *managedToolsOwner) {
 	t.Helper()
-	e := NewEngine(WithCacheEnabled(false))
+	e := NewEngine(WithCacheEnabled(false), WithFixtureMachineIdentity(testMachineID))
 	ctx, cancel := context.WithCancel(context.Background())
 	f := &fakeManagedInstaller{started: make(chan struct{})}
 	o := &managedToolsOwner{installer: f, ctx: ctx, cancel: cancel, binding: mt.Binding{HostID: "local:test", ConnectionID: "one"}}

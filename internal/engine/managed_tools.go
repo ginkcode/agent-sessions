@@ -76,7 +76,7 @@ func (e *Engine) managedOwner(ctx context.Context) (*managedToolsOwner, error) {
 			roots.Data = defaults.Data
 		}
 	}
-	host, err := localDiagnosticsIdentity(roots.Config)
+	host, err := localDiagnosticsIdentity(roots.Config, e.machineID)
 	if err != nil {
 		return nil, err
 	}

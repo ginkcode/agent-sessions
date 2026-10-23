@@ -43,7 +43,7 @@ func TestManagedAppRouting(t *testing.T) {
 }
 
 func TestManagedAppRealEngineUnavailable(t *testing.T) {
-	e := engine.NewEngine(engine.WithCacheEnabled(false), engine.WithRoots(paths.Roots{Config: t.TempDir()}))
+	e := engine.NewEngine(engine.WithCacheEnabled(false), engine.WithRoots(paths.Roots{Config: t.TempDir()}), engine.WithFixtureMachineIdentity(testMachineID))
 	defer func() { _ = e.Close() }()
 	host, err := e.CodeDiagnosticsHostID(context.Background())
 	if err != nil {

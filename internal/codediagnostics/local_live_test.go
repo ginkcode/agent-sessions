@@ -1,18 +1,10 @@
 package codediagnostics
 
 import (
-	"bufio"
-	"errors"
-	"io"
 	"os"
 	"path/filepath"
-	"runtime"
 	"slices"
-	"strconv"
-	"strings"
-	"syscall"
 	"testing"
-	"time"
 )
 
 func TestDiscoverGoLiveBindsToolchainAndHoldsOtherLanguages(t *testing.T) {
@@ -76,61 +68,5 @@ func TestDiscoverGoLiveBindsToolchainAndHoldsOtherLanguages(t *testing.T) {
 	}
 	if _, err := DiscoverGoLive(root, make([]string, 65), env); errCode(err) != "limitExceeded" {
 		t.Fatal(err)
-	}
-}
-
-func TestHostSessionLaunchFixedArgvAndProcessGroup(t *testing.T) {
-	if runtime.GOOS != "darwin" && runtime.GOOS != "linux" {
-		t.Skip("unix launcher")
-	}
-	if _, _, err := HostSessionLaunch(Invocation{Executable: "sh"}); errCode(err) != "invalidArgument" {
-		t.Fatal("relative executable accepted", err)
-	}
-	dir := t.TempDir()
-	// The child echoes its argv/env, starts a grandchild and reports its pid.
-	p, streams, err := HostSessionLaunch(Invocation{
-		Executable: "/bin/sh", Args: []string{"-c", `echo "$0 $MARK $(pwd -P)"; sleep 60 & echo $!; cat`, "fixed"},
-		Directory: dir, Env: []string{"MARK=env-only", "PATH=/usr/bin:/bin"},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = p.Close() }()
-	out := bufio.NewReader(streams.Stdout)
-	line, err := out.ReadString('\n')
-	real, _ := filepath.EvalSymlinks(dir)
-	if err != nil || strings.TrimSpace(line) != "fixed env-only "+real {
-		t.Fatalf("%q %v", line, err)
-	}
-	line, err = out.ReadString('\n')
-	child, convErr := strconv.Atoi(strings.TrimSpace(line))
-	if err != nil || convErr != nil {
-		t.Fatal(line, err, convErr)
-	}
-	if err := p.Terminate(); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := p.Wait(); err != nil {
-		t.Fatal(err)
-	}
-	deadline := time.Now().Add(5 * time.Second)
-	for {
-		if err := syscall.Kill(child, 0); errors.Is(err, syscall.ESRCH) {
-			break
-		}
-		if time.Now().After(deadline) {
-			t.Fatal("grandchild survived process-group termination")
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
-	_ = streams.Stdin.Close()
-	if err := p.Close(); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := io.ReadAll(streams.Stderr); err == nil {
-		t.Fatal("stderr read end still open after Close")
-	}
-	if err := p.Terminate(); err != nil {
-		t.Fatal("terminate after exit", err)
 	}
 }

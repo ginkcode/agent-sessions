@@ -44,6 +44,9 @@ type Engine struct {
 	liveInjection *LiveCodeDiagnosticsInjection
 	// localLive enables the production local live route (desktop App only).
 	localLive bool
+	// machineID overrides host machine-identity discovery for fixtures only;
+	// nil (production) uses the platform source, which fails closed.
+	machineID func() (string, error)
 
 	manageMu       sync.Mutex
 	manage         *manage.Manager

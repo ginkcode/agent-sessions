@@ -25,7 +25,8 @@ import (
 // Local live route (CD-22): App.ConnectionState local capabilities -> attach ->
 // proposal -> approve -> open draft -> real SessionManager/LSP transport/gopls
 // bridge -> framed server push -> codeDiagnostics:updated event. Only the
-// language-server process is fake; the Engine uses its own local host identity.
+// language-server process is fake; the Engine derives its own local host
+// identity from a fixed fixture machine ID so the route runs on every CI OS.
 type localLSP struct {
 	in     *bufio.Reader
 	out    *io.PipeWriter
@@ -137,8 +138,9 @@ func TestLocalLiveRouteCapabilitiesApproveOpenAndEvent(t *testing.T) {
 	})
 	config := t.TempDir()
 	// Empty Host: the injection uses the Engine's own local identity, exactly
-	// like the production local route; only discovery and launch are fakes.
-	eng := engine.NewEngine(engine.WithService(engine.NewService(catalog, nil)), engine.WithCacheEnabled(false), engine.WithRoots(paths.Roots{Config: config}), engine.WithEmitter(emit),
+	// like the production local route; discovery, launch and the platform
+	// machine-ID source are fakes.
+	eng := engine.NewEngine(engine.WithService(engine.NewService(catalog, nil)), engine.WithCacheEnabled(false), engine.WithRoots(paths.Roots{Config: config}), engine.WithEmitter(emit), engine.WithFixtureMachineIdentity(testMachineID),
 		engine.WithInjectedLiveCodeDiagnostics(engine.LiveCodeDiagnosticsInjection{Discover: discover, Session: cd.SessionOptions{Launch: launch}}))
 	t.Cleanup(func() { _ = eng.Close() })
 	a := &App{localEngine: eng, backend: eng, roots: paths.Roots{Config: config}}
@@ -224,7 +226,7 @@ func TestLocalLiveRouteCapabilitiesApproveOpenAndEvent(t *testing.T) {
 // route: Stage 1 remains advertised, live does not.
 func TestLocalCapabilitiesWithoutLiveRoute(t *testing.T) {
 	config := t.TempDir()
-	eng := engine.NewEngine(engine.WithService(engine.NewService(scan.NewCatalog(), nil)), engine.WithCacheEnabled(false), engine.WithRoots(paths.Roots{Config: config}))
+	eng := engine.NewEngine(engine.WithService(engine.NewService(scan.NewCatalog(), nil)), engine.WithCacheEnabled(false), engine.WithRoots(paths.Roots{Config: config}), engine.WithFixtureMachineIdentity(testMachineID))
 	t.Cleanup(func() { _ = eng.Close() })
 	a := &App{localEngine: eng, backend: eng, roots: paths.Roots{Config: config}}
 	state := a.ConnectionState()

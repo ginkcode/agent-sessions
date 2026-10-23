@@ -120,7 +120,7 @@ func (e *Engine) diagnostics(ctx context.Context) (*diagnosticsOwner, error) {
 	if in := e.liveInjection; in != nil {
 		host = in.Host
 		if host == "" {
-			if host, err = localDiagnosticsIdentity(roots.Config); err != nil {
+			if host, err = localDiagnosticsIdentity(roots.Config, e.machineID); err != nil {
 				return nil, err
 			}
 		}
@@ -129,7 +129,7 @@ func (e *Engine) diagnostics(ctx context.Context) (*diagnosticsOwner, error) {
 		}
 		owner.tick = in.Tick
 	} else {
-		if host, err = localDiagnosticsIdentity(roots.Config); err != nil {
+		if host, err = localDiagnosticsIdentity(roots.Config, e.machineID); err != nil {
 			return nil, err
 		}
 		if e.localLive && localLiveSupported() {

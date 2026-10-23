@@ -34,6 +34,17 @@ func WithLocalLiveCodeDiagnostics() Option {
 	return func(e *Engine) { e.localLive = true }
 }
 
+// WithFixtureMachineIdentity replaces platform machine-identity discovery with a
+// fixed value so fixtures get a deterministic local host identity on every OS.
+// The account and installation components are still derived as in production,
+// and an empty id fails closed exactly like an unavailable platform identity.
+// Production composition never passes it.
+func WithFixtureMachineIdentity(id string) Option {
+	return func(e *Engine) {
+		e.machineID = func() (string, error) { return id, nil }
+	}
+}
+
 // LiveCodeDiagnosticsReady reports whether this Engine owns a live route: an
 // explicit fixture injection, or the local route on a supported platform. It
 // does not mean any language server is installed; provider availability is

@@ -81,7 +81,7 @@ func TestManagedContractScopeProgressCancel(t *testing.T) {
 }
 
 func TestManagedContractUnavailable(t *testing.T) {
-	e := NewEngine(WithCacheEnabled(false), WithRoots(paths.Roots{Config: t.TempDir()}))
+	e := NewEngine(WithCacheEnabled(false), WithRoots(paths.Roots{Config: t.TempDir()}), WithFixtureMachineIdentity(testMachineID))
 	defer func() { _ = e.Close() }()
 	host, err := e.CodeDiagnosticsHostID(context.Background())
 	if err != nil {
