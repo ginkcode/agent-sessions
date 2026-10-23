@@ -130,6 +130,15 @@ func (d *LiveDocuments) Apply(ctx context.Context, step DocumentStep) error {
 	return p.documents.Apply(ctx, step)
 }
 
+// Navigate asks the project's running session; it never starts one.
+func (d *LiveDocuments) Navigate(ctx context.Context, req NavigationRequest) (NavigationResult, error) {
+	p, ok := d.project(req.Root)
+	if !ok {
+		return NavigationResult{}, failure("unsupported", "Live discovery is unavailable")
+	}
+	return p.documents.Navigate(ctx, req)
+}
+
 // WatchedFiles notifies the current gopls session (only) of saved Go file
 // transitions observed by the approved project watcher. Non-Go paths and
 // projects without a running session are ignored.

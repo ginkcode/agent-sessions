@@ -10,6 +10,7 @@ const { CodeDiagnosticsStore } = await loadServerModule(url, [
   ["import { epoch } from '../link';", 'const epoch = () => 0;'],
   ["'../codeDiagnostics'", JSON.stringify(new URL('../src/lib/codeDiagnostics.ts', import.meta.url).href)],
   ["'../codeDiagnosticCounts'", JSON.stringify(new URL('../src/lib/codeDiagnosticCounts.ts', import.meta.url).href)],
+  ["'../codeNavigation'", JSON.stringify(new URL('../src/lib/codeNavigation.ts', import.meta.url).href)],
 ]);
 import { aggregateCodeDiagnostics } from '../src/lib/codeDiagnosticCounts.ts';
 const clone = structuredClone;

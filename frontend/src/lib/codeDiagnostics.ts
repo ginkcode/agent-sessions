@@ -67,6 +67,23 @@ export interface CodeDiagnosticsRuns extends CodeDiagnosticsAck { runs: CodeDiag
 /** Document operations return identity only, never text. */
 export interface CodeDiagnosticsDocumentReceipt { context: CodeDiagnosticsContext; documentId: string; version?: number }
 
+export type CodeNavigationOp = 'definition' | 'references' | 'hover';
+/**
+ * One place an answer points to: a project path, or with `external` the
+ * absolute path on the host (a library or the toolchain). UTF-16 range.
+ */
+export interface CodeNavigationLocation { path: string; range: CodeDiagnosticRange; external?: boolean }
+export interface CodeHoverText { kind: 'markdown' | 'plaintext'; value: string; range?: CodeDiagnosticRange }
+/** The answer for the document at `version`; drop it when the document moved on. */
+export interface CodeNavigationResult {
+  op: CodeNavigationOp;
+  documentId: string;
+  version: number;
+  locations: CodeNavigationLocation[];
+  hover?: CodeHoverText;
+  truncated?: boolean;
+}
+
 /** What the bridge confirmed for a displayed document; the store keeps no text. */
 export interface LiveDocumentBasis { documentId: string; version: number; synced: boolean }
 
@@ -105,6 +122,8 @@ export interface CodeDiagnosticsAPI {
   changeCodeDiagnosticDocument(context: CodeDiagnosticsContext, documentId: string, version: number, text: string, expectedHostId: string): Promise<CodeDiagnosticsDocumentReceipt>;
   saveCodeDiagnosticDocument(context: CodeDiagnosticsContext, documentId: string, savedVersion: number, revision: string, expectedHostId: string): Promise<CodeDiagnosticsDocumentReceipt>;
   closeCodeDiagnosticDocument(context: CodeDiagnosticsContext, documentId: string, expectedHostId: string): Promise<CodeDiagnosticsDocumentReceipt>;
+  /** codeNavigation only: asks about the open document at exactly `version`. */
+  navigateCode(context: CodeDiagnosticsContext, documentId: string, version: number, op: CodeNavigationOp, position: CodeDiagnosticPosition, expectedHostId: string): Promise<CodeNavigationResult>;
 }
 
 export const CODE_DIAGNOSTICS_EVENT = 'codeDiagnostics:updated';
@@ -120,7 +139,7 @@ export function codeDiagnosticsError(error: unknown): CodeDiagnosticsError {
   if (error instanceof CodeDiagnosticsError) return error;
   const e = error as { code?: string; message?: string; data?: { code?: string } };
   const message = typeof error === 'string' ? error : e?.message ?? 'Code diagnostics request failed';
-  return new CodeDiagnosticsError(e?.data?.code ?? e?.code ?? (/^(unsupported|disconnected|unauthorized|approvalRequired|approvalChanged|staleContext|invalidArgument|notFound|busy|limitExceeded|resyncRequired|toolFailed|canceled):/.exec(message)?.[1]) ?? 'toolFailed', message);
+  return new CodeDiagnosticsError(e?.data?.code ?? e?.code ?? (/^(unsupported|disconnected|unauthorized|approvalRequired|approvalChanged|staleContext|invalidArgument|notFound|busy|limitExceeded|resyncRequired|toolFailed|canceled|notRunning|staleVersion|timeout):/.exec(message)?.[1]) ?? 'toolFailed', message);
 }
 
 export function sameAttachment(a: CodeDiagnosticsContext, b: CodeDiagnosticsContext): boolean {

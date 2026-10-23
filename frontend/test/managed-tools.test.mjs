@@ -8,7 +8,7 @@ const lib = name => JSON.stringify(new URL(`../src/lib/${name}.ts`, import.meta.
 const { CodeDiagnosticsStore } = await loadServerModule(new URL('../src/lib/stores/codeDiagnostics.svelte.ts', import.meta.url), [
   ["import { api } from '../api';", 'const api = {};'],
   ["import { epoch } from '../link';", 'const epoch = () => 0;'],
-  ["'../codeDiagnostics'", lib('codeDiagnostics')], ["'../codeDiagnosticCounts'", lib('codeDiagnosticCounts')],
+  ["'../codeDiagnostics'", lib('codeDiagnostics')], ["'../codeDiagnosticCounts'", lib('codeDiagnosticCounts')], ["'../codeNavigation'", lib('codeNavigation')],
 ]);
 const controls = await loadServerComponent(new URL('../src/lib/components/common/go-to-file/CodeChecks.svelte', import.meta.url), [["import { codeDiagnostics as checks } from '../../../stores/codeDiagnostics.svelte';", fixtureStore('checks')]]);
 const context = { connectionId: 'c', attachmentId: 'a', generation: 'g' };

@@ -241,6 +241,36 @@ func (c *Client) CloseCodeDiagnosticDocument(ctx context.Context, token cd.Conte
 	return out, err
 }
 
+// NavigateCode asks the server's language server about a live document. The
+// answer must be for the document, version and operation asked about, and
+// within the bounds a local answer keeps.
+func (c *Client) NavigateCode(ctx context.Context, token cd.Context, documentID string, version int64, op string, pos cd.Position) (cd.NavigationResult, error) {
+	c.mu.Lock()
+	nav := c.caps.CodeNavigation && c.caps.LiveCodeDiagnostics
+	c.mu.Unlock()
+	if !nav {
+		return cd.NavigationResult{}, cdError("unsupported", "Code navigation unavailable")
+	}
+	p := codeDiagnosticsParams{Context: token, DocumentID: documentID, Version: version, Op: op, Position: &pos}
+	if err := checkLiveParams(p); err != nil {
+		return cd.NavigationResult{}, err
+	}
+	var out cd.NavigationResult
+	if err := c.diagnosticsCall(ctx, "navigateCode", p, &out); err != nil {
+		return cd.NavigationResult{}, err
+	}
+	if out.Op != op || out.DocumentID != documentID || out.Version != version {
+		return cd.NavigationResult{}, cdError("staleContext", "Navigation answer does not match the request")
+	}
+	if err := out.Validate(); err != nil {
+		return cd.NavigationResult{}, err
+	}
+	if out.Locations == nil {
+		out.Locations = []cd.NavigationLocation{}
+	}
+	return out, nil
+}
+
 func (c *Client) InvalidateCodeDiagnosticsPath(ctx context.Context, token cd.Context, path string) (cd.Snapshot, error) {
 	var out cd.Snapshot
 	err := c.diagnosticsCall(ctx, "invalidateCodeDiagnosticsPath", codeDiagnosticsParams{Context: token, Path: path}, &out)

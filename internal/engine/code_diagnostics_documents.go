@@ -64,4 +64,22 @@ func (e *Engine) CloseCodeDiagnosticDocument(ctx context.Context, c cd.Context, 
 	return o.manager.CloseDocument(ctx, c, documentID)
 }
 
-var _ LiveCodeDiagnosticsBackend = (*Engine)(nil)
+// CodeNavigationBackend answers definition, references and hover for a live
+// document (capability codeNavigation). It needs the live surface: only an
+// open document at its current version can be asked about.
+type CodeNavigationBackend interface {
+	NavigateCode(ctx context.Context, c cd.Context, documentID string, version int64, op string, pos cd.Position) (cd.NavigationResult, error)
+}
+
+func (e *Engine) NavigateCode(ctx context.Context, c cd.Context, documentID string, version int64, op string, pos cd.Position) (cd.NavigationResult, error) {
+	o, err := e.diagnostics(ctx)
+	if err != nil {
+		return cd.NavigationResult{}, err
+	}
+	return o.manager.Navigate(ctx, c, documentID, version, op, pos)
+}
+
+var (
+	_ LiveCodeDiagnosticsBackend = (*Engine)(nil)
+	_ CodeNavigationBackend      = (*Engine)(nil)
+)

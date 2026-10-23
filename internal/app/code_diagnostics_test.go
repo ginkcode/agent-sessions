@@ -162,6 +162,10 @@ func TestLiveCodeDiagnosticsRouting(t *testing.T) {
 		func() error { _, e := a.ChangeCodeDiagnosticDocument(c, "d", 2, "x", "local-id"); return e },
 		func() error { _, e := a.SaveCodeDiagnosticDocument(c, "d", 1, "r", "local-id"); return e },
 		func() error { _, e := a.CloseCodeDiagnosticDocument(c, "d", "local-id"); return e },
+		func() error {
+			_, e := a.NavigateCode(c, "d", 1, cd.NavigateHover, cd.Position{}, "local-id")
+			return e
+		},
 	} {
 		checkDiagnosticsError(t, call(), "unsupported")
 	}
@@ -177,6 +181,10 @@ func TestLiveCodeDiagnosticsRouting(t *testing.T) {
 		func() error { _, e := a.ChangeCodeDiagnosticDocument(c, "d", 2, "x", "local-id"); return e },
 		func() error { _, e := a.SaveCodeDiagnosticDocument(c, "d", 1, "r", "local-id"); return e },
 		func() error { _, e := a.CloseCodeDiagnosticDocument(c, "d", "local-id"); return e },
+		func() error {
+			_, e := a.NavigateCode(c, "d", 1, cd.NavigateHover, cd.Position{}, "local-id")
+			return e
+		},
 	} {
 		checkDiagnosticsError(t, call(), "disconnected")
 	}

@@ -17,6 +17,7 @@ type diagnosticsRPC struct {
 	mu             sync.Mutex
 	host           string
 	live           bool
+	navigation     bool
 	owned          map[string]cd.Context
 	closed         bool
 	queue          chan Notification
@@ -38,6 +39,8 @@ type codeDiagnosticsParams struct {
 	SavedVersion    int64            `json:"savedVersion"`
 	Text            string           `json:"text"`
 	Revision        string           `json:"revision"`
+	Op              string           `json:"op,omitempty"`
+	Position        *cd.Position     `json:"position,omitempty"`
 }
 
 func cdError(code, message string) error { return &cd.Error{Code: code, Message: message} }
@@ -48,7 +51,7 @@ func cdError(code, message string) error { return &cd.Error{Code: code, Message:
 // (engine.WithRemoteCodeDiagnostics). Any other server, including an older
 // one, stays unsupported. Neither picker labels nor client assertions count.
 func (s *Server) initializeDiagnostics(ctx context.Context, caps *Capabilities) string {
-	caps.CodeDiagnostics, caps.LiveCodeDiagnostics = false, false
+	caps.CodeDiagnostics, caps.LiveCodeDiagnostics, caps.CodeNavigation = false, false, false
 	if _, ok := s.backend.(engine.CodeDiagnosticsBackend); !ok {
 		return ""
 	}
@@ -71,8 +74,10 @@ func (s *Server) initializeDiagnostics(ctx context.Context, caps *Capabilities) 
 	if live, ok := s.backend.(interface{ LiveCodeDiagnosticsReady() bool }); ok && live.LiveCodeDiagnosticsReady() {
 		if _, ok := s.backend.(engine.LiveCodeDiagnosticsBackend); ok {
 			caps.LiveCodeDiagnostics = true
+			_, caps.CodeNavigation = s.backend.(engine.CodeNavigationBackend)
 			s.diagnostics.mu.Lock()
 			s.diagnostics.live = true
+			s.diagnostics.navigation = caps.CodeNavigation
 			s.diagnostics.mu.Unlock()
 		}
 	}

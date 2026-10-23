@@ -148,7 +148,7 @@ test('Stage 1 real store eligible set agrees with editor lint and source across 
   const lib = name => JSON.stringify(new URL(`../src/lib/${name}.ts`, import.meta.url).href);
   const { CodeDiagnosticsStore } = await loadServerModule(new URL('../src/lib/stores/codeDiagnostics.svelte.ts', import.meta.url), [
     ["import { api } from '../api';", 'const api = {};'], ["import { epoch } from '../link';", 'const epoch = () => 0;'],
-    ["'../codeDiagnostics'", lib('codeDiagnostics')], ["'../codeDiagnosticCounts'", lib('codeDiagnosticCounts')],
+    ["'../codeDiagnostics'", lib('codeDiagnostics')], ["'../codeDiagnosticCounts'", lib('codeDiagnosticCounts')], ["'../codeNavigation'", lib('codeNavigation')],
   ]);
   const id = {}, input = lintInput(id), context = { connectionId: 'c', attachmentId: 'a', generation: 'g' };
   const d = input.findings[0].diagnostic;

@@ -54,11 +54,14 @@ type Notification struct {
 type Capabilities struct {
 	CodeDiagnostics     bool `json:"codeDiagnostics,omitempty"`
 	LiveCodeDiagnostics bool `json:"liveCodeDiagnostics,omitempty"`
-	Trash               bool `json:"trash"`
-	Manage              bool `json:"manage"`
-	Export              bool `json:"export"`
-	Import              bool `json:"import"`
-	Search              bool `json:"search"`
+	// CodeNavigation: definition, references and hover for live documents.
+	// Only with LiveCodeDiagnostics.
+	CodeNavigation bool `json:"codeNavigation,omitempty"`
+	Trash          bool `json:"trash"`
+	Manage         bool `json:"manage"`
+	Export         bool `json:"export"`
+	Import         bool `json:"import"`
+	Search         bool `json:"search"`
 	// SaveFile: the file viewer may save edited files. Older servers leave
 	// it false, and their files stay read-only.
 	SaveFile bool `json:"saveFile,omitempty"`

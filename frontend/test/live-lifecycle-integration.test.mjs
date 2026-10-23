@@ -11,7 +11,7 @@ const lib = name => JSON.stringify(new URL(`../src/lib/${name}.ts`, import.meta.
 const { CodeDiagnosticsStore } = await loadServerModule(new URL('../src/lib/stores/codeDiagnostics.svelte.ts', import.meta.url), [
   ["import { api } from '../api';", 'const api = {};'],
   ["import { epoch } from '../link';", 'const epoch = () => 0;'],
-  ["'../codeDiagnostics'", lib('codeDiagnostics')], ["'../codeDiagnosticCounts'", lib('codeDiagnosticCounts')],
+  ["'../codeDiagnostics'", lib('codeDiagnostics')], ["'../codeDiagnosticCounts'", lib('codeDiagnosticCounts')], ["'../codeNavigation'", lib('codeNavigation')],
 ]);
 const { FilesStore } = await loadServerModule(new URL('../src/lib/stores/files.svelte.ts', import.meta.url), [
   ["import { api } from '../api';", fixtureStore('api', '__lifecycleFixture')],

@@ -1,4 +1,4 @@
-import type { CodeDiagnosticsAPI, CodeDiagnosticsContext, CodeDiagnosticsSnapshot, CodeDiagnosticsRun, CodeDiagnosticsDocumentReceipt } from '../codeDiagnostics';
+import type { CodeDiagnosticsAPI, CodeDiagnosticsContext, CodeDiagnosticsSnapshot, CodeDiagnosticsRun, CodeDiagnosticsDocumentReceipt, CodeDiagnosticPosition, CodeNavigationLocation, CodeNavigationOp, CodeNavigationResult } from '../codeDiagnostics';
 import { CODE_DIAGNOSTICS_EVENT, CodeDiagnosticsError, sameContext } from '../codeDiagnostics';
 
 /** Synthetic, in-memory checker. No executable or editor/text dependencies. */
@@ -60,6 +60,39 @@ export class MockCodeDiagnostics implements CodeDiagnosticsAPI {
     const m = this.docs(c, host);
     if (m.delete(documentId)) this.closed.add(documentId);
     return { context: c, documentId };
+  }
+  /**
+   * Answers from the open mirrors: the word at the position, its declaring line
+   * (`func`, `function`, `const`, `let`, `var`, `def`, `class`, `type`) and every use.
+   */
+  async navigateCode(c: CodeDiagnosticsContext, documentId: string, version: number, op: CodeNavigationOp, position: CodeDiagnosticPosition, host: string): Promise<CodeNavigationResult> {
+    const m = this.docs(c, host), d = m.get(documentId);
+    if (!d) throw new CodeDiagnosticsError('notFound', 'Mock document is not open');
+    if (version !== d.version) throw new CodeDiagnosticsError('staleVersion', 'The document changed since this request');
+    const line = d.text.split('\n')[position.line];
+    if (line === undefined || position.character > line.length) throw new CodeDiagnosticsError('invalidArgument', 'Position is outside the document');
+    const word = /\w*$/.exec(line.slice(0, position.character))![0] + /^\w*/.exec(line.slice(position.character))![0];
+    const result: CodeNavigationResult = { op, documentId, version, locations: [] };
+    if (!word) return result;
+    const uses: CodeNavigationLocation[] = [], declarations: CodeNavigationLocation[] = [];
+    let declared = '';
+    const declaring = new RegExp(`\\b(?:func|function|const|let|var|def|class|type)\\s+${word}\\b`);
+    for (const doc of m.values()) {
+      doc.text.split('\n').forEach((text, i) => {
+        for (const hit of text.matchAll(new RegExp(`\\b${word}\\b`, 'g'))) {
+          const place = { path: doc.path, range: { start: { line: i, character: hit.index }, end: { line: i, character: hit.index + word.length } } };
+          uses.push(place);
+          if (declaring.test(text) && !declarations.some(p => p.path === doc.path && p.range.start.line === i)) {
+            declarations.push(place);
+            declared ||= text.trim();
+          }
+        }
+      });
+    }
+    if (op === 'references') result.locations = uses;
+    else if (op === 'definition') result.locations = declarations;
+    else if (declared) result.hover = { kind: 'markdown', value: '```\n' + declared + '\n```\n\nMock symbol `' + word + '`.' };
+    return result;
   }
   async invalidateCodeDiagnosticsPath(c: CodeDiagnosticsContext, path: string, host: string) {
     const s = this.get(c, host);

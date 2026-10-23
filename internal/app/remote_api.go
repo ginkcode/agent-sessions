@@ -91,6 +91,8 @@ func (a *App) ConnectionState() ConnectionState {
 		if ready, ok := local.(interface{ LiveCodeDiagnosticsReady() bool }); ok && state.Capabilities.CodeDiagnostics {
 			_, docs := local.(engine.LiveCodeDiagnosticsBackend)
 			state.Capabilities.LiveCodeDiagnostics = docs && ready.LiveCodeDiagnosticsReady()
+			_, nav := local.(engine.CodeNavigationBackend)
+			state.Capabilities.CodeNavigation = state.Capabilities.LiveCodeDiagnostics && nav
 		}
 	}
 	return state

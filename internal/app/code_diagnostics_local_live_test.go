@@ -74,7 +74,7 @@ func (f *localLSP) serve() {
 		id, _ := json.Marshal(m["id"])
 		switch m["method"] {
 		case "initialize":
-			f.send(`{"jsonrpc":"2.0","id":` + string(id) + `,"result":{"capabilities":{"textDocumentSync":{"openClose":true,"change":2,"save":true}}}}`)
+			f.send(`{"jsonrpc":"2.0","id":` + string(id) + `,"result":{"capabilities":{"textDocumentSync":{"openClose":true,"change":2,"save":true},"definitionProvider":true}}}`)
 		case "shutdown":
 			f.send(`{"jsonrpc":"2.0","id":` + string(id) + `,"result":null}`)
 		case "exit":
@@ -85,6 +85,13 @@ func (f *localLSP) serve() {
 			doc, _ := params["textDocument"].(map[string]any)
 			uri, _ := doc["uri"].(string)
 			f.opened <- uri
+		case "textDocument/definition":
+			// The symbol is defined where it was asked about.
+			params, _ := m["params"].(map[string]any)
+			doc, _ := params["textDocument"].(map[string]any)
+			at, _ := json.Marshal(params["position"])
+			uri, _ := json.Marshal(doc["uri"])
+			f.send(`{"jsonrpc":"2.0","id":` + string(id) + `,"result":{"uri":` + string(uri) + `,"range":{"start":` + string(at) + `,"end":` + string(at) + `}}}`)
 		}
 	}
 }
@@ -218,6 +225,21 @@ func TestLocalLiveRouteCapabilitiesApproveOpenAndEvent(t *testing.T) {
 		}
 		return true
 	})
+	// Navigation goes to the same session, for the version it has.
+	if !a.ConnectionState().Capabilities.CodeNavigation {
+		t.Fatal("codeNavigation not advertised")
+	}
+	at := cd.Position{Line: 0, Character: 8}
+	nav, err := a.NavigateCode(att.Context, "d1", 2, cd.NavigateDefinition, at, host)
+	if err != nil || nav.Version != 2 || len(nav.Locations) != 1 || nav.Locations[0] != (cd.NavigationLocation{Path: "a.go", Range: cd.Range{Start: at, End: at}}) {
+		t.Fatal(nav, err)
+	}
+	_, err = a.NavigateCode(att.Context, "d1", 1, cd.NavigateDefinition, at, host)
+	checkDiagnosticsError(t, err, "staleVersion")
+	_, err = a.NavigateCode(att.Context, "d1", 2, cd.NavigateHover, at, host)
+	checkDiagnosticsError(t, err, "unsupported")
+	_, err = a.NavigateCode(att.Context, "d1", 2, cd.NavigateDefinition, at, "other-host")
+	checkDiagnosticsError(t, err, "staleContext")
 	if launches.Load() != 1 {
 		t.Fatal("unexpected launches", launches.Load())
 	}
@@ -231,7 +253,7 @@ func TestLocalCapabilitiesWithoutLiveRoute(t *testing.T) {
 	t.Cleanup(func() { _ = eng.Close() })
 	a := &App{localEngine: eng, backend: eng, roots: paths.Roots{Config: config}}
 	state := a.ConnectionState()
-	if state.HostID == "" || !state.Capabilities.CodeDiagnostics || state.Capabilities.LiveCodeDiagnostics {
+	if state.HostID == "" || !state.Capabilities.CodeDiagnostics || state.Capabilities.LiveCodeDiagnostics || state.Capabilities.CodeNavigation {
 		t.Fatalf("live advertised without a route: %+v", state)
 	}
 	if NewAppWithService(nil).localLive {

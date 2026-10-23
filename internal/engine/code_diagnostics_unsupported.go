@@ -64,3 +64,7 @@ func (u UnsupportedCodeDiagnostics) SaveCodeDiagnosticDocument(context.Context, 
 func (u UnsupportedCodeDiagnostics) CloseCodeDiagnosticDocument(context.Context, cd.Context, string) (CodeDiagnosticsDocument, error) {
 	return CodeDiagnosticsDocument{}, u.err()
 }
+
+func (u UnsupportedCodeDiagnostics) NavigateCode(context.Context, cd.Context, string, int64, string, cd.Position) (cd.NavigationResult, error) {
+	return cd.NavigationResult{}, u.err()
+}

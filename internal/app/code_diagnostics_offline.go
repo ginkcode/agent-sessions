@@ -54,3 +54,7 @@ func (u offlineBackend) SaveCodeDiagnosticDocument(context.Context, cd.Context, 
 func (u offlineBackend) CloseCodeDiagnosticDocument(context.Context, cd.Context, string) (engine.CodeDiagnosticsDocument, error) {
 	return engine.CodeDiagnosticsDocument{}, &cd.Error{Code: "disconnected", Message: "Selected host is disconnected"}
 }
+
+func (u offlineBackend) NavigateCode(context.Context, cd.Context, string, int64, string, cd.Position) (cd.NavigationResult, error) {
+	return cd.NavigationResult{}, &cd.Error{Code: "disconnected", Message: "Selected host is disconnected"}
+}

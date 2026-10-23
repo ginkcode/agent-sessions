@@ -35,6 +35,8 @@ type diagnosticsBackend struct {
 	registrations []cd.Registration // optional Stage 1 integration adapters
 	live          bool              // test-only: advertise liveCodeDiagnostics
 	liveCalls     int
+	navCalls      int
+	tamper        func(*cd.NavigationResult) // test-only: change an answer on its way out
 }
 
 func (b *diagnosticsBackend) RemoteCodeDiagnosticsHostID(context.Context) (string, error) {

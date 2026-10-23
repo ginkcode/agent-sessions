@@ -62,3 +62,22 @@ func (a *App) CloseCodeDiagnosticDocument(c cd.Context, documentID, expectedHost
 	out, err := b.CloseCodeDiagnosticDocument(a.appCtx(), c, documentID)
 	return a.liveResult(gen, out, err)
 }
+
+// NavigateCode asks the language server that holds a live document about the
+// symbol at position: op is definition, references or hover. It goes over the
+// same route as the document operations.
+func (a *App) NavigateCode(c cd.Context, documentID string, version int64, op string, position cd.Position, expectedHostID string) (cd.NavigationResult, error) {
+	b, gen, err := a.liveRoute(expectedHostID)
+	if err != nil {
+		return cd.NavigationResult{}, err
+	}
+	nav, ok := b.(engine.CodeNavigationBackend)
+	if !ok {
+		return cd.NavigationResult{}, &cd.Error{Code: "unsupported", Message: "Code navigation is unavailable on this backend"}
+	}
+	out, err := nav.NavigateCode(a.appCtx(), c, documentID, version, op, position)
+	if stale := a.diagnosticsCurrent(gen); stale != nil {
+		return cd.NavigationResult{}, stale
+	}
+	return out, err
+}

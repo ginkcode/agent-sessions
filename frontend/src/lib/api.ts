@@ -1,4 +1,4 @@
-import type { CodeDiagnosticsAPI, CodeDiagnosticsContext, CodeDiagnosticsRun, CodeDiagnosticsAttachment, CodeDiagnosticsSnapshot, CodeDiagnosticsAck, CodeDiagnosticsRuns, CodeDiagnosticsDocumentReceipt } from './codeDiagnostics';
+import type { CodeDiagnosticsAPI, CodeDiagnosticsContext, CodeDiagnosticsRun, CodeDiagnosticsAttachment, CodeDiagnosticsSnapshot, CodeDiagnosticsAck, CodeDiagnosticsRuns, CodeDiagnosticsDocumentReceipt, CodeDiagnosticPosition, CodeNavigationOp, CodeNavigationResult } from './codeDiagnostics';
 import { CodeDiagnosticsError, codeDiagnosticsError } from './codeDiagnostics';
 import type { PortForwardRequest, PortForwardState } from './portForward';
 import type { ManagedToolRequest, ManagedToolState } from './managedTools';
@@ -234,6 +234,7 @@ interface WailsAppBinding {
   ChangeCodeDiagnosticDocument?: CodeDiagnosticsAPI['changeCodeDiagnosticDocument'];
   SaveCodeDiagnosticDocument?: CodeDiagnosticsAPI['saveCodeDiagnosticDocument'];
   CloseCodeDiagnosticDocument?: CodeDiagnosticsAPI['closeCodeDiagnosticDocument'];
+  NavigateCode?: CodeDiagnosticsAPI['navigateCode'];
   ListGroups(mode: string, filter: FilterOpts): Promise<GroupNode[]>;
   ListSessions(groupKey: string, filter: FilterOpts, sort: SortOpts): Promise<SessionMeta[]>;
   AgentCounts(filter: FilterOpts): Promise<Record<string, number>>;
@@ -403,6 +404,10 @@ class WailsBackendAPI implements BackendAPI {
   closeCodeDiagnosticDocument(c: CodeDiagnosticsContext, documentId: string, host: string): Promise<CodeDiagnosticsDocumentReceipt> {
     const b = this.binding;
     return this.diagnosticsCall(b.CloseCodeDiagnosticDocument && (() => b.CloseCodeDiagnosticDocument!(c, documentId, host)));
+  }
+  navigateCode(c: CodeDiagnosticsContext, documentId: string, version: number, op: CodeNavigationOp, position: CodeDiagnosticPosition, host: string): Promise<CodeNavigationResult> {
+    const b = this.binding;
+    return this.diagnosticsCall(b.NavigateCode && (() => b.NavigateCode!(c, documentId, version, op, position, host)));
   }
   private get binding(): WailsAppBinding {
     const b = (window as any).go?.app?.App;

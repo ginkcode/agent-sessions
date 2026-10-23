@@ -130,6 +130,11 @@ func TestLiveRouteAppThroughRealRPCAndEngine(t *testing.T) {
 	if !failed {
 		t.Fatal("live failure not visible through App", snap.Providers)
 	}
+	// The session failed to start, so there is no document to ask about.
+	_, err = a.NavigateCode(att.Context, "d1", 1, cd.NavigateDefinition, cd.Position{}, host)
+	if err == nil {
+		t.Fatal("navigation without a document")
+	}
 	a.conn.mu.Lock()
 	a.conn.state.Phase = ConnDisconnected
 	a.conn.mu.Unlock()
@@ -147,6 +152,8 @@ func TestLiveRouteAppOldServerOmitsLive(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, err = a.OpenCodeDiagnosticDocument(att.Context, "a.go", "d1", 1, "package a", "r", host)
+	checkDiagnosticsError(t, err, "unsupported")
+	_, err = a.NavigateCode(att.Context, "d1", 1, cd.NavigateDefinition, cd.Position{}, host)
 	checkDiagnosticsError(t, err, "unsupported")
 	if launches.Load() != 0 {
 		t.Fatal("old capability launched")

@@ -8,7 +8,7 @@ const { CodeDiagnosticsStore } = await loadServerModule(new URL('../src/lib/stor
   ["import { api } from '../api';", 'const api = {};'],
   ["import { epoch } from '../link';", 'const epoch = () => 0;'],
   ["'../codeDiagnostics'", lib('codeDiagnostics')],
-  ["'../codeDiagnosticCounts'", lib('codeDiagnosticCounts')],
+  ["'../codeDiagnosticCounts'", lib('codeDiagnosticCounts')], ["'../codeNavigation'", lib('codeNavigation')],
 ]);
 const base = new URL('../src/lib/components/common/go-to-file/', import.meta.url);
 const checks = ["import { codeDiagnostics as checks } from '../../../stores/codeDiagnostics.svelte';", fixtureStore('checks')];

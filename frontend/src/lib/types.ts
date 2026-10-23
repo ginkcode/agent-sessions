@@ -785,6 +785,8 @@ export interface HostCapabilities {
   /** Optional Stage 1 support. Live remains false until Stage 2. */
   codeDiagnostics?: boolean;
   liveCodeDiagnostics?: boolean;
+  /** Definition, references and hover for live documents; only with liveCodeDiagnostics. */
+  codeNavigation?: boolean;
   /** Absent on older servers; editing requires an explicit true. */
   saveFile?: boolean;
   /** Absent on older servers; per-line blame requires an explicit true. */

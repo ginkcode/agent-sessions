@@ -73,6 +73,56 @@ func navigationOp(op string) bool {
 	return op == NavigateDefinition || op == NavigateReferences || op == NavigateHover
 }
 
+// ValidNavigationOp reports whether op is one Navigate answers.
+func ValidNavigationOp(op string) bool { return navigationOp(op) }
+
+// Validate checks an answer that crossed a connection against the bounds
+// Navigate keeps, so a peer cannot hand the editor more, or other, than a
+// local server would.
+func (r NavigationResult) Validate() error {
+	invalid := failure("toolFailed", "The navigation answer is invalid")
+	if !navigationOp(r.Op) || len(r.Locations) > maxNavigationLocations {
+		return invalid
+	}
+	for _, l := range r.Locations {
+		if !validRange(&l.Range) {
+			return invalid
+		}
+		if l.External {
+			if !externalPath(l.Path) {
+				return invalid
+			}
+		} else if ValidatePath(l.Path) != nil {
+			return invalid
+		}
+	}
+	if h := r.Hover; h != nil {
+		if (h.Kind != "markdown" && h.Kind != "plaintext") || len(h.Value) > maxHoverBytes || !utf8.ValidString(h.Value) || !validRange(h.Range) {
+			return invalid
+		}
+	}
+	return nil
+}
+
+// externalPath accepts an absolute path of either host family (the peer may
+// run another OS) without parent steps.
+func externalPath(s string) bool {
+	if !bounded(s, 4096) {
+		return false
+	}
+	slashed := strings.ReplaceAll(s, `\`, "/")
+	drive := len(s) >= 3 && s[1] == ':' && slashed[2] == '/' && ('a' <= s[0]|0x20 && s[0]|0x20 <= 'z')
+	if !strings.HasPrefix(slashed, "/") && !drive {
+		return false
+	}
+	for _, part := range strings.Split(slashed, "/") {
+		if part == ".." {
+			return false
+		}
+	}
+	return true
+}
+
 // offers reports whether a session answers op.
 func (c ServerCapabilities) offers(op string) bool {
 	switch op {

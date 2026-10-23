@@ -6,13 +6,26 @@ import { aggregateCodeDiagnostics } from '../codeDiagnosticCounts';
 import { epoch } from '../link';
 import type { BackendAPI } from '../api';
 import type { ConnectionState } from '../types';
-import type { LiveDocumentBasis, CodeDiagnosticsContext, CodeDiagnosticsProject, CodeDiagnosticsSnapshot, CodeDiagnosticsUpdate, CodeDiagnosticsRun } from '../codeDiagnostics';
+import type { LiveDocumentBasis, CodeDiagnosticsContext, CodeDiagnosticsProject, CodeDiagnosticsProvider, CodeDiagnosticsSnapshot, CodeDiagnosticsUpdate, CodeDiagnosticsRun, CodeDiagnosticPosition, CodeNavigationOp } from '../codeDiagnostics';
 import { CODE_DIAGNOSTICS_EVENT, CODE_DIAGNOSTICS_LIMITS as limits, CodeDiagnosticsError, codeDiagnosticsError, sameAttachment, sameContext, encodedBytes, resultSetKey, groupCodeDiagnostics, inlineCodeDiagnostic, liveDocumentEligibility } from '../codeDiagnostics';
+import type { CodeNavigationOutcome } from '../codeNavigation';
+import { navigationBlocker, navigationFailure } from '../codeNavigation';
 import { preferences } from './preferences.svelte';
 
 /** Whether missing language servers are downloaded without a click; kept by the caller. */
 export interface AutoInstallSetting { readonly on: boolean; set(on: boolean): void }
 const autoInstallOff: AutoInstallSetting = { on: false, set() {} };
+
+/** How long a navigation request waits for the language server to catch up with typing. */
+const NAV_SYNC_WAIT = 2000, NAV_SYNC_POLL = 50;
+
+/** Whether an opened-documents provider declares path by extension and coverage root. */
+function declares(p: CodeDiagnosticsProvider, path: string): boolean {
+  const lower = path.toLowerCase();
+  const under = (root: string) => root === '' || path === root || path.startsWith(root + '/');
+  return Array.isArray(p.documentExtensions) && p.documentExtensions.some(ext => lower.endsWith(ext.toLowerCase()))
+    && (p.coverage.roots.length === 0 || p.coverage.roots.some(under));
+}
 
 type Assembly = { parts: Map<number, CodeDiagnosticsUpdate>; bytes: number; timer: ReturnType<typeof setTimeout> };
 
@@ -186,6 +199,9 @@ export class CodeDiagnosticsStore {
   private liveCapable = $state(false);
   /** The attached host advertises live document diagnostics (copy only; never a grant). */
   get liveEnabled(): boolean { return this.liveCapable; }
+  private navCapable = $state(false);
+  /** The attached host answers definition, references and hover (copy only; never a grant). */
+  get navigationEnabled(): boolean { return this.liveCapable && this.navCapable; }
   private listeners = new Set<() => void>();
   private reconcileFiles: () => Promise<void> = async () => {};
   private liveRevision = $state(0);
@@ -246,11 +262,50 @@ export class CodeDiagnosticsStore {
   liveSupports(path: string): boolean {
     const live = this.providers.filter(p => p.coverage.kind === 'openedDocuments');
     if (!live.some(p => Array.isArray(p.documentExtensions))) return true;
-    const lower = path.toLowerCase();
-    const under = (root: string) => root === '' || path === root || path.startsWith(root + '/');
-    return live.some(p => p.availability === 'available' && Array.isArray(p.documentExtensions)
-      && p.documentExtensions.some(ext => lower.endsWith(ext.toLowerCase()))
-      && (p.coverage.roots.length === 0 || p.coverage.roots.some(under)));
+    return live.some(p => p.availability === 'available' && declares(p, path));
+  }
+  /** The opened-documents providers that declare path; all of them on an older backend. */
+  private liveServers(path: string): CodeDiagnosticsProvider[] {
+    const live = this.providers.filter(p => p.coverage.kind === 'openedDocuments');
+    return live.some(p => Array.isArray(p.documentExtensions)) ? live.filter(p => declares(p, path)) : live;
+  }
+  /** Why definition, references and hover cannot be asked for path now; undefined when they can. */
+  navigationBlocker(path: string): string | undefined {
+    return navigationBlocker({
+      status: this.status, live: this.liveCapable, navigation: this.navCapable, approved: this.approved, approvalBlocker: this.approvalBlocker,
+      servers: this.liveServers(path), failure: this.liveDocuments.find(d => d.path === path)?.failure, basis: this.liveBasis(path),
+    });
+  }
+  /**
+   * Asks the language server about the symbol at position in the displayed
+   * file. Typing not yet sent is waited for briefly, so the position means what
+   * the server has. Never throws: an answer for a version or attachment that
+   * moved on is `stale`.
+   */
+  async navigate(path: string, op: CodeNavigationOp, position: CodeDiagnosticPosition): Promise<CodeNavigationOutcome> {
+    const life = this.lifetime, c = this.context, host = this.host;
+    let blocker = this.navigationBlocker(path), basis = this.liveBasis(path);
+    for (let waited = 0; !blocker && basis && !basis.synced && waited < NAV_SYNC_WAIT; waited += NAV_SYNC_POLL) {
+      await new Promise(r => setTimeout(r, NAV_SYNC_POLL));
+      if (!this.active(life)) return { kind: 'stale' };
+      blocker = this.navigationBlocker(path); basis = this.liveBasis(path);
+    }
+    if (blocker || !basis || !c) return { kind: 'unavailable', reason: blocker ?? 'Code navigation is not available for this file.' };
+    if (!basis.synced) return { kind: 'unavailable', reason: 'The language server has not caught up with your edits yet. Try again in a moment.' };
+    const asked = basis;
+    const moved = () => {
+      const now = this.liveBasis(path);
+      return !this.active(life) || !this.context || !sameContext(c, this.context) || now?.documentId !== asked.documentId || now.version !== asked.version;
+    };
+    try {
+      const result = await this.backend.navigateCode(c, asked.documentId, asked.version, op, position, host);
+      if (moved() || result.op !== op || result.documentId !== asked.documentId || result.version !== asked.version) return { kind: 'stale' };
+      return { kind: 'result', result };
+    } catch (e) {
+      const err = codeDiagnosticsError(e);
+      if (moved() || err.code === 'staleVersion' || err.code === 'staleContext') return { kind: 'stale' };
+      return { kind: 'failed', code: err.code, reason: navigationFailure(err.code, op, err.message) };
+    }
   }
   /** Notified (synchronously, errors swallowed) whenever attachment state may have changed. */
   onLifecycle(listener: () => void): () => void {
@@ -322,7 +377,7 @@ export class CodeDiagnosticsStore {
     this.directory = undefined;
     this.project = undefined; this.snapshot = undefined; this.status = 'detached'; this.error = undefined;
     this.pending = undefined; this.revoking = false; this.pendingRuns = [];
-    this.liveCapable = false;
+    this.liveCapable = false; this.navCapable = false;
     this.emit();
     if (c) { try { await this.backend.detachCodeDiagnostics(c, host); } catch { /* Never retry mutations across a connection change. */ } }
   }
@@ -336,7 +391,7 @@ export class CodeDiagnosticsStore {
     this.clearBuffers(); this.recovering = false;
     this.pending = undefined; this.pendingRuns = []; this.revoking = false;
     this.status = 'disconnected'; this.stale(true);
-    this.liveCapable = false;
+    this.liveCapable = false; this.navCapable = false;
     this.emit();
   }
   async attach(dir: string, connection: ConnectionState) {
@@ -348,6 +403,7 @@ export class CodeDiagnosticsStore {
       this.status = 'unsupported'; return;
     }
     this.liveCapable = !!connection.capabilities.liveCodeDiagnostics;
+    this.navCapable = !!connection.capabilities.codeNavigation;
     this.host = connection.hostId; this.connection = connection; this.status = 'attaching'; this.earlyOverflow = false; this.retiredGenerations.clear();
     this.off = this.backend.onEvent(CODE_DIAGNOSTICS_EVENT, (event: CodeDiagnosticsUpdate) => {
       if (!this.active(life)) return;
