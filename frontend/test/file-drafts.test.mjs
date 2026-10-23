@@ -427,3 +427,32 @@ test('confirmed overwrite stays revision checked and can conflict again; success
   assert.equal(tab.edit.baseline, 'draft');
   assert.match(store.listError, /list failed/);
 });
+
+test('a replace in files shows in clean editors without resetting history; typing meanwhile is kept as a conflict', async () => {
+  const { store, fixture, tab } = await setup();
+  store.startEditing(tab.path);
+  const edit = tab.edit, version = edit.version;
+  fixture.api.readFile = async () => content('new\n', 'r2');
+  await store.reloadReplaced(['a.txt', 'gone.txt']);
+  assert.equal(edit.draft, 'new\n');
+  assert.equal(edit.baseline, 'new\n');
+  assert.equal(edit.revision, 'r2');
+  assert.equal(edit.version, version, 'the editor takes the change as an undoable edit');
+  assert.equal(tabHasUnsaved(tab), false);
+
+  const pending = deferred();
+  fixture.api.readFile = () => pending.promise;
+  const reloading = store.reloadReplaced(['a.txt']);
+  store.updateDraft(tab, 'typed');
+  pending.resolve(content('newer\n', 'r3'));
+  await reloading;
+  assert.equal(edit.draft, 'typed', 'typing during the read is never thrown away');
+  assert.deepEqual(edit.conflict, { observedRevision: 'r3' });
+
+  store.updateDraft(tab, 'new\n');
+  edit.conflict = null;
+  fixture.api.readFile = async () => { throw new Error('gone'); };
+  await store.reloadReplaced(['a.txt']);
+  assert.equal(tab.error, 'gone');
+  assert.equal(edit.draft, 'new\n');
+});

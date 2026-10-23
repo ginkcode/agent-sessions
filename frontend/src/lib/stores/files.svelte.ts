@@ -895,6 +895,45 @@ export class FilesStore {
     }
   }
 
+  /**
+   * Shows what a replace in files wrote. A clean editor takes the new text
+   * as one undoable change (the version stays, so its history does too); one
+   * typed in meanwhile keeps its draft and is marked as changed on disk.
+   */
+  async reloadReplaced(paths: string[]): Promise<void> {
+    const dir = this.dir, host = this.dataHost, started = epoch(), connection = this.connectionSeq;
+    if (!dir || this.mutationError(host)) return;
+    const wanted = new Set(paths);
+    this.refreshSavedListing(dir, host);
+    await Promise.all(this.tabs.filter(t => wanted.has(t.path)).map(async tab => {
+      const edit = tab.edit;
+      if (!edit) return this.read(tab.path);
+      if (edit.saving) return;
+      const token = tab.token = ++this.readSeq;
+      const valid = () => this.dir === dir && started === epoch() && connection === this.connectionSeq
+        && host === link.dataHost && this.tabs.includes(tab) && tab.edit === edit && !edit.saving;
+      try {
+        const content = await api.readFile(dir, tab.path);
+        if (!valid()) return;
+        // Typing bumps the token: the draft is kept, and the disk change shown as a conflict.
+        if (tab.token !== token || tabHasUnsaved(tab) || !canEditContent(content)) {
+          if (content.revision !== edit.revision) edit.conflict = { observedRevision: content.revision };
+          return;
+        }
+        const text = editorText(content);
+        serializedEditSize(text, content.edit);
+        tab.content = content;
+        tab.error = null;
+        edit.baseline = edit.draft = text;
+        edit.revision = content.revision;
+        edit.saveError = null;
+        this.notify(o => o.replaced(dir, tab.path, text, content.revision));
+      } catch (err) {
+        if (valid() && !isStaleReply(err)) tab.error = errorText(err, 'Could not read the replaced file.');
+      }
+    }));
+  }
+
   toggleWrap(): void {
     this.wrap = !this.wrap;
     saveFlag(WRAP_KEY, this.wrap);

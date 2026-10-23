@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { MockBackendAPI } from '../src/lib/mock/mockApi.ts';
-import { createAPI, SEARCH_FILES_UNSUPPORTED } from '../src/lib/api.ts';
+import { createAPI, REPLACE_FILES_UNSUPPORTED, SEARCH_FILES_UNSUPPORTED } from '../src/lib/api.ts';
 
 function withWailsApp(App, fn) {
   const hadWindow = 'window' in globalThis;
@@ -88,4 +88,47 @@ test('mock hosts report content search support', async () => {
   await api.connect('dev-box');
   const state = await api.connectionState();
   assert.equal(state.capabilities.searchFiles, true);
+});
+
+test('Wails replaceInFiles forwards the request and host, and rejects clearly without the binding', async () => {
+  const calls = [];
+  const reply = { files: [{ path: 'a.go', status: 'replaced', replaced: 1, revision: 'r2' }], replaced: 1 };
+  const req = { query: { pattern: 'foo' }, replacement: 'bar', files: [{ path: 'a.go', expectedRevision: 'r1', matches: [{ line: 1, start: 0 }] }] };
+  await withWailsApp({ async ReplaceInFiles(...args) { calls.push(args); return reply; } }, async () => {
+    const backend = createAPI();
+    assert.deepEqual(await backend.replaceInFiles('/repo', req, 'box'), reply);
+    assert.deepEqual(await backend.replaceInFiles('/repo', req, undefined), reply);
+    assert.deepEqual(calls, [['/repo', req, 'box'], ['/repo', req, '']], 'Local is the empty host');
+  });
+  await withWailsApp({ ReplaceInFiles: () => Promise.reject('invalid replacement: unsupported text') }, async () => {
+    await assert.rejects(createAPI().replaceInFiles('/repo', req, ''), (err) => err instanceof Error && err.message.includes('invalid replacement'));
+  });
+  await withWailsApp({}, async () => {
+    await assert.rejects(createAPI().replaceInFiles('/repo', req, ''), (err) => err instanceof Error && err.message === REPLACE_FILES_UNSUPPORTED);
+  });
+});
+
+test('mock replaceInFiles writes its disk, checks revisions and finds the chosen matches again', async () => {
+  const api = new MockBackendAPI();
+  const query = { pattern: 'package' };
+  const found = await api.searchFiles('/project', query, 's');
+  const [first, second] = found.files;
+  const res = await api.replaceInFiles('/project', {
+    query, replacement: 'pkg',
+    files: [
+      { path: first.path, expectedRevision: first.revision, matches: [{ line: first.matches[0].line, start: first.matches[0].start }] },
+      { path: second.path, expectedRevision: 'stale' },
+      { path: first.path, expectedRevision: first.revision },
+    ],
+  }, undefined);
+  assert.deepEqual(res.files.map(f => f.status), ['replaced', 'conflict', 'skipped']);
+  assert.equal(res.files[2].reason, 'duplicate');
+  assert.equal(res.replaced, 1);
+  const after = await api.readFile('/project', first.path);
+  assert.equal(after.revision, res.files[0].revision);
+  assert.ok(after.text.split('\n')[first.matches[0].line - 1].includes('pkg'));
+  const again = await api.replaceInFiles('/project', {
+    query, replacement: 'pkg', files: [{ path: first.path, expectedRevision: after.revision, matches: [{ line: first.matches[0].line, start: first.matches[0].start }] }],
+  }, undefined);
+  assert.equal(again.files[0].reason, 'stale_match', 'a match that is no longer there is not guessed at');
 });

@@ -1,7 +1,10 @@
 import { MockCodeDiagnostics } from './codeDiagnostics';
 import { searchLimit, searchRegExp, searchText, searchesPath } from '../contentSearch';
+import { replaceInText } from '../searchReplace';
 import { validatePortForward, type PortForwardRequest, type PortForwardState, type PortForwardRule } from '../portForward';
 import type {
+  ReplaceRequest,
+  ReplaceResult,
   GroupMode,
   FilterOpts,
   SortOpts,
@@ -890,6 +893,42 @@ export class MockBackendAPI extends MockCodeDiagnostics {
     }
   }
 
+  // Saved edits are the mock's disk, as for saveFile.
+  async replaceInFiles(dir: string, req: ReplaceRequest, _host: string | undefined): Promise<ReplaceResult> {
+    if (!req.query.pattern) throw new Error('invalid search pattern: empty pattern');
+    if (/[\r\0]/.test(req.replacement)) throw new Error('invalid replacement: unsupported text');
+    const re = searchRegExp(req.query);
+    const out: ReplaceResult = { files: [], replaced: 0 };
+    const seen = new Set<string>();
+    for (const f of req.files) {
+      if (seen.has(f.path)) { out.files.push({ path: f.path, status: 'skipped', reason: 'duplicate' }); continue; }
+      seen.add(f.path);
+      try {
+        const current = await this.readFile(dir, f.path);
+        if (current.revision !== f.expectedRevision) {
+          out.files.push({ path: f.path, status: 'conflict', observedRevision: current.revision });
+          continue;
+        }
+        if (!current.edit?.eligible || current.text === undefined) {
+          out.files.push({ path: f.path, status: 'skipped', reason: current.edit?.reason ?? 'unsupported_text' });
+          continue;
+        }
+        const done = replaceInText(current.text, re, req.replacement, !!req.query.regex, f.matches);
+        if (!done.ok) { out.files.push({ path: f.path, status: 'skipped', reason: 'stale_match' }); continue; }
+        const content: FileContent = {
+          ...current, text: done.text, size: new TextEncoder().encode(done.text).length,
+          revision: await mockFileRevision(done.text),
+        };
+        this.fileDrafts.set(JSON.stringify([this.connState.host ?? '', dir, f.path]), content);
+        out.files.push({ path: f.path, status: 'replaced', replaced: done.replaced, revision: content.revision });
+        out.replaced += done.replaced;
+      } catch (e) {
+        out.files.push({ path: f.path, status: 'failed', message: e instanceof Error ? e.message : String(e) });
+      }
+    }
+    return out;
+  }
+
   async cancelSearch(searchId: string): Promise<void> {
     const run = this.searchRuns.get(searchId);
     if (run) run.canceled = true;
@@ -1429,6 +1468,7 @@ export class MockBackendAPI extends MockCodeDiagnostics {
       saveFile: true,
       blame: true,
       searchFiles: true,
+      replaceFiles: true,
       trash: alias !== 'prod-server',
       manage: true,
       export: true,

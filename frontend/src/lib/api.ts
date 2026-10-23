@@ -21,6 +21,8 @@ import type {
   SearchResult,
   FileSaveRequest,
   FileSaveResult,
+  ReplaceRequest,
+  ReplaceResult,
   ManageSettings,
   DeletePreview,
   DeleteResult,
@@ -134,6 +136,13 @@ export interface BackendAPI extends CodeDiagnosticsAPI {
    */
   /** host: where the file was read (undefined for Local); refused, unwritten, if calls now go elsewhere. */
   saveFile(dir: string, req: FileSaveRequest, host: string | undefined): Promise<FileSaveResult>;
+  /**
+   * Replaces search matches in files on the selected host, each only if it
+   * still has the revision it was searched at. host is where the search ran
+   * (undefined for Local); refused, nothing written, if calls now go
+   * elsewhere. Rejects when the backend cannot replace.
+   */
+  replaceInFiles(dir: string, req: ReplaceRequest, host: string | undefined): Promise<ReplaceResult>;
   /** Arm native close coordination before mounting any editable document. */
   enableFileEditing(): Promise<boolean>;
   completeFileClose(id: number, allow: boolean): Promise<void>;
@@ -248,6 +257,7 @@ interface WailsAppBinding {
   SearchFiles?(dir: string, query: SearchQuery, searchId: string): Promise<SearchResult>;
   CancelSearch?(searchId: string): Promise<void>;
   SaveFile(dir: string, req: FileSaveRequest, host: string): Promise<FileSaveResult>;
+  ReplaceInFiles?(dir: string, req: ReplaceRequest, host: string): Promise<ReplaceResult>;
   EnableFileEditing(): Promise<boolean>;
   CompleteFileClose(id: number, allow: boolean): Promise<void>;
   RevealFile(dir: string, path: string): Promise<void>;
@@ -302,6 +312,7 @@ interface WailsAppBinding {
 
 export const BLAME_UNSUPPORTED = 'Line blame is not supported by this version of the app backend.';
 export const SEARCH_FILES_UNSUPPORTED = 'Searching file contents is not supported by this version of the app backend.';
+export const REPLACE_FILES_UNSUPPORTED = 'Replacing in files is not supported by this version of the app backend.';
 
 function normalizeError(err: unknown): Error {
   if (err instanceof Error) return err;
@@ -707,6 +718,15 @@ class WailsBackendAPI implements BackendAPI {
   async saveFile(dir: string, req: FileSaveRequest, host: string | undefined): Promise<FileSaveResult> {
     try {
       return await this.binding.SaveFile(dir, req, host ?? '');
+    } catch (e) {
+      throw normalizeError(e);
+    }
+  }
+
+  async replaceInFiles(dir: string, req: ReplaceRequest, host: string | undefined): Promise<ReplaceResult> {
+    if (!this.binding.ReplaceInFiles) throw new Error(REPLACE_FILES_UNSUPPORTED);
+    try {
+      return await this.binding.ReplaceInFiles(dir, req, host ?? '');
     } catch (e) {
       throw normalizeError(e);
     }

@@ -31,6 +31,7 @@ const LOCAL_CAPABILITIES: HostCapabilities = {
   saveFile: true,
   blame: true,
   searchFiles: true,
+  replaceFiles: true,
   trash: true,
   manage: true,
   export: true,

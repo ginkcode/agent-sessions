@@ -1,9 +1,9 @@
-import { Compartment, EditorState, RangeSet, StateField, type Extension } from '@codemirror/state';
+import { Annotation, Compartment, EditorState, RangeSet, StateField, type Extension, type TransactionSpec } from '@codemirror/state';
 import { forEachDiagnostic, lintKeymap, setDiagnostics, setDiagnosticsEffect, type Diagnostic } from '@codemirror/lint';
 import { projectSourceDiagnostics } from './sourceDiagnostics';
 import type { AttributedCodeDiagnostic, LiveDocumentBasis } from './codeDiagnostics';
 import { EditorView, GutterMarker, drawSelection, highlightActiveLine, keymap, lineNumberMarkers, lineNumbers, tooltips } from '@codemirror/view';
-import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands';
+import { defaultKeymap, history, historyKeymap, indentWithTab, isolateHistory } from '@codemirror/commands';
 import { LanguageDescription, indentOnInput, indentUnit } from '@codemirror/language';
 import { Decoration, type DecorationSet } from '@codemirror/view';
 import { loadFileHighlighter } from './codeHighlight';
@@ -14,6 +14,7 @@ import type { CodeDiagnosticRange } from './codeDiagnostics';
 import { rangeOffsets } from './problemNavigation';
 import type { FileLineSelection } from './fileSelection';
 import { fileLanguage } from './files';
+import { textChanges } from './searchReplace';
 import { closeSearchPanel, openSearchPanel, search, searchKeymap, searchPanelOpen } from '@codemirror/search';
 
 export interface FileEditorOptions {
@@ -209,6 +210,9 @@ function withDiagnostics(state: EditorState, options: FileEditorOptions): Editor
 // lint panel; Ctrl+Shift+M toggles the dialog's problems panel instead.
 const editorLintKeymap = lintKeymap.filter(binding => binding.key !== 'Mod-Shift-m');
 
+// Marks a draft the store changed (a replace in files), already in the draft.
+const external = Annotation.define<boolean>();
+
 function freshState(options: FileEditorOptions): EditorState {
   return EditorState.create({
     doc: options.text,
@@ -221,11 +225,28 @@ function freshState(options: FileEditorOptions): EditorState {
       editing.of(editable(options.disabled)), language.of([]), coloring.of([]),
       keymap.of([indentWithTab, ...defaultKeymap, ...historyKeymap, ...searchKeymap, ...editorLintKeymap]),
       EditorView.updateListener.of(update => {
-        if (update.docChanged) owners.get(update.view)?.onchange(update.state.doc.toString());
+        if (update.docChanged && !update.transactions.every(tr => tr.annotation(external)))
+          owners.get(update.view)?.onchange(update.state.doc.toString());
       }),
     ],
   });
 }
+
+/**
+ * The state with its document changed to text as one undoable step of its
+ * own, so a replace in files keeps the history before it and undo takes
+ * back exactly the replace.
+ */
+function adoption(state: EditorState, text: string): TransactionSpec {
+  return { changes: textChanges(state.doc.toString(), lf(text)), annotations: [external.of(true), isolateHistory.of('full')] };
+}
+
+function adopt(state: EditorState, text: string): EditorState {
+  return state.doc.toString() === lf(text) ? state : state.update(adoption(state, text)).state;
+}
+
+// The document as CodeMirror holds it: every line break is \n.
+const lf = (text: string) => text.replace(/\r\n?/g, '\n');
 
 function handleKey(view: EditorView, event: KeyboardEvent): boolean {
   // A parent window handler can see an already-consumed event.
@@ -271,8 +292,10 @@ export function createFileEditor(parent: HTMLElement, initial: FileEditorOptions
   let languageRequest = 0;
   let scrollRequest = 0;
   const cached = tabs.get(options.id);
-  const reuse = cached?.version === options.version && cached.state.doc.toString() === options.text;
-  const view = new EditorView({ parent, state: withDiagnostics(reuse ? cached.state : freshState(options), options) });
+  // The same version is the same history: a draft changed meanwhile (a
+  // replace in files) is taken in as one undoable change.
+  const reuse = cached?.version === options.version;
+  const view = new EditorView({ parent, state: withDiagnostics(reuse ? adopt(cached.state, options.text) : freshState(options), options) });
   owners.set(view, options);
   // Capture also covers the search panel: its own keymap otherwise closes the
   // panel before a bubbling parent handler can recognize and consume Escape.
@@ -355,18 +378,19 @@ export function createFileEditor(parent: HTMLElement, initial: FileEditorOptions
     update(next: FileEditorOptions) {
       if (destroyed) return;
       const changedTab = next.id !== options.id;
-      const reset = changedTab || next.version !== options.version || next.text !== view.state.doc.toString();
+      const reset = changedTab || next.version !== options.version;
+      const adopted = !reset && lf(next.text) !== view.state.doc.toString();
       const changedPath = next.path !== options.path;
       if (changedTab) remember();
       options = next;
       owners.set(view, options);
       if (reset) {
         const saved = changedTab ? tabs.get(options.id) : undefined;
-        const valid = saved?.version === options.version && saved.state.doc.toString() === options.text;
-        view.setState(withDiagnostics(valid ? saved.state : freshState(options), options));
+        const valid = saved?.version === options.version;
+        view.setState(withDiagnostics(valid ? adopt(saved.state, options.text) : freshState(options), options));
         if (options.position) restorePosition(options.position);
         else restore(valid ? saved.top : 0, valid ? saved.left : 0);
-      }
+      } else if (adopted) view.dispatch(adoption(view.state, options.text));
       configure();
       view.dispatch(setDiagnostics(view.state, editorDiagnostics(view.state, options)));
       if (reset || changedPath) setLanguage();

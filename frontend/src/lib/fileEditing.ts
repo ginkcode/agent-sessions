@@ -1,4 +1,4 @@
-import type { FileContent, FileEditInfo } from './types';
+import type { FileContent, FileEditInfo, FileEditReason } from './types';
 
 export const MAX_EDIT_BYTES = 500_000;
 
@@ -26,4 +26,17 @@ export function serializedEditSize(text: string, format: FileEditInfo): number {
 export function canEditContent(content: FileContent | null): content is FileContent & { text: string; revision: string; edit: FileEditInfo } {
   return !!content && typeof content.text === 'string' && !!content.revision
     && content.edit?.eligible === true && !content.binary && !content.tooLarge && !content.image;
+}
+
+/** How a file that cannot be edited is labelled. */
+export function readOnlyText(reason: FileEditReason | undefined): string {
+  switch (reason) {
+    case 'too_large': return 'Read-only: too large to edit';
+    case 'unsupported_newlines': return 'Read-only: mixed line endings';
+    case 'not_checked': return 'Read-only: editing not available';
+    case 'protected': return 'Read-only: protected file';
+    case 'linked': return 'Read-only: linked file';
+    case 'read_only': return 'Read-only file';
+    default: return 'Read-only';
+  }
 }

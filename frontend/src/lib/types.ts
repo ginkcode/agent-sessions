@@ -691,6 +691,58 @@ export interface SearchResult {
   truncated?: boolean;
 }
 
+/** One match to replace, as Search reported it. */
+export interface ReplaceMatch {
+  line: number;
+  start: number;
+}
+
+/** One file to change and the revision it was searched at. */
+export interface ReplaceFile {
+  path: string;
+  expectedRevision: string;
+  /** Only these matches are replaced; absent means every match in the file. */
+  matches?: ReplaceMatch[];
+}
+
+/**
+ * Replaces the matches of query in files. For a regular expression, $1 and
+ * ${name} expand to groups as in Go's Regexp.Expand ($$ is a dollar sign);
+ * otherwise replacement is taken as it is.
+ */
+export interface ReplaceRequest {
+  query: SearchQuery;
+  replacement: string;
+  files: ReplaceFile[];
+}
+
+/**
+ * replaced: written. conflict: changed since the search. skipped: may not or
+ * need not change (reason). failed: an error (message). Only replaced wrote.
+ */
+export type ReplaceStatus = 'replaced' | 'conflict' | 'skipped' | 'failed';
+
+/** Why a file was skipped: an edit reason, or one of Replace's own. */
+export type ReplaceSkipReason = FileEditReason | 'unsupported_text' | 'stale_match' | 'duplicate';
+
+export interface ReplaceFileResult {
+  path: string;
+  status: ReplaceStatus;
+  replaced?: number;
+  /** The new revision, for replaced. */
+  revision?: string;
+  /** The file's current revision, for a conflict. */
+  observedRevision?: string;
+  reason?: ReplaceSkipReason;
+  message?: string;
+}
+
+/** One entry per requested file, in request order. */
+export interface ReplaceResult {
+  files: ReplaceFileResult[];
+  replaced: number;
+}
+
 export interface HostCapabilities {
   /** Optional Stage 1 support. Live remains false until Stage 2. */
   codeDiagnostics?: boolean;
@@ -701,6 +753,8 @@ export interface HostCapabilities {
   blame?: boolean;
   /** Absent on older servers; content search requires an explicit true. */
   searchFiles?: boolean;
+  /** Absent on older servers; replacing in files requires an explicit true. */
+  replaceFiles?: boolean;
   trash: boolean;
   manage: boolean;
   export: boolean;

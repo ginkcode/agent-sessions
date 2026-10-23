@@ -122,6 +122,7 @@ async function loadEditorModule() {
   source = source.replace("'./sourceDiagnostics'", JSON.stringify(new URL('sourceDiagnostics.ts', EDITOR_URL).href));
   source = source.replace("'./problemNavigation'",  JSON.stringify(new URL('problemNavigation.ts', EDITOR_URL).href));
   source = source.replace("'./files'", JSON.stringify(new URL('files.ts', EDITOR_URL).href));
+  source = source.replace("'./searchReplace'", JSON.stringify(new URL('searchReplace.ts', EDITOR_URL).href));
   source = source.replace("'./codeHighlight'", JSON.stringify(new URL('codeHighlight.ts', EDITOR_URL).href));
   source = source.replace("'@replit/codemirror-lang-svelte'", JSON.stringify(import.meta.resolve('@replit/codemirror-lang-svelte')));
   const js = ts.transpileModule(source, {
@@ -571,20 +572,53 @@ test('remount of the same tab/version/text restores state, undo history and scro
   assert.deepEqual(first.calls.changes, ['hello world'], 'the unmounted owner is not called again');
 });
 
-test('remount after a version bump or a text mismatch starts fresh', () => {
-  for (const change of [{ version: 2 }, { text: 'reloaded from disk' }]) {
-    const id = {};
-    const first = mount({ id, text: 'draft', version: 1 });
-    type(first.view, '!');
-    first.view.scrollDOM.scrollTop = 50;
-    first.editor.destroy();
+test('remount after a version bump starts fresh', () => {
+  const id = {};
+  const first = mount({ id, text: 'draft', version: 1 });
+  type(first.view, '!');
+  first.view.scrollDOM.scrollTop = 50;
+  first.editor.destroy();
 
-    const next = { id, text: 'draft!', version: 1, ...change };
-    const second = mount(next);
-    assert.equal(second.view.state.doc.toString(), next.text);
-    assert.equal(second.view.scrollDOM.scrollTop, 0);
-    assert.equal(undo(second.view), false, `${JSON.stringify(change)}: stale history must not leak`);
-  }
+  const second = mount({ id, text: 'draft!', version: 2 });
+  assert.equal(second.view.state.doc.toString(), 'draft!');
+  assert.equal(second.view.scrollDOM.scrollTop, 0);
+  assert.equal(undo(second.view), false, 'stale history must not leak');
+});
+
+test('a draft changed by the store while unmounted is one undoable change on remount', () => {
+  const id = {};
+  const first = mount({ id, text: 'one foo\ntwo foo', version: 1 });
+  type(first.view, '!');
+  first.view.scrollDOM.scrollTop = 50;
+  first.editor.destroy();
+
+  // A replace in files changed the draft; the version (history) is the same.
+  const second = mount({ id, text: 'one bar\ntwo bar!', version: 1 });
+  assert.equal(second.view.state.doc.toString(), 'one bar\ntwo bar!');
+  assert.equal(second.view.scrollDOM.scrollTop, 50, 'the tab keeps its place');
+  assert.deepEqual(second.calls.changes, [], 'the store already holds the draft');
+  assert.equal(undo(second.view), true);
+  assert.equal(second.view.state.doc.toString(), 'one foo\ntwo foo!', 'undo takes back exactly the replace');
+  assert.equal(undo(second.view), true);
+  assert.equal(second.view.state.doc.toString(), 'one foo\ntwo foo', 'typing before it is still in the history');
+  assert.deepEqual(second.calls.changes, ['one foo\ntwo foo!', 'one foo\ntwo foo']);
+});
+
+test('a draft changed by the store while shown keeps the cursor and is one undoable change', () => {
+  const { editor, view, options, calls } = mount({ text: 'foo\nkeep\nfoo', version: 1 });
+  view.dispatch({ selection: { anchor: 6 } });
+  type(view, 'X', 5);
+  editor.update({ ...options, text: 'bar\nkXeep\nbar' });
+  assert.equal(view.state.doc.toString(), 'bar\nkXeep\nbar');
+  assert.equal(view.state.selection.main.head, 7, 'a change on other lines does not move the cursor');
+  assert.deepEqual(calls.changes, ['foo\nkXeep\nfoo']);
+  // A CRLF echo of the same text is not a change.
+  editor.update({ ...options, text: 'bar\r\nkXeep\r\nbar' });
+  assert.equal(view.state.doc.toString(), 'bar\nkXeep\nbar');
+  assert.equal(undo(view), true);
+  assert.equal(view.state.doc.toString(), 'foo\nkXeep\nfoo');
+  assert.equal(undo(view), true);
+  assert.equal(view.state.doc.toString(), 'foo\nkeep\nfoo');
 });
 
 test('update with a new version or external text resets document and history', () => {

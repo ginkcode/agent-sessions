@@ -25,8 +25,8 @@
   import { link } from '../../../stores/link.svelte';
   import { connectionStore } from '../../../stores/connection.svelte';
   import { fileActions } from '../../../stores/fileActions.svelte';
-  import { canEditContent } from '../../../fileEditing';
-  import type { FileContent, FileEditReason } from '../../../types';
+  import { canEditContent, readOnlyText } from '../../../fileEditing';
+  import type { FileContent } from '../../../types';
   import LoadingSpinner from '../LoadingSpinner.svelte';
   import MarkdownDoc from '../MarkdownDoc.svelte';
   import SourceView from './SourceView.svelte';
@@ -204,18 +204,6 @@
 
   function isTextContent(content: FileContent | null): boolean {
     return !!content && typeof content.text === 'string' && !content.binary && !content.tooLarge && !content.image;
-  }
-
-  function readOnlyText(reason: FileEditReason | undefined): string {
-    switch (reason) {
-      case 'too_large': return 'Read-only: too large to edit';
-      case 'unsupported_newlines': return 'Read-only: mixed line endings';
-      case 'not_checked': return 'Read-only: editing not available';
-      case 'protected': return 'Read-only: protected file';
-      case 'linked': return 'Read-only: linked file';
-      case 'read_only': return 'Read-only file';
-      default: return 'Read-only';
-    }
   }
 
   async function startEdit() {

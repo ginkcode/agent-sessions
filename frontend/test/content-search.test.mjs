@@ -98,21 +98,39 @@ test('selection seeds and the search shortcut', () => {
 
 // The store, against a scripted API and fixture file tabs.
 
-const { ContentSearchStore, SEARCH_DELAY_MS } = await loadServerModule(new URL('../src/lib/stores/contentSearch.svelte.ts', import.meta.url), [
+const { ContentSearchStore, REPLACE_UNSUPPORTED, SEARCH_DELAY_MS } = await loadServerModule(new URL('../src/lib/stores/contentSearch.svelte.ts', import.meta.url), [
   ["import { api } from '../api';", fixtureStore('api', '__searchFixture')],
   ["'../manage'", lib('manage')],
   ["'../link'", lib('link')],
   ["import { link } from './link.svelte';", fixtureStore('link', '__searchFixture')],
   ["import { files, tabHasUnsaved } from './files.svelte';", `${fixtureStore('files', '__searchFixture')} const tabHasUnsaved = t => !!t.edit?.dirty;`],
   ["'../contentSearch'", lib('contentSearch')],
+  ["import { connectionStore } from './connection.svelte';", fixtureStore('connectionStore', '__searchFixture')],
+  ["import { filePrompt } from './filePrompt.svelte';", fixtureStore('filePrompt', '__searchFixture')],
+  ["import { toast } from './toast.svelte';", fixtureStore('toast', '__searchFixture')],
+  ["'../fileEditing'", lib('fileEditing')],
+  ["'../searchReplace'", lib('searchReplace')],
 ]);
 
 function scripted() {
-  const calls = [], cancels = [];
+  const calls = [], cancels = [], replaces = [], asks = [], shown = [], drafts = [], reloads = [];
   const fixture = {
     link: { dataHost: undefined },
-    files: { dir: '/p', tabs: [] },
+    connectionStore: { capabilities: { searchFiles: true, replaceFiles: true } },
+    filePrompt: { answer: 'replace', async ask(...args) { asks.push(args); return this.answer; } },
+    toast: { show(m) { shown.push(m); } },
+    files: {
+      dir: '/p', tabs: [],
+      updateDraft(tab, text) { drafts.push([tab.path, text]); tab.edit.draft = text; return true; },
+      async reloadReplaced(paths) { reloads.push(paths); },
+    },
     api: {
+      replaceReply: null,
+      async replaceInFiles(...args) {
+        replaces.push(args);
+        if (this.replaceReply instanceof Error) throw this.replaceReply;
+        return this.replaceReply ?? { files: args[1].files.map(f => ({ path: f.path, status: 'replaced', replaced: f.matches?.length ?? 1 })), replaced: 0 };
+      },
       searchFiles(dir, query, id) {
         let resolve, reject;
         const promise = new Promise((res, rej) => { resolve = res; reject = rej; });
@@ -123,7 +141,7 @@ function scripted() {
     },
   };
   globalThis.__searchFixture = fixture;
-  return { fixture, calls, cancels, store: new ContentSearchStore() };
+  return { fixture, calls, cancels, replaces, asks, shown, drafts, reloads, store: new ContentSearchStore() };
 }
 const settle = async () => { for (let i = 0; i < 5; i++) await Promise.resolve(); };
 
@@ -256,6 +274,138 @@ test('store opens Go to File in Search only when asked to', () => {
   assert.equal(store.dialogOpened(), 'files');
 });
 
+// Replacing.
+
+async function searchedFoo(t, extra = {}) {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const s = scripted();
+  s.fixture.files.tabs = [{ path: 'b.go', edit: { dirty: true, draft: 'x foo\nfoo' } }];
+  s.store.set({ text: 'foo', replaceOpen: true, replace: 'bar', ...extra });
+  t.mock.timers.tick(SEARCH_DELAY_MS);
+  s.calls[0].resolve({
+    files: [file('a.go', [hit(1, 0, 3, 'foo foo'), hit(1, 4, 7, 'foo foo')]), file('b.go', [hit(9, 0, 3, 'foo')]), file('c.go', [hit(2, 0, 3, 'foo')])],
+    matches: 4,
+  });
+  await settle();
+  return s;
+}
+
+test('replace all asks once, sends disk files with their matches, changes drafts in place and searches again', async (t) => {
+  const { fixture, calls, replaces, asks, shown, drafts, reloads, store } = await searchedFoo(t);
+  assert.equal(store.replaceBlocked(), null);
+  fixture.api.replaceReply = { files: [{ path: 'a.go', status: 'replaced', replaced: 2, revision: 'r2' }, { path: 'c.go', status: 'conflict', observedRevision: 'r9' }], replaced: 2 };
+  await store.replaceAll();
+  assert.equal(asks.length, 1);
+  assert.equal(asks[0][1], 'Replace 5 matches in 3 files with “bar”?', 'the draft is counted as the browser searched it');
+  assert.equal(asks[0][2][0].danger, true);
+  assert.equal(replaces.length, 1);
+  const [dir, req, host] = replaces[0];
+  assert.equal(dir, '/p');
+  assert.equal(host, undefined);
+  assert.equal(req.replacement, 'bar');
+  assert.equal(req.query.pattern, 'foo');
+  assert.deepEqual(req.files, [
+    { path: 'a.go', expectedRevision: 'r-a.go', matches: [{ line: 1, start: 0 }, { line: 1, start: 4 }] },
+    { path: 'c.go', expectedRevision: 'r-c.go', matches: [{ line: 2, start: 0 }] },
+  ], 'the draft never goes to disk');
+  assert.deepEqual(drafts, [['b.go', 'x bar\nbar']]);
+  assert.deepEqual(reloads, [['a.go']], 'only written files are read again');
+  assert.equal(shown.length, 1);
+  assert.equal(shown[0].title, 'Replaced 4 matches in 2 files');
+  assert.match(shown[0].body, /unsaved draft, not yet saved: b\.go/);
+  assert.match(shown[0].body, /Changed on disk since the search, left as they are: c\.go/);
+  assert.equal(shown[0].tone, 'error', 'a file left unchanged is not a quiet success');
+  assert.equal(store.replacing, false);
+  t.mock.timers.tick(0);
+  assert.equal(calls.length, 2, 'the search runs again to show the files as they are');
+});
+
+test('replacing one match or one file does not ask; dismissed matches and files are left alone', async (t) => {
+  const { replaces, asks, store } = await searchedFoo(t, { replace: '' });
+  await store.replaceMatch({ path: 'a.go', index: 1 });
+  assert.equal(asks.length, 0);
+  assert.deepEqual(replaces[0][1].files, [{ path: 'a.go', expectedRevision: 'r-a.go', matches: [{ line: 1, start: 4 }] }]);
+  assert.equal(replaces[0][1].replacement, '');
+
+  assert.deepEqual(store.move(1), { path: 'a.go', index: 0 });
+  store.dismiss('a.go', { path: 'a.go', index: 0 });
+  assert.equal(store.match(store.active).start, 4, 'the keyboard moves to the match taking its place');
+  assert.equal(store.result.matches, 4);
+  await store.replaceFile('a.go');
+  assert.deepEqual(replaces[1][1].files[0].matches, [{ line: 1, start: 4 }]);
+
+  store.dismiss('c.go');
+  await store.replaceAll();
+  assert.equal(asks[0][1], 'Replace 3 matches in 2 files with nothing?');
+  assert.deepEqual(replaces[2][1].files.map(f => f.path), ['a.go']);
+
+  store.set({ text: 'fo' });
+  t.mock.timers.tick(SEARCH_DELAY_MS);
+});
+
+test('a new search text brings dismissed matches back; a cancelled prompt changes nothing', async (t) => {
+  const { fixture, calls, replaces, shown, store } = await searchedFoo(t);
+  store.dismiss('c.go');
+  assert.deepEqual(store.result.files.map(f => f.path), ['a.go', 'b.go']);
+  store.set({ text: 'fo' });
+  t.mock.timers.tick(SEARCH_DELAY_MS);
+  calls.at(-1).resolve({ files: [file('c.go', [hit(2, 0, 2, 'foo')])], matches: 1 });
+  await settle();
+  assert.deepEqual(store.result.files.map(f => f.path), ['b.go', 'c.go']);
+  fixture.filePrompt.answer = null;
+  await store.replaceAll();
+  assert.equal(replaces.length, 0);
+  assert.equal(shown.length, 0);
+});
+
+test('replace says why it cannot run', async (t) => {
+  const { fixture, replaces, store } = await searchedFoo(t);
+  fixture.files.tabs.push({ path: 'c.go', content: { edit: { eligible: false, reason: 'protected' } } });
+  assert.equal(store.replaceBlocked('c.go'), 'Read-only: protected file');
+  assert.equal(store.replaceBlocked('b.go'), null, 'a searched draft can be replaced');
+  fixture.files.tabs[0].edit.saving = true;
+  assert.equal(store.replaceBlocked('b.go'), 'Wait for the save to finish.');
+  fixture.files.renaming = 'x';
+  assert.equal(store.replaceBlocked(), 'Wait for the file change to finish.');
+  fixture.files.renaming = undefined;
+  fixture.link.blockedReason = 'Reconnecting…';
+  assert.equal(store.replaceBlocked(), 'Reconnecting…');
+  fixture.link.blockedReason = undefined;
+  store.set({ text: 'food' });
+  assert.equal(store.replaceBlocked(), 'Wait for the search to finish.');
+  fixture.connectionStore.capabilities = { searchFiles: true };
+  assert.equal(store.replaceBlocked(), REPLACE_UNSUPPORTED);
+  await store.replaceAll();
+  assert.equal(replaces.length, 0);
+  t.mock.timers.tick(SEARCH_DELAY_MS);
+});
+
+test('a host error during replace says files may have changed and searches again', async (t) => {
+  const { fixture, calls, shown, reloads, store } = await searchedFoo(t);
+  fixture.files.tabs = [];
+  fixture.api.replaceReply = new Error('disk full');
+  await store.replaceFile('a.go');
+  assert.equal(shown.length, 1);
+  assert.equal(shown[0].title, 'Replace may not have finished');
+  assert.match(shown[0].body, /disk full/);
+  assert.equal(shown[0].tone, 'error');
+  assert.equal(reloads.length, 0);
+  t.mock.timers.tick(0);
+  assert.equal(calls.length, 2);
+});
+
+test('a draft whose match moved is skipped, not guessed at', async (t) => {
+  const { fixture, replaces, shown, drafts, store } = await searchedFoo(t);
+  // The pane listed the draft's matches; the draft then changed under them.
+  const listed = store.result.files.find(f => f.path === 'b.go');
+  fixture.files.tabs[0].edit.draft = 'foo';
+  store.dismissed = new Set();
+  await store.replace([listed], false);
+  assert.equal(replaces.length, 0);
+  assert.deepEqual(drafts, []);
+  assert.match(shown[0].body, /Skipped \(matches changed\): b\.go/);
+});
+
 // Rendering.
 
 const base = new URL('../src/lib/components/common/go-to-file/', import.meta.url);
@@ -264,10 +414,12 @@ const pane = await loadServerComponent(new URL('SearchPane.svelte', base), [
   ["import { connectionStore } from '../../../stores/connection.svelte';", fixtureStore('connectionStore')],
   ["import FileIcon from '../FileIcon.svelte';", 'const FileIcon = () => {};'],
   ["import LoadingSpinner from '../LoadingSpinner.svelte';", 'const LoadingSpinner = () => {};'],
+  ["'../../../searchReplace'", lib('searchReplace')],
 ]);
 
-async function renderPane(setup, capabilities = { searchFiles: true }) {
+async function renderPane(setup, capabilities = { searchFiles: true, replaceFiles: true }) {
   const { fixture, store } = scripted();
+  fixture.connectionStore.capabilities = capabilities;
   setup?.(store, fixture);
   try {
     return await renderWithFixture(pane, { contentSearch: store, connectionStore: { capabilities } }, { onOpen() {} });
@@ -329,6 +481,51 @@ test('pane explains an older host instead of a field that cannot work', async ()
   const html = await renderPane(undefined, {});
   assert.match(html, /role="note"[^>]*>\s*This host's agent-sessions server cannot search file contents\. Update agent-sessions on the host, then reconnect\./);
   assert.doesNotMatch(html, /Search file contents"/);
+});
+
+test('pane previews each replacement, with regex groups expanded as the host will', async () => {
+  const one = { files: [file('a.go', [hit(1, 0, 3, 'foo x')])], matches: 1 };
+  let html = await renderPane(store => {
+    answered(store, { pattern: 'foo' }, one);
+    store.options = { ...store.options, replaceOpen: true, replace: 'bar' };
+  });
+  assert.match(html, /aria-expanded="true" aria-controls="search-replace" aria-label="Toggle replace"/);
+  assert.match(html, /<del[^>]*>foo<\/del>(<!--[^>]*-->)?<ins[^>]*>bar<\/ins> x/);
+  assert.match(html, /aria-label="Replace all" title="Replace All \((⌘⌥Enter|Ctrl\+Alt\+Enter)\)" aria-keyshortcuts="(Meta|Control)\+Alt\+Enter"/);
+  assert.doesNotMatch(html, /aria-label="Replace all"[^>]*disabled/);
+  assert.match(html, /aria-label="Replace all in a\.go" title="Replace all in file"/);
+  assert.match(html, /aria-label="Replace line 1 of a\.go" title="Replace"/);
+  assert.match(html, /aria-label="Dismiss line 1 of a\.go"/);
+  html = await renderPane(store => {
+    answered(store, { pattern: 'f(o)o', regex: true }, one);
+    store.options = { ...store.options, replaceOpen: true, replace: 'b${1}r\\t' };
+  });
+  assert.match(html, /<ins[^>]*>bor\t<\/ins>/);
+  html = await renderPane(store => {
+    answered(store, { pattern: 'foo' }, one);
+    store.options = { ...store.options, replace: 'bar' };
+  });
+  assert.match(html, /aria-expanded="false" aria-controls="search-replace"/);
+  assert.match(html, /<mark[^>]*>foo<\/mark>/, 'a closed replace field previews nothing');
+  assert.doesNotMatch(html, /aria-label="Replace with"|Replace line 1/);
+});
+
+test('pane disables replace with the reason where it cannot run', async () => {
+  const one = { files: [file('a.go', [hit(1, 0, 3, 'foo')])], matches: 1 };
+  const open = store => {
+    answered(store, { pattern: 'foo' }, one);
+    store.options = { ...store.options, replaceOpen: true, replace: 'bar' };
+  };
+  let html = await renderPane(open, { searchFiles: true });
+  assert.match(html, /aria-label="Replace all" title="This host's agent-sessions server cannot replace in files\.[^"]*"[^>]*disabled/);
+  assert.match(html, /role="note"[^>]*>\s*This host's agent-sessions server cannot replace in files\. Update agent-sessions on the host, then reconnect\./);
+  html = await renderPane((store, fixture) => {
+    open(store);
+    fixture.files.tabs = [{ path: 'a.go', content: { edit: { eligible: false, reason: 'protected' } } }];
+  });
+  assert.match(html, /aria-label="Replace line 1 of a\.go" title="Read-only: protected file"[^>]*disabled/);
+  assert.match(html, /aria-label="Replace all in a\.go" title="Read-only: protected file"[^>]*disabled/);
+  assert.doesNotMatch(html, /aria-label="Replace all" [^>]*disabled/, 'other files can still be replaced');
 });
 
 const picker = await loadServerComponent(new URL('FilePicker.svelte', base), [
