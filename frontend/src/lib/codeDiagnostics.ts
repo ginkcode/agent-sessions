@@ -1,3 +1,5 @@
+import type { FileContent } from './types';
+
 /** Stage 1 contract v1. Scanner/provider health diagnostics are unrelated. */
 export interface CodeDiagnosticsContext { connectionId: string; attachmentId: string; generation: string }
 export interface CodeDiagnosticsProject { hostId: string; root: string }
@@ -124,6 +126,11 @@ export interface CodeDiagnosticsAPI {
   closeCodeDiagnosticDocument(context: CodeDiagnosticsContext, documentId: string, expectedHostId: string): Promise<CodeDiagnosticsDocumentReceipt>;
   /** codeNavigation only: asks about the open document at exactly `version`. */
   navigateCode(context: CodeDiagnosticsContext, documentId: string, version: number, op: CodeNavigationOp, position: CodeDiagnosticPosition, expectedHostId: string): Promise<CodeNavigationResult>;
+  /**
+   * codeNavigation only: reads, for viewing, an external file (absolute host
+   * path) a navigation answer of this attachment pointed to. Never editable.
+   */
+  readNavigationFile(context: CodeDiagnosticsContext, path: string, expectedHostId: string): Promise<FileContent>;
 }
 
 export const CODE_DIAGNOSTICS_EVENT = 'codeDiagnostics:updated';

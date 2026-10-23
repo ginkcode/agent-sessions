@@ -2,8 +2,11 @@ package engine
 
 import (
 	"context"
+	"errors"
+	"os"
 
 	cd "github.com/ginkcode/agent-sessions/internal/codediagnostics"
+	"github.com/ginkcode/agent-sessions/internal/files"
 )
 
 // LiveCodeDiagnosticsBackend is the separate Stage 2 surface (capability
@@ -67,8 +70,11 @@ func (e *Engine) CloseCodeDiagnosticDocument(ctx context.Context, c cd.Context, 
 // CodeNavigationBackend answers definition, references and hover for a live
 // document (capability codeNavigation). It needs the live surface: only an
 // open document at its current version can be asked about.
+// ReadNavigationFile reads, for viewing only, an external file a navigation
+// answer of the same attachment pointed to (a dependency's source).
 type CodeNavigationBackend interface {
 	NavigateCode(ctx context.Context, c cd.Context, documentID string, version int64, op string, pos cd.Position) (cd.NavigationResult, error)
+	ReadNavigationFile(ctx context.Context, c cd.Context, path string) (files.Content, error)
 }
 
 func (e *Engine) NavigateCode(ctx context.Context, c cd.Context, documentID string, version int64, op string, pos cd.Position) (cd.NavigationResult, error) {
@@ -77,6 +83,27 @@ func (e *Engine) NavigateCode(ctx context.Context, c cd.Context, documentID stri
 		return cd.NavigationResult{}, err
 	}
 	return o.manager.Navigate(ctx, c, documentID, version, op, pos)
+}
+
+func (e *Engine) ReadNavigationFile(ctx context.Context, c cd.Context, path string) (files.Content, error) {
+	o, err := e.diagnostics(ctx)
+	if err != nil {
+		return files.Content{}, err
+	}
+	if err = o.manager.NavigationGrant(c, path); err != nil {
+		return files.Content{}, err
+	}
+	out, err := files.ReadExternal(e.editPolicy(), path)
+	switch {
+	case err == nil:
+		return out, nil
+	case errors.Is(err, files.ErrEditProtected):
+		return files.Content{}, &cd.Error{Code: "unsupported", Message: "This file holds credentials or agent data and is not shown"}
+	case errors.Is(err, os.ErrNotExist):
+		return files.Content{}, &cd.Error{Code: "notFound", Message: "The file no longer exists"}
+	default:
+		return files.Content{}, &cd.Error{Code: "toolFailed", Message: "The file could not be read: " + err.Error()}
+	}
 }
 
 var (

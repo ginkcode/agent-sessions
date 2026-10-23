@@ -34,6 +34,9 @@ type localLSP struct {
 	exited chan struct{}
 	once   sync.Once
 	opened chan string
+	// external is a file URI outside the project: the definition of
+	// anything asked about on line 1, as a dependency's would be.
+	external string
 }
 
 func (f *localLSP) Wait() (int, error) { <-f.exited; return 0, nil }
@@ -91,6 +94,9 @@ func (f *localLSP) serve() {
 			doc, _ := params["textDocument"].(map[string]any)
 			at, _ := json.Marshal(params["position"])
 			uri, _ := json.Marshal(doc["uri"])
+			if pos, _ := params["position"].(map[string]any); pos["line"] == float64(1) {
+				uri, _ = json.Marshal(f.external)
+			}
 			f.send(`{"jsonrpc":"2.0","id":` + string(id) + `,"result":{"uri":` + string(uri) + `,"range":{"start":` + string(at) + `,"end":` + string(at) + `}}}`)
 		}
 	}
@@ -115,6 +121,15 @@ func TestLocalLiveRouteCapabilitiesApproveOpenAndEvent(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	modDir, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	dep := filepath.Join(modDir, "print.go")
+	if err := os.WriteFile(dep, []byte("package fmt\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	depURI := (&url.URL{Scheme: "file", Path: "/" + strings.TrimPrefix(filepath.ToSlash(dep), "/")}).String()
 	catalog := scan.NewCatalog()
 	catalog.Reset([]model.SessionMeta{{Ref: model.SessionRef{Agent: model.AgentClaude, ID: "local-live"}, CWD: dir, RepoRoot: dir}})
 	var launches atomic.Int32
@@ -129,7 +144,7 @@ func TestLocalLiveRouteCapabilitiesApproveOpenAndEvent(t *testing.T) {
 		inR, inW := io.Pipe()
 		outR, outW := io.Pipe()
 		errR, errW := io.Pipe()
-		f := &localLSP{in: bufio.NewReader(inR), out: outW, errW: errW, exited: make(chan struct{}), opened: make(chan string, 4)}
+		f := &localLSP{in: bufio.NewReader(inR), out: outW, errW: errW, exited: make(chan struct{}), opened: make(chan string, 4), external: depURI}
 		go f.serve()
 		servers <- f
 		return f, cd.SessionStreams{Stdin: inW, Stdout: outR, Stderr: errR}, nil
@@ -240,6 +255,23 @@ func TestLocalLiveRouteCapabilitiesApproveOpenAndEvent(t *testing.T) {
 	checkDiagnosticsError(t, err, "unsupported")
 	_, err = a.NavigateCode(att.Context, "d1", 2, cd.NavigateDefinition, at, "other-host")
 	checkDiagnosticsError(t, err, "staleContext")
+
+	// A definition outside the project can be read, only once an answer
+	// pointed there, and never as an editable file.
+	_, err = a.ReadNavigationFile(att.Context, dep, host)
+	checkDiagnosticsError(t, err, "notFound")
+	nav, err = a.NavigateCode(att.Context, "d1", 2, cd.NavigateDefinition, cd.Position{Line: 1}, host)
+	if err != nil || len(nav.Locations) != 1 || nav.Locations[0].Path != dep || !nav.Locations[0].External {
+		t.Fatal(nav, err)
+	}
+	file, err := a.ReadNavigationFile(att.Context, dep, host)
+	if err != nil || file.Text != "package fmt\n" || file.Edit != nil {
+		t.Fatal(file, err)
+	}
+	_, err = a.ReadNavigationFile(att.Context, dep, "other-host")
+	checkDiagnosticsError(t, err, "staleContext")
+	_, err = a.ReadNavigationFile(att.Context, filepath.Join(dir, "a.go"), host)
+	checkDiagnosticsError(t, err, "notFound")
 	if launches.Load() != 1 {
 		t.Fatal("unexpected launches", launches.Load())
 	}

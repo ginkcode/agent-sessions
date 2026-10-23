@@ -20,7 +20,7 @@ const (
 
 func isLiveDiagnosticsMethod(m string) bool {
 	switch m {
-	case "openCodeDiagnosticDocument", "changeCodeDiagnosticDocument", "saveCodeDiagnosticDocument", "closeCodeDiagnosticDocument", "navigateCode":
+	case "openCodeDiagnosticDocument", "changeCodeDiagnosticDocument", "saveCodeDiagnosticDocument", "closeCodeDiagnosticDocument", "navigateCode", "readNavigationFile":
 		return true
 	}
 	return false
@@ -52,7 +52,7 @@ func (s *Server) dispatchLiveDiagnostics(ctx context.Context, req Request) (any,
 		// Not advertised: fail before decoding or any backend call, so a peer
 		// cannot make the server parse, retain or route document text.
 		return nil, cdError("unsupported", "Live code diagnostics are not supported")
-	case req.Method == "navigateCode" && !navigation:
+	case (req.Method == "navigateCode" || req.Method == "readNavigationFile") && !navigation:
 		return nil, cdError("unsupported", "Code navigation is not supported")
 	case len(req.Params) > maxLiveParamsBytes:
 		return nil, cdError("limitExceeded", "Document request exceeds the transport budget")
@@ -84,6 +84,12 @@ func (s *Server) dispatchLiveDiagnostics(ctx context.Context, req Request) (any,
 			return nil, cdError("invalidArgument", "Invalid navigation parameters")
 		}
 		return nav.NavigateCode(ctx, p.Context, p.DocumentID, p.Version, p.Op, *p.Position)
+	case "readNavigationFile":
+		nav, ok := s.backend.(engine.CodeNavigationBackend)
+		if !ok {
+			return nil, cdError("unsupported", "Code navigation is not supported")
+		}
+		return nav.ReadNavigationFile(ctx, p.Context, p.Path)
 	case "openCodeDiagnosticDocument":
 		return b.OpenCodeDiagnosticDocument(ctx, p.Context, p.Path, p.DocumentID, p.Version, p.Text, p.Revision)
 	case "changeCodeDiagnosticDocument":

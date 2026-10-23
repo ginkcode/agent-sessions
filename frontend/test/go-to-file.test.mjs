@@ -52,6 +52,7 @@ const [picker, tabs, source] = await Promise.all([
     ["import { files, tabHasUnsaved } from '../../../stores/files.svelte';", `${fixtureStore('files')} const tabHasUnsaved = t => !!t.edit?.dirty;`],
     ["import { fileActions } from '../../../stores/fileActions.svelte';", 'const fileActions = {};'],
     ["'../../../tabActions'", lib('../../../tabActions.ts')],
+    ["'../../../codeNavigation'", lib('../../../codeNavigation.ts')],
     ["import FileIcon from '../FileIcon.svelte';", 'const FileIcon = () => {};'],
     ["import ContextMenu from '../ContextMenu.svelte';", 'const ContextMenu = () => {};'],
   ]),
@@ -216,6 +217,21 @@ test('tabs expose active and preview states, git status and accessible close lab
   assert.match(html, /aria-label="Close main\.ts"/);
   assert.match(html, /aria-label="Close gone\.txt"/);
   assert.match(html, /title="Close \((?:Ctrl\+W|⌘W)\)"/);
+});
+
+test('a file outside the project shows read-only, its home-relative path and no git status', async () => {
+  const html = await renderTabs({
+    dir: '/Users/me/project',
+    tabs: [{ path: '/Users/me/go/pkg/mod/fmt/print.go', preview: true, external: true }],
+    selected: '/Users/me/go/pkg/mod/fmt/print.go',
+    listing: { status: { '/Users/me/go/pkg/mod/fmt/print.go': 'M' } },
+  });
+  assert.match(classTag(html, 'div', 'file-tab'), /\bexternal\b/);
+  assert.match(html, /title="~\/go\/pkg\/mod\/fmt\/print\.go · Read-only, outside the project · Preview: double-click to keep it open"/);
+  assert.match(html, /aria-label="Read-only"/);
+  assert.match(html, /class="tab-name git-none[^\"]*">print\.go/);
+  const windows = await renderTabs({ dir: 'C:\\Users\\me\\p', tabs: [{ path: 'C:\\Go\\src\\fmt\\print.go', external: true }] });
+  assert.match(windows, />print\.go</);
 });
 
 test('tabs omit the empty bar and attach the presentation hiding class only when requested', async () => {

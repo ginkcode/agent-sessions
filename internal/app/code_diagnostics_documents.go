@@ -3,6 +3,7 @@ package app
 import (
 	cd "github.com/ginkcode/agent-sessions/internal/codediagnostics"
 	"github.com/ginkcode/agent-sessions/internal/engine"
+	"github.com/ginkcode/agent-sessions/internal/files"
 )
 
 // liveRoute applies the same expected-host, offline and connection-epoch guards
@@ -78,6 +79,24 @@ func (a *App) NavigateCode(c cd.Context, documentID string, version int64, op st
 	out, err := nav.NavigateCode(a.appCtx(), c, documentID, version, op, position)
 	if stale := a.diagnosticsCurrent(gen); stale != nil {
 		return cd.NavigationResult{}, stale
+	}
+	return out, err
+}
+
+// ReadNavigationFile reads, for viewing only, an external file (absolute host
+// path) that a navigation answer of the same attachment pointed to.
+func (a *App) ReadNavigationFile(c cd.Context, path, expectedHostID string) (files.Content, error) {
+	b, gen, err := a.liveRoute(expectedHostID)
+	if err != nil {
+		return files.Content{}, err
+	}
+	nav, ok := b.(engine.CodeNavigationBackend)
+	if !ok {
+		return files.Content{}, &cd.Error{Code: "unsupported", Message: "Code navigation is unavailable on this backend"}
+	}
+	out, err := nav.ReadNavigationFile(a.appCtx(), c, path)
+	if stale := a.diagnosticsCurrent(gen); stale != nil {
+		return files.Content{}, stale
 	}
 	return out, err
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 
 	cd "github.com/ginkcode/agent-sessions/internal/codediagnostics"
+	"github.com/ginkcode/agent-sessions/internal/files"
 )
 
 // UnsupportedCodeDiagnostics keeps optional transports explicitly fail-closed.
@@ -67,4 +68,8 @@ func (u UnsupportedCodeDiagnostics) CloseCodeDiagnosticDocument(context.Context,
 
 func (u UnsupportedCodeDiagnostics) NavigateCode(context.Context, cd.Context, string, int64, string, cd.Position) (cd.NavigationResult, error) {
 	return cd.NavigationResult{}, u.err()
+}
+
+func (u UnsupportedCodeDiagnostics) ReadNavigationFile(context.Context, cd.Context, string) (files.Content, error) {
+	return files.Content{}, u.err()
 }

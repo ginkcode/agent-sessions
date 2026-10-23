@@ -235,6 +235,7 @@ interface WailsAppBinding {
   SaveCodeDiagnosticDocument?: CodeDiagnosticsAPI['saveCodeDiagnosticDocument'];
   CloseCodeDiagnosticDocument?: CodeDiagnosticsAPI['closeCodeDiagnosticDocument'];
   NavigateCode?: CodeDiagnosticsAPI['navigateCode'];
+  ReadNavigationFile?: CodeDiagnosticsAPI['readNavigationFile'];
   ListGroups(mode: string, filter: FilterOpts): Promise<GroupNode[]>;
   ListSessions(groupKey: string, filter: FilterOpts, sort: SortOpts): Promise<SessionMeta[]>;
   AgentCounts(filter: FilterOpts): Promise<Record<string, number>>;
@@ -408,6 +409,10 @@ class WailsBackendAPI implements BackendAPI {
   navigateCode(c: CodeDiagnosticsContext, documentId: string, version: number, op: CodeNavigationOp, position: CodeDiagnosticPosition, host: string): Promise<CodeNavigationResult> {
     const b = this.binding;
     return this.diagnosticsCall(b.NavigateCode && (() => b.NavigateCode!(c, documentId, version, op, position, host)));
+  }
+  readNavigationFile(c: CodeDiagnosticsContext, path: string, host: string): Promise<FileContent> {
+    const b = this.binding;
+    return this.diagnosticsCall(b.ReadNavigationFile && (() => b.ReadNavigationFile!(c, path, host)));
   }
   private get binding(): WailsAppBinding {
     const b = (window as any).go?.app?.App;

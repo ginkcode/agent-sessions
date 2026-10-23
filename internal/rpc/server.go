@@ -370,7 +370,7 @@ func (s *Server) dispatch(ctx context.Context, req Request) (any, error) {
 	case "managedTool":
 		return s.dispatchManagedTool(ctx, req)
 	case "invalidateCodeDiagnosticsPath", "attachCodeDiagnostics", "detachCodeDiagnostics", "getCodeDiagnosticsSnapshot", "approveCodeDiagnostics", "revokeCodeDiagnostics", "runCodeDiagnostics", "cancelCodeDiagnostics",
-		"openCodeDiagnosticDocument", "changeCodeDiagnosticDocument", "saveCodeDiagnosticDocument", "closeCodeDiagnosticDocument", "navigateCode":
+		"openCodeDiagnosticDocument", "changeCodeDiagnosticDocument", "saveCodeDiagnosticDocument", "closeCodeDiagnosticDocument", "navigateCode", "readNavigationFile":
 		return s.dispatchDiagnostics(ctx, req)
 	case "ping":
 		var p PingParams

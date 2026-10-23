@@ -5,11 +5,11 @@ import type { LiveDocumentStatus } from '../liveDocuments';
 import { aggregateCodeDiagnostics } from '../codeDiagnosticCounts';
 import { epoch } from '../link';
 import type { BackendAPI } from '../api';
-import type { ConnectionState } from '../types';
+import type { ConnectionState, FileContent } from '../types';
 import type { LiveDocumentBasis, CodeDiagnosticsContext, CodeDiagnosticsProject, CodeDiagnosticsProvider, CodeDiagnosticsSnapshot, CodeDiagnosticsUpdate, CodeDiagnosticsRun, CodeDiagnosticPosition, CodeNavigationOp } from '../codeDiagnostics';
 import { CODE_DIAGNOSTICS_EVENT, CODE_DIAGNOSTICS_LIMITS as limits, CodeDiagnosticsError, codeDiagnosticsError, sameAttachment, sameContext, encodedBytes, resultSetKey, groupCodeDiagnostics, inlineCodeDiagnostic, liveDocumentEligibility } from '../codeDiagnostics';
 import type { CodeNavigationOutcome } from '../codeNavigation';
-import { navigationBlocker, navigationFailure } from '../codeNavigation';
+import { externalReadFailure, navigationBlocker, navigationFailure } from '../codeNavigation';
 import { preferences } from './preferences.svelte';
 
 /** Whether missing language servers are downloaded without a click; kept by the caller. */
@@ -306,6 +306,26 @@ export class CodeDiagnosticsStore {
       if (moved() || err.code === 'staleVersion' || err.code === 'staleContext') return { kind: 'stale' };
       return { kind: 'failed', code: err.code, reason: navigationFailure(err.code, op, err.message) };
     }
+  }
+  /**
+   * Reads, for viewing only, a file outside the project that a navigation
+   * answer of this attachment pointed to. Fails with a CodeDiagnosticsError
+   * whose message says what to do.
+   */
+  async readNavigationFile(path: string): Promise<FileContent> {
+    const life = this.lifetime, c = this.context, host = this.host;
+    const fail = (code: string, message = '') => new CodeDiagnosticsError(code, externalReadFailure(code, message));
+    if (!c || this.status !== 'ready') throw fail(this.status === 'disconnected' ? 'disconnected' : 'staleContext');
+    if (!this.navCapable) throw fail('unsupported');
+    let content: FileContent;
+    try {
+      content = await this.backend.readNavigationFile(c, path, host);
+    } catch (e) {
+      const err = codeDiagnosticsError(e);
+      throw fail(err.code, err.message);
+    }
+    if (!this.active(life) || !this.context || !sameContext(c, this.context) || content.path !== path) throw fail('staleContext');
+    return { ...content, edit: undefined, changes: undefined };
   }
   /** Notified (synchronously, errors swallowed) whenever attachment state may have changed. */
   onLifecycle(listener: () => void): () => void {

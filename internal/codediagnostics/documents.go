@@ -542,6 +542,7 @@ func (m *Manager) dropDocument(a *attachment, documentID string) bool {
 // releaseDocuments drops every document of an attachment (detach, revoke,
 // invalidation). didClose is best-effort and runs outside the owner lock.
 func (m *Manager) releaseDocuments(a *attachment) {
+	a.dropGrants()
 	if len(a.docs) == 0 {
 		return
 	}

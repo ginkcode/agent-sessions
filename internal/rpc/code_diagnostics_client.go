@@ -4,9 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"unicode/utf8"
 
 	cd "github.com/ginkcode/agent-sessions/internal/codediagnostics"
 	"github.com/ginkcode/agent-sessions/internal/engine"
+	"github.com/ginkcode/agent-sessions/internal/files"
 )
 
 func (c *Client) CodeDiagnosticsHostID(context.Context) (string, error) {
@@ -268,6 +270,34 @@ func (c *Client) NavigateCode(ctx context.Context, token cd.Context, documentID 
 	if out.Locations == nil {
 		out.Locations = []cd.NavigationLocation{}
 	}
+	return out, nil
+}
+
+// ReadNavigationFile reads, for viewing only, an external file a navigation
+// answer pointed to. The answer must be the file asked for, within the read
+// limits, and never editable.
+func (c *Client) ReadNavigationFile(ctx context.Context, token cd.Context, path string) (files.Content, error) {
+	c.mu.Lock()
+	nav := c.caps.CodeNavigation && c.caps.LiveCodeDiagnostics
+	c.mu.Unlock()
+	if !nav {
+		return files.Content{}, cdError("unsupported", "Code navigation unavailable")
+	}
+	p := codeDiagnosticsParams{Context: token, Path: path}
+	if err := checkLiveParams(p); err != nil {
+		return files.Content{}, err
+	}
+	var out files.Content
+	if err := c.diagnosticsCall(ctx, "readNavigationFile", p, &out); err != nil {
+		return files.Content{}, err
+	}
+	if out.Path != path {
+		return files.Content{}, cdError("staleContext", "The file read does not match the request")
+	}
+	if len(out.Text) > files.MaxReadBytes || !utf8.ValidString(out.Text) || out.Data != "" {
+		return files.Content{}, cdError("toolFailed", "The file read is invalid")
+	}
+	out.Edit, out.Changes, out.Image = nil, nil, ""
 	return out, nil
 }
 

@@ -2,9 +2,12 @@ package rpc
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"testing"
 
 	cd "github.com/ginkcode/agent-sessions/internal/codediagnostics"
+	"github.com/ginkcode/agent-sessions/internal/files"
 )
 
 func (b *diagnosticsBackend) NavigateCode(ctx context.Context, c cd.Context, id string, v int64, op string, pos cd.Position) (cd.NavigationResult, error) {
@@ -12,6 +15,18 @@ func (b *diagnosticsBackend) NavigateCode(ctx context.Context, c cd.Context, id 
 	out, err := b.m.Navigate(ctx, c, id, v, op, pos)
 	if err == nil && b.tamper != nil {
 		b.tamper(&out)
+	}
+	return out, err
+}
+
+func (b *diagnosticsBackend) ReadNavigationFile(_ context.Context, c cd.Context, path string) (files.Content, error) {
+	b.fileReads++
+	if err := b.m.NavigationGrant(c, path); err != nil {
+		return files.Content{}, err
+	}
+	out, err := files.ReadExternal(files.EditPolicy{}, path)
+	if err == nil && b.tamperFile != nil {
+		b.tamperFile(&out)
 	}
 	return out, err
 }
@@ -140,6 +155,57 @@ func TestNavigationClientRefusesBadAnswers(t *testing.T) {
 	}
 }
 
+// A definition in a dependency can be read, and only that file.
+func TestNavigationFileOverRPC(t *testing.T) {
+	b, c, token, nav, ctx, done := navFixture(t)
+	defer done()
+	dep := filepath.Join(t.TempDir(), "print.go")
+	if err := os.WriteFile(dep, []byte("package fmt\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	neighbour := filepath.Join(filepath.Dir(dep), "scan.go")
+	if err := os.WriteFile(neighbour, []byte("package fmt\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.ReadNavigationFile(ctx, token, dep); rpcCode(err) != "notFound" {
+		t.Fatal("read before an answer pointed there:", err)
+	}
+	nav.answer = []cd.NavigationLocation{{Path: dep, External: true}}
+	if _, err := c.NavigateCode(ctx, token, "d1", 1, cd.NavigateDefinition, cd.Position{Line: 2, Character: 5}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := c.ReadNavigationFile(ctx, token, dep)
+	if err != nil || got.Text != "package fmt\n" || got.Path != dep || got.Edit != nil {
+		t.Fatal(got, err)
+	}
+	if _, err := c.ReadNavigationFile(ctx, token, neighbour); rpcCode(err) != "notFound" {
+		t.Fatal(err)
+	}
+
+	// The client keeps an answer for another file, or an editable one, out.
+	b.tamperFile = func(f *files.Content) { f.Path = neighbour }
+	if _, err := c.ReadNavigationFile(ctx, token, dep); rpcCode(err) != "staleContext" {
+		t.Fatal(err)
+	}
+	b.tamperFile = func(f *files.Content) { f.Edit = &files.EditInfo{Eligible: true} }
+	if got, err := c.ReadNavigationFile(ctx, token, dep); err != nil || got.Edit != nil {
+		t.Fatal("an external file became editable", got, err)
+	}
+	b.tamperFile = nil
+
+	// A foreign context never reaches the backend.
+	reads := b.fileReads
+	foreign := token
+	foreign.ConnectionID = "other"
+	var out files.Content
+	if err := c.call(ctx, "readNavigationFile", codeDiagnosticsParams{Context: foreign, Path: dep}, &out); rpcCode(err) != "staleContext" {
+		t.Fatal(err)
+	}
+	if b.fileReads != reads {
+		t.Fatal("refused read reached the backend")
+	}
+}
+
 // A server without navigation: the client does not ask, and a client that
 // asks anyway is refused before the backend.
 func TestNavigationUnsupportedFailsBeforeAnyWork(t *testing.T) {
@@ -152,6 +218,9 @@ func TestNavigationUnsupportedFailsBeforeAnyWork(t *testing.T) {
 	if _, err := c.NavigateCode(ctx, token, "d1", 1, cd.NavigateHover, at); rpcCode(err) != "unsupported" {
 		t.Fatal(err)
 	}
+	if _, err := c.ReadNavigationFile(ctx, token, "/usr/lib/go/src/fmt/print.go"); rpcCode(err) != "unsupported" {
+		t.Fatal(err)
+	}
 	// The server negotiated it, but here pretends it did not.
 	b2, c2, token2, _, ctx2, done2 := liveFixture(t, false)
 	defer done2()
@@ -162,7 +231,11 @@ func TestNavigationUnsupportedFailsBeforeAnyWork(t *testing.T) {
 	if err := c2.call(ctx2, "navigateCode", codeDiagnosticsParams{Context: token2, DocumentID: "d1", Version: 1, Op: cd.NavigateHover, Position: &at}, &out); rpcCode(err) != "unsupported" {
 		t.Fatal(err)
 	}
-	if b.navCalls != 0 || b2.navCalls != 0 {
+	var file files.Content
+	if err := c2.call(ctx2, "readNavigationFile", codeDiagnosticsParams{Context: token2, Path: "/usr/lib/go/src/fmt/print.go"}, &file); rpcCode(err) != "unsupported" {
+		t.Fatal(err)
+	}
+	if b.navCalls != 0 || b2.navCalls != 0 || b.fileReads != 0 || b2.fileReads != 0 {
 		t.Fatal("unsupported request reached the backend")
 	}
 }

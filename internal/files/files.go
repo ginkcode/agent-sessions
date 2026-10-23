@@ -419,27 +419,40 @@ func Read(ctx context.Context, root, rel string) (Content, error) {
 	if mime, ok := imageTypes[strings.ToLower(filepath.Ext(full))]; ok {
 		return readImage(f, out, mime)
 	}
-	if info.Size() > MaxReadBytes {
-		out.TooLarge = true
-		return out, nil
-	}
-	data, err := io.ReadAll(io.LimitReader(f, MaxReadBytes+1))
+	data, err := readText(f, &out)
 	if err != nil {
 		return Content{}, err
 	}
-	if len(data) > MaxReadBytes {
-		out.TooLarge = true
+	if data == nil {
 		return out, nil
 	}
-	if IsBinary(data) {
-		out.Binary = true
-		return out, nil
-	}
-	out.Text = string(data)
-	out.Revision = revisionOf(data)
 	out.Edit = textEditInfo(data)
 	out.Changes = gitChanges(ctx, root, out.Path)
 	return out, nil
+}
+
+// readText fills out's Text and Revision from f, or marks it TooLarge or
+// Binary and returns nil data.
+func readText(f *os.File, out *Content) ([]byte, error) {
+	if out.Size > MaxReadBytes {
+		out.TooLarge = true
+		return nil, nil
+	}
+	data, err := io.ReadAll(io.LimitReader(f, MaxReadBytes+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(data) > MaxReadBytes {
+		out.TooLarge = true
+		return nil, nil
+	}
+	if IsBinary(data) {
+		out.Binary = true
+		return nil, nil
+	}
+	out.Text = string(data)
+	out.Revision = revisionOf(data)
+	return data, nil
 }
 
 // readImage returns an image file's bytes, base64 encoded, unless it is

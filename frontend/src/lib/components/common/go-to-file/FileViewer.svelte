@@ -26,6 +26,7 @@
   import { connectionStore } from '../../../stores/connection.svelte';
   import { fileActions } from '../../../stores/fileActions.svelte';
   import { canEditContent, readOnlyText } from '../../../fileEditing';
+  import { externalLabel } from '../../../codeNavigation';
   import type { FileContent } from '../../../types';
   import LoadingSpinner from '../LoadingSpinner.svelte';
   import MarkdownDoc from '../MarkdownDoc.svelte';
@@ -178,6 +179,9 @@
   // Editing. A tab in edit mode shows the editor in place of every viewer
   // state, so a draft stays reachable even when the listing says deleted.
   let activeTab = $derived(files.activeTab);
+  // A file outside the project, opened by going to a definition: shown, never
+  // edited, and without the project's git or code checks.
+  let external = $derived(Boolean(activeTab?.external));
   let edit = $derived(activeTab?.edit);
   let editing = $derived(Boolean(edit?.editing));
   let editor: FileEditor | undefined = $state();
@@ -193,6 +197,7 @@
   );
   let readOnlyReason = $derived(
     editing || !textContent ? ''
+      : external ? 'Read-only: outside the project'
       : files.content?.edit?.eligible === false ? readOnlyText(files.content.edit.reason)
       : !canSaveHost && files.content?.edit?.eligible ? 'Read-only: this host cannot save files'
       : ''
@@ -276,7 +281,7 @@
   // Rendered rather than source: the source-only tools hide.
   let showPreview = $derived(showMarkdown || showSvg);
   // Only git listings can blame; older hosts say so instead of failing per line.
-  let blameShown = $derived(Boolean(selectedLines && !showPreview && files.listing?.git));
+  let blameShown = $derived(Boolean(selectedLines && !showPreview && files.listing?.git && !external));
   let canBlame = $derived(connectionStore.capabilities.blame === true && !blocked);
   // The selected line's blame loads by itself; another line, file or text starts over.
   $effect(() => {
@@ -315,7 +320,7 @@
   let htmlLines = $derived(html !== null ? splitHighlightedLines(html) : null);
   let plainLines = $derived(textContent ? splitLines(text) : []);
   let changes = $derived(
-    files.selected ? fileChanges(status?.[files.selected], files.content?.changes, plainLines.length) : undefined
+    files.selected && !external ? fileChanges(status?.[files.selected], files.content?.changes, plainLines.length) : undefined
   );
   let marks = $derived(lineMarks(changes, plainLines.length));
   // The diff view shows when it is on and the file has changes to show.
@@ -323,7 +328,7 @@
   // Git markers describe the saved file, so the diff never shows over a draft.
   let showDiff = $derived(files.diff && hasChanges && !editing);
   let sourceDiagnostics = $derived(projectSourceDiagnostics(text,
-    codeDiagnostics.project && codeDiagnostics.directory === files.dir && !blocked && !files.loadingFile && !showDiff && !showPreview && !blameOpen
+    codeDiagnostics.project && codeDiagnostics.directory === files.dir && !external && !blocked && !files.loadingFile && !showDiff && !showPreview && !blameOpen
       ? codeDiagnostics.findings.filter(f => f.diagnostic.path === files.selected) : [],
     { dirty: Boolean(edit?.dirty || edit?.uncertain || edit?.conflict), revision: edit?.revision ?? files.content?.revision, live: files.selected ? codeDiagnostics.liveBasis(files.selected) : undefined },
     codeDiagnostics.status === 'ready' && !codeDiagnostics.revoking && !highlightPending));
@@ -381,6 +386,10 @@
 
   function followFileLink(href: string) {
     if (!files.selected) return;
+    if (external) {
+      toast.show({ title: 'Cannot open this link', body: 'Links in files outside the project are not followed.', tone: 'error' });
+      return;
+    }
     const hashIndex = href.indexOf('#');
     const fragment = hashIndex >= 0 ? href.slice(hashIndex + 1) : '';
     const target = markdownFileTarget(files.selected, hashIndex >= 0 ? href.slice(0, hashIndex) : href);
@@ -503,6 +512,7 @@
   }
 
   const PATH_COPY_LABELS = { idle: 'Copy relative path', copied: 'Path copied', failed: 'Copy failed' };
+  let pathCopyLabel = $derived(external && pathCopyState === 'idle' ? 'Copy path' : PATH_COPY_LABELS[pathCopyState]);
 
   // Another file opened: the buttons start over.
   $effect(() => {
@@ -612,14 +622,14 @@
     <div class="state center">Pick a file to see its content. Double-click keeps it open in a tab.</div>
   {:else}
     <div class="viewer-header">
-      <span class="viewer-path" title={files.selected}>{files.selected}</span>
+      <span class="viewer-path" title={files.selected}>{external ? externalLabel(files.selected, files.dir) : files.selected}</span>
       <button
         type="button"
         class="path-copy"
         class:copied={pathCopyState === 'copied'}
         class:failed={pathCopyState === 'failed'}
-        title={PATH_COPY_LABELS[pathCopyState]}
-        aria-label={PATH_COPY_LABELS[pathCopyState]}
+        title={pathCopyLabel}
+        aria-label={pathCopyLabel}
         onclick={copyPath}
       >
         {#if pathCopyState === 'copied'}

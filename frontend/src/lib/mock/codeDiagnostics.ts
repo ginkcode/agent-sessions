@@ -1,5 +1,11 @@
 import type { CodeDiagnosticsAPI, CodeDiagnosticsContext, CodeDiagnosticsSnapshot, CodeDiagnosticsRun, CodeDiagnosticsDocumentReceipt, CodeDiagnosticPosition, CodeNavigationLocation, CodeNavigationOp, CodeNavigationResult } from '../codeDiagnostics';
 import { CODE_DIAGNOSTICS_EVENT, CodeDiagnosticsError, sameContext } from '../codeDiagnostics';
+import type { FileContent } from '../types';
+
+/** Synthetic dependency sources outside every project, for go to definition. */
+const MOCK_EXTERNAL: Record<string, string> = {
+  '/usr/local/go/src/fmt/print.go': 'package fmt\n\n// Println formats using the default formats for its operands and writes to standard output.\nfunc Println(a ...any) (n int, err error) {\n\treturn Fprintln(os.Stdout, a...)\n}\n',
+};
 
 /** Synthetic, in-memory checker. No executable or editor/text dependencies. */
 export class MockCodeDiagnostics implements CodeDiagnosticsAPI {
@@ -10,6 +16,8 @@ export class MockCodeDiagnostics implements CodeDiagnosticsAPI {
   liveDocuments = false;
   private documents = new Map<string, Map<string, { path: string; version: number; text: string }>>();
   private closed = new Set<string>();
+  /** External paths navigation answers pointed to, per attachment. */
+  private grants = new Map<string, Set<string>>();
   constructor(publishEvent: (name: string, event: unknown) => void) { this.publishEvent = publishEvent; }
   private get(c: CodeDiagnosticsContext, host: string) {
     const s = this.snapshots.get(c.attachmentId);
@@ -28,7 +36,7 @@ export class MockCodeDiagnostics implements CodeDiagnosticsAPI {
     this.snapshots.set(context.attachmentId, snapshot);
     return structuredClone({ project: { hostId: host, root: dir }, context, snapshot });
   }
-  async detachCodeDiagnostics(c: CodeDiagnosticsContext, host: string) { this.get(c, host); this.snapshots.delete(c.attachmentId); this.documents.delete(c.attachmentId); return { context: c }; }
+  async detachCodeDiagnostics(c: CodeDiagnosticsContext, host: string) { this.get(c, host); this.snapshots.delete(c.attachmentId); this.documents.delete(c.attachmentId); this.grants.delete(c.attachmentId); return { context: c }; }
   private docs(c: CodeDiagnosticsContext, host: string) {
     const s = this.get(c, host);
     if (!this.liveDocuments) throw new CodeDiagnosticsError('unsupported', 'Mock live diagnostics are unavailable');
@@ -77,11 +85,13 @@ export class MockCodeDiagnostics implements CodeDiagnosticsAPI {
     const uses: CodeNavigationLocation[] = [], declarations: CodeNavigationLocation[] = [];
     let declared = '';
     const declaring = new RegExp(`\\b(?:func|function|const|let|var|def|class|type)\\s+${word}\\b`);
-    for (const doc of m.values()) {
+    const sources = [...m.values(), ...Object.entries(MOCK_EXTERNAL).map(([path, text]) => ({ path, text, external: true as const }))];
+    for (const doc of sources) {
+      const external = 'external' in doc;
       doc.text.split('\n').forEach((text, i) => {
         for (const hit of text.matchAll(new RegExp(`\\b${word}\\b`, 'g'))) {
-          const place = { path: doc.path, range: { start: { line: i, character: hit.index }, end: { line: i, character: hit.index + word.length } } };
-          uses.push(place);
+          const place: CodeNavigationLocation = { path: doc.path, range: { start: { line: i, character: hit.index }, end: { line: i, character: hit.index + word.length } }, ...(external ? { external } : {}) };
+          if (!external) uses.push(place);
           if (declaring.test(text) && !declarations.some(p => p.path === doc.path && p.range.start.line === i)) {
             declarations.push(place);
             declared ||= text.trim();
@@ -92,7 +102,16 @@ export class MockCodeDiagnostics implements CodeDiagnosticsAPI {
     if (op === 'references') result.locations = uses;
     else if (op === 'definition') result.locations = declarations;
     else if (declared) result.hover = { kind: 'markdown', value: '```\n' + declared + '\n```\n\nMock symbol `' + word + '`.' };
+    let granted = this.grants.get(c.attachmentId);
+    if (!granted) this.grants.set(c.attachmentId, granted = new Set());
+    for (const l of result.locations) if (l.external) granted.add(l.path);
     return result;
+  }
+  async readNavigationFile(c: CodeDiagnosticsContext, path: string, host: string): Promise<FileContent> {
+    this.docs(c, host);
+    const text = MOCK_EXTERNAL[path];
+    if (!this.grants.get(c.attachmentId)?.has(path) || text === undefined) throw new CodeDiagnosticsError('notFound', 'This file was not opened by code navigation');
+    return { path, size: text.length, text, revision: `mock-external-${text.length}` };
   }
   async invalidateCodeDiagnosticsPath(c: CodeDiagnosticsContext, path: string, host: string) {
     const s = this.get(c, host);
@@ -110,7 +129,7 @@ export class MockCodeDiagnostics implements CodeDiagnosticsAPI {
     return this.publish(s);
   }
   async revokeCodeDiagnostics(c: CodeDiagnosticsContext, host: string) {
-    const s = this.get(c, host); s.context = { ...c, generation: `generation-${++this.serial}` }; s.approval = { state: 'revoked' }; s.resultSets = [];
+    const s = this.get(c, host); s.context = { ...c, generation: `generation-${++this.serial}` }; s.approval = { state: 'revoked' }; this.grants.delete(c.attachmentId); s.resultSets = [];
     s.providers[0] = { ...s.providers[0], phase: 'idle', availability: 'approvalRequired', runId: undefined };
     return this.publish(s);
   }

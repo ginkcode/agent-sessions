@@ -5,6 +5,7 @@ import (
 
 	cd "github.com/ginkcode/agent-sessions/internal/codediagnostics"
 	"github.com/ginkcode/agent-sessions/internal/engine"
+	"github.com/ginkcode/agent-sessions/internal/files"
 )
 
 func (u offlineBackend) CodeDiagnosticsHostID(context.Context) (string, error) {
@@ -57,4 +58,8 @@ func (u offlineBackend) CloseCodeDiagnosticDocument(context.Context, cd.Context,
 
 func (u offlineBackend) NavigateCode(context.Context, cd.Context, string, int64, string, cd.Position) (cd.NavigationResult, error) {
 	return cd.NavigationResult{}, &cd.Error{Code: "disconnected", Message: "Selected host is disconnected"}
+}
+
+func (u offlineBackend) ReadNavigationFile(context.Context, cd.Context, string) (files.Content, error) {
+	return files.Content{}, &cd.Error{Code: "disconnected", Message: "Selected host is disconnected"}
 }

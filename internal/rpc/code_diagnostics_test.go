@@ -12,6 +12,7 @@ import (
 
 	cd "github.com/ginkcode/agent-sessions/internal/codediagnostics"
 	"github.com/ginkcode/agent-sessions/internal/engine"
+	"github.com/ginkcode/agent-sessions/internal/files"
 )
 
 type rpcChecker struct {
@@ -37,6 +38,8 @@ type diagnosticsBackend struct {
 	liveCalls     int
 	navCalls      int
 	tamper        func(*cd.NavigationResult) // test-only: change an answer on its way out
+	tamperFile    func(*files.Content)
+	fileReads     int
 }
 
 func (b *diagnosticsBackend) RemoteCodeDiagnosticsHostID(context.Context) (string, error) {

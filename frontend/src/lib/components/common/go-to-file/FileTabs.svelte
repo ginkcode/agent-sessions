@@ -2,6 +2,7 @@
   import { files, tabHasUnsaved } from '../../../stores/files.svelte';
   import { fileActions } from '../../../stores/fileActions.svelte';
   import { TAB_CLOSE_ACTIONS, tabsToClose } from '../../../tabActions';
+  import { externalLabel } from '../../../codeNavigation';
   import FileIcon from '../FileIcon.svelte';
   import ContextMenu from '../ContextMenu.svelte';
 
@@ -30,8 +31,14 @@
     return files.listing?.status?.[path];
   }
 
+  // External files (outside the project) have Windows or POSIX host paths.
   function splitPath(path: string) {
-    return { name: path.slice(path.lastIndexOf('/') + 1) };
+    return { name: path.slice(Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\')) + 1) };
+  }
+
+  function tabTitle(tab: { path: string; preview?: boolean; external?: boolean }) {
+    const path = tab.external ? `${externalLabel(tab.path, files.dir)} · Read-only, outside the project` : tab.path;
+    return tab.preview ? `${path} · Preview: double-click to keep it open` : path;
   }
 
   function closeTab(e: MouseEvent, path: string) {
@@ -46,7 +53,7 @@
 {#if files.tabs.length > 0}
   <div class="tab-bar" class:presentation role="tablist" aria-label="Open files">
     {#each files.tabs as tab (tab.path)}
-      {@const st = fileStatus(tab.path)}
+      {@const st = tab.external ? undefined : fileStatus(tab.path)}
       <div
         class="file-tab"
         class:active={tab.path === files.selected}
@@ -54,7 +61,8 @@
         role="tab"
         tabindex="0"
         aria-selected={tab.path === files.selected}
-        title={tab.preview ? `${tab.path} · Preview: double-click to keep it open` : tab.path}
+        class:external={tab.external}
+        title={tabTitle(tab)}
         onclick={() => files.selectTab(tab.path)}
         ondblclick={() => files.keepTab(tab.path)}
         oncontextmenu={(e) => {
@@ -73,6 +81,12 @@
       >
         <FileIcon path={tab.path} />
         <span class="tab-name git-{st ?? 'none'}">{splitPath(tab.path).name}</span>
+        {#if tab.external}
+          <svg class="tab-lock" viewBox="0 0 16 16" width="10" height="10" role="img" aria-label="Read-only">
+            <rect x="3" y="7" width="10" height="7.5" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.4" />
+            <path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2" fill="none" stroke="currentColor" stroke-width="1.4" />
+          </svg>
+        {/if}
         {#if tabHasUnsaved(tab)}<span aria-label="Unsaved changes" title="Unsaved changes">●</span>{/if}
         <button
           type="button"
@@ -125,6 +139,15 @@
 
   .file-tab.preview .tab-name {
     font-style: italic;
+  }
+
+  .file-tab.external .tab-name {
+    color: var(--text-muted);
+  }
+
+  .tab-lock {
+    flex-shrink: 0;
+    opacity: 0.7;
   }
 
   .tab-name {

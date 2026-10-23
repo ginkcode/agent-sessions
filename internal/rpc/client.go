@@ -18,8 +18,11 @@ import (
 	"github.com/ginkcode/agent-sessions/internal/provider"
 )
 
-// Ensure Client implements engine.Backend.
-var _ engine.Backend = (*Client)(nil)
+// Ensure Client implements engine.Backend and the navigation surface.
+var (
+	_ engine.Backend               = (*Client)(nil)
+	_ engine.CodeNavigationBackend = (*Client)(nil)
+)
 
 // NotificationHandler receives incoming JSON-RPC notifications.
 type NotificationHandler func(method string, params json.RawMessage)

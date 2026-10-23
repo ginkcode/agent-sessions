@@ -27,6 +27,10 @@ type attachment struct {
 	closedDocs  map[string]bool
 	closedOrder []string
 
+	// External files navigation answers pointed to; see grantExternal.
+	grants     map[string]bool
+	grantOrder []string
+
 	inProcess map[string]bool // provider IDs published by PublishInProcess
 	analyzers []string        // reviewed in-process IDs offered in the proposal
 }

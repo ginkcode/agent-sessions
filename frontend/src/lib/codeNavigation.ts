@@ -92,3 +92,36 @@ export function navigationFailure(code: string, op: CodeNavigationOp, message = 
       return `The language server could not answer${message ? `: ${message}` : '.'}`;
   }
 }
+
+/** How a failed read of an external file reads, by its stable code. */
+export function externalReadFailure(code: string, message = ''): string {
+  switch (code) {
+    case 'notFound':
+      if (/no longer exists/.test(message)) return 'The file no longer exists on the host.';
+    // falls through: the grant ended or never was.
+    case 'staleContext':
+      return 'This file is shown only after code navigation points to it. Go to the definition again to show it.';
+    case 'disconnected':
+      return 'The host is disconnected. Reconnect to show this file.';
+    case 'approvalRequired':
+    case 'approvalChanged':
+      return 'Approve code checks for this project in Code checks to show files outside it.';
+    case 'unsupported':
+      return message.replace(/^unsupported:\s*/, '') || 'Files outside the project cannot be shown for this host.';
+    default:
+      return `The file could not be read${message ? `: ${message.replace(/^\w+:\s*/, '')}` : '.'}`;
+  }
+}
+
+/**
+ * The full path of a file outside the project, with the home directory the
+ * project is in shortened to ~. Another home is shown as it is.
+ */
+export function externalLabel(path: string, projectDir: string | null | undefined): string {
+  const home = /^(\/Users\/[^/]+|\/home\/[^/]+|[A-Za-z]:\\Users\\[^\\]+)(?=[\\/]|$)/.exec(projectDir ?? '')?.[1];
+  if (!home) return path;
+  const windows = home.includes('\\');
+  const same = windows ? path.toLowerCase().startsWith(home.toLowerCase()) : path.startsWith(home);
+  const rest = path.slice(home.length);
+  return same && (rest === '' || /^[\\/]/.test(rest)) ? `~${rest}` : path;
+}

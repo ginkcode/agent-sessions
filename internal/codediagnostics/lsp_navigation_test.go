@@ -216,14 +216,18 @@ func TestNavigationAgainstFakeServer(t *testing.T) {
 // navDocs adds navigation to the fake document provider.
 type navDocs struct {
 	MultiOwnedDocumentProvider
-	mu   sync.Mutex
-	reqs []NavigationRequest
+	mu        sync.Mutex
+	reqs      []NavigationRequest
+	locations []NavigationLocation // the answer; source.go when nil
 }
 
 func (n *navDocs) Navigate(_ context.Context, req NavigationRequest) (NavigationResult, error) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 	n.reqs = append(n.reqs, req)
+	if n.locations != nil {
+		return NavigationResult{Locations: n.locations}, nil
+	}
 	return NavigationResult{Locations: []NavigationLocation{{Path: "source.go"}}}, nil
 }
 

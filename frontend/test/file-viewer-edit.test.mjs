@@ -32,6 +32,7 @@ const viewer = await loadServerComponent(VIEWER_URL, [
   ["import { connectionStore } from '../../../stores/connection.svelte';", fixtureStore('connectionStore')],
   ["import { fileActions } from '../../../stores/fileActions.svelte';", fixtureStore('fileActions')],
   ["'../../../fileEditing'", lib('../../../fileEditing.ts')],
+  ["'../../../codeNavigation'", lib('../../../codeNavigation.ts')],
   ["'../../../fullscreen'", lib('../../../fullscreen.ts')],
   ["import { codeDiagnostics } from '../../../stores/codeDiagnostics.svelte';", 'const codeDiagnostics = { liveBasis: () => undefined };'],
   ["'../../../problemNavigation'", lib('../../../problemNavigation.ts')],
@@ -361,8 +362,23 @@ test('a save conflict keeps the draft and offers Resolve and Reload', async () =
 test('line blame loads with the selection and has no close buttons; its text opens the commit details', () => {
   const viewer = readFileSync(new URL('../src/lib/components/common/go-to-file/FileViewer.svelte', import.meta.url), 'utf8');
   assert.doesNotMatch(viewer, /Clear line selection|Close blame/);
-  assert.match(viewer, /let blameShown = \$derived\(Boolean\(selectedLines && !showPreview && files\.listing\?\.git\)\)/);
+  assert.match(viewer, /let blameShown = \$derived\(Boolean\(selectedLines && !showPreview && files\.listing\?\.git && !external\)\)/);
   assert.match(viewer, /class="blame-summary" aria-expanded=\{blameOpen\}/);
   assert.match(viewer, /\{blame\.author\} · \{formatAgo\(blameTime\(blame\)\)\}/);
   assert.match(viewer, /onclearselection=\{clearSelection\}/);
+});
+
+test('a file outside the project is read-only, with no blame, diff or checks', async () => {
+  const path = '/Users/me/go/pkg/mod/fmt/print.go';
+  const fileContent = { path, size: 14, text: 'func Println()', revision: 'r' };
+  const html = await render({ files: {
+    dir: '/Users/me/project', selected: path, content: fileContent,
+    listing: { files: [], status: { [path]: 'M' }, git: true },
+    activeTab: { path, preview: true, external: true, content: fileContent, loading: false, error: null, token: 1 },
+  } });
+  assert.match(html, /class="viewer-path[^"]*" title="\/Users\/me\/go\/pkg\/mod\/fmt\/print\.go">~\/go\/pkg\/mod\/fmt\/print\.go</);
+  assert.match(html, /Read-only: outside the project/);
+  assert.match(html, /aria-label="Copy path"/);
+  for (const text of ['Edit', 'Git diff']) assert.equal(namedButtons(html).find(b => b.text === text), undefined, text);
+  assert.ok(namedButtons(html).find(b => b.text === 'Find'));
 });

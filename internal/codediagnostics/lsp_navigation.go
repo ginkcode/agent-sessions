@@ -169,6 +169,18 @@ func (m *Manager) Navigate(ctx context.Context, c Context, documentID string, ve
 	if result.Locations == nil {
 		result.Locations = []NavigationLocation{}
 	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	// The attachment may have ended (or lost approval) while the server
+	// answered; its external files are then not granted.
+	a, err := m.lookup(c)
+	if err == nil {
+		err = m.liveGate(a)
+	}
+	if err != nil {
+		return NavigationResult{}, err
+	}
+	a.grantExternal(result)
 	return result, nil
 }
 

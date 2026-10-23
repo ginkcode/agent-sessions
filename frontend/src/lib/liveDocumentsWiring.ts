@@ -23,6 +23,7 @@ export function startLiveDocuments(): LiveDocumentBridge {
     source: () => ({ dir: files.dir, documents: files.displayedDocuments() }),
   });
   files.setPathInvalidator((dir, path) => codeDiagnostics.invalidatePath(dir, path));
+  files.setExternalReader(path => codeDiagnostics.readNavigationFile(path));
   files.setDiagnosticPaths(() => codeDiagnostics.directory === files.dir ? codeDiagnostics.resultSets.flatMap(s => s.diagnostics.map(d => d.path)) : []);
   codeDiagnostics.setReconciler(() => files.reconcileDisplayed());
   codeDiagnostics.setLiveBasis(path => bridge.basis(path));

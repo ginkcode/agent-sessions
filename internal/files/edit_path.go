@@ -63,28 +63,8 @@ func (p EditPolicy) checkTarget(root, rel string, create, directory bool) error 
 	}
 	lexTarget := filepath.Join(lexRoot, rel)
 	realTarget := filepath.Join(realRoot, rel)
-	for _, protected := range p.ProtectedRoots {
-		if !filepath.IsAbs(protected) || editHasParentComponent(protected) {
-			return fmt.Errorf("%w: policy root must be absolute without '..' components: %q", ErrEditProtected, protected)
-		}
-		lexProtected := filepath.Clean(protected)
-		realProtected, err := editResolveAncestor(lexProtected)
-		if err != nil {
-			return fmt.Errorf("%w: resolve policy root %q: %w", ErrEditProtected, protected, err)
-		}
-		for _, target := range []string{lexTarget, realTarget} {
-			if editWithin(lexProtected, target) || editWithin(realProtected, target) ||
-				(directory && (editWithin(target, lexProtected) || editWithin(target, realProtected))) {
-				return fmt.Errorf("%w: configured store", ErrEditProtected)
-			}
-		}
-	}
-	for _, target := range []string{lexTarget, realTarget} {
-		for _, component := range strings.Split(filepath.ToSlash(target), "/") {
-			if editProtectedName(component) {
-				return fmt.Errorf("%w: %s", ErrEditProtected, component)
-			}
-		}
+	if err := p.refuse(directory, lexTarget, realTarget); err != nil {
+		return err
 	}
 	r, err := os.OpenRoot(realRoot)
 	if err != nil {
@@ -111,6 +91,35 @@ func (p EditPolicy) checkTarget(root, rel string, create, directory bool) error 
 		}
 		if (i < len(parts)-1 && !info.IsDir()) || (i == len(parts)-1 && !info.Mode().IsRegular() && !(directory && info.IsDir())) {
 			return fmt.Errorf("%w: %s", ErrEditTarget, name)
+		}
+	}
+	return nil
+}
+
+// refuse fails when a target is in a configured store or has a protected
+// name in any component. A directory target also fails when it holds a store.
+func (p EditPolicy) refuse(directory bool, targets ...string) error {
+	for _, protected := range p.ProtectedRoots {
+		if !filepath.IsAbs(protected) || editHasParentComponent(protected) {
+			return fmt.Errorf("%w: policy root must be absolute without '..' components: %q", ErrEditProtected, protected)
+		}
+		lexProtected := filepath.Clean(protected)
+		realProtected, err := editResolveAncestor(lexProtected)
+		if err != nil {
+			return fmt.Errorf("%w: resolve policy root %q: %w", ErrEditProtected, protected, err)
+		}
+		for _, target := range targets {
+			if editWithin(lexProtected, target) || editWithin(realProtected, target) ||
+				(directory && (editWithin(target, lexProtected) || editWithin(target, realProtected))) {
+				return fmt.Errorf("%w: configured store", ErrEditProtected)
+			}
+		}
+	}
+	for _, target := range targets {
+		for _, component := range strings.Split(filepath.ToSlash(target), "/") {
+			if editProtectedName(component) {
+				return fmt.Errorf("%w: %s", ErrEditProtected, component)
+			}
 		}
 	}
 	return nil

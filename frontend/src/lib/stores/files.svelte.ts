@@ -94,6 +94,12 @@ export interface FileTab {
   edit?: FileEditState;
   /** Only a confirmed leaf absence, never a failed read. */
   diskAbsent?: boolean;
+  /**
+   * path is an absolute host path outside the project that go to definition
+   * opened (a dependency's source): read-only, without Git, blame or
+   * diagnostics, and never a live document.
+   */
+  external?: boolean;
 }
 
 export class FilesStore {
@@ -141,6 +147,9 @@ export class FilesStore {
   private probeReads = new WeakMap<FileTab, number>();
   private invalidatePath: (dir: string, path: string) => Promise<void> = async () => {};
   setPathInvalidator(invalidate: (dir: string, path: string) => Promise<void>): void { this.invalidatePath = invalidate; }
+  private readExternal: (path: string) => Promise<FileContent> = async () => { throw new Error('Files outside the project cannot be shown here.'); };
+  /** Installs how an external tab's file is read (code navigation's grant). */
+  setExternalReader(read: (path: string) => Promise<FileContent>): void { this.readExternal = read; }
   private savedReads = new WeakMap<FileTab, number>();
 
   /** Installs the single lifecycle observer; returns an unsubscribe function. */
@@ -159,7 +168,7 @@ export class FilesStore {
   displayedDocuments(): DisplayedDocument[] {
     const out: DisplayedDocument[] = [];
     for (const tab of this.tabs) {
-      if (tab.diskAbsent) continue;
+      if (tab.diskAbsent || tab.external) continue;
       if (tab.edit) out.push({ path: tab.path, text: tab.edit.draft, revision: tab.edit.revision });
       else if (displayable(tab.content)) out.push({ path: tab.path, text: tab.content.text, revision: tab.content.revision });
     }
@@ -167,6 +176,7 @@ export class FilesStore {
   }
 
   private shown(dir: string, tab: FileTab): void {
+    if (tab.external) return;
     const content = tab.content;
     if (displayable(content)) this.notify(o => o.opened(dir, tab.path, content.text, content.revision));
     else this.notify(o => o.removed(dir, tab.path));
@@ -189,7 +199,8 @@ export class FilesStore {
     if (this.mutationError(host)) return;
     const pending = this.draftTargets.map((target) => this.reconcile(target));
     if (this.dir) {
-      for (const tab of this.tabs) pending.push(this.read(tab.path));
+      // An external file is not read again: its grant ends with the attachment.
+      for (const tab of this.tabs) if (!tab.external || !tab.content) pending.push(this.read(tab.path));
       this.refreshing = true;
       pending.push(this.list(this.dir));
     }
@@ -385,6 +396,7 @@ export class FilesStore {
     if (!dir || this.mutationError(host)) return;
     await Promise.all(this.tabs.map(async tab => {
       const edit = tab.edit;
+      if (tab.external) return;
       if (!edit) { await this.read(tab.path); return; }
       if (edit.saving || (typeof api.probeFiles === 'function' && !await this.probe(dir, tab))) return;
       // Typing is allowed during the read. Commit saved context only, not the
@@ -587,6 +599,7 @@ export class FilesStore {
   remapPaths(path: string, destination: string): void {
     const remap = (p: string) => p === path || p.startsWith(path + '/') ? destination + p.slice(path.length) : p;
     for (const tab of this.tabs) {
+      if (tab.external) continue;
       const next = remap(tab.path);
       if (next === tab.path) continue;
       tab.token = ++this.readSeq;
@@ -610,9 +623,9 @@ export class FilesStore {
    * with keep a tab of its own. With read false (a deleted file) nothing is
    * fetched.
    */
-  openFile(path: string, opts: { keep?: boolean; read?: boolean } = {}): void {
+  openFile(path: string, opts: { keep?: boolean; read?: boolean; external?: boolean } = {}): void {
     if (!this.dir || this.mutationError(this.dataHost)) return;
-    this.revealPath(path);
+    if (!opts.external) this.revealPath(path);
     const keep = opts.keep ?? false;
     const existing = this.tabs.find((t) => t.path === path);
     if (existing) {
@@ -627,19 +640,30 @@ export class FilesStore {
       loading: false,
       error: null,
       token: 0,
+      ...(opts.external ? { external: true } : {}),
     };
     const previewAt = keep ? -1 : this.tabs.findIndex((t) => t.preview && !t.edit?.editing && !tabHasUnsaved(t));
     if (previewAt >= 0) {
       const replaced = this.tabs[previewAt];
       this.tabs[previewAt] = tab;
       const dir = this.dir;
-      this.notify(o => o.removed(dir, replaced.path));
+      if (!replaced.external) this.notify(o => o.removed(dir, replaced.path));
     } else {
       const activeAt = this.tabs.findIndex((t) => t.path === this.selected);
       this.tabs.splice(activeAt >= 0 ? activeAt + 1 : this.tabs.length, 0, tab);
     }
     this.selected = path;
     if (opts.read !== false) void this.read(path);
+  }
+
+  /**
+   * Shows a file outside the project, by its absolute host path, read-only:
+   * where go to definition led into a dependency.
+   */
+  openExternal(path: string, opts: { keep?: boolean } = {}): void {
+    const existing = this.tabs.find((t) => t.path === path);
+    if (existing && !existing.external) return;
+    this.openFile(path, { ...opts, external: true });
   }
 
   /** Turns a preview tab into one that stays. */
@@ -654,8 +678,9 @@ export class FilesStore {
   }
 
   selectTab(path: string): void {
-    if (this.tabs.some((t) => t.path === path)) {
-      this.revealPath(path);
+    const tab = this.tabs.find((t) => t.path === path);
+    if (tab) {
+      if (!tab.external) this.revealPath(path);
       this.selected = path;
     }
   }
@@ -675,12 +700,12 @@ export class FilesStore {
   closeTab(path: string): boolean {
     const at = this.tabs.findIndex((t) => t.path === path);
     if (at < 0 || tabHasUnsaved(this.tabs[at])) return false;
-    this.tabs.splice(at, 1);
+    const [closed] = this.tabs.splice(at, 1);
     if (this.selected === path) {
       this.selected = (this.tabs[at] ?? this.tabs[at - 1])?.path ?? null;
     }
     const dir = this.dir;
-    if (dir) this.notify(o => o.removed(dir, path));
+    if (dir && !closed.external) this.notify(o => o.removed(dir, path));
     return true;
   }
 
@@ -697,8 +722,8 @@ export class FilesStore {
     const current = () => started === epoch() && this.dataHost === link.dataHost && this.dir === dir
       && this.tabs.find((t) => t === tab && t.token === token && !t.edit);
     try {
-      if ((typeof api.probeFiles === 'function' && !await this.probe(dir, tab)) || !current()) return;
-      const content = await api.readFile(dir, path);
+      if ((!tab.external && typeof api.probeFiles === 'function' && !await this.probe(dir, tab)) || !current()) return;
+      const content = tab.external ? await this.readExternal(path) : await api.readFile(dir, path);
       const t = current();
       if (t) {
         t.content = content;
@@ -720,7 +745,7 @@ export class FilesStore {
   /** Enter edit mode without rereading, retaining even a clean editor's undo history. */
   startEditing(path: string): boolean {
     const tab = this.tabs.find((t) => t.path === path);
-    if (!tab || this.mutationError(this.dataHost) || !canEditContent(tab.content)) return false;
+    if (!tab || tab.external || this.mutationError(this.dataHost) || !canEditContent(tab.content)) return false;
     if (tab.edit) {
       tab.edit.editing = true;
       return true;

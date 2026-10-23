@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { loadServerModule } from './helpers.mjs';
+import { fixtureStore, loadServerModule } from './helpers.mjs';
 import { createAPI } from '../src/lib/api.ts';
 import { CODE_DIAGNOSTICS_EVENT, CodeDiagnosticsError, codeDiagnosticsError } from '../src/lib/codeDiagnostics.ts';
-import { navigationBlocker, navigationFailure } from '../src/lib/codeNavigation.ts';
+import { externalLabel, externalReadFailure, navigationBlocker, navigationFailure } from '../src/lib/codeNavigation.ts';
 import { MockBackendAPI } from '../src/lib/mock/mockApi.ts';
 
 const lib = name => JSON.stringify(new URL(`../src/lib/${name}.ts`, import.meta.url).href);
@@ -11,6 +11,12 @@ const { CodeDiagnosticsStore } = await loadServerModule(new URL('../src/lib/stor
   ["import { api } from '../api';", 'const api = {};'],
   ["import { epoch } from '../link';", 'const epoch = () => 0;'],
   ["'../codeDiagnostics'", lib('codeDiagnostics')], ["'../codeDiagnosticCounts'", lib('codeDiagnosticCounts')], ["'../codeNavigation'", lib('codeNavigation')],
+]);
+const filesUrl = new URL('../src/lib/stores/files.svelte.ts', import.meta.url);
+const { FilesStore } = await loadServerModule(filesUrl, [
+  ["import { api } from '../api';", fixtureStore('api', '__navFixture')],
+  ["import { link } from './link.svelte';", fixtureStore('link', '__navFixture')],
+  ["'../manage'", lib('manage')], ["'../link'", lib('link')], ["'../files'", lib('files')], ["'../fileEditing'", lib('fileEditing')],
 ]);
 
 const context = { connectionId: 'connection', attachmentId: 'attachment', generation: 'generation' };
@@ -78,7 +84,7 @@ function harness({ capabilities = { codeDiagnostics: true, liveCodeDiagnostics: 
   let basis = { documentId: 'd1', version: 4, synced: true };
   store.setLiveBasis(path => (path === 'a.go' ? basis : undefined));
   return {
-    store, calls,
+    store, calls, backend,
     setBasis: b => { basis = b; store.liveChanged(); },
     answer: fn => { answer = fn; },
     attach: () => store.attach('/p', { phase: 'local', generation: 0, hostId: 'host1', capabilities }),
@@ -167,4 +173,136 @@ test('the mock answers from its open documents', async () => {
   const hover = await mock.navigateCode(c, 'd1', 1, 'hover', { line: 1, character: 0 }, 'mock:local');
   assert.match(hover.hover.value, /function helper\(\) \{\}/);
   await assert.rejects(mock.navigateCode(c, 'd1', 2, 'hover', { line: 0, character: 0 }, 'mock:local'), e => codeDiagnosticsError(e).code === 'staleVersion');
+});
+
+test('external paths read from the home they share with the project', () => {
+  assert.equal(externalLabel('/Users/me/go/pkg/mod/x.go', '/Users/me/p'), '~/go/pkg/mod/x.go');
+  assert.equal(externalLabel('/Users/meg/x.go', '/Users/me/p'), '/Users/meg/x.go', 'another home is not shortened');
+  assert.equal(externalLabel('/usr/local/go/src/fmt/print.go', '/home/me/p'), '/usr/local/go/src/fmt/print.go');
+  assert.equal(externalLabel('c:\\users\\Me\\go\\x.go', 'C:\\Users\\me\\p'), '~\\go\\x.go');
+  assert.equal(externalLabel('/Users/me/x.go', null), '/Users/me/x.go');
+});
+
+test('an external file that cannot be read says what to do', () => {
+  assert.match(externalReadFailure('notFound', 'notFound: This file was not opened by code navigation'), /Go to the definition again/);
+  assert.match(externalReadFailure('notFound', 'The file no longer exists'), /no longer exists on the host/);
+  assert.match(externalReadFailure('staleContext'), /Go to the definition again/);
+  assert.match(externalReadFailure('disconnected'), /Reconnect/);
+  assert.match(externalReadFailure('approvalRequired'), /Approve code checks/);
+  assert.equal(externalReadFailure('unsupported', 'unsupported: This file holds credentials or agent data and is not shown'), 'This file holds credentials or agent data and is not shown');
+  assert.equal(externalReadFailure('toolFailed', 'toolFailed: permission denied'), 'The file could not be read: permission denied');
+});
+
+test('the Wails binding reads a navigation file; an old binding is unsupported', async () => {
+  const previous = globalThis.window;
+  try {
+    const binding = {};
+    globalThis.window = { go: { app: { App: binding } } };
+    const api = createAPI();
+    await assert.rejects(api.readNavigationFile(context, '/x.go', 'host'), e => e.code === 'unsupported');
+    let args;
+    binding.ReadNavigationFile = async (...a) => { args = a; return { path: '/x.go', size: 1, text: 'x' }; };
+    assert.equal((await api.readNavigationFile(context, '/x.go', 'host')).text, 'x');
+    assert.deepEqual(args, [context, '/x.go', 'host']);
+    binding.ReadNavigationFile = async () => { throw 'notFound: This file was not opened by code navigation'; };
+    await assert.rejects(api.readNavigationFile(context, '/x.go', 'host'), e => e.code === 'notFound');
+  } finally { globalThis.window = previous; }
+});
+
+test('the store reads only for its attachment and hands back view-only content', async () => {
+  const h = harness();
+  const reads = [];
+  let reply = (c, path) => ({ path, size: 1, text: 'x', revision: 'r', edit: { eligible: true }, changes: [{ kind: 'added' }] });
+  h.backend.readNavigationFile = async (...args) => { reads.push(args); return reply(...args); };
+  await assert.rejects(h.store.readNavigationFile('/dep/x.go'), e => e.code === 'staleContext' && /Go to the definition again/.test(e.message));
+  await h.attach();
+  const out = await h.store.readNavigationFile('/dep/x.go');
+  assert.deepEqual(reads, [[context, '/dep/x.go', 'host1']]);
+  assert.equal(out.text, 'x');
+  assert.equal(out.edit, undefined);
+  assert.equal(out.changes, undefined);
+
+  reply = () => { throw 'notFound: This file was not opened by code navigation'; };
+  await assert.rejects(h.store.readNavigationFile('/dep/x.go'), e => e.code === 'notFound' && /Go to the definition again/.test(e.message));
+  reply = () => ({ path: '/dep/other.go', size: 1, text: 'x' });
+  await assert.rejects(h.store.readNavigationFile('/dep/x.go'), e => e.code === 'staleContext', 'an answer for another path');
+
+  let release;
+  reply = (c, path) => new Promise(r => { release = () => r({ path, size: 1, text: 'x' }); });
+  const reading = h.store.readNavigationFile('/dep/x.go');
+  await new Promise(r => setImmediate(r));
+  await h.store.detach();
+  release();
+  await assert.rejects(reading, e => e.code === 'staleContext', 'detached while reading');
+
+  const old = harness({ capabilities: { codeDiagnostics: true, liveCodeDiagnostics: true } });
+  old.backend.readNavigationFile = async () => { throw new Error('not asked'); };
+  await old.attach();
+  await assert.rejects(old.store.readNavigationFile('/dep/x.go'), e => e.code === 'unsupported' && /cannot be shown for this host/.test(e.message));
+});
+
+test('the mock grants only the external files its answers name', async () => {
+  const mock = new MockBackendAPI();
+  mock.liveDocuments = true;
+  const { context: c, snapshot } = await mock.attachCodeDiagnostics('/p', 1, 'mock:local');
+  await mock.approveCodeDiagnostics(c, 'session', snapshot.proposal.fingerprint, 'mock:local');
+  await mock.openCodeDiagnosticDocument(c, 'main.go', 'd1', 1, 'fmt.Println()\n', undefined, 'mock:local');
+  const external = '/usr/local/go/src/fmt/print.go';
+  await assert.rejects(mock.readNavigationFile(c, external, 'mock:local'), e => codeDiagnosticsError(e).code === 'notFound');
+  const def = await mock.navigateCode(c, 'd1', 1, 'definition', { line: 0, character: 6 }, 'mock:local');
+  assert.deepEqual(def.locations.map(l => [l.path, l.external]), [[external, true]]);
+  const file = await mock.readNavigationFile(c, external, 'mock:local');
+  assert.match(file.text, /func Println/);
+  assert.equal(file.edit, undefined);
+  await mock.detachCodeDiagnostics(c, 'mock:local');
+  await assert.rejects(mock.readNavigationFile(c, external, 'mock:local'));
+});
+
+function filesHarness() {
+  const observed = [], reads = [];
+  globalThis.__navFixture = {
+    link: { dataHost: 'h', blockedReason: null },
+    api: {
+      listFiles: async dir => ({ root: dir, files: ['a.go'] }),
+      readFile: async (_d, path) => ({ path, size: 1, text: 'a', revision: 'r', edit: { eligible: true, newline: 'none' } }),
+    },
+  };
+  const store = new FilesStore();
+  const record = name => (...args) => observed.push([name, ...args.slice(1, 2)]);
+  store.observe({ opened: record('opened'), replaced: record('replaced'), changed: record('changed'), beforeSave() {}, saved() {}, saveFailed() {}, removed: record('removed'), renamed() {}, diskState: record('diskState') });
+  let answer = async path => ({ path, size: 3, text: 'ext', revision: 'x' });
+  store.setExternalReader(path => { reads.push(path); return answer(path); });
+  return { store, observed, reads, answer: fn => { answer = fn; } };
+}
+const settle = async () => { for (let i = 0; i < 6; i++) await new Promise(r => setImmediate(r)); };
+
+test('an external tab is read through navigation and never becomes a live or editable document', async () => {
+  const h = filesHarness();
+  await h.store.show('/p');
+  const ext = '/usr/local/go/src/fmt/print.go';
+  h.store.openExternal(ext);
+  await settle();
+  assert.deepEqual(h.reads, [ext]);
+  const tab = h.store.tabs.find(t => t.path === ext);
+  assert.equal(tab.external, true);
+  assert.equal(tab.preview, true);
+  assert.equal(h.store.content.text, 'ext');
+  assert.deepEqual(h.store.displayedDocuments().map(d => d.path), [], 'not offered to the language server');
+  assert.equal(h.store.startEditing(ext), false);
+  await h.store.reconcileDisplayed();
+  h.store.closeTab(ext);
+  assert.deepEqual(h.observed, [], 'the live bridge never hears of it');
+
+  // A project tab stays a project tab; the same path is not opened twice.
+  h.store.openFile('a.go', { keep: true });
+  await settle();
+  h.store.openExternal('a.go');
+  assert.equal(h.store.tabs.find(t => t.path === 'a.go').external, undefined);
+  assert.ok(h.observed.some(o => o[0] === 'opened' && o[1] === 'a.go'), 'project files still reach the bridge');
+  assert.ok(!h.observed.some(o => o[1] === ext));
+
+  h.answer(async () => { throw new CodeDiagnosticsError('notFound', externalReadFailure('notFound')); });
+  h.store.openExternal('/dep/gone.go', { keep: true });
+  await settle();
+  assert.match(h.store.fileError, /Go to the definition again/);
 });
