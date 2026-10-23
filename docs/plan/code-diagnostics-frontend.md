@@ -100,6 +100,9 @@ stale or document-basis findings never receive saved markers. Every document
 transaction (including undo) clears markers immediately; current revision-bound
 props must reapply. Cache restoration sanitizes lint state before display without
 losing history, selection or scroll. No diagnostic changes edit text or save files.
+There is no separate lint gutter: like the viewer, the editor marks the line
+numbers of lines with markers (bold, dotted underline), so switching between
+viewing and editing keeps the gutter width and does not move the text.
 
 412 frontend tests pass; check/build pass with existing warnings. Native tooltip,
 gutter, keyboard/screen-reader and theme QA remain CD-17. See

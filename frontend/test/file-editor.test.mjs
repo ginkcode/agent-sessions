@@ -6,7 +6,7 @@ import { compile } from 'svelte/compiler';
 import ts from 'typescript';
 import { EditorState } from '@codemirror/state';
 import { forEachDiagnostic, diagnosticCount } from '@codemirror/lint';
-import { EditorView } from '@codemirror/view';
+import { EditorView, lineNumberMarkers } from '@codemirror/view';
 import { undo, redo, undoDepth, indentMore, insertNewlineAndIndent } from '@codemirror/commands';
 import { language, indentUnit } from '@codemirror/language';
 import { searchPanelOpen } from '@codemirror/search';
@@ -107,11 +107,11 @@ class FakeEditorView {
 globalThis.__fileEditorTestView = FakeEditorView;
 
 async function loadEditorModule() {
-  const viewImport = "import { EditorView, drawSelection, highlightActiveLine, keymap, lineNumbers } from '@codemirror/view';";
+  const viewImport = "import { EditorView, GutterMarker, drawSelection, highlightActiveLine, keymap, lineNumberMarkers, lineNumbers, tooltips } from '@codemirror/view';";
   let source = readFileSync(EDITOR_URL, 'utf8');
   assert.ok(source.includes(viewImport), 'fileEditor.ts no longer has the expected @codemirror/view import');
   source = source.replace(viewImport, [
-    "import { EditorView as RealEditorView, drawSelection, highlightActiveLine, keymap, lineNumbers } from '@codemirror/view';",
+    "import { EditorView as RealEditorView, GutterMarker, drawSelection, highlightActiveLine, keymap, lineNumberMarkers, lineNumbers, tooltips } from '@codemirror/view';",
     'void RealEditorView;',
     'const EditorView = globalThis.__fileEditorTestView;',
   ].join('\n'));
@@ -194,9 +194,21 @@ test('lint uses shared verified ranges against LF state, plain attribution and e
   forEachDiagnostic(view.state, (d, from, to) => actual.push([from, to, d.severity, d.source, d.message]));
   // EditorState normalizes CRLF; columns remain UTF16, never visual tab widths.
   assert.deepEqual(actual, [[1, 7, 'info', '<checker> C1', '<img onerror=evil>'], [8, 8, 'info', '<checker> C1', '<img onerror=evil>']]);
+  assert.deepEqual(markedLines(view.state), [1, 2, 3]);
   assert.deepEqual(calls.changes, []);
   editor.destroy();
 });
+
+// Line numbers marked as having diagnostics, as the viewer marks them.
+function markedLines(state) {
+  const lines = [];
+  for (const set of state.facet(lineNumberMarkers)) {
+    for (let cursor = set.iter(); cursor.value; cursor.next()) {
+      if (cursor.value.elementClass === 'cm-has-diagnostics') lines.push(state.doc.lineAt(cursor.from).number);
+    }
+  }
+  return lines;
+}
 
 test('lint rejects stale, uncertain, document and invalid ranges but uses verified provider fallback', () => {
   const id = {}, diagnostics = lintInput(id);
@@ -244,8 +256,10 @@ test('lint clears in edit/undo transactions and diagnostic updates preserve hist
   const first = mount({ id, text: 'a😀z', path: 'x.txt', diagnostics });
   const { editor, view, options, calls } = first;
   assert.equal(diagnosticCount(view.state), 1);
+  assert.deepEqual(markedLines(view.state), [1]);
   type(view, '!');
   assert.equal(diagnosticCount(view.state), 0, 'no mapped saved marker even before reactive props');
+  assert.deepEqual(markedLines(view.state), []);
   undo(view);
   assert.equal(diagnosticCount(view.state), 0, 'undo is not disk freshness proof');
   const depth = undoDepth(view.state), selection = view.state.selection;

@@ -308,7 +308,10 @@
     user-select: none;
   }
 
+  /* A button only fills the gutter when told to. Narrower, a short number's
+     highlight stops short of the edge and it no longer aligns right. */
   .line-select {
+    width: 100%;
     appearance: none;
     border: 0;
     border-radius: 0;

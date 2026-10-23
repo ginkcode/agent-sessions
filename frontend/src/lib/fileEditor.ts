@@ -1,8 +1,8 @@
-import { Compartment, EditorState, StateField, type Extension } from '@codemirror/state';
-import { lintGutter, lintKeymap, setDiagnostics, setDiagnosticsEffect, type Diagnostic } from '@codemirror/lint';
+import { Compartment, EditorState, RangeSet, StateField, type Extension } from '@codemirror/state';
+import { forEachDiagnostic, lintKeymap, setDiagnostics, setDiagnosticsEffect, type Diagnostic } from '@codemirror/lint';
 import { projectSourceDiagnostics } from './sourceDiagnostics';
 import type { AttributedCodeDiagnostic, LiveDocumentBasis } from './codeDiagnostics';
-import { EditorView, drawSelection, highlightActiveLine, keymap, lineNumbers } from '@codemirror/view';
+import { EditorView, GutterMarker, drawSelection, highlightActiveLine, keymap, lineNumberMarkers, lineNumbers, tooltips } from '@codemirror/view';
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands';
 import { LanguageDescription, indentOnInput, indentUnit } from '@codemirror/language';
 import { Decoration, type DecorationSet } from '@codemirror/view';
@@ -65,6 +65,7 @@ const theme = EditorView.theme({
   '.cm-gutters': { backgroundColor: 'var(--bg-secondary)', color: 'var(--text-muted)', border: 'none', borderRight: '1px solid var(--border-color)' },
   '.cm-gutter': { paddingTop: '0', paddingBottom: '0' },
   '.cm-lineNumbers .cm-gutterElement': { padding: '0 10px 0 14px', minWidth: '0' },
+  '.cm-lineNumbers .cm-has-diagnostics': { textDecoration: 'underline dotted', fontWeight: 'bold' },
   // The selection layer sits behind the lines, so the active line's tint must
   // stay translucent or it hides a selection on the cursor's line.
   '.cm-activeLine': { backgroundColor: 'var(--hover-bg)' },
@@ -77,12 +78,18 @@ const theme = EditorView.theme({
   '&.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground, &.cm-focused .cm-content ::selection': {
     backgroundColor: 'color-mix(in srgb, var(--accent-color) 30%, transparent)',
   },
-  '.cm-tooltip': { backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)', border: '1px solid var(--border-color)' },
+  // Scrolls when shortened to fit the editor (see fitTooltips).
+  '.cm-tooltip': { backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)', border: '1px solid var(--border-color)', overflowY: 'auto' },
   '.cm-panels': { backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)' },
   '& .cm-panels-bottom': { borderTop: '1px solid var(--border-color)' },
   '& .cm-panels-top': { borderBottom: '1px solid var(--border-color)' },
   '.cm-textfield, .cm-button': { background: 'var(--bg-primary)', color: 'var(--text-primary)', border: '1px solid var(--border-color)' },
 });
+
+// Tooltips (diagnostic messages) fit in the editor's own box. Measured
+// against the window, one above the first lines went under the file
+// header; now it flips below, or shortens, when there is no room above.
+const fitTooltips = tooltips({ tooltipSpace: view => view.scrollDOM.getBoundingClientRect() });
 
 // Use exactly the viewer's tokenizer, not a best-effort mapping of Lezer
 // tags: the two parsers disagree on properties, builtins, parameters, etc.
@@ -172,6 +179,24 @@ export function editorDiagnostics(state: EditorState, options: FileEditorOptions
     });
 }
 
+// Lines with diagnostics are marked on their numbers, as in the viewer. A
+// separate lint gutter would widen the gutter and move the text.
+const diagnosticLine = new class extends GutterMarker { elementClass = 'cm-has-diagnostics'; }();
+const diagnosticLines = StateField.define<RangeSet<GutterMarker>>({
+  create: () => RangeSet.empty,
+  update(value, tr) {
+    if (!tr.docChanged && !tr.effects.some(e => e.is(setDiagnosticsEffect))) return value;
+    const { doc } = tr.state;
+    const starts = new Set<number>();
+    forEachDiagnostic(tr.state, (_, from, to) => {
+      // The end is exclusive: a range ending at a line's start does not reach that line.
+      for (let line = doc.lineAt(from).number, last = doc.lineAt(Math.max(from, to - 1)).number; line <= last; line++) starts.add(doc.line(line).from);
+    });
+    return RangeSet.of([...starts].map(from => diagnosticLine.range(from)), true);
+  },
+  provide: field => lineNumberMarkers.from(field),
+});
+
 // Clearing in the same transaction prevents even one frame of automatically
 // mapped saved markers. Undo is a document change too, not freshness evidence.
 const clearSavedMarkers = EditorState.transactionExtender.of(tr => tr.docChanged
@@ -186,8 +211,8 @@ function freshState(options: FileEditorOptions): EditorState {
     selection: options.selection ? lineSelection(options.text, options.selection) : undefined,
     extensions: [
       lineNumbers(), history(), drawSelection(), highlightActiveLine(), indentOnInput(),
-      lintGutter(), clearSavedMarkers,
-      search(), theme, indentUnit.of(detectIndent(options.text)), EditorState.tabSize.of(4),
+      diagnosticLines, clearSavedMarkers,
+      search(), theme, fitTooltips, indentUnit.of(detectIndent(options.text)), EditorState.tabSize.of(4),
       wrapping.of(options.wrap ? EditorView.lineWrapping : []),
       editing.of(editable(options.disabled)), language.of([]), coloring.of([]),
       keymap.of([indentWithTab, ...defaultKeymap, ...historyKeymap, ...searchKeymap, ...lintKeymap]),
