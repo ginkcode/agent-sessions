@@ -79,6 +79,7 @@ async function withLinks(fn) {
     ["'../portable'", lib(TERMINALS_URL, '../portable.ts')],
     ["'../guidance'", lib(TERMINALS_URL, '../guidance.ts')],
     ["'../hosts'", lib(TERMINALS_URL, '../hosts.ts')],
+    ["'../attention'", lib(TERMINALS_URL, '../attention.ts')],
     ["import { toast } from './toast.svelte';", fixtureStore('toast', '__storeFixture')],
   ]);
   const { SessionLinksStore } = await loadServerModule(LINKS_URL, [
@@ -189,4 +190,64 @@ test('the header shows a session running in the panel and a button to its tab', 
   });
   assert.doesNotMatch(idle, /Running in terminal/);
   assert.match(idle, />\s*Resume\s*</);
+});
+
+test('agent tabs: a bell needs the user unless they are looking, and the session reports its turn', async () => {
+  await withLinks(async ({ mock, terminals, store }) => {
+    const [meta] = await mock.listSessions('', {}, { field: 'updatedAt', desc: true });
+    const away = await terminals.runResume(meta.ref, meta.cwd, meta.title);
+    const shown = await terminals.runNewSession('codex', meta.cwd);
+    const shell = await terminals.newShell();
+    terminals.select(shown.id);
+    const ring = (id) => mock.emit('term:data', { id, data: btoa('\x07') });
+
+    ring(shown.id);
+    ring(shell.id);
+    ring(away.id);
+    assert.equal(terminals.attention[shown.id] ?? 'idle', 'idle', 'the user is looking at it');
+    assert.equal(terminals.attention[shell.id], undefined, 'shells are not followed');
+    assert.equal(terminals.attention[away.id], 'needs');
+
+    terminals.select(away.id);
+    assert.equal(terminals.attention[away.id], 'idle', 'seen');
+    ring(shown.id);
+    assert.equal(terminals.attention[shown.id], 'needs');
+    terminals.setWindowFocused(false);
+    ring(away.id);
+    assert.equal(terminals.attention[away.id], 'needs', 'the window is in the background');
+    terminals.setOpen(true);
+    terminals.setWindowFocused(true);
+    assert.equal(terminals.attention[away.id], 'idle');
+
+    // A report after a prompt and the work it started: the turn is done.
+    terminals.write(away.id, 'hi\r');
+    await new Promise((r) => setTimeout(r, 260));
+    mock.emit('term:data', { id: away.id, data: btoa('answer') });
+    assert.equal(terminals.attention[away.id], 'working');
+    terminals.sessionReported(meta.ref, { title: meta.title, turn: 'tool' });
+    assert.equal(terminals.attention[away.id], 'working', 'still drawing');
+    await store.apply({ changed: [meta.ref], removed: null, groupsDirty: false });
+
+    terminals.close(away.id, true);
+    assert.equal(terminals.attention[away.id], undefined);
+  });
+});
+
+test('a mock agent turn ends waiting for approval: the tab needs the user', async () => {
+  await withLinks(async ({ mock, terminals }) => {
+    mock.agentTurnMs = 700;
+    const [meta] = await mock.listSessions('', {}, { field: 'updatedAt', desc: true });
+    const agent = await terminals.runNewSession('codex', meta.cwd);
+    terminals.write(agent.id, 'approve the cleanup\r');
+    await until(() => terminals.tabs.find((t) => t.id === agent.id).session);
+    for (let i = 0; i < 50 && terminals.attention[agent.id] !== 'working'; i++) await new Promise((r) => setTimeout(r, 20));
+    assert.equal(terminals.attention[agent.id], 'working');
+    // The user looks elsewhere, so the bell counts too.
+    await terminals.newShell();
+    for (let i = 0; i < 150 && terminals.attention[agent.id] !== 'needs'; i++) await new Promise((r) => setTimeout(r, 20));
+    assert.equal(terminals.attention[agent.id], 'needs');
+    const linked = terminals.tabs.find((t) => t.id === agent.id).session;
+    assert.equal((await mock.getSessionMeta(linked)).turn, 'tool');
+    terminals.close(agent.id, true);
+  });
 });

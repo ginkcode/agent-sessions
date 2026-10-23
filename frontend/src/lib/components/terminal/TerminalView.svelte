@@ -187,6 +187,7 @@
   function sendSize() {
     if (!term || tab.status !== 'running' || (term.cols === sent.cols && term.rows === sent.rows)) return;
     sent = { cols: term.cols, rows: term.rows };
+    terminals.resized(tab.id);
     void api.terminalResize(tab.id, term.cols, term.rows).catch(() => {});
   }
 

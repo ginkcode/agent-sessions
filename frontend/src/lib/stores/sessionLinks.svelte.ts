@@ -40,7 +40,7 @@ export class SessionLinksStore {
       changed.map(async (ref) => {
         try {
           const meta = await api.getSessionMeta(ref);
-          if ((link.dataHost ?? '') === host) terminals.renameSession(ref, meta.title);
+          if ((link.dataHost ?? '') === host) terminals.sessionReported(ref, meta);
         } catch {
           // Gone or unreachable: a removal arrives as its own change.
         }
@@ -81,7 +81,7 @@ export class SessionLinksStore {
       sessions,
       taken,
     );
-    for (const [id, meta] of matches) terminals.linkSession(id, meta.ref, meta.title);
+    for (const [id, meta] of matches) terminals.linkSession(id, meta.ref, meta.title, meta.turn);
   }
 }
 

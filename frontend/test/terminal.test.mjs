@@ -297,6 +297,7 @@ async function loadTerminalsStore() {
     ["'../portable'", lib('../portable.ts')],
     ["'../guidance'", lib('../guidance.ts')],
     ["'../hosts'", lib('../hosts.ts')],
+    ["'../attention'", lib('../attention.ts')],
     ["import { toast } from './toast.svelte';", fixtureStore('toast', '__storeFixture')],
   ]);
   return terminalsStoreModule;

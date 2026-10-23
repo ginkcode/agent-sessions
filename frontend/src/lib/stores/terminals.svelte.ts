@@ -3,7 +3,9 @@ import type {
   AgentID,
   BundleHandoffRequest,
   HandoffRequest,
+  SessionMeta,
   SessionRef,
+  SessionTurn,
   TerminalSize,
   TerminalTab,
 } from '../types';
@@ -11,6 +13,7 @@ import { isStaleReply } from '../link';
 import { ALL_AGENTS } from '../portable';
 import { copyingDrop, dropFailed, openFailed } from '../guidance';
 import { wslDistro } from '../hosts';
+import { AttentionTracker, type AgentAttention } from '../attention';
 import { toast } from './toast.svelte';
 
 const STORAGE_KEY = 'agent-sessions:terminal-panel';
@@ -107,7 +110,16 @@ export class TerminalsStore {
   position = $state<PanelPosition>('bottom');
   /** A running agent tab whose close waits for confirmation. */
   confirming = $state<string | null>(null);
+  /** Where each agent tab stands, by tab id. */
+  attention = $state<Record<string, AgentAttention>>({});
   private closeQueue: string[] = [];
+  private tracker = new AttentionTracker((id, state) => {
+    this.attention = { ...this.attention, [id]: state };
+  });
+  private windowFocused = true;
+  /** The tab the user is looking at, as last noted. */
+  private viewing: string | null = null;
+  private offFocus: (() => void) | null = null;
 
   /** Bulk closes pause at each running agent rather than skipping confirmation. */
   closeMany(ids: string[]): void {
@@ -144,6 +156,17 @@ export class TerminalsStore {
         offExit();
       };
     }
+    if (!this.offFocus && typeof window !== 'undefined') {
+      const focus = () => this.setWindowFocused(true);
+      const blur = () => this.setWindowFocused(false);
+      window.addEventListener('focus', focus);
+      window.addEventListener('blur', blur);
+      this.offFocus = () => {
+        window.removeEventListener('focus', focus);
+        window.removeEventListener('blur', blur);
+      };
+      this.windowFocused = typeof document === 'undefined' || document.hasFocus();
+    }
     if (typeof localStorage === 'undefined') return;
     try {
       const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
@@ -160,6 +183,8 @@ export class TerminalsStore {
   destroy(): void {
     this.unsubscribe?.();
     this.unsubscribe = null;
+    this.offFocus?.();
+    this.offFocus = null;
   }
 
   get activeTab(): PanelTab | undefined {
@@ -187,6 +212,7 @@ export class TerminalsStore {
   runHandoff(req: HandoffRequest, dir = '', name = ''): Promise<PanelTab | null> {
     return this.start((size) => api.panelHandoff(req, size), agentTabLabel(name, req.target), req.cwd || dir, req.target, {
       linkPending: true,
+      prompted: true,
     });
   }
 
@@ -196,7 +222,7 @@ export class TerminalsStore {
       agentTabLabel(name, req.target),
       req.cwd || dir,
       req.target,
-      { linkPending: true },
+      { linkPending: true, prompted: true },
     );
   }
 
@@ -212,14 +238,15 @@ export class TerminalsStore {
 
   /**
    * Starts a tab and shows the panel with it. Errors reach the caller; null
-   * means the host changed while it started.
+   * means the host changed while it started. prompted marks an agent started
+   * with a prompt, as a handoff is: its first turn needs no input.
    */
   private async start(
     launch: (size: TerminalSize) => Promise<TerminalTab>,
     label: string,
     dir: string,
     agent?: AgentID,
-    link: Pick<PanelTab, 'session' | 'linkPending'> = {},
+    link: Pick<PanelTab, 'session' | 'linkPending'> & { prompted?: boolean } = {},
   ): Promise<PanelTab | null> {
     this.starting++;
     let started: TerminalTab;
@@ -252,6 +279,10 @@ export class TerminalsStore {
       }
     } else {
       this.startedAt.set(tab.id, Date.now());
+    }
+    if (tab.kind === 'agent') {
+      this.tracker.add(tab.id, link.prompted ?? false);
+      if (tab.status === 'exited') this.tracker.exited(tab.id);
     }
     this.tabs = [...this.tabs, tab];
     this.active = tab.id;
@@ -292,6 +323,7 @@ export class TerminalsStore {
    * sent together next.
    */
   write(id: string, data: string): void {
+    this.tracker.input(id, data);
     if (this.writing.has(id)) {
       this.writing.set(id, (this.writing.get(id) ?? '') + data);
       return;
@@ -336,6 +368,7 @@ export class TerminalsStore {
   }
 
   private receive(id: string, data: Uint8Array): void {
+    this.tracker.output(id, data, this.viewing === id);
     const sink = this.sinks.get(id);
     if (sink) {
       sink.write(data);
@@ -363,6 +396,7 @@ export class TerminalsStore {
       return;
     }
     this.tabs = this.tabs.map((t) => (t.id === id ? { ...t, status: 'exited', exitCode: code } : t));
+    this.tracker.exited(id);
     this.sinks.get(id)?.exit(code);
     if (resumeClosing) {
       this.close(id);
@@ -380,6 +414,7 @@ export class TerminalsStore {
     if (tab.status === 'running' && tab.kind === 'agent' && !confirmed) {
       this.confirming = id;
       this.active = id;
+      this.noteViewing();
       return false;
     }
     if (this.confirming === id) this.confirming = null;
@@ -397,10 +432,17 @@ export class TerminalsStore {
     this.buffered.delete(tab.id);
     this.startedAt.delete(tab.id);
     this.writing.delete(tab.id);
+    this.tracker.remove(tab.id);
+    if (tab.id in this.attention) {
+      const { [tab.id]: _, ...rest } = this.attention;
+      this.attention = rest;
+    }
+    if (this.viewing === tab.id) this.viewing = null;
     if (this.active === tab.id) {
       this.active = this.tabs[Math.min(index, this.tabs.length - 1)]?.id ?? null;
     }
     if (this.tabs.length === 0) this.setOpen(false);
+    this.noteViewing();
   }
 
   confirmClose(): void {
@@ -415,6 +457,7 @@ export class TerminalsStore {
 
   select(id: string): void {
     if (this.tabs.some((t) => t.id === id)) this.active = id;
+    this.noteViewing();
   }
 
   /**
@@ -425,6 +468,7 @@ export class TerminalsStore {
     const tab = this.tabs[n - 1];
     if (!this.open || !tab) return false;
     this.active = tab.id;
+    this.noteViewing();
     return true;
   }
 
@@ -441,6 +485,31 @@ export class TerminalsStore {
   setOpen(open: boolean): void {
     this.open = open;
     this.save();
+    this.noteViewing();
+  }
+
+  setWindowFocused(focused: boolean): void {
+    this.windowFocused = focused;
+    this.noteViewing();
+  }
+
+  /** The tab the user is looking at: the panel's, while it shows and the window has focus. */
+  get viewedTab(): string | null {
+    return this.open && this.windowFocused ? this.active : null;
+  }
+
+  /** Tells the tracker when the user starts or stops looking at a tab. */
+  private noteViewing(): void {
+    const now = this.viewedTab;
+    if (now === this.viewing) return;
+    if (this.viewing) this.tracker.seen(this.viewing);
+    if (now) this.tracker.seen(now);
+    this.viewing = now;
+  }
+
+  /** A tab was resized: the redraw that follows is not the agent working. */
+  resized(id: string): void {
+    this.tracker.resized(id);
   }
 
   setHeight(height: number, windowHeight: number): void {
@@ -471,18 +540,24 @@ export class TerminalsStore {
   }
 
   /** Links a tab to the session it runs, named after it. */
-  linkSession(id: string, ref: SessionRef, title: string): void {
+  linkSession(id: string, ref: SessionRef, title: string, turn?: SessionTurn): void {
     this.tabs = this.tabs.map((t) =>
       t.id === id ? { ...t, session: ref, linkPending: false, label: agentTabLabel(title, ref.agent) } : t,
     );
+    this.tracker.turn(id, turn, false);
   }
 
-  /** Renames the tabs of a session, as its title changes. */
-  renameSession(ref: SessionRef, title: string): void {
-    if (!title.trim()) return;
-    this.tabs = this.tabs.map((t) =>
-      t.session?.agent === ref.agent && t.session.id === ref.id ? { ...t, label: agentTabLabel(title, ref.agent) } : t,
-    );
+  /**
+   * The catalog reported a session: its tabs follow its title and learn
+   * where its turn stands.
+   */
+  sessionReported(ref: SessionRef, meta: Pick<SessionMeta, 'title' | 'turn'>): void {
+    const ids = this.tabs.filter((t) => t.session?.agent === ref.agent && t.session.id === ref.id).map((t) => t.id);
+    if (ids.length === 0) return;
+    if (meta.title.trim()) {
+      this.tabs = this.tabs.map((t) => (ids.includes(t.id) ? { ...t, label: agentTabLabel(meta.title, ref.agent) } : t));
+    }
+    for (const id of ids) this.tracker.turn(id, meta.turn, true);
   }
 
   /** Forgets a session that is gone; its tabs keep running unlinked. */

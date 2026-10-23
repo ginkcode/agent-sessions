@@ -118,6 +118,10 @@ interface MockTerminal {
   unacked: number;
   /** A new session's tab: its first prompt saves the session, as agents do. */
   fresh?: boolean;
+  /** The session an agent tab runs, once saved or when resumed. */
+  session?: SessionRef;
+  /** A simulated turn in progress. */
+  turn?: ReturnType<typeof setInterval>;
 }
 
 function escapeHTML(value: string): string {
@@ -613,6 +617,12 @@ export class MockBackendAPI extends MockCodeDiagnostics {
 
   /** The mock panel's running terminals by id. */
   panelTerminals = new Map<string, MockTerminal>();
+  /**
+   * How long an agent tab works on a prompt before answering, drawing a
+   * spinner; 0 answers at once. A prompt with "approve" in it ends waiting
+   * for an approval, ringing the bell.
+   */
+  agentTurnMs = 0;
   private nextTerminal = 1;
 
   // Mirrors the backend: agents start on the host the session belongs to,
@@ -648,7 +658,9 @@ export class MockBackendAPI extends MockCodeDiagnostics {
   }
 
   async panelResume(ref: SessionRef, size: TerminalSize): Promise<TerminalTab> {
-    return this.startPanel('agent', size, `[mock] ${await this.copyResumeCommand(ref)}`, true);
+    const tab = this.startPanel('agent', size, `[mock] ${await this.copyResumeCommand(ref)}`, true);
+    this.panelTerminals.get(tab.id)!.session = ref;
+    return tab;
   }
 
   async panelNewSession(agent: AgentID, dir: string, size: TerminalSize): Promise<TerminalTab> {
@@ -664,6 +676,7 @@ export class MockBackendAPI extends MockCodeDiagnostics {
     t.fresh = false;
     const now = new Date().toISOString();
     const ref: SessionRef = { agent: t.tab.agent ?? 'claude-code', id: `mock-new-${t.tab.id}-${Date.now()}` };
+    t.session = ref;
     this.sessions = [
       ...this.sessions,
       {
@@ -676,9 +689,51 @@ export class MockBackendAPI extends MockCodeDiagnostics {
         counts: { user: 1, assistant: 0, toolCalls: 0 },
         tokens: { input: 0, output: 0 },
         live: true,
+        ...(this.agentTurnMs > 0 && { turn: 'working' as const }),
       },
     ];
     this.emit('catalog:changed', { changed: [ref], removed: null, groupsDirty: true });
+  }
+
+  /**
+   * Works on a prompt as an agent does: a spinner, then the answer and the
+   * session's turn done, or an approval question, the bell and the turn
+   * waiting on a tool.
+   */
+  private simulateTurn(t: MockTerminal, line: string): void {
+    const frames = '⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏';
+    const started = Date.now();
+    let frame = 0;
+    this.setSessionTurn(t, 'working');
+    t.turn = setInterval(() => {
+      if (!this.panelTerminals.has(t.tab.id)) {
+        clearInterval(t.turn);
+        return;
+      }
+      if (Date.now() - started < this.agentTurnMs) {
+        this.terminalOutput(t.tab.id, `\r\x1b[2K${frames[frame++ % frames.length]} Working…`);
+        return;
+      }
+      clearInterval(t.turn);
+      t.turn = undefined;
+      if (/approve/i.test(line)) {
+        this.terminalOutput(t.tab.id, `\r\x1b[2Kmock: allow \`rm -rf build\`? [y/n] \x07`);
+        this.setSessionTurn(t, 'tool');
+      } else {
+        this.terminalOutput(t.tab.id, `\r\x1b[2Kmock: ${line}\r\n${this.prompt(t.tab)}`);
+        this.setSessionTurn(t, 'done');
+      }
+    }, 120);
+  }
+
+  private setSessionTurn(t: MockTerminal, turn: NonNullable<SessionMeta['turn']>): void {
+    const ref = t.session;
+    if (!ref) return;
+    const updatedAt = new Date().toISOString();
+    this.sessions = this.sessions.map((s) =>
+      s.ref.agent === ref.agent && s.ref.id === ref.id ? { ...s, turn, updatedAt } : s,
+    );
+    this.emit('catalog:changed', { changed: [ref], removed: null, groupsDirty: false });
   }
 
   async panelHandoff(req: HandoffRequest, size: TerminalSize): Promise<TerminalTab> {
@@ -707,8 +762,14 @@ export class MockBackendAPI extends MockCodeDiagnostics {
           this.endTerminal(id, 0);
           return;
         }
-        out += `\r\n${line ? `mock: ${line}\r\n` : ''}${this.prompt(t.tab)}`;
         if (line && t.fresh) this.saveFreshSession(t, line);
+        if (line && t.tab.kind === 'agent' && this.agentTurnMs > 0 && !t.turn) {
+          this.terminalOutput(id, `${out}\r\n`);
+          out = '';
+          this.simulateTurn(t, line);
+          continue;
+        }
+        out += `\r\n${line ? `mock: ${line}\r\n` : ''}${this.prompt(t.tab)}`;
       } else if (ch === '\x7f') {
         if (t.line) {
           t.line = t.line.slice(0, -1);

@@ -1150,8 +1150,11 @@ export function createAPI(): BackendAPI {
   if (typeof window !== 'undefined' && (window as any).go?.app?.App) {
     return new WailsBackendAPI();
   }
-  // Otherwise browser / mock environment
-  return new MockBackendAPI();
+  // Otherwise browser / mock environment, where agent tabs take a moment
+  // to answer, so their states can be seen.
+  const mock = new MockBackendAPI();
+  mock.agentTurnMs = 2400;
+  return mock;
 }
 
 // Connection control and events are not tied to the loaded data.
