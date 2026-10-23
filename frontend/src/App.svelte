@@ -39,6 +39,7 @@
   import { translateSettings } from './lib/stores/translate.svelte';
   import { terminals } from './lib/stores/terminals.svelte';
   import { newSession } from './lib/stores/newSession.svelte';
+  import { sessionLinks } from './lib/stores/sessionLinks.svelte';
   import { files } from './lib/stores/files.svelte';
   import { contentSearch } from './lib/stores/contentSearch.svelte';
   import { isSearchShortcut, searchSeed } from './lib/contentSearch';
@@ -103,6 +104,7 @@
     void translateSettings.init();
     terminals.init();
     newSession.init();
+    sessionLinks.init();
     isWails = typeof window !== 'undefined' && Boolean((window as any).go?.app?.App);
     api
       .appVersion()
@@ -222,6 +224,7 @@
       window.removeEventListener('mouseup', onMouseButton);
       search.destroy();
       terminals.destroy();
+      sessionLinks.destroy();
       appState.destroy();
       connectionStore.destroy();
     };

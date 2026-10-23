@@ -145,6 +145,7 @@ export async function renderSessionHeader(fixture, props = {}) {
     ["'../../guidance'", lib('../../guidance.ts')],
     ["'../../terminal'", lib('../../terminal.ts')],
     ["import { newSession } from '../../stores/newSession.svelte';", fixtureStore('newSession')],
+    ["import { terminals } from '../../stores/terminals.svelte';", fixtureStore('terminals')],
     ["import { toast } from '../../stores/toast.svelte';", fixtureStore('toast')],
     ["import AgentIcon from '../common/AgentIcon.svelte';", 'const AgentIcon = () => {};'],
     ["import NavButtons from './NavButtons.svelte';", 'const NavButtons = () => {};'],
@@ -167,7 +168,7 @@ export async function renderSessionHeader(fixture, props = {}) {
   };
   return renderWithFixture(
     sessionHeaderModule,
-    { appState: {}, manage: { settings: { enabled: false } }, handoff: {}, exporter: {}, toast: {}, preferences: { timeZone: 'utc' }, newSession: { available: false, choices: [], starting: false, refresh() {} }, ...fixture },
+    { appState: {}, manage: { settings: { enabled: false } }, handoff: {}, exporter: {}, toast: {}, preferences: { timeZone: 'utc' }, newSession: { available: false, choices: [], starting: false, refresh() {} }, terminals: { tabFor: () => undefined }, ...fixture },
     { meta, mode: 'activity', onModeChange() {}, onResume() {}, onReveal() {}, onDelete() {}, ...props },
   );
 }

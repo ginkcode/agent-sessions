@@ -9,15 +9,36 @@
   import ContextMenu from '../common/ContextMenu.svelte';
   import AgentIcon from '../common/AgentIcon.svelte';
   import { TAB_CLOSE_ACTIONS, tabsToClose } from '../../tabActions';
+  import { appState } from '../../stores/appState.svelte';
+  import { link } from '../../stores/link.svelte';
+  import type { ContextMenuItem } from '../common/ContextMenu.svelte';
 
   let tabContext = $state<{ id: string; x: number; y: number } | null>(null);
-  let tabItems = $derived.by(() => {
+  let tabItems = $derived.by((): ContextMenuItem[] => {
     if (!tabContext) return [];
     const { id } = tabContext;
-    return TAB_CLOSE_ACTIONS.map(({ action, label }) => {
+    const close: ContextMenuItem[] = TAB_CLOSE_ACTIONS.map(({ action, label }, i) => {
       const targets = tabsToClose(terminals.tabs.map((t) => t.id), id, action);
-      return { label, disabled: targets.length === 0, onSelect: () => terminals.closeMany(targets) };
+      return { label, disabled: targets.length === 0, separator: i === 0, onSelect: () => terminals.closeMany(targets) };
     });
+    const tab = terminals.tabs.find((t) => t.id === id);
+    if (tab?.kind !== 'agent') return close.map((item) => ({ ...item, separator: false }));
+    const session = tab.session;
+    // Only the shown host's sessions can be shown.
+    const elsewhere = tab.host !== (link.dataHost ?? '');
+    const show: ContextMenuItem = {
+      label: 'Show Transcript',
+      disabled: !session || elsewhere,
+      title: !session
+        ? 'The session appears once the agent saves it, usually after the first prompt'
+        : elsewhere
+          ? `Switch to ${hostLabel(tab.host) || 'Local'} to see this session`
+          : 'Show this session in the transcript',
+      onSelect: () => {
+        if (session) void appState.selectSession(session, 'push');
+      },
+    };
+    return [show, ...close];
   });
 
   interface Props {

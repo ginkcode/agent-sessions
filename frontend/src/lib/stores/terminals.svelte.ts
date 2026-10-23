@@ -55,6 +55,13 @@ export interface PanelTab extends TerminalTab {
   agent?: AgentID;
   /** Latest shell-reported directory; dir remains the launch directory. */
   cwd?: string;
+  /** The session an agent tab runs, once known. */
+  session?: SessionRef;
+  /**
+   * The tab started a fresh session (a new session or a handoff) that is
+   * not yet linked: the next session of its agent in its directory is it.
+   */
+  linkPending?: boolean;
   status: 'running' | 'exited';
   exitCode: number | null;
 }
@@ -165,12 +172,12 @@ export class TerminalsStore {
    * name is the session's, which labels the tab.
    */
   runResume(ref: SessionRef, dir = '', name = ''): Promise<PanelTab | null> {
-    return this.start((size) => api.panelResume(ref, size), agentTabLabel(name, ref.agent), dir, ref.agent);
+    return this.start((size) => api.panelResume(ref, size), agentTabLabel(name, ref.agent), dir, ref.agent, { session: ref });
   }
 
   /** Starts a fresh session of agent in dir, a project of the selected host. */
   runNewSession(agent: AgentID, dir: string): Promise<PanelTab | null> {
-    return this.start((size) => api.panelNewSession(agent, dir, size), agentTabLabel('', agent), dir, agent);
+    return this.start((size) => api.panelNewSession(agent, dir, size), agentTabLabel('', agent), dir, agent, { linkPending: true });
   }
 
   /**
@@ -178,7 +185,9 @@ export class TerminalsStore {
    * labelled with the name of the session handed off.
    */
   runHandoff(req: HandoffRequest, dir = '', name = ''): Promise<PanelTab | null> {
-    return this.start((size) => api.panelHandoff(req, size), agentTabLabel(name, req.target), req.cwd || dir, req.target);
+    return this.start((size) => api.panelHandoff(req, size), agentTabLabel(name, req.target), req.cwd || dir, req.target, {
+      linkPending: true,
+    });
   }
 
   runBundleHandoff(req: BundleHandoffRequest, dir = '', name = ''): Promise<PanelTab | null> {
@@ -187,6 +196,7 @@ export class TerminalsStore {
       agentTabLabel(name, req.target),
       req.cwd || dir,
       req.target,
+      { linkPending: true },
     );
   }
 
@@ -209,6 +219,7 @@ export class TerminalsStore {
     label: string,
     dir: string,
     agent?: AgentID,
+    link: Pick<PanelTab, 'session' | 'linkPending'> = {},
   ): Promise<PanelTab | null> {
     this.starting++;
     let started: TerminalTab;
@@ -226,6 +237,9 @@ export class TerminalsStore {
     this.starting--;
     const tab: PanelTab = { ...started, label, dir: started.dir || dir, status: 'running', exitCode: null };
     if (agent) tab.agent = agent;
+    if (link.session) tab.session = link.session;
+    // A fresh session can only be found by when it started.
+    if (link.linkPending && tab.startedAt) tab.linkPending = true;
     const code = this.exits.get(tab.id);
     if (code !== undefined) {
       this.exits.delete(tab.id);
@@ -437,6 +451,47 @@ export class TerminalsStore {
   setPosition(position: PanelPosition): void {
     this.position = position;
     this.save();
+  }
+
+  /**
+   * The running tab of a session on host ('' is this computer), linked or
+   * resumed; the latest when there are several.
+   */
+  tabFor(ref: SessionRef, host: string): PanelTab | undefined {
+    return [...this.tabs].reverse().find(
+      (t) => t.status === 'running' && t.host === host && t.session?.agent === ref.agent && t.session.id === ref.id,
+    );
+  }
+
+  /** Shows the panel with a tab selected. */
+  show(id: string): void {
+    if (!this.tabs.some((t) => t.id === id)) return;
+    this.active = id;
+    this.setOpen(true);
+  }
+
+  /** Links a tab to the session it runs, named after it. */
+  linkSession(id: string, ref: SessionRef, title: string): void {
+    this.tabs = this.tabs.map((t) =>
+      t.id === id ? { ...t, session: ref, linkPending: false, label: agentTabLabel(title, ref.agent) } : t,
+    );
+  }
+
+  /** Renames the tabs of a session, as its title changes. */
+  renameSession(ref: SessionRef, title: string): void {
+    if (!title.trim()) return;
+    this.tabs = this.tabs.map((t) =>
+      t.session?.agent === ref.agent && t.session.id === ref.id ? { ...t, label: agentTabLabel(title, ref.agent) } : t,
+    );
+  }
+
+  /** Forgets a session that is gone; its tabs keep running unlinked. */
+  unlinkSession(ref: SessionRef): void {
+    this.tabs = this.tabs.map((t) => {
+      if (t.session?.agent !== ref.agent || t.session.id !== ref.id) return t;
+      const { session: _, ...rest } = t;
+      return rest;
+    });
   }
 
   /** Records a view's size so the next tab starts at it. */

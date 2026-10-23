@@ -17,6 +17,7 @@
   import { resumeButtonTitle } from '../../link';
   import { transcriptModes, type TranscriptMode } from '../../transcript';
   import { newSession } from '../../stores/newSession.svelte';
+  import { terminals } from '../../stores/terminals.svelte';
   import { newSessionShortcutLabel } from '../../terminal';
 
   interface Props {
@@ -59,6 +60,10 @@
     panel: { label: 'Open in built-in terminal', title: 'Resume this session in the terminal panel below' },
     external: { label: 'Open in external terminal', title: 'Resume this session in a new terminal window' },
   };
+  // A panel tab already runs this session: Resume shows it rather than
+  // starting a second copy, which the ▾ menu still offers.
+  let runningTab = $derived(terminals.tabFor(meta.ref, link.dataHost ?? ''));
+
   // New session: the main part starts this session's agent in its directory,
   // ▾ offers every agent, those the host lacks disabled with what to install.
   const isMac = typeof navigator !== 'undefined' && /Mac/i.test(navigator.platform);
@@ -175,17 +180,32 @@
     </div>
 
     <div class="header-actions">
+      {#if runningTab}
+        <span class="running-badge" title="This session is running in the terminal panel">● Running in terminal</span>
+      {/if}
       {#if launcher.canOpen || canOpenOther}
         <div class="menu-container resume-split" bind:this={resumeMenuRoot}>
-          <button
-            type="button"
-            class="action-btn resume-btn resume-main"
-            title={launcher.canOpen ? resumeButtonTitle(link.dataHost, true, launcher.openMode) : resumeButtonTitle(link.dataHost)}
-            disabled={resumeOpening}
-            onclick={() => (launcher.canOpen ? onOpenResume() : onResume())}
-          >
-            {resumeCopied ? '✓ Copied' : resumeOpening ? 'Opening…' : 'Resume'}
-          </button>
+          {#if runningTab}
+            {@const tabId = runningTab.id}
+            <button
+              type="button"
+              class="action-btn resume-btn resume-main"
+              title="Show the terminal tab running this session"
+              onclick={() => terminals.show(tabId)}
+            >
+              Show terminal
+            </button>
+          {:else}
+            <button
+              type="button"
+              class="action-btn resume-btn resume-main"
+              title={launcher.canOpen ? resumeButtonTitle(link.dataHost, true, launcher.openMode) : resumeButtonTitle(link.dataHost)}
+              disabled={resumeOpening}
+              onclick={() => (launcher.canOpen ? onOpenResume() : onResume())}
+            >
+              {resumeCopied ? '✓ Copied' : resumeOpening ? 'Opening…' : 'Resume'}
+            </button>
+          {/if}
           <button
             type="button"
             class="action-btn resume-btn resume-toggle"
@@ -206,6 +226,21 @@
           </button>
           {#if resumeMenuOpen}
             <div class="action-dropdown-menu" role="menu">
+              {#if runningTab && launcher.openMode === 'panel' && launcher.canOpen}
+                <button
+                  type="button"
+                  class="action-menu-item"
+                  role="menuitem"
+                  title="Resume this session again in another terminal tab"
+                  disabled={resumeOpening}
+                  onclick={() => {
+                    resumeMenuOpen = false;
+                    onOpenResume();
+                  }}
+                >
+                  <span>Resume in a new tab</span>
+                </button>
+              {/if}
               {#if canOpenOther}
                 <button
                   type="button"
@@ -661,6 +696,14 @@
     border-top-left-radius: 0;
     border-bottom-left-radius: 0;
     border-left: 1px solid rgba(255, 255, 255, 0.35);
+  }
+
+  .running-badge {
+    align-self: center;
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: var(--status-live);
+    white-space: nowrap;
   }
 
   /* New session: outlined, so Resume stays the main action. */

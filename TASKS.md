@@ -308,7 +308,7 @@ activation or automation are authorized by that split.
 
 ## Follow-up — Editor essentials
 
-Progress: **7/23 complete**. Plan: [docs/plan/editor-essentials.md](docs/plan/editor-essentials.md);
+Progress: **8/23 complete**. Plan: [docs/plan/editor-essentials.md](docs/plan/editor-essentials.md);
 briefs: [docs/tasks](docs/tasks/README.md#editor-essentials). Not included in the
 milestone totals above.
 
@@ -321,7 +321,7 @@ milestone totals above.
 | [PS-05](docs/tasks/PS-05.md) | ✅ | Replace in the Search pane, drafts included | 4 |
 | [AG-01](docs/tasks/AG-01.md) | ✅ | New session launch: local, WSL, SSH; panel and external | 4 |
 | [AG-02](docs/tasks/AG-02.md) | ✅ | New session entry points | 3 |
-| [AG-03](docs/tasks/AG-03.md) | ⬜ | Link terminal tabs to sessions | 3 |
+| [AG-03](docs/tasks/AG-03.md) | ✅ | Link terminal tabs to sessions | 3 |
 | [AG-04](docs/tasks/AG-04.md) | ⬜ | Turn state from session files | 4 |
 | [AG-05](docs/tasks/AG-05.md) | ⬜ | Terminal attention signals | 3 |
 | [AG-06](docs/tasks/AG-06.md) | ⬜ | Alerts: badges, window title, system notifications | 4 |

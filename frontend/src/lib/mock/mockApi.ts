@@ -116,6 +116,8 @@ interface MockTerminal {
   line: string;
   size: TerminalSize;
   unacked: number;
+  /** A new session's tab: its first prompt saves the session, as agents do. */
+  fresh?: boolean;
 }
 
 function escapeHTML(value: string): string {
@@ -652,7 +654,31 @@ export class MockBackendAPI extends MockCodeDiagnostics {
   async panelNewSession(agent: AgentID, dir: string, size: TerminalSize): Promise<TerminalTab> {
     const label = agent === 'claude-code' ? 'Claude Code' : agent === 'codex' ? 'Codex' : agent === 'opencode' ? 'OpenCode' : 'Agent';
     const banner = `[mock] ${this.newSessionCommand(agent, dir)}`;
-    return this.startPanel('agent', size, banner, true, dir, { label, agent });
+    const tab = this.startPanel('agent', size, banner, true, dir, { label, agent });
+    this.panelTerminals.get(tab.id)!.fresh = true;
+    return tab;
+  }
+
+  /** Saves the session a new session's tab started, named by its first prompt. */
+  private saveFreshSession(t: MockTerminal, prompt: string): void {
+    t.fresh = false;
+    const now = new Date().toISOString();
+    const ref: SessionRef = { agent: t.tab.agent ?? 'claude-code', id: `mock-new-${t.tab.id}-${Date.now()}` };
+    this.sessions = [
+      ...this.sessions,
+      {
+        ref,
+        cwd: t.tab.dir ?? '',
+        title: prompt,
+        firstPrompt: prompt,
+        createdAt: now,
+        updatedAt: now,
+        counts: { user: 1, assistant: 0, toolCalls: 0 },
+        tokens: { input: 0, output: 0 },
+        live: true,
+      },
+    ];
+    this.emit('catalog:changed', { changed: [ref], removed: null, groupsDirty: true });
   }
 
   async panelHandoff(req: HandoffRequest, size: TerminalSize): Promise<TerminalTab> {
@@ -682,6 +708,7 @@ export class MockBackendAPI extends MockCodeDiagnostics {
           return;
         }
         out += `\r\n${line ? `mock: ${line}\r\n` : ''}${this.prompt(t.tab)}`;
+        if (line && t.fresh) this.saveFreshSession(t, line);
       } else if (ch === '\x7f') {
         if (t.line) {
           t.line = t.line.slice(0, -1);
