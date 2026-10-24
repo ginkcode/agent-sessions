@@ -1,6 +1,7 @@
 package app
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -133,5 +134,66 @@ func TestTranslateWhileRemote(t *testing.T) {
 	}
 	if out, err := a.Translate("Hello"); err != nil || out != "Xin chào" {
 		t.Errorf("Translate = %q, %v", out, err)
+	}
+}
+
+func TestTranslateSelectionUsesSettings(t *testing.T) {
+	a, _, _ := setupHandoffTest(t)
+	a.roots.Config = t.TempDir()
+	if _, err := a.TranslateSelection("Hello", "ctx"); err == nil || !strings.Contains(err.Error(), "not set up") {
+		t.Fatalf("unconfigured err = %v", err)
+	}
+
+	var auth, path string
+	var body struct {
+		Model    string `json:"model"`
+		Messages []struct {
+			Role    string `json:"role"`
+			Content string `json:"content"`
+		} `json:"messages"`
+	}
+	hits := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits++
+		auth, path = r.Header.Get("Authorization"), r.URL.Path
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"banque"}}]}`))
+	}))
+	defer srv.Close()
+	a.translator = &translate.Client{HTTP: srv.Client()}
+	if _, err := a.SetTranslateSettings(TranslateSettingsRequest{BaseURL: srv.URL + "/v1/", Model: "m", Language: "French", APIKey: "k1"}); err != nil {
+		t.Fatal(err)
+	}
+	out, err := a.TranslateSelection("bank", "We sat on the river bank.")
+	if err != nil || out != "banque" || auth != "Bearer k1" || path != "/v1/chat/completions" {
+		t.Fatalf("TranslateSelection = %q, %v (auth %q, path %q)", out, err, auth, path)
+	}
+	if body.Model != "m" || len(body.Messages) != 2 || !strings.Contains(body.Messages[0].Content, "French") ||
+		body.Messages[1].Content != `{"selection":"bank","context":"We sat on the river bank."}` {
+		t.Errorf("request = %+v", body)
+	}
+
+	if _, err := a.TranslateSelection("bank", strings.Repeat("x", translate.MaxContext+1)); err == nil {
+		t.Error("long context accepted")
+	}
+	if hits != 1 {
+		t.Errorf("hits = %d", hits)
+	}
+}
+
+func TestTranslateSelectionWhileRemote(t *testing.T) {
+	stub := &stubRemoteBackend{}
+	a := setupRemoteApp(stub)
+	a.roots.Config = t.TempDir()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"Xin chào"}}]}`))
+	}))
+	defer srv.Close()
+	a.translator = &translate.Client{HTTP: srv.Client()}
+	if _, err := a.SetTranslateSettings(TranslateSettingsRequest{BaseURL: srv.URL, Model: "m", APIKey: "k"}); err != nil {
+		t.Fatal(err)
+	}
+	if out, err := a.TranslateSelection("Hello", ""); err != nil || out != "Xin chào" {
+		t.Errorf("TranslateSelection = %q, %v", out, err)
 	}
 }

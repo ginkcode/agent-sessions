@@ -95,6 +95,8 @@ export interface BackendAPI extends CodeDiagnosticsAPI {
   translateSettings(): Promise<TranslateSettings>;
   setTranslateSettings(req: TranslateSettingsRequest): Promise<TranslateSettings>;
   translate(text: string): Promise<string>;
+  /** Translates only text, using context to resolve its meaning. */
+  translateSelection(text: string, context: string): Promise<string>;
   saveImage(req: SaveImageRequest): Promise<string>;
   /** Opens the print dialog; print styles pick what is printed. */
   printWindow(): Promise<void>;
@@ -278,6 +280,7 @@ interface WailsAppBinding {
   TranslateSettings(): Promise<TranslateSettings>;
   SetTranslateSettings(req: TranslateSettingsRequest): Promise<TranslateSettings>;
   Translate(text: string): Promise<string>;
+  TranslateSelection(text: string, context: string): Promise<string>;
   SaveImage(req: SaveImageRequest): Promise<string>;
   PrintWindow(): Promise<void>;
   NewWindow(): Promise<void>;
@@ -605,6 +608,14 @@ class WailsBackendAPI implements BackendAPI {
   async translate(text: string): Promise<string> {
     try {
       return await this.binding.Translate(text);
+    } catch (e) {
+      throw normalizeError(e);
+    }
+  }
+
+  async translateSelection(text: string, context: string): Promise<string> {
+    try {
+      return await this.binding.TranslateSelection(text, context);
     } catch (e) {
       throw normalizeError(e);
     }
@@ -1365,6 +1376,7 @@ const UNGUARDED = new Set<string>([
   'translateSettings',
   'setTranslateSettings',
   'translate',
+  'translateSelection',
   // Images are saved, and pages printed, on this computer too.
   'saveImage',
   'printWindow',

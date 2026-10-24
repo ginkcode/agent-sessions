@@ -36,6 +36,10 @@ other machines over SSH or in WSL distributions.
 - Right-click a message to copy it as Markdown, or to translate it through an
   OpenAI-compatible API of your choice (Vietnamese by default). The
   translation replaces the text in place, with a toggle back to the original.
+- Select text inside a message and right-click it to copy or translate just the
+  selection. The translation opens beside the selection, and the message is not
+  changed. To make a short selection clear, the sentence around it is sent to the
+  translation API as context.
 
 **Continue**
 
@@ -181,8 +185,8 @@ are never read. There is no telemetry and no listening port. The network is
 used only for:
 
 - ssh to hosts you pick, through your own `ssh`;
-- translation, which sends the message you translate to the endpoint you set
-  up. Nothing is sent until you configure it and choose Translate.
+- translation, which sends the message you translate, or a selection plus its
+  surrounding sentence, to the endpoint you set up. Nothing is sent until you configure it and choose Translate.
 
 ## Install
 

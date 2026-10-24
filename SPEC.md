@@ -287,7 +287,8 @@ Three-pane layout:
   reads the registered distributions from the current user's registry and
   starts nothing until the user connects.
 - Translation is the only other network use. It sends the text of the one
-  message the user chooses to translate to the OpenAI-compatible endpoint they
+  message the user chooses to translate, or a selected excerpt with up to 8 KiB
+  of surrounding sentence context, to the OpenAI-compatible endpoint they
   configured, and nothing before that is set up. The request carries the API
   key as a Bearer token and goes through Go, not the WebView; errors never
   include the key. The key is stored in `config.toml` (`0600`) and the UI

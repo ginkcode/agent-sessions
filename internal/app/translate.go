@@ -105,6 +105,23 @@ func (a *App) Translate(text string) (string, error) {
 	return client.Translate(a.appCtx(), cfg, text)
 }
 
+// TranslateSelection translates only text, with optional surrounding context.
+// Like Translate, it always uses this computer's settings and provider client.
+func (a *App) TranslateSelection(text, context string) (string, error) {
+	cfg, err := a.translateConfig()
+	if err != nil {
+		return "", err
+	}
+	if !cfg.Configured() {
+		return "", errors.New("translation is not set up: add a base URL, API key and model in Settings")
+	}
+	client := a.translator
+	if client == nil {
+		client = defaultTranslator
+	}
+	return client.TranslateSelection(a.appCtx(), cfg, text, context)
+}
+
 func translateSettings(cfg translate.Config) TranslateSettings {
 	return TranslateSettings{
 		BaseURL:    cfg.BaseURL,

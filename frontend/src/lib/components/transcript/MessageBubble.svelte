@@ -20,6 +20,8 @@
   import NoticePart from './parts/NoticePart.svelte';
   import ImagePart from './parts/ImagePart.svelte';
   import { isImageFile } from '../../images';
+  import { captureSelection, selectionMenuItems, type SelectedText } from '../../selectionTranslation';
+  import SelectionTranslation from './SelectionTranslation.svelte';
 
   interface Props {
     message: Message;
@@ -57,15 +59,42 @@
   // A translation replaces the text parts with one, where the first was.
   let visibleParts = $derived(translated && translation ? withTranslation(shownParts, translation.text) : shownParts);
 
-  let menu = $state<{ x: number; y: number } | null>(null);
+  let body: HTMLDivElement | undefined = $state();
+  let menu = $state<{ x: number; y: number; selection?: SelectedText } | null>(null);
+  let snippet = $state<SelectedText | null>(null);
+
+  $effect(() => {
+    void message;
+    void sessionRef;
+    void translateSettings.language;
+    snippet = null;
+    menu = null;
+  });
 
   function openMenu(e: MouseEvent) {
-    if (!markdown) return;
-    // Keep the browser menu where the user selected text to copy it.
+    snippet = null;
+    menu = null;
     const selection = window.getSelection();
-    if (selection && !selection.isCollapsed && (e.currentTarget as Node).contains(selection.anchorNode)) return;
+    if (selection && !selection.isCollapsed) {
+      if (!body?.contains(e.target as Node)) return;
+      const captured = captureSelection(body, selection);
+      if (!captured) return;
+      e.preventDefault();
+      menu = { x: e.clientX, y: e.clientY, selection: captured };
+      return;
+    }
+    if (!markdown) return;
     e.preventDefault();
     menu = { x: e.clientX, y: e.clientY };
+  }
+
+  async function copySelection(text: string) {
+    try {
+      if (!(await copyToClipboard(text))) throw new Error('The clipboard is not available.');
+      toast.show({ title: 'Selection copied', body: 'Copied the selected text.' });
+    } catch (err) {
+      toast.show(copyFailed('the selection', err));
+    }
   }
 
   async function copyMessage() {
@@ -95,6 +124,13 @@
   }
 
   let menuItems = $derived.by((): ContextMenuItem[] => {
+    const selected = menu?.selection;
+    if (selected) {
+      return selectionMenuItems(translateSettings.configured, translateSettings.language,
+        () => void copySelection(selected.text),
+        () => (snippet = selected),
+        () => manage.openSettings('translation'));
+    }
     const items: ContextMenuItem[] = [
       { label: 'Copy', onSelect: () => void copyMessage() },
     ];
@@ -174,7 +210,7 @@
         {/if}
       </div>
 
-      <div class="message-parts-body">
+      <div class="message-parts-body" bind:this={body}>
         {#each visibleParts as part, idx (idx)}
           {#if part.kind === 'text' && part.text}
             <TextPart text={part.text} />
@@ -201,7 +237,10 @@
     </div>
   </div>
   {#if menu}
-    <ContextMenu x={menu.x} y={menu.y} items={menuItems} ariaLabel="Message actions" onClose={() => (menu = null)} />
+    <ContextMenu x={menu.x} y={menu.y} items={menuItems} ariaLabel={menu.selection ? 'Selection actions' : 'Message actions'} onClose={() => (menu = null)} />
+  {/if}
+  {#if snippet}
+    <SelectionTranslation selection={snippet} language={translateSettings.language} onClose={() => (snippet = null)} />
   {/if}
 {/if}
 

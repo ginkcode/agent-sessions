@@ -428,6 +428,8 @@ M0-01 → M0-02 → M0-03 → M0-07 → M0-08 → M0-09 → M0-10 → M1-13 → 
 - OpenCode (M1-01…07), Codex (M1-08…12), Claude (M0-07…15) and the GUI scaffold (M1-15, M1-17) can each go to a different developer.
 - Frontend work can start against a mocked `M1-16` binding layer.
 
+Transcript selection: **SL-01…SL-04 complete** — [selected-text menu and contextual translation](docs/tasks/selection-translate.md), Copy/Translate for a selection with its sentence as context.
+
 Internal terminal layout: **TM-01 / TM-02 complete** — [maximize/restore terminal](docs/tasks/terminal-maximize.md), expand within the app without restarting sessions.
 
 Startup regression follow-up: **ST-08A / ST-08B complete** — [stale initial connection snapshot](docs/tasks/performance-startup.md#st-08--startup-connection-snapshot-rollback-2026-10-24), preserve remote selection over delayed Local startup replies.

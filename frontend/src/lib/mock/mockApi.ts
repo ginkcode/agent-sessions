@@ -224,6 +224,8 @@ export class MockBackendAPI extends MockCodeDiagnostics {
   savedImages: SaveImageRequest[] = [];
   /** Texts sent to translate, newest last. */
   translated: string[] = [];
+  /** Selections sent to translate with their context, newest last. */
+  translatedSelections: { text: string; context: string }[] = [];
   translateDelayMs = 400;
 
   async listGroups(mode: GroupMode, filter?: FilterOpts): Promise<GroupNode[]> {
@@ -569,6 +571,17 @@ export class MockBackendAPI extends MockCodeDiagnostics {
       throw new Error('translation is not set up: add a base URL, API key and model in Settings');
     }
     this.translated.push(text);
+    if (this.translateDelayMs > 0) {
+      await new Promise((resolve) => setTimeout(resolve, this.translateDelayMs));
+    }
+    return `[${this.translateConfig.language}] ${text}`;
+  }
+
+  async translateSelection(text: string, context: string): Promise<string> {
+    if (!(await this.translateSettings()).configured) {
+      throw new Error('translation is not set up: add a base URL, API key and model in Settings');
+    }
+    this.translatedSelections.push({ text, context });
     if (this.translateDelayMs > 0) {
       await new Promise((resolve) => setTimeout(resolve, this.translateDelayMs));
     }
