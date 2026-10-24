@@ -1,8 +1,8 @@
 package files
 
 import (
-	"bytes"
 	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -15,10 +15,13 @@ import (
 type ignoreCheck func(ctx context.Context, root string, paths []string) (map[string]bool, bool)
 
 // frontierLimit bounds the candidates awaiting one ignore decision: a path
-// count and their NUL-terminated stdin size. One oversized path is still allowed.
+// count and their check-ignore stdin size ("./", path, NUL). One oversized path
+// is still allowed.
 type frontierLimit struct{ paths, bytes int }
 
-var directoryFrontier = frontierLimit{paths: 128, bytes: 64 << 10}
+// directoryFrontier keeps one check-ignore's stdin, its echoed stdout and the
+// candidate slice to a few hundred KiB; walks rarely reach it.
+var directoryFrontier = frontierLimit{paths: 4096, bytes: 256 << 10}
 
 // gitDirectories visits directory entries in bounded batches. check-ignore is
 // applied before descending, so ignored dependency trees are never enumerated.
@@ -104,13 +107,13 @@ func walkDirectories(ctx context.Context, root string, check ignoreCheck, limit 
 					continue
 				}
 				candidate := filepath.ToSlash(filepath.Join(rel, entry.Name()))
-				if len(frontier) > 0 && (len(frontier) >= limit.paths || frontierBytes+len(candidate)+1 > limit.bytes) {
+				if len(frontier) > 0 && (len(frontier) >= limit.paths || frontierBytes+len(candidate)+3 > limit.bytes) {
 					if decide(); truncated {
 						break
 					}
 				}
 				frontier = append(frontier, candidate)
-				frontierBytes += len(candidate) + 1
+				frontierBytes += len(candidate) + 3
 			}
 			if readErr != nil {
 				break
@@ -129,23 +132,27 @@ func walkDirectories(ctx context.Context, root string, check ignoreCheck, limit 
 	return directories, truncated, nil
 }
 
+// ignoredDirectories decides one frontier. check-ignore rejects
+// --literal-pathspecs, so every path is anchored as "./path": a name starting
+// with ':' is then a directory, not pathspec magic that could abort the batch
+// (":!x") or check a different path (":x"). Only anchored echoes are answers.
 func ignoredDirectories(ctx context.Context, root string, paths []string) (map[string]bool, bool) {
-	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
-	defer cancel()
-	cmd := exec.CommandContext(ctx, "git", "-C", root, "check-ignore", "-z", "--stdin")
-	hideConsole(cmd)
-	cmd.Stdin = strings.NewReader(strings.Join(paths, "\x00") + "\x00")
-	var stdout bytes.Buffer
-	cmd.Stdout = &stdout
-	countGitInvocation(ctx, "check-ignore")
-	if err := cmd.Run(); err != nil {
-		if exit, ok := err.(*exec.ExitError); !ok || exit.ExitCode() != 1 {
-			return nil, false
-		}
+	var in strings.Builder
+	for _, path := range paths {
+		in.WriteString("./")
+		in.WriteString(path)
+		in.WriteByte(0)
+	}
+	out, err := gitOutput(ctx, root, strings.NewReader(in.String()), nil, "check-ignore", "-z", "--stdin")
+	// Exit status 1 means that no path is ignored.
+	if exit := (*exec.ExitError)(nil); err != nil && (!errors.As(err, &exit) || exit.ExitCode() != 1 || ctx.Err() != nil) {
+		return nil, false
 	}
 	ignored := make(map[string]bool)
-	for path := range strings.SplitSeq(stdout.String(), "\x00") {
-		ignored[path] = true
+	for path := range strings.SplitSeq(string(out), "\x00") {
+		if rel, ok := strings.CutPrefix(path, "./"); ok {
+			ignored[rel] = true
+		}
 	}
 	return ignored, true
 }

@@ -161,22 +161,29 @@ func countGitInvocation(ctx context.Context, command string) {
 
 // runGit runs git in root and returns its output.
 func runGit(ctx context.Context, root string, args ...string) ([]byte, bool) {
+	out, err := gitOutput(ctx, root, nil, []string{"--literal-pathspecs"}, args...)
+	return out, err == nil
+}
+
+// gitOutput runs the resolved git binary in root with a 20 s timeout, a hidden
+// console and unquoted paths. flags precede the subcommand; stdin may be nil.
+// On error, stdout holds whatever git wrote, for exit codes that are answers.
+func gitOutput(ctx context.Context, root string, stdin io.Reader, flags []string, args ...string) ([]byte, error) {
 	git, err := exec.LookPath("git")
 	if err != nil {
-		return nil, false
+		return nil, err
 	}
 	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
-	argv := append([]string{"-C", root, "--literal-pathspecs", "-c", "core.quotepath=off"}, args...)
-	cmd := exec.CommandContext(ctx, git, argv...) //nolint:gosec
+	argv := append(append([]string{"-C", root}, flags...), "-c", "core.quotepath=off")
+	cmd := exec.CommandContext(ctx, git, append(argv, args...)...) //nolint:gosec
 	hideConsole(cmd)
+	cmd.Stdin = stdin
 	var stdout bytes.Buffer
 	cmd.Stdout = &stdout
 	countGitInvocation(ctx, args[0])
-	if cmd.Run() != nil {
-		return nil, false
-	}
-	return stdout.Bytes(), true
+	err = cmd.Run()
+	return stdout.Bytes(), err
 }
 
 // gitFiles lists tracked and untracked, not ignored, files under root.

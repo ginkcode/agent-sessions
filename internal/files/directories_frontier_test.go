@@ -184,7 +184,7 @@ func TestDirectoryFrontierMatchesReference(t *testing.T) {
 			for _, batch := range fake.batches {
 				size := 0
 				for _, p := range batch {
-					size += len(p) + 1
+					size += len(p) + 3
 					parent := path.Dir(p)
 					if parent == "." {
 						parent = ""

@@ -1299,3 +1299,71 @@ go test -count=1 -run '^$' -bench 'ProjectListing/(1000|20001)/(Directories|List
 
 All pass. Windows path behavior was not run on Windows; candidate paths still use
 `filepath.ToSlash`. No real project, private data, installation, app launch or push.
+
+## PF-14 — Batched ignore checks (2026-10-24)
+
+Backend-only follow-up to PF-13 in `internal/files/{directories,files}.go`. No API,
+frontend, cache or deleted-tracked filtering change; `MaxFiles` caps are unchanged.
+
+### Policy
+
+- The production frontier is **4096 paths or 256 KiB** of check-ignore input,
+  whichever comes first. Input, echoed output and the candidate slice stay within a
+  few hundred KiB; the 20 s per-process and per-walk timeouts are unchanged.
+- `check-ignore` now runs through the shared Git runner (`gitOutput`, extracted from
+  `runGit`): resolved binary, hidden console, unquoted paths. It cannot use
+  `--literal-pathspecs` (Git rejects it for this command), so each path is sent as
+  `./path` and only `./`-anchored echoes count as answers.
+- **Bug fixed:** a top-level directory named like pathspec magic (`:!a`,
+  `:(exclude)a`) made Git exit fatally, which failed closed and returned an
+  **empty, truncated** directory list for the whole project; `:ign-x` was checked as
+  `ign-x`. Larger batches would have widened that blast radius, so anchoring ships
+  with them. A mutation test with anchoring removed reproduces the empty listing.
+- Check-before-descent, fail-closed truncation, cancellation, `.git`/symlink
+  exclusion and empty directories are unchanged from PF-13.
+
+### Evidence (`internal/files/directories_ignore_test.go`, real Git, isolated config)
+
+- Pathspec-like and unusual names, top-level and nested: `:!a`, `:(exclude)a`,
+  `:(top)x`, `:/a`, `:^b`, `:colon`, `*star`, `[ab]`, `?q`, leading/trailing spaces,
+  `-dash`, `#hash`, `!bang`, Unicode, plus newline, backslash and `"` off Windows;
+  rules `:ign-x/`, `\*ign/`, `ign\?/` hide exactly their literal directories.
+- Nested rules: anchored `/rootonly/` (nested copy listed), `vendor/` with a nested
+  `!vendor/` re-include, `cache*/` with `!cache-keep/`, `build/` under `app/`, an
+  ignore-all-files `*`/`!*/` directory, empty directories; an ignored parent's
+  `!inner/` stays hidden because it is never entered. Output equals the PF-13 oracle
+  with no more processes.
+- Failure (corrupt `HEAD`): no answer, empty truncated listing. Cancellation: no
+  answer and `context.Canceled` from the walk.
+- `MaxFiles + 1` top-level directories: capped at `MaxFiles`, truncated, exactly
+  **5** check-ignore processes.
+- Wide tree (1000 directories × 1 child, 1010 entries at the root):
+  `BenchmarkWideDirectories`, 5 iterations × 3 runs, same Apple Silicon host:
+
+  | Strategy | check-ignore / walk | Time / walk | Bytes / walk |
+  |---|---|---|---|
+  | Per 128-entry chunk (pre-PF-13 oracle) | 1010 | 6.39–6.56 s | 26.6 MB |
+  | PF-13 frontier (128 paths) | 16 | 147–149 ms | 5.2 MB |
+  | PF-14 frontier (4096 paths) | **2** | **54–56 ms** | 5.0 MB |
+
+  Same output in all three. The oracle uses the anchored checker, so the gap is
+  structural, not the bug fix. The per-chunk cost was one process per directory that
+  has subdirectories, which is the common shape of real source trees.
+- PF-03 fixture (`BenchmarkProjectListing`, 20 × 3): 1000 files `Directories`
+  14.7–15.0 ms, `List` 51–55 ms; 20,001 files `Directories` 48–49 ms, `List`
+  153–155 ms; **2** and **6** Git processes per op, unchanged because its
+  directories are flat.
+
+### Verification
+
+```sh
+go test -race -count=1 ./internal/files/
+go vet ./internal/files/ && GOOS=windows go vet ./internal/files/
+go build ./...
+go test -count=1 -run '^$' -bench 'WideDirectories|ProjectListing/(1000|20001)/(Directories|List)$' -benchtime=5x ./internal/files/
+```
+
+All pass. Windows was only cross-vetted: candidate paths stay slash-separated and
+`./` anchoring is accepted by Git for Windows in principle, but no test ran on
+Windows and its reserved names are excluded from the fixture there. Timings are
+advisory. No real project, private data, installation, app launch or push.

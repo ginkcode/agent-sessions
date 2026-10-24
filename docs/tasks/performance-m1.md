@@ -1,6 +1,6 @@
 # Performance Milestone 1 — Baselines and targeted reuse
 
-- Status: in progress 2026-10-24; **10/15 tasks complete**.
+- Status: in progress 2026-10-24; **11/15 tasks complete**.
 - Parent plan: [performance.md](../plan/performance.md).
 - All estimates include focused tests and are planning estimates, not promises.
 - Every task is ≤4 developer hours. Split it here and in `TASKS.md` before coding
@@ -26,11 +26,11 @@ PF-06 completed 2026-10-24; optional source contract, bounded canonical fallback
 ownership and Codex feasibility are in [../perf.md](../perf.md#pf-06--validated-source-loading-contract-2026-10-24).
 PF-07A/B implemented; PF-07C safe opt-out complete. PF-07 remains partial/blocked:
 no defensible automatic activation policy; production proof is off. PF-08/PF-10
-remain blocked. PF-09 and PF-11…PF-13 complete; PF-14 is next; PF-14/PF-15 unimplemented.
+remain blocked. PF-09 and PF-11…PF-14 complete; PF-15 is next and unimplemented.
 
 ## Task index
 
-PF-01 through PF-06, PF-09 and PF-11…PF-13 are **complete**; PF-07 is **partial/blocked** (A/B implemented, C safe opt-out complete; activation gated); all remaining rows are **not started**. Dependencies are completion gates, not mere ordering
+PF-01 through PF-06, PF-09 and PF-11…PF-14 are **complete**; PF-07 is **partial/blocked** (A/B implemented, C safe opt-out complete; activation gated); all remaining rows are **not started**. Dependencies are completion gates, not mere ordering
 suggestions. All implementation tasks also depend on the shared guardrails in the
 [parent plan](../plan/performance.md#shared-guardrails).
 
@@ -462,6 +462,11 @@ empty directories, caps/cancellation and symlinks retain existing behavior. This
 structural step does not claim subprocess reductions until PF-14.
 
 ## PF-14 — Batched ignore checks
+
+**Status:** complete 2026-10-24. Frontier budget raised to 4096 paths / 256 KiB via the
+shared Git runner; `./`-anchored check-ignore input fixes pathspec-like names that
+previously truncated the listing; real-Git matrix and wide-tree counts in the
+[evidence](../perf.md#pf-14--batched-ignore-checks-2026-10-24).
 
 **Goal:** reduce Git process count using PF-13 frontiers.
 
