@@ -16,11 +16,22 @@ const LISTING_CACHE_LIMIT = 4;
 // Oversized replies remain visible, but are not retained across dialog lifetimes.
 const LISTING_SNAPSHOT_LIMIT = 500_000; // serialized UTF-16 code units, not heap bytes
 
-function listingKey(host: string | undefined, dir: string): string {
+function listingRoot(dir: string): string {
   // Normalize separators only for Windows roots; a backslash is a valid POSIX name.
   const root = /^(?:[a-z]:[\\/]|\\\\)/i.test(dir) ? dir.replace(/\\/g, '/') : dir;
   const normalized = root.replace(/\/+$/, '') || '/';
-  return JSON.stringify([host ?? null, /^[a-z]:\/+$/i.test(root) ? normalized + '/' : normalized]);
+  return /^[a-z]:\/+$/i.test(root) ? normalized + '/' : normalized;
+}
+
+function listingKey(host: string | undefined, dir: string): string {
+  return JSON.stringify([host ?? null, listingRoot(dir)]);
+}
+
+/** Equal, nested or case-variant roots. Over-matching only drops a hint. */
+function rootsOverlap(a: string, b: string): boolean {
+  const x = listingRoot(a).toLowerCase(), y = listingRoot(b).toLowerCase();
+  const within = (p: string, q: string) => p === q || p.startsWith(q.endsWith('/') ? q : q + '/');
+  return within(x, y) || within(y, x);
 }
 
 function listingSnapshot(listing: FileListing): FileListing {
@@ -215,6 +226,7 @@ export class FilesStore {
     this.connectionSeq++;
     this.listSeq++;
     this.loadingList = this.refreshing = false;
+    if (this.listing) this.listingStale = true; // Unverified until a list on this connection succeeds.
     const tabs = new Set([...this.tabs, ...[...this.saved.values()].flatMap((state) => state.tabs)]);
     for (const tab of tabs) {
       tab.token = ++this.readSeq;
@@ -283,9 +295,35 @@ export class FilesStore {
 
   /** Saving refreshes only the visible directory list, never another tab's contents. */
   private refreshSavedListing(dir: string, host: string | undefined): void {
-    if (this.dir !== dir || this.mutationError(host)) return;
-    this.refreshing = true;
-    void this.list(dir);
+    if (!this.invalidateListings(dir, host)) return;
+    this.loadingList = !this.listing;
+    this.refreshing = !!this.listing;
+    void this.list(this.dir!);
+  }
+
+  /**
+   * After an app mutation under root (null: anywhere on the host, as for Git) that
+   * succeeded or may have happened: drop overlapping retained snapshots, including
+   * hidden ones, and supersede an overlapping visible list request that may predate
+   * it. Never touches tabs, drafts or saved editor state. Returns whether the
+   * visible listing now needs a list request that can be made.
+   */
+  invalidateListings(root: string | null, host: string | undefined): boolean {
+    for (const key of this.listings.keys()) {
+      const [h, r] = JSON.parse(key) as [string | null, string];
+      if (h === (host ?? null) && (root === null || rootsOverlap(r, root))) this.listings.delete(key);
+    }
+    const dir = this.dir;
+    if (!dir || !this.hasHost || this.dataHost !== host || (root !== null && !rootsOverlap(dir, root))) return false;
+    this.listSeq++;
+    this.loadingList = this.refreshing = false;
+    if (this.listing) this.listingStale = true;
+    return !this.mutationError(host);
+  }
+
+  /** invalidateListings, then refresh an affected visible listing and its open tabs. */
+  async listingsChanged(root: string | null, host: string | undefined): Promise<void> {
+    if (this.invalidateListings(root, host)) await this.refresh();
   }
 
   /** Includes hidden directories; callers can use these targets for a future coordinator. */
@@ -533,10 +571,12 @@ export class FilesStore {
       const destination = path ? `${path}/${name}` : name;
       this.expanded = new Set([...this.expanded, ...parentFolders(destination), ...(kind === 'folder' ? [destination] : [])]);
       this.save();
+      this.invalidateListings(dir, host);
       this.refreshing = true;
       await this.list(dir);
     } catch (err) {
       if (!current() || isStaleReply(err) || isDisconnectedError(err)) {
+        this.invalidateListings(dir, host);
         throw new Error(kind === 'folder'
           ? 'The folder creation outcome is unknown. Refresh and verify the directory before trying again.'
           : 'The file creation outcome is unknown. Refresh and verify the file before trying again.');
@@ -575,12 +615,14 @@ export class FilesStore {
       await api.renameFile(dir, path, name, host ?? '');
       if (!current()) throw new Error('The connection changed during rename.');
       this.remapPaths(path, destination);
+      this.invalidateListings(dir, host);
       this.refreshing = true;
       await this.list(dir);
       for (const tab of affected) if (!tab.edit) void this.read(tab.path);
     } catch (err) {
       if (!current() || isStaleReply(err) || isDisconnectedError(err)) {
         this.notify(o => o.uncertain(dir, path));
+        this.invalidateListings(dir, host);
         this.renameUncertain = 'The rename outcome is unknown. Verify the paths on disk before reopening this project; saving and renaming are disabled to protect drafts.';
         throw new Error(this.renameUncertain);
       }
@@ -623,16 +665,19 @@ export class FilesStore {
       }
       this.expanded = new Set([...this.expanded].filter(p => !matches(p)));
       this.save();
+      this.invalidateListings(dir, host);
       this.refreshing = true;
       await this.list(dir);
     } catch (err) {
       if (!current() || isStaleReply(err) || isDisconnectedError(err)) {
         this.notify(o => o.uncertain(dir, path));
+        this.invalidateListings(dir, host);
         this.deleteUncertain = 'The deletion outcome is unknown. Some contents may already have been removed. Verify the paths on disk before reopening this project; saving, renaming and deleting are disabled to protect drafts.';
         throw new Error(this.deleteUncertain);
       }
       // Recursive deletion is not atomic: retain every draft and tab, and only
       // refresh the tree (never reload the editors) after a partial failure.
+      this.invalidateListings(dir, host);
       this.refreshing = true;
       await this.list(dir);
       throw new Error(`${errorText(err, 'Could not delete the item.')} Some contents may already have been removed. Your open tabs and drafts have been kept.`);
@@ -910,6 +955,7 @@ export class FilesStore {
       if (!sameHost()) {
         edit.uncertain = snapshot;
         edit.saveError = 'The connection changed; the save outcome is unknown.';
+        this.refreshSavedListing(dir, host); // The write may have landed.
         this.notify(o => o.saveFailed(dir, tab.path, token, true));
         return false;
       }
@@ -932,7 +978,10 @@ export class FilesStore {
       // protection until a read settles it, even if the draft was undone to
       // the baseline meanwhile.
       const unknown = !sameHost() || isStaleReply(err) || isDisconnectedError(err) || isSaveIncompleteError(err);
-      if (unknown) edit.uncertain = snapshot;
+      if (unknown) {
+        edit.uncertain = snapshot;
+        this.refreshSavedListing(dir, host);
+      }
       this.notify(o => o.saveFailed(dir, tab.path, token, unknown));
       edit.saveError = errorText(err, 'Could not save the file.');
       return false;
@@ -994,9 +1043,10 @@ export class FilesStore {
    */
   async reloadReplaced(paths: string[]): Promise<void> {
     const dir = this.dir, host = this.dataHost, started = epoch(), connection = this.connectionSeq;
-    if (!dir || this.mutationError(host)) return;
+    if (!dir) return;
+    this.refreshSavedListing(dir, host); // Drops hidden snapshots even while blocked.
+    if (this.mutationError(host)) return;
     const wanted = new Set(paths);
-    this.refreshSavedListing(dir, host);
     await Promise.all(this.tabs.filter(t => wanted.has(t.path)).map(async tab => {
       const edit = tab.edit;
       if (!edit) return this.read(tab.path);

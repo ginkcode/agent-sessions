@@ -25,7 +25,10 @@ const { GitChangesStore } = await loadServerModule(new URL('../src/lib/stores/gi
 function fixture() {
   const calls = [];
   const f = {
-    files: { dir: '/p', contextVersion: '1', tabs: [], async refresh() { calls.push('files'); }, async reloadReplaced(paths) { calls.push(['reload', paths]); } },
+    files: {
+      dir: '/p', contextVersion: '1', tabs: [], async refresh() { calls.push('files'); }, async reloadReplaced(paths) { calls.push(['reload', paths]); },
+      invalidateListings(root, host) { calls.push(['invalidate', root, host]); return this.relist ?? false; },
+    },
     link: { dataHost: undefined, blockedReason: null }, connectionStore: { capabilities: { gitChanges: true, gitWrite: true } },
     filePrompt: { async ask() { calls.push('confirm'); return 'discard'; } },
     codeDiagnostics: { async hide() {}, async show() {} },
@@ -70,6 +73,25 @@ test('discard asks with names, refuses drafts and branch switching refuses draft
   assert.equal(await store.discard(['a']), true);
   assert.ok(calls.indexOf('confirm') < calls.indexOf('discard'));
   assert.ok(calls.some(c => Array.isArray(c) && c[0] === 'reload'));
+  delete globalThis.__gitFixture;
+});
+
+test('PF-12 Git writes invalidate host listings before reloads, including for a hidden project', async () => {
+  const { store, f, calls } = fixture();
+  await store.refresh();
+  calls.length = 0;
+  assert.equal(await store.discard(['a']), true);
+  assert.deepEqual(calls.filter(c => c !== 'confirm'), ['discard', ['invalidate', null, undefined], ['reload', ['a']], 'files', 'status']);
+  calls.length = 0;
+  let fail;
+  f.api.gitStage = () => new Promise((_resolve, reject) => fail = reject);
+  const pending = store.stage(['a']);
+  f.files.dir = '/other'; // The project closed or changed; its host listing may still show old status.
+  f.files.relist = true;
+  fail(new Error('hook failed after staging'));
+  assert.equal(await pending, false);
+  assert.deepEqual(calls, [['invalidate', null, undefined], 'files'], 'a failed hook still invalidates and relists');
+  assert.equal(store.error, null, 'the error belongs to the old project');
   delete globalThis.__gitFixture;
 });
 
@@ -180,7 +202,7 @@ test('a sync reply after a host switch cannot overwrite or reload the new projec
   assert.equal(await pending, true);
   assert.equal(store.status.branch, 'main');
   assert.equal(store.syncMessage, '');
-  assert.deepEqual(calls, []);
+  assert.deepEqual(calls, [['invalidate', null, undefined]], 'only the old host listings are invalidated');
   assert.equal(store.busy, false);
   delete globalThis.__gitFixture;
 });

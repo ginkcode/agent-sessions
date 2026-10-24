@@ -124,6 +124,7 @@ function scripted() {
       dir: '/p', tabs: [],
       updateDraft(tab, text) { drafts.push([tab.path, text]); tab.edit.draft = text; return true; },
       async reloadReplaced(paths) { reloads.push(paths); },
+      async listingsChanged(dir, host) { reloads.push(['changed', dir, host]); },
     },
     api: {
       replaceReply: null,
@@ -390,7 +391,7 @@ test('a host error during replace says files may have changed and searches again
   assert.equal(shown[0].title, 'Replace may not have finished');
   assert.match(shown[0].body, /disk full/);
   assert.equal(shown[0].tone, 'error');
-  assert.equal(reloads.length, 0);
+  assert.deepEqual(reloads, [['changed', '/p', undefined]], 'possibly partial writes invalidate listings without reloading tabs');
   t.mock.timers.tick(0);
   assert.equal(calls.length, 2);
 });

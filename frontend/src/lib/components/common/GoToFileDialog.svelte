@@ -167,12 +167,11 @@
       if (!await api.addFile(dir, path, host ?? '')) return;
       toast.show({ title: host ? 'File uploaded' : 'File added', body: path || dir });
       // A native picker or remote transfer can outlive the current project.
-      if (files.dir === dir && link.dataHost === host) {
-        if (path) files.setExpanded(new Set([...files.expanded, path]));
-        await files.refresh();
-      }
+      if (path && files.dir === dir && link.dataHost === host) files.setExpanded(new Set([...files.expanded, path]));
+      await files.listingsChanged(dir, host);
     } catch (err) {
       toast.show({ title: host ? 'Upload failed' : 'Could not add file', body: err instanceof Error ? err.message : String(err), tone: 'error' });
+      void files.listingsChanged(dir, host); // A failed transfer may have written part of a file.
     } finally {
       actionBusy = false;
     }

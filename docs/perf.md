@@ -1156,3 +1156,85 @@ invalidation and reconnect freshness regressions are not implemented here.
 Snapshots are hints even when stale app mutations are not yet invalidated; every
 reopen revalidates and existing fresh file probes/reads/revision checks remain.
 No private data, installation, app launch/kill, extra agents, commits or pushes.
+
+## PF-12 — Listing freshness and draft safety (2026-10-24)
+
+Frontend-only follow-up to PF-11. No backend, wire/API, editor-content cache,
+presence-probe or diagnostics change. Before coding, current mutation paths were
+inspected (files store create/rename/delete/save/uncertain-save reconciliation and
+replace reload; Git write/pull; replace in files; add file) and the scope fit 4 h,
+so no split was needed.
+
+### Policy
+
+- `FilesStore.invalidateListings(root, host)` drops retained snapshots of that host
+  whose normalized root is equal to, inside or containing `root`, compared
+  case-insensitively (trailing/Windows separators normalized as in PF-11). Over-
+  matching only discards a hint. Git writes and pulls pass no root and drop every
+  snapshot of the host: commits, hooks and pulls can change status outside the
+  visible root, and `repoRoot` is unaliased metadata.
+- An overlapping visible listing on that host is superseded (`listSeq`), so a list
+  request started before the mutation cannot publish or be retained, and it is
+  labelled unverified; the caller (or `listingsChanged`) relists when not blocked.
+- Applied on success **and** possibly-applied outcomes: create/rename/delete
+  success, unknown outcome and partial delete; saves that succeed or become
+  uncertain (including a reply after reconnect/host change) and acknowledged
+  uncertain saves; replace in files (including hidden/overlapping roots and failed
+  requests); add file (success or failure); Git stage/unstage/discard/commit/switch
+  (also after failure, before reloads) and pull, even when the project closed or
+  changed meanwhile. Hidden saves invalidate while the dialog is closed.
+- Reconnect still relists the visible root; a blocked reconnect now labels the
+  retained listing unverified instead of leaving it marked current.
+- Tabs, drafts, conflict/uncertain-save state, undo versions, saved editor state and
+  `reset()` draft guards are untouched. Unknown/failed probes remain non-deletion.
+
+### Deterministic work counts and regressions
+
+- Hidden save while an aliased visible root (`/p/` vs saved `/p`) lists: **2** list
+  requests (reopen + post-save), the pre-save reply is rejected and only post-save
+  status is retained; the hidden editor, draft and undo version are identical.
+- Create, rename and delete each keep the visible root at **1** post-mutation list;
+  an older in-flight refresh reply is rejected. Case-variant nested hidden roots
+  lose their snapshot (reopen shows loading), unrelated roots keep theirs.
+- Host-wide Git invalidation frees a superseded refresh so the next refresh is not
+  skipped (**2** requests, old reply rejected). Previously a pre-mutation in-flight
+  list caused the post-Git refresh to be skipped, publishing pre-write status as
+  current. Mutations elsewhere do **0** relists; overlapping ones **1**.
+- Git store: invalidation precedes reloads and refresh; a failed hook in a project
+  closed meanwhile still invalidates and relists the visible same-host listing
+  without reporting the old project's error. A host-switched sync only invalidates.
+- Blocked replace reload still drops overlapping hidden snapshots. Windows case and
+  separator aliases and other-host isolation are covered.
+- Reconnect while blocked: **0** lists, listing unverified; after unblocking a failed
+  relist and failed probe keep the tab, draft and version (no deletion claim). A save
+  then drops the hint, so a failed reopen list shows no stale paths.
+- Uncertain save after a host switch drops the old-host snapshot with **0** new-host
+  lists; the draft stays protected.
+
+Behavior notes for review: a same-host Git write or overlapping replace/add that
+completes after the project changed now refreshes the visible project (list plus
+read-only tab reconciliation). Failed replace requests and uncertain same-host saves
+now relist; dropped snapshots make reopen show loading instead of retained paths.
+
+### Verification and limitations
+
+From `frontend/`:
+
+```sh
+node --loader ./test/resolver.mjs --test test/file-drafts.test.mjs test/git-changes.test.mjs \
+  test/content-search.test.mjs test/go-to-file.test.mjs test/create-directory.test.mjs \
+  test/rename-file.test.mjs test/delete-file.test.mjs
+npm test
+npm run check
+npm run build
+```
+
+Focused **110/110** and full **677/677** tests pass (no skips; 6 new tests, 2
+existing expectations updated for the new invalidation calls). Check passes with 0
+errors and the existing tsconfig `ignoreDeprecations` warning; build passes with
+Vite's large-chunk advisory. Node reports its existing experimental-loader warning.
+Backend is unchanged; Go tests/race/build/vet were **not rerun**. The add-file
+dialog path has no component test; its store call is covered directly. Symlink
+aliases and external edits (terminal, other tools) are not detected; snapshots stay
+hints that every reopen revalidates. No native GUI/Windows verification, timing or
+heap claim. No private data, installation, app launch/kill, extra agents, commits or pushes.

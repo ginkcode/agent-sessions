@@ -340,7 +340,7 @@ milestone totals above.
 
 ## Follow-up — Performance
 
-Planned 2026-10-24. Progress: **8/15 complete**, PF-01…PF-06, PF-09 and PF-11 complete; PF-07 partial/blocked (A/B implemented, C safe opt-out); PF-08/PF-10 blocked; PF-12…PF-15 not started.
+Planned 2026-10-24. Progress: **9/15 complete**, PF-01…PF-06, PF-09, PF-11 and PF-12 complete; PF-07 partial/blocked (A/B implemented, C safe opt-out); PF-08/PF-10 blocked; PF-13…PF-15 not started.
 [Roadmap](docs/plan/performance.md) ·
 [Milestone 1 briefs and dependency graph](docs/tasks/performance-m1.md).
 PF-01 completed 2026-10-24: synthetic catalog/provider benchmarks, correctness and
@@ -363,7 +363,7 @@ before coding (4 h): investigated cheap cost eligibility; no defensible policy
 established. Production Load/Blob immediately decline to zero-proof canonical
 fallback; experiment retained privately for tests, cold Blob proof prevented,
 deterministic bypass counts and isolated small/large/Blob evidence recorded.
-Parent/PF-08/PF-10 remain blocked. PF-09 completed with bounded Claude summary reuse; [evidence](docs/perf.md#pf-09--claude-checkpoint-summary-reuse-2026-10-24). PF-11 completed with bounded listing-only snapshots and immediate reopen; [evidence](docs/perf.md#pf-11--bounded-frontend-listing-snapshots-2026-10-24). Next task PF-12 (mutation invalidation/freshness).
+Parent/PF-08/PF-10 remain blocked. PF-09 completed with bounded Claude summary reuse; [evidence](docs/perf.md#pf-09--claude-checkpoint-summary-reuse-2026-10-24). PF-11 completed with bounded listing-only snapshots and immediate reopen; [evidence](docs/perf.md#pf-11--bounded-frontend-listing-snapshots-2026-10-24). PF-12 completed with mutation/hidden-save/Git listing invalidation and freshness/draft regressions; [evidence](docs/perf.md#pf-12--listing-freshness-and-draft-safety-2026-10-24). Next task PF-13.
 [Decision and verification](docs/perf.md#pf-07c--cost-policy-decision-and-production-bypass-2026-10-24). [PF-07C brief](docs/tasks/performance-m1.md#pf-07c--cost-policy-decision-and-safe-production-bypass-4-h-pf-07b).
 - [PF-07A](docs/tasks/performance-m1.md#pf-07a--bounded-content-proof-and-accepting-source-methods-4-h-pf-06): bounded content proof, accepting Load/Blob methods and focused regression/verification (4 h; PF-06).
 - [PF-07B](docs/tasks/performance-m1.md#pf-07b--mutation-matrix-and-repeated-evidence-4-h-pf-07a): full mutation/overlay/parent/WAL/concurrency matrix and repeated benchmark evidence (4 h; PF-07A). PF-08 remains gated on the entire parent.
@@ -384,7 +384,7 @@ performance milestone starts, write its detailed design and ≤4h task breakdown
 | [PF-09](docs/tasks/performance-m1.md#pf-09--claude-checkpoint-reuse) | complete | Claude checkpoint reuse | 4 | PF-01 |
 | [PF-10](docs/tasks/performance-m1.md#pf-10--codex-checkpoint-reuse) | ⬜ | Codex checkpoint reuse | 4 | PF-01, PF-07 |
 | [PF-11](docs/tasks/performance-m1.md#pf-11--bounded-frontend-listing-snapshots) | complete | Bounded frontend listing snapshots | 3 | PF-03 |
-| [PF-12](docs/tasks/performance-m1.md#pf-12--listing-freshness-and-draft-regressions) | ⬜ | Listing freshness and draft safety | 4 | PF-11 |
+| [PF-12](docs/tasks/performance-m1.md#pf-12--listing-freshness-and-draft-regressions) | complete | Listing freshness and draft safety | 4 | PF-11 |
 | [PF-13](docs/tasks/performance-m1.md#pf-13--bounded-directory-frontiers) | ⬜ | Bounded directory frontiers | 3 | PF-03 |
 | [PF-14](docs/tasks/performance-m1.md#pf-14--batched-ignore-checks) | ⬜ | Batched ignore checks | 4 | PF-13 |
 | [PF-15](docs/tasks/performance-m1.md#pf-15--integrated-evidence-and-milestone-gate) | ⬜ | Integration and before/after evidence | 4 | PF-01…PF-14 |

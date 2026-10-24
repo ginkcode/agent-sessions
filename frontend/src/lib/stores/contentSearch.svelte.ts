@@ -395,9 +395,10 @@ export class ContentSearchStore {
           for (const r of res.files) outcomes.set(r.path, { path: r.path, status: r.status, replaced: r.replaced, reason: r.reason, message: r.message });
           if (files.dir === dir && link.dataHost === host) {
             await files.reloadReplaced(res.files.filter(r => r.status === 'replaced').map(r => r.path));
-          }
+          } else void files.listingsChanged(dir, host); // Hidden or overlapping listings.
         } catch (e) {
           // The host may have written some files before the error.
+          void files.listingsChanged(dir, host);
           const message = errorText(e, 'Replace failed.');
           toast.show({ title: 'Replace may not have finished', body: `${message} Files may have changed; the search runs again to show them as they are.`, tone: 'error' });
           return;

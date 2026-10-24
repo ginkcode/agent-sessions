@@ -233,6 +233,211 @@ test('PF-11 snapshots own immutable listing data and reject old epoch and same-r
   await reopening;
 });
 
+// Records list requests with their own replies; cached reopen state is checked synchronously.
+function listRequests(fixture) {
+  const requests = [];
+  fixture.api.listFiles = (dir) => {
+    const reply = deferred();
+    requests.push({ dir, reply });
+    return reply.promise;
+  };
+  return requests;
+}
+
+test('PF-12 hidden save invalidates aliased snapshots; a pre-save visible list cannot republish', async () => {
+  const { store, fixture, tab } = await setup();
+  store.startEditing(tab.path);
+  store.updateDraft(tab, 'saved while hidden');
+  const edit = tab.edit, version = edit.version;
+  const save = deferred();
+  fixture.api.saveFile = () => save.promise;
+  const saving = store.saveEdited(tab);
+  store.close();
+  const requests = listRequests(fixture);
+  const showing = store.show('/p/'); // Same normalized root, different raw saved-state key.
+  assert.deepEqual(store.listing.files, ['a.txt', 'b.txt']);
+  assert.equal(requests.length, 1);
+  save.resolve({ status: 'saved', content: content('saved while hidden', 'r2') });
+  assert.equal(await saving, true);
+  assert.equal(requests.length, 2, 'overlapping visible root is listed again after the save');
+  assert.equal(store.listingStale, true);
+  requests[0].reply.resolve({ root: '/p/', files: ['pre-save'] });
+  await tick();
+  assert.deepEqual(store.listing.files, ['a.txt', 'b.txt'], 'superseded pre-save reply is rejected');
+  requests[1].reply.resolve({ root: '/p/', files: ['a.txt', 'b.txt'], status: { 'a.txt': 'M' } });
+  await showing; await tick();
+  assert.equal(store.listing.status['a.txt'], 'M');
+  assert.equal(store.listingStale, false);
+  store.close();
+  const reopening = store.show('/p');
+  assert.equal(store.listing.status['a.txt'], 'M', 'only post-save data was retained');
+  assert.equal(store.activeTab, tab);
+  assert.equal(tab.edit, edit);
+  assert.equal(edit.version, version, 'undo history identity is retained');
+  assert.equal(edit.draft, 'saved while hidden');
+  requests[2].reply.resolve({ root: '/p', files: ['a.txt', 'b.txt'] });
+  await reopening;
+});
+
+test('PF-12 create/rename/delete drop overlapping hidden snapshots only and reject older list replies', async () => {
+  const { store, fixture, tab } = await setup();
+  store.startEditing(tab.path);
+  store.updateDraft(tab, 'draft');
+  const edit = tab.edit;
+  for (const root of ['/P/sub', '/q']) await store.show(root);
+  await store.show('/p');
+  fixture.api.createDirectory = async () => {};
+  fixture.api.renameFile = async () => {};
+  fixture.api.deleteFile = async () => {};
+  for (const mutate of [() => store.createDirectory('', 'new'), () => store.rename('b.txt', 'c.txt'), () => store.delete('new')]) {
+    const requests = listRequests(fixture);
+    const refreshing = store.refresh();
+    const mutating = mutate();
+    await tick();
+    assert.equal(requests.length, 2);
+    requests[0].reply.resolve({ root: '/p', files: ['before mutation'] });
+    await refreshing;
+    assert.deepEqual(store.listing.files, ['a.txt', 'b.txt'], 'older in-flight reply cannot publish');
+    requests[1].reply.resolve({ root: '/p', files: ['after mutation'] });
+    await mutating;
+    assert.deepEqual(store.listing.files, ['after mutation']);
+    fixture.api.listFiles = async (dir) => ({ root: dir, files: ['a.txt', 'b.txt'] });
+    await store.refresh();
+  }
+  store.close();
+  let requests = listRequests(fixture);
+  let showing = store.show('/P/sub');
+  assert.equal(store.listing, null, 'case-variant nested snapshot was invalidated');
+  assert.equal(store.loadingList, true);
+  requests[0].reply.resolve({ root: '/P/sub', files: [] });
+  await showing;
+  store.close();
+  requests = listRequests(fixture);
+  showing = store.show('/q');
+  assert.deepEqual(store.listing.files, ['a.txt', 'b.txt'], 'unrelated root keeps its snapshot');
+  requests[0].reply.resolve({ root: '/q', files: [] });
+  await showing;
+  store.close();
+  fixture.api.listFiles = async (dir) => ({ root: dir, files: [] });
+  await store.show('/p');
+  assert.equal(store.activeTab, tab);
+  assert.equal(tab.edit, edit);
+  assert.equal(edit.draft, 'draft');
+});
+
+test('PF-12 Windows aliases, host-wide Git invalidation and host isolation', async () => {
+  const { store, fixture } = await setup();
+  fixture.api.listFiles = async (dir) => ({ root: dir, files: [dir] });
+  for (const root of ['C:\\Work\\p\\sub', 'C:/other', '/p']) await store.show(root);
+  store.close();
+  assert.equal(store.invalidateListings('c:/work/p/', 'remote'), false);
+  assert.equal(store.invalidateListings('c:/work/p/', undefined), false, 'nothing visible to relist');
+  let showing = store.show('C:/Work/p/sub');
+  assert.equal(store.listing, null, 'case and separator variant under the mutated root was dropped');
+  await showing;
+  store.close();
+  showing = store.show('C:\\other');
+  assert.deepEqual(store.listing.files, ['C:/other']);
+  await showing;
+  let lists = 0;
+  fixture.api.listFiles = async (dir) => { lists++; return { root: dir, files: ['C:/other'] }; };
+  await store.listingsChanged('C:/elsewhere', undefined);
+  assert.equal(lists, 0, 'a mutation elsewhere neither relists nor drops the visible snapshot');
+  await store.listingsChanged('c:\\OTHER\\nested', undefined);
+  assert.equal(lists, 1, 'an overlapping mutation relists the visible root');
+  // A Git write may change status anywhere in the repository; drop every snapshot of its host.
+  const requests = listRequests(fixture);
+  const refreshing = store.refresh();
+  assert.equal(store.invalidateListings(null, undefined), true);
+  assert.equal(store.refreshing, false, 'superseded request no longer blocks refresh');
+  const refreshed = store.refresh();
+  assert.equal(requests.length, 2);
+  requests[0].reply.resolve({ root: 'C:\\other', files: ['before git'] });
+  requests[1].reply.resolve({ root: 'C:\\other', files: ['after git'] });
+  await Promise.all([refreshing, refreshed]);
+  assert.deepEqual(store.listing.files, ['after git']);
+  store.close();
+  fixture.api.listFiles = async (dir) => ({ root: dir, files: [] });
+  showing = store.show('/p');
+  assert.equal(store.listing, null);
+  await showing;
+  await store.show('/p/sub');
+  await store.show('/p');
+  fixture.link.blockedReason = 'Offline';
+  await store.reloadReplaced([]); // A replace that finished as the connection dropped.
+  fixture.link.blockedReason = null;
+  store.close();
+  showing = store.show('/p/sub');
+  assert.equal(store.listing, null, 'blocked reload still drops overlapping hidden snapshots');
+  await showing;
+});
+
+test('PF-12 reconnect revalidates; refresh and probe failures retain drafts without claiming deletion', async () => {
+  const { store, fixture, tab } = await setup();
+  store.startEditing(tab.path);
+  store.updateDraft(tab, 'draft');
+  const edit = tab.edit, version = edit.version;
+  fixture.link.blockedReason = 'Offline';
+  await store.connectionChanged();
+  assert.equal(store.listingStale, true, 'blocked reconnect leaves the listing unverified');
+  assert.equal(store.refreshing, false);
+  fixture.link.blockedReason = null;
+  let requests = listRequests(fixture);
+  fixture.api.probeFiles = async () => { throw new Error('probe unavailable'); };
+  fixture.api.readFile = () => assert.fail('an unknown probe must not reread or settle the draft');
+  const reconnecting = store.connectionChanged();
+  assert.equal(requests.length, 1);
+  requests[0].reply.reject(new Error('list failed'));
+  await reconnecting;
+  assert.equal(store.listError, 'list failed');
+  assert.equal(store.listingStale, true);
+  assert.deepEqual(store.listing.files, ['a.txt', 'b.txt']);
+  // A save then invalidates the retained hint; failed relisting cannot restore it.
+  fixture.api.saveFile = async (_dir, req) => ({ status: 'saved', content: content(req.text, 'r2') });
+  assert.equal(await store.saveEdited(tab), true);
+  requests[1].reply.reject(new Error('list failed again'));
+  await tick();
+  store.close();
+  requests = listRequests(fixture);
+  const reopening = store.show('/p');
+  assert.equal(store.listing, null);
+  assert.equal(store.loadingList, true);
+  requests[0].reply.reject(new Error('still failing'));
+  await reopening;
+  assert.equal(store.listError, 'still failing');
+  assert.equal(tab.diskAbsent, undefined, 'failed probe is not deletion');
+  assert.equal(store.activeTab, tab);
+  assert.equal(tab.edit, edit);
+  assert.equal(edit.version, version);
+  assert.equal(edit.draft, 'draft');
+});
+
+test('PF-12 uncertain save after a host switch drops old-host snapshots without listing the new host', async () => {
+  const { store, fixture, tab } = await setup();
+  store.startEditing(tab.path);
+  store.updateDraft(tab, 'draft');
+  const save = deferred();
+  fixture.api.saveFile = () => save.promise;
+  const saving = store.saveEdited(tab);
+  store.close();
+  fixture.link.dataHost = 'remote';
+  await store.connectionChanged('remote');
+  assert.equal(store.draftTargets[0].host, undefined, 'pending save keeps the old host');
+  fixture.api.listFiles = () => assert.fail('no list for a host the drafts do not belong to');
+  save.resolve({ status: 'saved', content: content('draft', 'r2') });
+  assert.equal(await saving, false);
+  assert.deepEqual(tab.edit.uncertain?.text, 'draft');
+  assert.equal(tab.edit.draft, 'draft');
+  assert.equal(store.hasUnsaved, true);
+  fixture.link.dataHost = undefined;
+  await store.connectionChanged(undefined);
+  const requests = listRequests(fixture);
+  const reopening = store.show('/p');
+  assert.equal(store.listing, null, 'possibly written save invalidated the old-host snapshot');
+  requests[0].reply.resolve({ root: '/p', files: ['a.txt'] });
+  await reopening;
+});
+
 test('editor text preserves intended newline/BOM and serialized limits include disk expansion', () => {
   assert.equal(editorText(content('\uFEFFone\r\n\uFEFFtwo\r\n', 'r', { bom: true, newline: 'crlf' })), 'one\n\uFEFFtwo\n');
   assert.equal(editorText(content('\uFEFFx', 'r', { bom: false })), '\uFEFFx');

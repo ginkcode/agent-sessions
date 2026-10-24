@@ -105,7 +105,9 @@ export class GitChangesStore {
       else if ((e as { code?: string } | null)?.code === 'canceled') this.syncMessage = `Canceled ${op}. Anything Git already finished is kept.`;
       else this.error = errorText(e, 'Git sync failed.');
     } finally {
-      // Cancellation or a failed pull can still have fetched refs or changed disk.
+      // Cancellation or a failed pull can still have fetched refs or changed disk,
+      // including under hidden or overlapping roots of this host.
+      const relist = op === 'pull' && files.invalidateListings(null, host);
       if (identity === this.key()) {
         const failure = this.error;
         try {
@@ -118,7 +120,7 @@ export class GitChangesStore {
           if (identity === this.key()) await this.refresh();
         } catch (e) { if (identity === this.key()) this.error = errorText(e, 'Could not refresh after Git sync.'); }
         if (failure && identity === this.key()) this.error = failure;
-      }
+      } else if (relist) void files.refresh();
       this.syncController = null; this.syncOperation = null; this.busy = false;
     }
     return ok;
@@ -134,9 +136,11 @@ export class GitChangesStore {
     const dir = files.dir, host = link.dataHost, identity = this.key();
     if (!dir || this.writeBlocker) return false;
     this.busy = true; this.error = null;
-    let ok = false;
+    let ok = false, relist = false;
     try {
-      await work(dir, host);
+      // Before any reload: every retained listing of this host may show older Git
+      // status, even after a failure (hooks may stage or rewrite files).
+      try { await work(dir, host); } finally { relist = files.invalidateListings(null, host); }
       ok = true;
       if (identity === this.key() && reload.length) await files.reloadReplaced(reload);
     } catch (e) { if (identity === this.key()) this.error = errorText(e, 'Git action failed.'); }
@@ -148,7 +152,7 @@ export class GitChangesStore {
         await files.refresh();
         await this.refresh();
         if (failure) this.error = failure;
-      }
+      } else if (relist) void files.refresh();
     }
     return ok;
   }
