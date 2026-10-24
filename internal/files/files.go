@@ -53,6 +53,10 @@ type Listing struct {
 	Truncated   bool     `json:"truncated,omitempty"`
 	// Git reports that the list came from git, so ignored files are left out.
 	Git bool `json:"git,omitempty"`
+	// Repositories are the Git work trees found inside a listing made without
+	// git, as sorted slash-separated relative directories, so their files can
+	// still be blamed. A truncated walk may miss some.
+	Repositories []string `json:"repositories,omitempty"`
 	// Status is the git status of each changed file, by path: see the
 	// Status constants. Deleted files are in Status but not in Files.
 	Status map[string]Status `json:"status,omitempty"`
@@ -363,6 +367,15 @@ func walk(ctx context.Context, root string) (Listing, error) {
 		if p == root {
 			return nil
 		}
+		// A .git directory, or a file for worktrees and submodules, marks
+		// its parent as a work tree.
+		if d.Name() == ".git" {
+			if parent := filepath.Dir(p); parent != root {
+				if rel, err := filepath.Rel(root, parent); err == nil {
+					out.Repositories = append(out.Repositories, filepath.ToSlash(rel))
+				}
+			}
+		}
 		if d.IsDir() && skipDirs[d.Name()] {
 			return fs.SkipDir
 		}
@@ -384,6 +397,7 @@ func walk(ctx context.Context, root string) (Listing, error) {
 		return Listing{}, err
 	}
 	slices.Sort(out.Files)
+	slices.Sort(out.Repositories)
 	return out, nil
 }
 

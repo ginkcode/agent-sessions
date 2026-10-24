@@ -43,6 +43,40 @@ func TestListWalkSkipsDependencies(t *testing.T) {
 	}
 }
 
+func TestListWalkReportsNestedRepositories(t *testing.T) {
+	root := t.TempDir()
+	write(t, root, "notes.md", "x")
+	write(t, root, "api/.git/HEAD", "x")
+	write(t, root, "api/main.go", "x")
+	write(t, root, "apps/web/.git/HEAD", "x")
+	write(t, root, "apps/web/packages/ui/.git", "gitdir: ../../.git/modules/ui\n")
+	write(t, root, "apps/web/packages/ui/button.ts", "x")
+	write(t, root, "a-b/.git/objects/x", "x")
+	write(t, root, "plain/readme.txt", "x")
+
+	got, err := walk(context.Background(), root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"a-b", "api", "apps/web", "apps/web/packages/ui"}; !slices.Equal(got.Repositories, want) {
+		t.Errorf("repositories = %v, want %v", got.Repositories, want)
+	}
+	if slices.ContainsFunc(got.Files, func(f string) bool { return strings.Contains(f, ".git/") }) {
+		t.Errorf("walk descended into a .git directory: %v", got.Files)
+	}
+	if !slices.Contains(got.Files, "apps/web/packages/ui/button.ts") {
+		t.Errorf("files = %v, want nested repository files", got.Files)
+	}
+
+	// The root's own .git (as when git itself is unavailable) is not nested.
+	other := t.TempDir()
+	write(t, other, ".git/HEAD", "x")
+	write(t, other, "a.go", "x")
+	if got, err := walk(context.Background(), other); err != nil || got.Repositories != nil {
+		t.Errorf("root repository = %v, %v; want none", got.Repositories, err)
+	}
+}
+
 func TestListUsesGitIgnore(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git not installed")
