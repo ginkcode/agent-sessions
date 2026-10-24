@@ -374,7 +374,7 @@
 
   .result-state strong { color: var(--text-secondary); font-size: 0.9rem; }
   .result-state code { font-family: var(--font-mono); }
-  .result-state button { margin-top: 4px; padding: 5px 10px; border-radius: 5px; background: var(--accent-color); color: white; }
+  .result-state button { margin-top: 4px; font-size: inherit; padding: 5px 10px; border-radius: 5px; background: var(--accent-color); color: white; }
   .error-state strong, .error-state span { color: #ef4444; }
 
   .search-footer {

@@ -547,6 +547,7 @@
 
   .parent-link-btn {
     font-family: var(--font-mono);
+    font-size: inherit;
     font-weight: 600;
     background: none;
     border: none;

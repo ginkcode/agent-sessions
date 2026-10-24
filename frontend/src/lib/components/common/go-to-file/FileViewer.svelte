@@ -1351,6 +1351,19 @@
     font-size: 0.78rem;
   }
 
+  .viewer-header select {
+    flex-shrink: 1;
+    min-width: 0;
+    height: 24px;
+    padding: 0 4px;
+    font-family: var(--font-sans);
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+  }
+
   .viewer-path {
     overflow: hidden;
     text-overflow: ellipsis;

@@ -53,10 +53,10 @@
 <style>
   .file-prompt-backdrop { position: fixed; inset: 0; z-index: 1200; display: grid; place-items: center; background: #0008; padding: 24px; }
   .file-prompt { width: min(520px, 100%); background: var(--bg-primary); color: var(--text-primary); padding: 24px; border: 1px solid var(--border-color); border-radius: 8px; box-shadow: 0 16px 48px #0006; }
-  h2 { margin: 0 0 12px; font-size: 1.1rem; }
-  p { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 45vh; overflow: auto; font-size: .88rem; line-height: 1.5; }
+  h2 { margin: 0 0 12px; font-size: 1rem; }
+  p { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 45vh; overflow: auto; font-size: .82rem; line-height: 1.5; }
   .actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; }
-  button { padding: 6px 14px; border: 1px solid var(--border-color); border-radius: 4px; cursor: pointer; background: var(--bg-secondary); }
+  button { padding: 6px 14px; border: 1px solid var(--border-color); border-radius: 4px; cursor: pointer; background: var(--bg-secondary); font-size: .8rem; }
   button:hover { background: var(--hover-bg); }
   button.danger { color: #ef4444; }
 </style>

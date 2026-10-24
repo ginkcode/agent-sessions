@@ -121,7 +121,7 @@
 </div>
 
 <style>
-  .changes-pane { flex: 1; min-height: 0; overflow: auto; font-size: 12px; }
+  .changes-pane { flex: 1; min-height: 0; overflow: auto; font-size: 0.75rem; line-height: 1.3; }
   .repo-head, .section-head, .change-row, .commit-actions { display: flex; align-items: center; gap: 5px; }
   .repo-head { padding: 10px; border-bottom: 1px solid var(--border-color); }
   .sync-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 5px; padding: 6px 10px; border-bottom: 1px solid var(--border-color); }
@@ -129,6 +129,8 @@
   .branches { padding: 8px; display: flex; flex-direction: column; gap: 4px; max-height: 280px; overflow: auto; }
   .branches input { padding: 5px; color: var(--text-primary); background: var(--bg-secondary); border: 1px solid var(--border-color); }
   .branches button { text-align: left; }
+  /* Controls default to the platform's small control font (11px in WebKit); match the Files tree. */
+  button, input, textarea { font: inherit; }
   button { padding: 3px 6px; border-radius: 3px; cursor: pointer; color: var(--text-secondary); }
   button:hover { background: var(--bg-hover); color: var(--text-primary); }
   button:disabled { opacity: .45; cursor: default; }
@@ -142,7 +144,7 @@
   .change-row { padding: 1px 8px; }
   .change-open { flex: 1; min-width: 0; display: flex; align-items: center; gap: 5px; text-align: left; }
   .path { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .status { font-family: var(--font-mono); }
-  .note, .error { padding: 6px 10px; margin: 0; overflow-wrap: anywhere; color: var(--text-secondary); }
+  .status { font-family: var(--font-mono); font-size: 0.72rem; }
+  .note, .error { padding: 6px 10px; margin: 0; overflow-wrap: anywhere; font-size: 0.72rem; color: var(--text-secondary); }
   .error { color: var(--error-color); }
 </style>

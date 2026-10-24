@@ -196,7 +196,7 @@
   .settings-toggle.attention { color: var(--accent-color); }
   .settings { border: 1px solid var(--border-color); border-radius: 4px; margin: 4px 0; }
   .settings[hidden] { display: none; }
-  button { text-align: left; padding: 4px; color: var(--text-primary); cursor: pointer; border-radius: 4px; }
+  button { font: inherit; text-align: left; padding: 4px; color: var(--text-primary); cursor: pointer; border-radius: 4px; }
   .status { color: var(--text-secondary); }
   .tone-error.status { color: #f85149; }
   button:focus-visible { outline: 2px solid var(--accent-color); }

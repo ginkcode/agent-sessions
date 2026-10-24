@@ -75,14 +75,14 @@
 <style>
   .folder-backdrop { position: fixed; inset: 0; z-index: 1200; display: grid; place-items: center; background: #0008; padding: 24px; }
   .folder-prompt { width: min(520px, 100%); background: var(--bg-primary); color: var(--text-primary); padding: 24px; border: 1px solid var(--border-color); border-radius: 8px; box-shadow: 0 16px 48px #0006; }
-  h2 { margin: 0 0 12px; font-size: 1.1rem; }
-  p { overflow-wrap: anywhere; font-size: .88rem; line-height: 1.5; }
-  label { display: block; margin-bottom: 6px; font-size: .88rem; }
-  input { width: 100%; box-sizing: border-box; padding: 8px 10px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-secondary); color: var(--text-primary); font-family: var(--font-mono); }
+  h2 { margin: 0 0 12px; font-size: 1rem; }
+  p { margin: 0 0 12px; overflow-wrap: anywhere; font-size: .82rem; line-height: 1.5; }
+  label { display: block; margin-bottom: 6px; font-size: .82rem; }
+  input { width: 100%; box-sizing: border-box; padding: 8px 10px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-secondary); color: var(--text-primary); font-family: var(--font-mono); font-size: .8rem; }
   input:focus { outline: 2px solid var(--accent-color); outline-offset: 1px; }
-  .error { color: #ef4444; }
+  .error { margin: 8px 0 0; color: #ef4444; }
   .actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; }
-  button { padding: 6px 14px; border: 1px solid var(--border-color); border-radius: 4px; cursor: pointer; background: var(--bg-secondary); }
+  button { padding: 6px 14px; border: 1px solid var(--border-color); border-radius: 4px; cursor: pointer; background: var(--bg-secondary); font-size: .8rem; }
   button:hover:not(:disabled) { background: var(--hover-bg); }
   button:disabled { opacity: .5; cursor: default; }
 </style>
