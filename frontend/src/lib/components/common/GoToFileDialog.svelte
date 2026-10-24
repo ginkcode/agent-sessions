@@ -1,4 +1,5 @@
 <script lang="ts">
+  import DialogCloseButton from './DialogCloseButton.svelte';
   import { files } from '../../stores/files.svelte';
   import { link } from '../../stores/link.svelte';
   import { hostLabel } from '../../hosts';
@@ -381,7 +382,7 @@
       {#if link.dataHost}
         <span class="host-pill">{hostLabel(link.dataHost)}</span>
       {/if}
-      <button type="button" class="close-button" aria-label="Close" title="Close" onclick={close}>×</button>
+      <DialogCloseButton onclick={close} alignEnd />
     </header>
     <div class="body">
       <FilePicker bind:this={picker} bind:input {presentation} onPick={pick} onContext={openContext} onOpenMatch={openMatch} />
@@ -491,21 +492,7 @@
     background-color: var(--active-bg);
   }
 
-  .close-button {
-    margin-left: auto;
-    width: 28px;
-    height: 28px;
-    border-radius: 4px;
-    font-size: 1.2rem;
-    line-height: 1;
-    color: var(--text-secondary);
-    cursor: pointer;
-  }
 
-  .close-button:hover {
-    background-color: var(--hover-bg);
-    color: var(--text-primary);
-  }
 
   .body {
     flex: 1;

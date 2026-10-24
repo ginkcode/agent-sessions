@@ -1,4 +1,5 @@
 <script lang="ts">
+  import DialogCloseButton from './DialogCloseButton.svelte';
   import { importer } from '../../stores/importer.svelte';
   import { BUDGET_PRESETS, ALL_AGENTS } from '../../portable';
   import { formatBytes, formatTokens } from '../../format';
@@ -64,15 +65,7 @@
             </span>
           {/if}
         </div>
-        <button
-          type="button"
-          class="dialog-close"
-          title="Close dialog"
-          aria-label="Close dialog"
-          onclick={handleClose}
-        >
-          ✕
-        </button>
+        <DialogCloseButton label="Close dialog" onclick={handleClose} />
       </header>
 
       {#if importer.bundle}
@@ -588,21 +581,7 @@
     border-color: rgba(168, 85, 247, 0.3);
   }
 
-  .dialog-close {
-    background: transparent;
-    border: none;
-    color: var(--text-secondary);
-    font-size: 1.1rem;
-    cursor: pointer;
-    padding: 4px 8px;
-    border-radius: 4px;
-    line-height: 1;
-  }
 
-  .dialog-close:hover {
-    color: var(--text-primary);
-    background-color: var(--hover-bg);
-  }
 
   .dialog-tabs {
     display: flex;

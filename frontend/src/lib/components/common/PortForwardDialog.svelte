@@ -1,4 +1,5 @@
 <script lang="ts">
+  import DialogCloseButton from './DialogCloseButton.svelte';
   import { portForward } from '../../stores/portForward.svelte';
   import { connectionStore } from '../../stores/connection.svelte';
   import { FORWARD_STATUS_LABELS, validatePortForward, type PortForwardRule } from '../../portForward';
@@ -77,7 +78,7 @@
     <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="forward-title">
       <header>
         <div><h2 id="forward-title">Port Forwarding</h2><span class="host">{hostLabel(host)}</span></div>
-        <button type="button" class="forward-close" aria-label="Close port forwarding" onclick={() => (portForward.open = false)}>×</button>
+        <DialogCloseButton class="forward-close" label="Close port forwarding" onclick={() => { portForward.open = false; }} />
       </header>
       <div class="content">
         <p class="intro">Access a service on the remote host from this computer. Local ports listen only on <code>127.0.0.1</code>.</p>
@@ -141,7 +142,7 @@
   .status { color: var(--text-muted); } .status.active { color: var(--success-color, #16a34a); } .status.failed, .error { color: var(--danger, #ef4444); } .status.starting { color: var(--accent-color); }
   .route { display: flex; align-items: center; gap: 20px; flex-wrap: wrap; } .route > div { min-width: 0; } code { font-family: var(--font-mono); overflow-wrap: anywhere; } .route code { font-size: 0.9rem; } small { display: block; margin-top: 5px; font-size: 0.72rem; }
   .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; align-items: center; } .spacer { flex: 1; }
-  button { cursor: pointer; border: 1px solid var(--border-color); border-radius: 4px; padding: 5px 9px; font-size: 0.75rem; color: var(--text-primary); background: var(--bg-primary); } button:hover:not(:disabled) { background: var(--hover-bg); } button:disabled { opacity: 0.45; cursor: default; } .forward-close { font-size: 1.3rem; border: none; padding: 0 4px; }
+  button { cursor: pointer; border: 1px solid var(--border-color); border-radius: 4px; padding: 5px 9px; font-size: 0.75rem; color: var(--text-primary); background: var(--bg-primary); } button:hover:not(:disabled) { background: var(--hover-bg); } button:disabled { opacity: 0.45; cursor: default; }
   .primary { background: var(--accent-color); color: white; border-color: var(--accent-color); } .primary:hover:not(:disabled) { filter: brightness(1.1); background: var(--accent-color); } .add, form { margin-top: 18px; }
   .fields { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 12px; } label { display: flex; flex-direction: column; gap: 6px; font-size: 0.75rem; } input:not([type='checkbox']) { width: 100%; font-size: 0.8rem; min-width: 0; box-sizing: border-box; padding: 7px 8px; background: var(--bg-primary); color: var(--text-primary); border: 1px solid var(--border-color); border-radius: 4px; } .checkbox { flex-direction: row; align-items: center; margin-top: 14px; } .form-actions { justify-content: flex-end; }
   .error, .notice, .hint { font-size: 0.78rem; line-height: 1.5; } .hint { margin-bottom: 0; margin-top: 20px; } .notice { padding: 10px; background: var(--bg-secondary); border-radius: 4px; }

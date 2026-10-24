@@ -1,4 +1,5 @@
 <script lang="ts">
+  import DialogCloseButton from './DialogCloseButton.svelte';
   import { modalFocus } from '../../modalFocus';
   import {
     summarizePreview,
@@ -81,15 +82,7 @@
             <span class="host-pill">{remoteHost}</span>
           {/if}
         </div>
-        <button
-          type="button"
-          class="dialog-close"
-          title="Close"
-          aria-label="Close dialog"
-          onclick={handleCancel}
-        >
-          ✕
-        </button>
+        <DialogCloseButton label="Close dialog" title="Close" onclick={handleCancel} />
       </header>
 
       {#if manage.deleteOutcomeUnknown}
@@ -372,15 +365,7 @@
     font-weight: 600;
   }
 
-  .dialog-close {
-    padding: 2px 8px;
-    border-radius: var(--radius-sm);
-    font-size: 0.9rem;
-  }
 
-  .dialog-close:hover {
-    background: var(--hover-bg);
-  }
 
   .dialog-body {
     padding: 16px;

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import DialogCloseButton from './DialogCloseButton.svelte';
   import { modalFocus } from '../../modalFocus';
   import {
     connectionStore,
@@ -83,15 +84,7 @@
     >
       <header class="dialog-header">
         <h2 id="host-env-title">Environment Overrides: {hostLabel(host)}</h2>
-        <button
-          type="button"
-          class="dialog-close"
-          title="Close"
-          aria-label="Close dialog"
-          onclick={onClose}
-        >
-          ✕
-        </button>
+        <DialogCloseButton label="Close dialog" title="Close" onclick={onClose} />
       </header>
 
       <div class="dialog-body">
@@ -235,13 +228,6 @@
     font-weight: 600;
   }
 
-  .dialog-close {
-    background: transparent;
-    border: none;
-    color: var(--text-secondary);
-    font-size: 1rem;
-    cursor: pointer;
-  }
 
   .dialog-body {
     padding: 16px;

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import DialogCloseButton from './DialogCloseButton.svelte';
   import { modalFocus } from '../../modalFocus';
   import { onMount, tick, untrack } from 'svelte';
   import { api } from '../../api';
@@ -321,7 +322,7 @@
           onpointerdown={(e) => exportMenu && e.stopPropagation()}
           onclick={toggleExportMenu}
         >{exporting ? 'Exporting…' : 'Export'}</button>
-        <button type="button" class="viewer-btn" title="Close (Esc)" aria-label="Close" onclick={() => void close()}>✕</button>
+        <DialogCloseButton title="Close (Esc)" onclick={() => void close()} />
       </div>
     </header>
     <!-- svelte-ignore a11y_no_static_element_interactions -->

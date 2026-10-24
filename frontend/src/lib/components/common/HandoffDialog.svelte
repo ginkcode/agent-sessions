@@ -1,4 +1,5 @@
 <script lang="ts">
+  import DialogCloseButton from './DialogCloseButton.svelte';
   import { handoff } from '../../stores/handoff.svelte';
   import { BUDGET_PRESETS, ALL_AGENTS } from '../../portable';
   import { formatTokens } from '../../format';
@@ -58,15 +59,7 @@
             From <span class="agent-name">{handoff.session.ref.agent}</span>
           </span>
         </div>
-        <button
-          type="button"
-          class="dialog-close"
-          title="Close dialog"
-          aria-label="Close dialog"
-          onclick={handleClose}
-        >
-          ✕
-        </button>
+        <DialogCloseButton label="Close dialog" onclick={handleClose} />
       </header>
 
       <div class="dialog-body">
@@ -371,20 +364,7 @@
     color: var(--text-secondary);
   }
 
-  .dialog-close {
-    border: none;
-    background: transparent;
-    color: var(--text-muted);
-    font-size: 1rem;
-    cursor: pointer;
-    padding: 4px;
-    border-radius: var(--radius-sm);
-  }
 
-  .dialog-close:hover {
-    color: var(--text-primary);
-    background: var(--bg-tertiary);
-  }
 
   .dialog-body {
     flex: 1;

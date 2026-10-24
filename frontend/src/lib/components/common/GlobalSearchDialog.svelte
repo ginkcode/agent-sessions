@@ -1,4 +1,5 @@
 <script lang="ts">
+  import DialogCloseButton from './DialogCloseButton.svelte';
   import { tick, untrack } from 'svelte';
   import type { SearchHit } from '../../types';
   import { appState } from '../../stores/appState.svelte';
@@ -147,7 +148,7 @@
         {:else}
           <kbd>/</kbd>
         {/if}
-        <button type="button" class="close-button" aria-label="Close search" title="Close search" onclick={() => search.close()}>×</button>
+        <DialogCloseButton label="Close search" onclick={() => search.close()} />
       </header>
 
       {#if appState.filter.agent || (appState.filter.path && pathScoped)}
@@ -298,16 +299,7 @@
     text-align: center;
   }
 
-  .close-button {
-    width: 28px;
-    height: 28px;
-    border-radius: 5px;
-    color: var(--text-muted);
-    font-size: 1.25rem;
-    line-height: 1;
-  }
 
-  .close-button:hover { background: var(--hover-bg); color: var(--text-primary); }
 
   .active-scope,
   .index-progress,

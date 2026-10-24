@@ -38,11 +38,20 @@ export async function loadServerModule(url, replacements) {
   return importCompiled(filename, code, replacements);
 }
 
+let dialogCloseModule;
+
 async function importCompiled(filename, code, replacements) {
   replacements = [
     ["'svelte/internal/server'", JSON.stringify(import.meta.resolve('svelte/internal/server'))],
     ...replacements,
   ];
+  // Dialog fixtures render the real shared close control, not a markup stub.
+  const closeButton = "import DialogCloseButton from './DialogCloseButton.svelte';";
+  if (code.includes(closeButton) && !replacements.some(([from]) => from === closeButton)) {
+    dialogCloseModule ??= loadServerComponent(new URL('../src/lib/components/common/DialogCloseButton.svelte', import.meta.url), []);
+    globalThis.__dialogCloseButton = (await dialogCloseModule).default;
+    replacements.push([closeButton, 'const DialogCloseButton = globalThis.__dialogCloseButton;']);
+  }
   // Pure display-label helpers shared by the diagnostics components resolve to the real module.
   for (const [module, file] of [["'../../../codeCheckLabels'", 'codeCheckLabels'], ["'../../../managedTools'", 'managedTools'], ["'../managedTools'", 'managedTools'], ["'../../../date'", 'date']]) {
     if (code.includes(module) && !replacements.some(([from]) => from === module)) {

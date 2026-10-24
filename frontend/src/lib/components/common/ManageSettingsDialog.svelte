@@ -1,4 +1,5 @@
 <script lang="ts">
+  import DialogCloseButton from './DialogCloseButton.svelte';
   import TerminalFontSetting from './TerminalFontSetting.svelte';
   import { manage, type SettingsSection } from '../../stores/manage.svelte';
   import { launcher } from '../../stores/launcher.svelte';
@@ -79,7 +80,7 @@
     <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="settings-title">
       <header>
         <h2 id="settings-title">Settings</h2>
-        <button type="button" aria-label="Close settings" onclick={close}>✕</button>
+        <DialogCloseButton label="Close settings" onclick={close} />
       </header>
       <div class="layout">
         <nav class="nav" aria-label="Settings sections">

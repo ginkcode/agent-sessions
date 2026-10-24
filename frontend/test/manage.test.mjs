@@ -297,7 +297,11 @@ test('delete dialog renders uncertain Recycle Bin results separately and only of
   assert.ok(html.indexOf(remaining) > notRemoved && html.indexOf(remaining) < unverified);
   assert.ok(html.indexOf(uncertain) > unverified);
   assert.equal(html.split(uncertain).length - 1, 2, 'unknown path appears once as text and once as its title');
-  assert.deepEqual(renderedButtons(html).map(b => b.text), ['✕', 'Done']);
+  const buttons = renderedButtons(html);
+  assert.equal(buttons.length, 2);
+  assert.match(html, /aria-label="Close dialog"/);
+  assert.match(buttons[0].text, /<svg/);
+  assert.equal(buttons[1].text, 'Done');
   assert.doesNotMatch(html, /Retry|Cancel|Move to|Delete Permanently/);
   assert.deepEqual(fixture.calls, []);
 });
