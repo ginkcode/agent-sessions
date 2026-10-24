@@ -1,6 +1,6 @@
 # Performance Milestone 1 — Baselines and targeted reuse
 
-- Status: in progress 2026-10-24; **6/15 tasks complete**.
+- Status: in progress 2026-10-24; **7/15 tasks complete**.
 - Parent plan: [performance.md](../plan/performance.md).
 - All estimates include focused tests and are planning estimates, not promises.
 - Every task is ≤4 developer hours. Split it here and in `TASKS.md` before coding
@@ -26,11 +26,11 @@ PF-06 completed 2026-10-24; optional source contract, bounded canonical fallback
 ownership and Codex feasibility are in [../perf.md](../perf.md#pf-06--validated-source-loading-contract-2026-10-24).
 PF-07A/B implemented; PF-07C safe opt-out complete. PF-07 remains partial/blocked:
 no defensible automatic activation policy; production proof is off. PF-08/PF-10
-remain blocked. PF-09 is next; PF-08…PF-15 are unimplemented.
+remain blocked. PF-09 complete; PF-11 is next; PF-11…PF-15 unimplemented.
 
 ## Task index
 
-PF-01 through PF-06 are **complete**; PF-07 is **partial/blocked** (A/B implemented, C safe opt-out complete; activation gated); all other rows are **not started**. Dependencies are completion gates, not mere ordering
+PF-01 through PF-06 and PF-09 are **complete**; PF-07 is **partial/blocked** (A/B implemented, C safe opt-out complete; activation gated); all remaining rows are **not started**. Dependencies are completion gates, not mere ordering
 suggestions. All implementation tasks also depend on the shared guardrails in the
 [parent plan](../plan/performance.md#shared-guardrails).
 
@@ -261,7 +261,7 @@ no Codex fast path, validation cache, index query rewrite or engine/FTS activati
 
 ## PF-07 — Codex Load and Blob fast paths
 
-**Status:** PF-07A/B implemented 2026-10-24; PF-07C safe opt-out complete; parent **partial/blocked**: larger warm workloads regress and no defensible automatic policy was established; production proof is off. PF-09 next; PF-08/PF-10 blocked. [Evidence and limitations](../perf.md#pf-07a--bounded-content-proof-and-accepting-codex-sources-2026-10-24). Split before implementation. Investigation shows safe proof/reconciliation plus the full mutation/evidence matrix exceeds 4 h. Parent acceptance below is unchanged.
+**Status:** PF-07A/B implemented 2026-10-24; PF-07C safe opt-out complete; parent **partial/blocked**: larger warm workloads regress and no defensible automatic policy was established; production proof is off. PF-09 complete; PF-08/PF-10 blocked. [Evidence and limitations](../perf.md#pf-07a--bounded-content-proof-and-accepting-codex-sources-2026-10-24). Split before implementation. Investigation shows safe proof/reconciliation plus the full mutation/evidence matrix exceeds 4 h. Parent acceptance below is unchanged.
 
 ### PF-07A — Bounded content proof and accepting source methods (4 h; PF-06)
 
@@ -360,6 +360,11 @@ sources, metadata updates/deletion during indexing and invalidation during load.
 Benchmarks show fewer scans for both page and Blob/indexing paths, with identical output.
 
 ## PF-09 — Claude checkpoint reuse
+
+**Status:** complete 2026-10-24. Bounded validated unchanged-decision summaries,
+raw identity/version isolation, sidecar/source/reset regressions, repeated PF-01
+work/timing and retained-state evidence; full backend, affected race and frontend
+verification pass. [Evidence and limits](../perf.md#pf-09--claude-checkpoint-summary-reuse-2026-10-24).
 
 **Goal:** avoid repeatedly decoding unchanged metadata checkpoints safely.
 

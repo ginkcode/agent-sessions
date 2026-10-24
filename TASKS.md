@@ -340,7 +340,7 @@ milestone totals above.
 
 ## Follow-up — Performance
 
-Planned 2026-10-24. Progress: **6/15 complete**, PF-01…PF-06 complete; PF-07 partial/blocked (A/B implemented, C safe opt-out; PF-09 next); PF-08…PF-15 not started.
+Planned 2026-10-24. Progress: **7/15 complete**, PF-01…PF-06 and PF-09 complete; PF-07 partial/blocked (A/B implemented, C safe opt-out); PF-08/PF-10 blocked; PF-11…PF-15 not started.
 [Roadmap](docs/plan/performance.md) ·
 [Milestone 1 briefs and dependency graph](docs/tasks/performance-m1.md).
 PF-01 completed 2026-10-24: synthetic catalog/provider benchmarks, correctness and
@@ -363,7 +363,7 @@ before coding (4 h): investigated cheap cost eligibility; no defensible policy
 established. Production Load/Blob immediately decline to zero-proof canonical
 fallback; experiment retained privately for tests, cold Blob proof prevented,
 deterministic bypass counts and isolated small/large/Blob evidence recorded.
-Parent/PF-08/PF-10 remain blocked; next independent task **PF-09** (not started).
+Parent/PF-08/PF-10 remain blocked. PF-09 completed with bounded Claude summary reuse; [evidence](docs/perf.md#pf-09--claude-checkpoint-summary-reuse-2026-10-24). Next independent task PF-11.
 [Decision and verification](docs/perf.md#pf-07c--cost-policy-decision-and-production-bypass-2026-10-24). [PF-07C brief](docs/tasks/performance-m1.md#pf-07c--cost-policy-decision-and-safe-production-bypass-4-h-pf-07b).
 - [PF-07A](docs/tasks/performance-m1.md#pf-07a--bounded-content-proof-and-accepting-source-methods-4-h-pf-06): bounded content proof, accepting Load/Blob methods and focused regression/verification (4 h; PF-06).
 - [PF-07B](docs/tasks/performance-m1.md#pf-07b--mutation-matrix-and-repeated-evidence-4-h-pf-07a): full mutation/overlay/parent/WAL/concurrency matrix and repeated benchmark evidence (4 h; PF-07A). PF-08 remains gated on the entire parent.
@@ -381,7 +381,7 @@ performance milestone starts, write its detailed design and ≤4h task breakdown
 | [PF-06](docs/tasks/performance-m1.md#pf-06--validated-source-loading-contract) | ✅ | Validated source-loading contract | 3 | PF-02 |
 | [PF-07](docs/tasks/performance-m1.md#pf-07--codex-load-and-blob-fast-paths) | partial | Codex Load/Blob fast paths (A/B implemented, C safe opt-out; blocked) | 4 + 4 + 4 | PF-06 |
 | [PF-08](docs/tasks/performance-m1.md#pf-08--source-aware-engine-and-fts-callers) | ⬜ | Engine/FTS source-aware callers | 4 | PF-05, PF-07 |
-| [PF-09](docs/tasks/performance-m1.md#pf-09--claude-checkpoint-reuse) | ⬜ | Claude checkpoint reuse | 4 | PF-01 |
+| [PF-09](docs/tasks/performance-m1.md#pf-09--claude-checkpoint-reuse) | complete | Claude checkpoint reuse | 4 | PF-01 |
 | [PF-10](docs/tasks/performance-m1.md#pf-10--codex-checkpoint-reuse) | ⬜ | Codex checkpoint reuse | 4 | PF-01, PF-07 |
 | [PF-11](docs/tasks/performance-m1.md#pf-11--bounded-frontend-listing-snapshots) | ⬜ | Bounded frontend listing snapshots | 3 | PF-03 |
 | [PF-12](docs/tasks/performance-m1.md#pf-12--listing-freshness-and-draft-regressions) | ⬜ | Listing freshness and draft safety | 4 | PF-11 |

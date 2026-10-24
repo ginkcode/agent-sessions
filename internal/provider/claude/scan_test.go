@@ -261,9 +261,9 @@ func TestScanSubagentAndMetadataChange(t *testing.T) {
 	if err != nil || len(changed.Changed) != 1 {
 		t.Fatalf("changed = %+v, %v", changed.Changed, err)
 	}
-	// Baseline: a sidecar-only change resumes at the saved offset (one open, no
-	// records) but decodes every checkpoint and re-encodes only the subagent.
-	if work.SourceOpens.Load() != 1 || work.Records.Load() != 0 || work.CheckpointDecodes.Load() != 2 || work.CheckpointEncodes.Load() != 1 {
+	// PF-09: a sidecar-only change resumes at the saved offset (one open, no
+	// records), decoding and re-encoding only the subagent checkpoint.
+	if work.SourceOpens.Load() != 1 || work.Records.Load() != 0 || work.CheckpointDecodes.Load() != 1 || work.CheckpointEncodes.Load() != 1 {
 		t.Errorf("sidecar work opens/records/decodes/encodes = %d/%d/%d/%d", work.SourceOpens.Load(), work.Records.Load(), work.CheckpointDecodes.Load(), work.CheckpointEncodes.Load())
 	}
 	m := changed.Changed[0]

@@ -17,6 +17,8 @@ type Provider struct {
 	root   string // ~/.claude or custom root
 	procFS string // "/proc" on Linux (overridable in tests)
 	git    *pathutil.GitResolver
+
+	checkpointReuse checkpointReuse
 }
 
 // New constructs a Claude Code session provider.

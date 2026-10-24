@@ -16,7 +16,7 @@ later milestones build on the contracts defined in M0.
 | [file-editing.md](file-editing.md) | Go to File editing: FE-01…FE-14 task checklist, safe local/remote saves, drafts, conflicts, and lifecycle guards |
 | [code-diagnostics.md](code-diagnostics.md) | Proposed Go to File diagnostics: CD-01…CD-28, project checks, live language servers, trust, Problems panel, and local/remote lifecycle |
 | [editor-essentials.md](editor-essentials.md) | Project search and replace, new agent sessions and alerts, code navigation, Git changes: PS, AG, NAV and GIT tasks |
-| [performance.md](performance.md) | Performance roadmap; Milestone 1 synthetic baselines and targeted reuse, PF-01…PF-15; PF-01…PF-06 complete (6/15), PF-07 partial/blocked (A/B implemented, C safe opt-out; PF-09 next) |
+| [performance.md](performance.md) | Performance roadmap; Milestone 1 synthetic baselines and targeted reuse, PF-01…PF-15; PF-01…PF-06 and PF-09 complete (7/15); PF-07 partial/blocked, PF-08/PF-10 blocked; PF-11 next |
 
 Detailed code-diagnostics task briefs: [../tasks/README.md](../tasks/README.md).
 Authoritative code-diagnostics wire contract: [code-diagnostics-contract.md](code-diagnostics-contract.md).

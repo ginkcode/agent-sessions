@@ -1,6 +1,7 @@
 package claude
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -319,6 +320,68 @@ func (c *checkpoint) finalize(fileModTime time.Time) model.SessionMeta {
 	return meta
 }
 
+// Only unchanged decisions are cached, never mutable parser state. Raw bytes are
+// copied (not hashed or aliased to caller-owned ScanState), so even an in-place
+// checkpoint edit must miss. Admission limits bound both bytes and bookkeeping.
+const (
+	checkpointReuseLimit    = 1024
+	checkpointReuseMaxBytes = 16 << 10
+)
+
+type checkpointSummary struct {
+	raw                   string
+	size, modTime, offset int64
+	info                  os.FileInfo
+	metaPath              string
+	metaSize, metaModTime int64
+}
+
+type checkpointReuse struct {
+	mu      sync.Mutex
+	entries map[string]checkpointSummary
+}
+
+func (c *checkpointReuse) lookup(path string, old provider.SourceState) (checkpointSummary, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	s, ok := c.entries[path]
+	return s, ok && s.size == old.Size && s.modTime == old.ModTimeNs && s.offset == old.Offset && bytes.Equal([]byte(s.raw), old.Checkpoint)
+}
+
+func (c *checkpointReuse) remember(src source, state provider.SourceState, info os.FileInfo, cp *checkpoint) {
+	if len(state.Checkpoint) > checkpointReuseMaxBytes {
+		return
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.entries == nil {
+		c.entries = make(map[string]checkpointSummary)
+	}
+	if _, ok := c.entries[src.Path]; !ok && len(c.entries) >= checkpointReuseLimit {
+		return
+	}
+	c.entries[src.Path] = checkpointSummary{
+		raw: string(state.Checkpoint), size: state.Size, modTime: state.ModTimeNs, offset: state.Offset, info: info,
+		metaPath: cp.SubagentMetaPath, metaSize: cp.SubagentMetaSize, metaModTime: cp.SubagentMetaModTimeNs,
+	}
+}
+
+// Prune on discovery, including an empty/reset scan. Concurrent scans can evict
+// useful entries, but cannot authorize reuse of a different checkpoint.
+func (c *checkpointReuse) prune(sources []source, prev provider.ScanState) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	present := make(map[string]bool, len(sources))
+	for _, src := range sources {
+		present[src.Path] = true
+	}
+	for path := range c.entries {
+		if _, ok := prev.Sources[path]; !ok || !present[path] {
+			delete(c.entries, path)
+		}
+	}
+}
+
 type sourceScan struct {
 	state   provider.SourceState
 	meta    model.SessionMeta
@@ -335,6 +398,7 @@ func (p *Provider) Scan(ctx context.Context, prev provider.ScanState) (provider.
 	if err != nil {
 		return provider.ScanResult{}, err
 	}
+	p.checkpointReuse.prune(sources, prev)
 	result := provider.ScanResult{State: provider.ScanState{Sources: make(map[string]provider.SourceState, len(sources))}}
 	if len(sources) == 0 {
 		for path, old := range prev.Sources {
@@ -423,7 +487,14 @@ func (p *Provider) scanSource(ctx context.Context, src source, old provider.Sour
 
 	work := provider.ScanWorkFromContext(ctx)
 	var cp checkpoint
-	resume := hasOld && len(old.Checkpoint) != 0 && old.Offset >= 0 && old.Size <= info.Size() && old.Offset <= info.Size()
+	metaSize, metaModTimeNs := subagentMetaStat(src.MetaPath)
+	summary, known := p.checkpointReuse.lookup(src.Path, old)
+	sameFile := !known || os.SameFile(summary.info, info)
+	if hasOld && known && sameFile && old.Size == info.Size() && old.ModTimeNs == info.ModTime().UnixNano() &&
+		summary.metaPath == src.MetaPath && summary.metaSize == metaSize && summary.metaModTime == metaModTimeNs {
+		return out
+	}
+	resume := sameFile && hasOld && len(old.Checkpoint) != 0 && old.Offset >= 0 && old.Size <= info.Size() && old.Offset <= info.Size()
 	if resume {
 		if work != nil {
 			work.CheckpointDecodes.Add(1)
@@ -435,9 +506,9 @@ func (p *Provider) scanSource(ctx context.Context, src source, old provider.Sour
 			resume = false
 		}
 	}
-	metaSize, metaModTimeNs := subagentMetaStat(src.MetaPath)
 	metaChanged := !resume || cp.SubagentMetaPath != src.MetaPath || cp.SubagentMetaSize != metaSize || cp.SubagentMetaModTimeNs != metaModTimeNs
 	if resume && hasOld && old.Size == info.Size() && old.ModTimeNs == info.ModTime().UnixNano() && !metaChanged {
+		p.checkpointReuse.remember(src, old, info, &cp)
 		return out
 	}
 	// A same-size rewrite is not append-only. Rebuild rather than returning the
@@ -545,6 +616,7 @@ func (p *Provider) scanSource(ctx context.Context, src source, old provider.Sour
 		Size: info.Size(), ModTimeNs: info.ModTime().UnixNano(),
 		Offset: r.Offset(), Checkpoint: checkpointBytes,
 	}
+	p.checkpointReuse.remember(src, out.state, info, &cp)
 	return out
 }
 

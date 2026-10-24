@@ -1022,3 +1022,75 @@ source race tests for both packages `-count=3`, `go test ./...`, `go vet ./...`,
 frontend tests/check/build and full repository race were not rerun for PF-07C
 (previous PF-07B results above are historical). No private stores/scripts, installs,
 app launch/kill, extra agents, engine/FTS activation, commits or pushes.
+
+## PF-09 — Claude checkpoint summary reuse (2026-10-24)
+
+Implemented only PF-09. PF-07 remains partial/blocked; PF-08/PF-10 remain
+blocked. No persisted checkpoint/version or parser changes. A provider-owned
+summary caches only the validated unchanged decision and sidecar dependencies,
+not decoded metadata, pending usage or pending tool slices. Exact copied raw
+checkpoint bytes, Size/ModTime/Offset, transcript file identity and sidecar
+path/size/mtime must match. Changed sources decode normally; cold/reset scans
+parse normally. New providers validate persisted checkpoints once. The raw copy
+prevents caller in-place edits from silently authorizing reuse; no content hash
+or duplicate marshal is introduced. Existing best-effort stat-based freshness
+semantics remain: same-inode content edits preserving size and mtime (including
+sidecars) are not detected; this is not a content-proof feature.
+
+Admission is at most 1024 summaries with raw checkpoints at most 16 KiB each
+(16 MiB raw upper bound, plus structs/map/path/FileInfo storage). Oversized and
+non-admitted sources use the old decode path. No LRU or parser snapshot is
+retained. Discovery prunes removed/reset entries; concurrent scans can reduce
+hit rates but cannot match different raw state. Locks guard cache bookkeeping;
+caller mutation of ScanState concurrently with Scan remains unsupported.
+
+### Repeated synthetic evidence
+
+Darwin arm64, Go 1.26.8, same host as the immediately preceding baseline.
+Generated PF-01 fixture: 64 sources × 32 records, 250,624 bytes. Generation is
+outside timed work. Commands before and after:
+
+```sh
+go test ./internal/provider -run '^TestSyntheticScanBaseline$' -bench '^BenchmarkSyntheticScan/claude/' -benchmem -benchtime=200ms -count=3
+go test ./internal/provider/claude -run 'TestCheckpointReuse' -v -count=3
+```
+
+| Mode | Before µs/op (3 runs) | After µs/op (3 runs) | Before → after B/op | Before → after allocs/op |
+|---|---|---|---|---|
+| cold | 3717, 3775, 3782 | 3860, 3889, 3858 | 67,741,388–67,745,958 → 67,796,368–67,799,104 | 11,733–11,751 → 11,807–11,817 |
+| unchanged | 261, 257, 260 | 174, 172, 172 | 188,039–188,066 → 149,523–149,547 | 1337 → 444 |
+| one-source append | 371, 369, 366 | 233, 232, 230 | 1,242,363–1,242,488 → 1,204,607–1,204,728 | 1363 → 484 |
+
+Unchanged checkpoint decodes fall **64 → 0**, append **64 → 1**;
+encodes/opens/records stay respectively 0/0/0 and 1/1/1. Cold stays
+0 decodes, 64 encodes/opens, 2048 records. Approximate median improvements:
+34% unchanged and 37% append, with roughly 2% cold overhead. Advisory warm
+filesystem timings, not native latency claims. The append benchmark repeatedly
+uses its fixed pre-append state; this intentionally measures the same one-record
+resume each iteration, not an ever-growing transcript. Historical PF-01 exact
+counts above are preserved; current assertions now require the reduced work.
+
+### Retained-state cost
+
+Measured summary struct size: 88 bytes. Basic fixture raw identity: 802 bytes;
+125-byte temporary path; accounted payload 1015 bytes per entry excluding map,
+allocator and FileInfo backing storage. GC/HeapAlloc deltas for 1024 summaries
+with 802-byte synthetic raw identities: **1,105,936 / 1,146,096 / 1,105,920 bytes**.
+This isolated measurement includes map/raw allocations but excludes preallocated
+paths and a shared FileInfo; it is not whole-provider heap or worst-case usage.
+Raw-state retention is capped rather than retaining a potentially huge parsed
+checkpoint or its PendingTools allocation. Entry saturation is conservative
+admission, so workloads above 1024 sources may see smaller gains.
+
+### Verification and limitations
+
+Passed full `go test ./...`, `go build ./...`, `go vet ./...`, affected
+`go test -race ./internal/provider/claude ./internal/provider`, frontend
+`npm test`, `npm run check`, `npm run build`, gofmt and diff whitespace checks.
+Regressions cover versions (missing/old/future), corrupt and in-place edited raw
+state, valid foreign state, reset/new provider, identical-stat inode replacement,
+same-size rewrite, truncation, sidecar changes/removal, source removal, admission
+bounds and concurrent scans. Existing every-fixture-boundary resume, split
+usage/tool state and checkpoint roundtrip tests pass. Prior ScanState immutability
+is checked. No private stores, forbidden script, installation, app launch/kill,
+Windows package, extra agents, commits or pushes. Native GUI QA is unperformed.

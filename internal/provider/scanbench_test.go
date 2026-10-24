@@ -119,6 +119,12 @@ func TestSyntheticScanBaseline(t *testing.T) {
 				{warmWork, 0, 0, scanSources, 0},
 				{appendWork, 1, 1, scanSources, 1},
 			} {
+				if agent == "claude" && tc.w != coldWork {
+					tc.decodes = 0
+					if tc.w == appendWork {
+						tc.decodes = 1
+					}
+				}
 				if agent == "codex" {
 					tc.decodes += scanSources // canonical checkpoint pass
 					tc.encodes += scanSources
