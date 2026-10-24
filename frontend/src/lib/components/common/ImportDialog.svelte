@@ -1114,6 +1114,13 @@
     background-color: var(--hover-bg);
   }
 
+  @media screen {
+    :global([data-theme="dark"]) .command-code {
+      background-color: var(--bg-primary);
+      color: var(--text-primary);
+    }
+  }
+
   .command-code {
     margin: 0;
     padding: 8px 10px;

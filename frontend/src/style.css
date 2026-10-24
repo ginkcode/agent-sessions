@@ -55,13 +55,13 @@
 @media screen {
   [data-theme="dark"] {
     color-scheme: dark;
-    --bg-primary: #1c1c1e;
-    --bg-secondary: #26262a;
-    --bg-tertiary: #323238;
+    --bg-primary: #2c2c2b;
+    --bg-secondary: #2c2c2b;
+    --bg-tertiary: #383837;
     --border-color: rgba(255, 255, 255, 0.08);
     --text-primary: #f2f2f2;
     --text-secondary: #cccccc;
-    --text-muted: #b0b0b8;
+    --text-muted: #b0b0ad;
     --accent-color: #0284c7;
     --accent: var(--accent-color);
     --accent-hover: #0ea5e9;

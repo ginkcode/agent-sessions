@@ -1,0 +1,24 @@
+# Native-tone dark surfaces (2026-10-24)
+
+Target: #2C2C2B, matching raw screenshot title-bar pixels RGB (44,44,43).
+The user chose to match all large surfaces, including terminal and transcript.
+The native title bar remains OS-managed; its appearance can vary with focus and
+system settings.
+
+## DT-01 — Palette update (complete)
+
+Updated shared dark tokens, terminal fallback and the screen-dark command-block
+exception. Editor surfaces already use shared tokens; no duplicate palette added.
+
+Set dark primary/secondary surfaces to #2c2c2b, tertiary controls to #383837,
+and muted text to #b0b0ad. Update the terminal canvas fallback and the dark-only
+Import command-block exception. Leave light/print, ANSI output colors, accents,
+selection, borders, semantic/status colors and syntax/diff colors unchanged.
+
+## DT-02 — Regression gate (pending)
+
+Test dark tokens, text contrast, unchanged light tokens, terminal canvas/CSS
+precedence/cursor background and preserved ANSI black. Run frontend tests,
+check/build and diff checks. Native visual matching is unverified unless tested.
+Manual follow-up: compare titlebar, sidebar, list, transcript, terminal and editor
+in dark/system-dark; inspect controls, hover and selection; verify light mode.
