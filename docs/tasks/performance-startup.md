@@ -516,7 +516,7 @@ mandatory. Generated fixtures only, no private stores or real host connections.
 |---|---|---|---|
 | ST-07A | Complete | Document readiness/admission/lifecycle contracts | 1 h |
 | ST-07B | Complete | Atomic discovery snapshot/change subscription | ≤3 h |
-| ST-07C | Pending | Prepared RPC startup, early initialize and method gate | ≤4 h |
+| ST-07C | Complete | Prepared RPC startup, early initialize and method gate | ≤4 h |
 | ST-07D | Pending | CLI wiring and generated real-engine integration | ≤3 h |
 | ST-07E | Pending | Opt-in content-free remote phase timing | ≤3 h |
 | ST-07F | Pending | Integrated regression gate and repeated evidence | ≤3 h |
@@ -576,3 +576,9 @@ ST-07B evidence: snapshot/change subscription wakes on begin/update/stop under t
 discovery mutex, stale lifetime updates do not wake or publish. Held writer-open
 cases verify observer snapshot equals lock-free status before verification. Focused
 engine discovery/hint race tests `-count=3` PASS (4.613 s), changed-code lint 0 issues.
+
+ST-07C evidence: optional prepared startup keeps backend identity, runs capability
+initialization before tracked Start, waits for new-lifetime usability, and gates all
+noncatalog calls cancellation-aware. Serve joins startup before diagnostics expiry.
+Existing synchronous composition remains unchanged. RPC race suite PASS (9.150 s),
+focused prepared tests repeated three times PASS, changed-code lint 0 issues.

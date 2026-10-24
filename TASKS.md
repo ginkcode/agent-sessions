@@ -394,7 +394,7 @@ split it before coding. Native GUI QA remains separately reported, not assumed.
 
 ### Startup priority package
 
-Startup now precedes performance Milestone 2. **ST-07 remote follow-up: A–B complete, C–F pending** ([briefs](docs/tasks/performance-startup.md#st-07--remote-startup-responsiveness-2026-10-24)); preserve mandatory verification while exposing cached catalog through early remote initialization. [Plan and readiness/compatibility
+Startup now precedes performance Milestone 2. **ST-07 remote follow-up: A–C complete, D–F pending** ([briefs](docs/tasks/performance-startup.md#st-07--remote-startup-responsiveness-2026-10-24)); preserve mandatory verification while exposing cached catalog through early remote initialization. [Plan and readiness/compatibility
 policy](docs/plan/performance-startup.md) · [Sequential ≤4h briefs](docs/tasks/performance-startup.md).
 Progress: original **6/6 complete**; **ST-06A/ST-06B complete** after the user retest still showed >10 s. Historical package gate 2026-10-24: ST-00…ST-04 complete; ST-05 integrated gate complete ([evidence](docs/perf.md#st-05--integrated-startup-gate-2026-10-24)) with native GUI/SSH/Windows execution explicitly unperformed. ST-04 resolves its measurement gate with generated fanout and fast/slow provider evidence; early disabled/fallback catalog notification is the one selected fix. Watcher fanout scaling remains a follow-up.
 The reported roughly 10-second launch delay is not a measured baseline; its exact

@@ -29,6 +29,9 @@ type Starter func(ctx context.Context) (engine.Backend, Capabilities, paths.Root
 type Server struct {
 	backend   engine.Backend
 	starter   Starter
+	preparer  Preparer
+	startup   *startupTask
+	startups  sync.WaitGroup
 	reader    *FrameReader
 	writer    *FrameWriter
 	cancelReg *CancelRegistry
@@ -69,6 +72,7 @@ func (s *Server) SetStarter(fn Starter) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.starter = fn
+	s.preparer = nil
 }
 
 // SetIdleTimeout makes Serve return ErrIdleTimeout when no frame arrives for
@@ -105,6 +109,7 @@ func (s *Server) Serve(parent context.Context) error {
 		cancel()
 		_ = s.Close()
 		s.handlers.Wait()
+		s.startups.Wait()
 		s.expireDiagnostics()
 	}()
 	go s.diagnosticsWriter(ctx)
@@ -254,10 +259,10 @@ func (s *Server) handleInitialize(serveCtx context.Context, req Request) (any, e
 		return nil, &ResponseError{Code: CodeInvalidRequest, Message: "initialize already called"}
 	}
 	s.initState = 1
-	starter := s.starter
+	starter, preparer := s.starter, s.preparer
 	s.mu.Unlock()
 
-	res, err := s.initialize(serveCtx, req, starter)
+	res, err := s.initialize(serveCtx, req, starter, preparer)
 
 	s.mu.Lock()
 	s.initState = 2
@@ -273,7 +278,7 @@ func (s *Server) handleInitialize(serveCtx context.Context, req Request) (any, e
 	return res, nil
 }
 
-func (s *Server) initialize(serveCtx context.Context, req Request, starter Starter) (InitializeResult, error) {
+func (s *Server) initialize(serveCtx context.Context, req Request, starter Starter, preparer Preparer) (InitializeResult, error) {
 	var initReq InitializeRequest
 	if len(req.Params) > 0 {
 		if err := json.Unmarshal(req.Params, &initReq); err != nil {
@@ -317,7 +322,18 @@ func (s *Server) initialize(serveCtx context.Context, req Request, starter Start
 		// test setup.
 	}
 	var roots paths.Roots
-	if starter != nil {
+	var start func(context.Context) error
+	switch {
+	case preparer != nil:
+		prepared, err := preparer(serveCtx)
+		if err != nil {
+			return InitializeResult{}, err
+		}
+		caps, roots, start = prepared.Capabilities, prepared.Roots, prepared.Start
+		s.mu.Lock()
+		s.backend = prepared.Backend
+		s.mu.Unlock()
+	case starter != nil:
 		backend, c, r, err := starter(serveCtx)
 		if err != nil {
 			return InitializeResult{}, err
@@ -326,7 +342,7 @@ func (s *Server) initialize(serveCtx context.Context, req Request, starter Start
 		s.mu.Lock()
 		s.backend = backend
 		s.mu.Unlock()
-	} else {
+	default:
 		roots, _ = paths.Default()
 	}
 
@@ -341,6 +357,11 @@ func (s *Server) initialize(serveCtx context.Context, req Request, starter Start
 	s.gitSync = caps.GitSync
 	s.mu.Unlock()
 	host := s.initializeDiagnostics(serveCtx, &caps)
+	if start != nil {
+		if err := s.startPrepared(serveCtx, start); err != nil {
+			return InitializeResult{}, err
+		}
+	}
 	return InitializeResult{
 		CodeDiagnosticsHostID: host,
 		ProtocolVersion:       ProtocolVersion,
@@ -376,6 +397,9 @@ func (s *Server) handleRequest(parentCtx context.Context, req Request) {
 }
 
 func (s *Server) dispatch(ctx context.Context, req Request) (any, error) {
+	if err := s.awaitStartup(ctx, req.Method); err != nil {
+		return nil, err
+	}
 	s.mu.Lock()
 	backend := s.backend
 	s.mu.Unlock()
