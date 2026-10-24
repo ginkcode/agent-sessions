@@ -20,7 +20,7 @@
   import NoticePart from './parts/NoticePart.svelte';
   import ImagePart from './parts/ImagePart.svelte';
   import { isImageFile } from '../../images';
-  import { captureSelection, selectionMenuItems, type SelectedText } from '../../selectionTranslation';
+  import { captureSelection, holdSelection, selectionMenuItems, type SelectedText } from '../../selectionTranslation';
   import SelectionTranslation from './SelectionTranslation.svelte';
 
   interface Props {
@@ -69,6 +69,14 @@
     void translateSettings.language;
     snippet = null;
     menu = null;
+  });
+
+  // The menu and then its popover take focus, which clears the selection.
+  // Menu → popover is the same range, so the hold continues across it.
+  let held = $derived(menu?.selection?.range ?? snippet?.range);
+  $effect(() => {
+    const range = held;
+    return range ? holdSelection(range) : undefined;
   });
 
   function openMenu(e: MouseEvent) {

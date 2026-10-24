@@ -432,7 +432,7 @@ Dialog close controls: **DC-01 / DC-02 complete** — [centered shared close but
 
 Dark theme tone: **DT-01…DT-05 complete** — [native-tone surfaces](docs/tasks/dark-tone.md), layer dark surfaces around the native #2C2C2B tone; theme-matched session-count tooltip.
 
-Transcript selection: **SL-01…SL-04 complete** — [selected-text menu and contextual translation](docs/tasks/selection-translate.md), Copy/Translate for a selection with its sentence as context.
+Transcript selection: **SL-01…SL-05 complete** — [selected-text menu and contextual translation](docs/tasks/selection-translate.md), Copy/Translate for a selection with its sentence as context.
 
 Internal terminal layout: **TM-01 / TM-02 complete** — [maximize/restore terminal](docs/tasks/terminal-maximize.md), expand within the app without restarting sessions.
 

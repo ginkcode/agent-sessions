@@ -23,6 +23,29 @@ export interface SelectedText {
   text: string;
   context: string;
   rect: { left: number; right: number; top: number; bottom: number };
+  /** A copy of the selected range, held while the menu or popover has focus. */
+  range: Range;
+}
+
+const HELD = 'held-selection';
+
+/**
+ * Focus moving into the menu or popover clears the page selection. Paint the
+ * captured range meanwhile; release selects it again unless it left the page or
+ * another selection replaced it.
+ */
+export function holdSelection(range: Range): () => void {
+  const highlights = typeof CSS !== 'undefined' && typeof Highlight !== 'undefined' ? CSS.highlights : undefined;
+  const highlight = highlights ? new Highlight(range) : undefined;
+  if (highlight) highlights!.set(HELD, highlight);
+  return () => {
+    if (highlight && highlights!.get(HELD) === highlight) highlights!.delete(HELD);
+    const selection = window.getSelection();
+    if (!selection || !range.startContainer.isConnected || !range.endContainer.isConnected) return;
+    if (selection.rangeCount > 0 && !selection.isCollapsed) return;
+    selection.removeAllRanges();
+    selection.addRange(range);
+  };
 }
 
 const encoder = new TextEncoder();
@@ -102,5 +125,5 @@ export function captureSelection(root: HTMLElement, selection: Selection | null)
   const selected = range.toString();
   if (invalid || !Number.isFinite(start) || !Number.isFinite(end) || !selected.trim()) return null;
   const rect = range.getBoundingClientRect();
-  return { text: selected, context: sentenceContext(text, start, end), rect: { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom } };
+  return { text: selected, context: sentenceContext(text, start, end), rect: { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom }, range: range.cloneRange() };
 }

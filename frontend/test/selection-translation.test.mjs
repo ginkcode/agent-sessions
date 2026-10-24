@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { captureSelection, requestSelectionTranslation, selectionMenuItems, sentenceContext, MAX_SELECTION_CONTEXT } from '../src/lib/selectionTranslation.ts';
+import { captureSelection, holdSelection, requestSelectionTranslation, selectionMenuItems, sentenceContext, MAX_SELECTION_CONTEXT } from '../src/lib/selectionTranslation.ts';
 import { createAPI } from '../src/lib/api.ts';
 import { MockBackendAPI } from '../src/lib/mock/mockApi.ts';
 import { loadServerComponent } from './helpers.mjs';
@@ -38,6 +38,7 @@ function selection(startContainer, startOffset, endContainer, endOffset, value, 
       toString: () => value,
       intersectsNode: n => touched.includes(n),
       getBoundingClientRect: () => ({ left: 10, right: 40, top: 20, bottom: 35 }),
+      cloneRange() { return { clone: true, startContainer, startOffset, endContainer, endOffset }; },
     }; },
   };
 }
@@ -73,6 +74,8 @@ test('selection capture uses ordered endpoints across markup, paragraphs and cod
     assert.equal(captured.text, 'bank');
     assert.equal(captured.context, 'The river bank is nearby.');
     assert.deepEqual(captured.rect, { left: 10, right: 40, top: 20, bottom: 35 });
+    // A copy, so the held range survives the selection being cleared.
+    assert.deepEqual(captured.range, { clone: true, startContainer: b, startOffset: 6, endContainer: b, endOffset: 10 });
     // Anchor direction is intentionally irrelevant: the Range is ordered.
     range.anchorNode = c;
     range.focusNode = b;
@@ -150,4 +153,67 @@ test('the Wails binding receives selection and context separately and errors nor
     await assert.rejects(backend.translateSelection('x', 'y'), /context is too long/);
   } finally { globalThis.window = previous; }
   assert.match(readFileSync(new URL('../src/lib/api.ts', import.meta.url), 'utf8'), /'translate',\n  'translateSelection',/);
+});
+
+function withSelectionGlobals(highlights, selection, run) {
+  const saved = { CSS: globalThis.CSS, Highlight: globalThis.Highlight, window: globalThis.window };
+  try {
+    globalThis.CSS = highlights ? { highlights } : undefined;
+    globalThis.Highlight = highlights ? class { constructor(...ranges) { this.ranges = ranges; } } : undefined;
+    globalThis.window = { getSelection: () => selection };
+    run();
+  } finally { Object.assign(globalThis, saved); }
+}
+function fakeSelection(collapsed = true) {
+  const calls = [];
+  return {
+    calls, rangeCount: collapsed ? 0 : 1, isCollapsed: collapsed,
+    removeAllRanges() { calls.push('clear'); },
+    addRange(r) { calls.push(r); },
+  };
+}
+
+test('a held selection is painted while open and selected again on release', () => {
+  const range = { startContainer: { isConnected: true }, endContainer: { isConnected: true } };
+  const highlights = new Map();
+  const selection = fakeSelection();
+  withSelectionGlobals(highlights, selection, () => {
+    const release = holdSelection(range);
+    assert.deepEqual(highlights.get('held-selection').ranges, [range]);
+    assert.deepEqual(selection.calls, []);
+    release();
+    assert.equal(highlights.has('held-selection'), false);
+    assert.deepEqual(selection.calls, ['clear', range]);
+  });
+});
+
+test('release leaves a newer selection, detached ranges and newer holds alone', () => {
+  const live = { startContainer: { isConnected: true }, endContainer: { isConnected: true } };
+  const highlights = new Map();
+  const newer = fakeSelection(false);
+  withSelectionGlobals(highlights, newer, () => {
+    const first = holdSelection(live);
+    const second = holdSelection(live);
+    first();
+    assert.ok(highlights.has('held-selection'), 'an older release keeps the newer highlight');
+    second();
+    assert.deepEqual(newer.calls, [], 'the user selected something else meanwhile');
+  });
+  const detached = { startContainer: { isConnected: false }, endContainer: { isConnected: true } };
+  const empty = fakeSelection();
+  withSelectionGlobals(undefined, empty, () => {
+    holdSelection(detached)();
+    assert.deepEqual(empty.calls, []);
+    // Without the highlight API, release still restores the selection.
+    holdSelection(live)();
+    assert.deepEqual(empty.calls, ['clear', live]);
+  });
+});
+
+test('the transcript holds the selection across its menu and popover', () => {
+  const bubble = readFileSync(new URL('../src/lib/components/transcript/MessageBubble.svelte', import.meta.url), 'utf8');
+  assert.match(bubble, /let held = \$derived\(menu\?\.selection\?\.range \?\? snippet\?\.range\);/);
+  assert.match(bubble, /return range \? holdSelection\(range\) : undefined;/);
+  const css = readFileSync(new URL('../src/style.css', import.meta.url), 'utf8');
+  assert.match(css, /::highlight\(held-selection\)\s*\{\s*background-color: Highlight;\s*\}/);
 });

@@ -153,6 +153,11 @@ input, select {
   background: inherit;
 }
 
+/* A transcript selection held while its menu or translation has focus. */
+::highlight(held-selection) {
+  background-color: Highlight;
+}
+
 /* Syntax highlighting tokens (Light mode) */
 .hljs-keyword, .hljs-selector-tag, .hljs-built_in {
   color: #d73a49;

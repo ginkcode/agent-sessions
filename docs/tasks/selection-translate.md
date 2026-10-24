@@ -72,3 +72,28 @@ placement and focus, and a real provider call. Manual checklist: select a word
 mid-sentence → right-click → Copy and Translate; Escape/outside click/scroll
 close the popover; a selection across two messages shows the native menu; the
 message menu still includes Print / Save as PDF.
+
+## SL-05 — Keep the selection visible (complete)
+
+Report: when the selection menu appears, the text no longer looks selected.
+The menu focuses its first item (and the translation popover focuses its card)
+for keyboard use; the webview clears a page selection when focus moves outside
+it.
+
+Keep focus management. Capture a clone of the selected `Range` with the
+snapshot. While the selection menu or its translation popover is open, paint
+that range with the CSS Custom Highlight API (`held-selection`, system
+`Highlight` background), where supported. When both close, remove the highlight
+and select the range again, unless its nodes left the page or the user made
+another selection meanwhile (an outside click then behaves natively). Moving from
+the menu to the popover keeps one continuous hold. Without highlight support,
+only the restore applies. Test the helper with fakes, the capture clone, the
+global highlight style and the component wiring; run frontend tests, check,
+build and diff checks. Native painting and focus behavior need a manual check.
+
+Verification: frontend 731/731 PASS; check 0 errors (existing tsconfig
+warning); build PASS (existing chunk-size warning); diff check clean. Tests
+cover painting and restoring, a newer selection or hold, detached ranges, no
+highlight support, the captured clone and the wiring. Not exercised natively:
+that the webview paints `::highlight` like the selection and that restoring
+after Escape/Copy/popover close feels native.
