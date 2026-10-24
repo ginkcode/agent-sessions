@@ -35,7 +35,7 @@ pane in a hidden tab, pane resizing limits, closing a split tab with an agent,
 and drops to a given pane; session-link tests cover viewing every pane of the
 shown tab. Terminal, session-link and alert tests pass; check 0 errors.
 
-## TS-02 — Panel layout
+## TS-02 — Panel layout (complete)
 
 Panes of the shown group sit side by side with the panel at the bottom and
 stacked with it on the left, separated by the shared splitter (each pane keeps
@@ -45,6 +45,14 @@ loses its scrollback. With more than one pane the focused one has an accent
 edge; clicking or typing in a pane focuses it. A group's tab shows each pane's
 segment (status, agent, label, host, exit) with the focused one emphasized;
 clicking a segment focuses that pane. Closing a tab closes its group.
+
+Verification: panel render tests cover a single pane (no splitter, no
+segment emphasis, each dock and maximize state) and a split tab docked at the
+bottom and on the left (one tab per group, segments in pane order with the
+focused one marked, one splitter, every pane view mounted, shares as flex
+growth, the other group's pane hidden). Terminal, session-link and alert tests
+pass; check 0 errors. Not run in the app: refitting side-by-side panes and
+dragging the splitter.
 
 ## TS-03 — Controls and shortcuts
 

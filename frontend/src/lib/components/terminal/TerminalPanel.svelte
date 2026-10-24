@@ -7,6 +7,7 @@
   import { isMac } from '../../../main';
   import { newShellShortcutLabel } from '../../terminal';
   import ContextMenu from '../common/ContextMenu.svelte';
+  import Splitter from '../common/Splitter.svelte';
   import AgentIcon from '../common/AgentIcon.svelte';
   import AttentionDot from '../common/AttentionDot.svelte';
   import { attentionLabel } from '../../alerts';
@@ -15,15 +16,53 @@
   import { link } from '../../stores/link.svelte';
   import type { ContextMenuItem } from '../common/ContextMenu.svelte';
 
+  type Pane = (typeof terminals.tabs)[number];
+  type Group = (typeof terminals.groups)[number];
+
+  let panesById = $derived(new Map(terminals.tabs.map((t) => [t.id, t])));
+  // The tab shown: the focused pane's.
+  let shown = $derived(terminals.groups.find((g) => terminals.active !== null && g.panes.includes(terminals.active)));
+  // Where each pane sits in its tab, and its share of it.
+  let places = $derived.by(() => {
+    const places = new Map<string, { index: number; share: number; shown: boolean }>();
+    for (const group of terminals.groups) {
+      group.panes.forEach((id, index) => places.set(id, { index, share: group.sizes[index] ?? 1, shown: group.id === shown?.id }));
+    }
+    return places;
+  });
+  let stacked = $derived(terminals.position === 'left');
+  let bodyWidth = $state(0);
+  let bodyHeight = $state(0);
+
+  function panesOf(group: Group): Pane[] {
+    return group.panes.map((id) => panesById.get(id)).filter((t): t is Pane => !!t);
+  }
+
+  // Panes keep room for a few columns or rows of their own.
+  const PANE_MIN = { width: 120, height: 60 };
+
+  // Moves the border after pane index by delta pixels, returning what applied.
+  function resizePanes(group: Group, index: number, delta: number): number {
+    const length = stacked ? bodyHeight : bodyWidth;
+    if (length <= 0) return 0;
+    const min = (stacked ? PANE_MIN.height : PANE_MIN.width) / length;
+    return terminals.resizePanes(group.id, index, delta / length, min) * length;
+  }
+
   let tabContext = $state<{ id: string; x: number; y: number } | null>(null);
   let tabItems = $derived.by((): ContextMenuItem[] => {
     if (!tabContext) return [];
     const { id } = tabContext;
     const close: ContextMenuItem[] = TAB_CLOSE_ACTIONS.map(({ action, label }, i) => {
-      const targets = tabsToClose(terminals.tabs.map((t) => t.id), id, action);
+      const targets = tabsToClose(terminals.groups.map((g) => g.id), id, action).flatMap(
+        (gid) => terminals.groups.find((g) => g.id === gid)?.panes ?? [],
+      );
       return { label, disabled: targets.length === 0, separator: i === 0, onSelect: () => terminals.closeMany(targets) };
     });
-    const tab = terminals.tabs.find((t) => t.id === id);
+    const group = terminals.groups.find((g) => g.id === id);
+    const panes = group ? panesOf(group) : [];
+    // A split tab's transcript is its focused agent's, or its first agent's.
+    const tab = panes.find((t) => t.id === group?.focus && t.kind === 'agent') ?? panes.find((t) => t.kind === 'agent');
     if (tab?.kind !== 'agent') return close.map((item) => ({ ...item, separator: false }));
     const session = tab.session;
     // Only the shown host's sessions can be shown.
@@ -56,21 +95,37 @@
 
   let confirmingTab = $derived(terminals.tabs.find((t) => t.id === terminals.confirming));
 
-  // The directory the tab started in, the tab itself shows the rest, and
-  // the shortcut that selects it.
-  function tabTitle(tab: (typeof terminals.tabs)[number], index: number): string {
-    const where = tab.cwd || tab.dir || (tab.kind === 'shell' ? 'Home directory' : tab.label);
-    // The tab may shorten the host's name, so the tooltip gives it in full.
-    let title = tab.host ? `${where} on ${hostLabel(tab.host)}` : where;
-    const state = attentionLabel(terminals.attention[tab.id]);
-    if (state) title = `${state} — ${title}`;
+  // The directory each pane is in, the tab itself shows the rest, and the
+  // shortcut that selects the tab.
+  function tabTitle(group: Group, index: number): string {
+    const title = panesOf(group)
+      .map((tab) => {
+        const where = tab.cwd || tab.dir || (tab.kind === 'shell' ? 'Home directory' : tab.label);
+        // The tab may shorten the host's name, so the tooltip gives it in full.
+        const line = tab.host ? `${where} on ${hostLabel(tab.host)}` : where;
+        const state = attentionLabel(terminals.attention[tab.id]);
+        return state ? `${state} — ${line}` : line;
+      })
+      .join('\n');
     return index < 9 ? `${title} (${isMac ? '⌘' : 'Alt+'}${index + 1})` : title;
   }
 
-  function handleTabKeydown(event: KeyboardEvent, id: string) {
+  function tabLabel(group: Group): string {
+    return panesOf(group)
+      .map((t) => t.label)
+      .join(', ');
+  }
+
+  // A click on a pane's part of a split tab focuses that pane.
+  function selectTab(event: MouseEvent, group: Group) {
+    const id = (event.target as Element | null)?.closest?.('[data-segment]')?.getAttribute('data-segment');
+    terminals.select(id && group.panes.includes(id) ? id : group.focus);
+  }
+
+  function handleTabKeydown(event: KeyboardEvent, group: Group) {
     if (event.key === 'Delete') {
       event.preventDefault();
-      terminals.close(id);
+      terminals.closeMany(group.panes);
     }
   }
 </script>
@@ -82,47 +137,56 @@
 <section class="terminal-panel" class:hidden class:maximized={terminals.maximized} aria-label="Terminal" style:height={terminals.maximized ? undefined : `${terminals.height}px`}>
   <header class="panel-header">
     <div class="tabs" role="tablist" aria-label="Terminals">
-      {#each terminals.tabs as tab, index (tab.id)}
-        <div class="tab" role="presentation" class:active={tab.id === terminals.active} title={tabTitle(tab, index)} oncontextmenu={(e) => {
+      {#each terminals.groups as group, index (group.id)}
+        {@const panes = panesOf(group)}
+        {@const split = panes.length > 1}
+        <div class="tab" role="presentation" class:active={group.id === shown?.id} class:split title={tabTitle(group, index)} oncontextmenu={(e) => {
           e.preventDefault();
-          tabContext = { id: tab.id, x: e.clientX, y: e.clientY };
+          tabContext = { id: group.id, x: e.clientX, y: e.clientY };
         }}>
           <button
             type="button"
             class="tab-select"
             role="tab"
-            aria-selected={tab.id === terminals.active}
-            onclick={() => terminals.select(tab.id)}
-            onkeydown={(e) => handleTabKeydown(e, tab.id)}
+            aria-selected={group.id === shown?.id}
+            onclick={(e) => selectTab(e, group)}
+            onkeydown={(e) => handleTabKeydown(e, group)}
           >
-            {#if tab.kind === 'agent' && tab.status === 'running' && attentionLabel(terminals.attention[tab.id])}
-              <AttentionDot state={terminals.attention[tab.id]} announce />
-            {:else}
-              <!-- A running agent tab's dot is its state; quiet, it is grey. -->
-              <span
-                class="status-dot"
-                class:running={tab.status === 'running' && tab.kind !== 'agent'}
-                class:failed={tab.status === 'exited' && tab.exitCode !== 0}
-                aria-hidden="true"
-              ></span>
-            {/if}
-            {#if tab.agent}
-              <AgentIcon agent={tab.agent} size={12} />
-            {/if}
-            <span class="tab-label">{tab.label}</span>
-            {#if tab.host}
-              <span class="tab-host">{hostLabel(tab.host)}</span>
-            {/if}
-            {#if tab.status === 'exited'}
-              <span class="tab-exit">exit {tab.exitCode}</span>
-            {/if}
+            {#each panes as tab, i (tab.id)}
+              {#if i > 0}
+                <span class="segment-divider" aria-hidden="true"></span>
+              {/if}
+              <span class="segment" class:focused={split && tab.id === group.focus} data-segment={tab.id}>
+                {#if tab.kind === 'agent' && tab.status === 'running' && attentionLabel(terminals.attention[tab.id])}
+                  <AttentionDot state={terminals.attention[tab.id]} announce />
+                {:else}
+                  <!-- A running agent tab's dot is its state; quiet, it is grey. -->
+                  <span
+                    class="status-dot"
+                    class:running={tab.status === 'running' && tab.kind !== 'agent'}
+                    class:failed={tab.status === 'exited' && tab.exitCode !== 0}
+                    aria-hidden="true"
+                  ></span>
+                {/if}
+                {#if tab.agent}
+                  <AgentIcon agent={tab.agent} size={12} />
+                {/if}
+                <span class="tab-label">{tab.label}</span>
+                {#if tab.host}
+                  <span class="tab-host">{hostLabel(tab.host)}</span>
+                {/if}
+                {#if tab.status === 'exited'}
+                  <span class="tab-exit">exit {tab.exitCode}</span>
+                {/if}
+              </span>
+            {/each}
           </button>
           <button
             type="button"
             class="tab-close"
-            aria-label="Close {tab.label}"
+            aria-label="Close {tabLabel(group)}"
             title="Close"
-            onclick={() => terminals.close(tab.id)}
+            onclick={() => terminals.closeMany(group.panes)}
           >×</button>
         </div>
       {/each}
@@ -195,15 +259,44 @@
     </div>
   {/if}
 
-  <div class="panel-body">
+  <!-- One flat list of views, so a pane never remounts (and loses its
+       scrollback) when tabs change; the shown tab's panes are laid out by
+       order, with splitters between them. -->
+  <div class="panel-body" class:stacked bind:clientWidth={bodyWidth} bind:clientHeight={bodyHeight}>
     {#each terminals.tabs as tab (tab.id)}
-      <TerminalView {tab} active={tab.id === terminals.active} />
+      {@const place = places.get(tab.id)}
+      <div
+        class="pane"
+        class:hidden={!place?.shown}
+        class:split={!!place?.shown && (shown?.panes.length ?? 0) > 1}
+        class:focused={tab.id === terminals.active}
+        data-pane={tab.id}
+        style:order={(place?.index ?? 0) * 2}
+        style:flex-grow={place?.share ?? 1}
+        onfocusin={() => {
+          if (tab.id !== terminals.active) terminals.select(tab.id);
+        }}
+      >
+        <TerminalView {tab} active={tab.id === terminals.active} />
+      </div>
     {:else}
       <div class="empty">
         <p>No terminals are open.</p>
         <button type="button" class="btn" onclick={() => void terminals.newShell(cwd)}>New shell</button>
       </div>
     {/each}
+    {#if shown && shown.panes.length > 1}
+      {@const group = shown}
+      {#each group.panes.slice(1) as id, i (id)}
+        <div class="pane-border" style:order={i * 2 + 1}>
+          <Splitter
+            direction={stacked ? 'vertical' : 'horizontal'}
+            ariaLabel="Resize terminal panes"
+            onResize={(delta) => resizePanes(group, i, delta)}
+          />
+        </div>
+      {/each}
+    {/if}
   </div>
 </section>
 
@@ -269,6 +362,12 @@
     background: var(--hover-bg);
   }
 
+  /* A split tab has room for each pane's name. */
+  .tab.split {
+    flex: 0 1 auto;
+    max-width: 520px;
+  }
+
   .tab-select {
     display: flex;
     flex: 1;
@@ -278,6 +377,27 @@
     height: 100%;
     padding: 0 4px 0 10px;
     color: inherit;
+  }
+
+  .segment {
+    display: flex;
+    flex: 0 1 auto;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+  }
+
+  .segment-divider {
+    flex-shrink: 0;
+    align-self: stretch;
+    width: 1px;
+    margin: 9px 0;
+    background: var(--border-color);
+  }
+
+  /* In the shown split tab, the focused pane's name stands out. */
+  .tab.active.split .segment:not(.focused) {
+    color: var(--text-secondary);
   }
 
   .tab-label,
@@ -401,12 +521,48 @@
 
   .panel-body {
     position: relative;
+    display: flex;
     flex: 1;
     min-height: 0;
     overflow: hidden;
   }
 
+  /* Docked left, the panel is narrow: panes stack. */
+  .panel-body.stacked {
+    flex-direction: column;
+  }
+
+  /* Each pane shrinks freely; its terminal clips until it refits. */
+  .pane {
+    position: relative;
+    flex: 1 1 0;
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .pane.hidden {
+    display: none;
+  }
+
+  /* Side by side, the focused pane is outlined; the border sits outside its
+     terminal, so it needs no layer above it. */
+  .pane.split {
+    border: 1px solid transparent;
+  }
+
+  .pane.split.focused {
+    border-color: color-mix(in srgb, var(--accent-color) 55%, transparent);
+  }
+
+  /* Holds a splitter between two panes; the splitter overhangs both. */
+  .pane-border {
+    display: flex;
+    flex: 0 0 0;
+  }
+
   .empty {
+    flex: 1;
     display: flex;
     flex-direction: column;
     align-items: center;

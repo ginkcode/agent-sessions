@@ -24,6 +24,7 @@
 
   interface Props {
     tab: PanelTab;
+    /** The focused pane, which takes typing; its panel tab shows it. */
     active: boolean;
   }
 
@@ -83,7 +84,7 @@
       // A tab shortcut goes to the app only when that tab exists: programs
       // in the terminal may use Alt+digit themselves.
       const tabNumber = event.type === 'keydown' ? terminalTabShortcut(event, isMac) : null;
-      if (tabNumber !== null && tabNumber <= terminals.tabs.length) return false;
+      if (tabNumber !== null && tabNumber <= terminals.groups.length) return false;
       if (action === 'copy') {
         event.preventDefault();
         void copySelection();
@@ -165,7 +166,7 @@
     const dims = fit.proposeDimensions();
     if (!dims || !Number.isFinite(dims.cols) || !Number.isFinite(dims.rows) || dims.cols < 1 || dims.rows < 1) return;
     if (dims.cols !== term.cols || dims.rows !== term.rows) fit.fit();
-    terminals.setSize(term.cols, term.rows);
+    terminals.setSize(term.cols, term.rows, tab.id);
     clearTimeout(sendTimer);
     sendTimer = setTimeout(sendSize, SEND_SIZE_DELAY);
   }
@@ -249,10 +250,10 @@
   }
 </script>
 
-<!-- A running tab takes dropped files: terminals.dropFiles types their paths. -->
+<!-- A running tab takes dropped files: terminals.dropFiles types their paths.
+     The panel hides the panes of tabs not shown. -->
 <div
   class="terminal-view"
-  class:hidden={!active}
   style:--wails-drop-target={tab.status === 'running' ? 'drop' : undefined}
   oncontextmenu={openMenu}
   role="presentation"
@@ -279,10 +280,6 @@
     inset: 0;
     padding: 4px 0 0 8px;
     background: var(--bg-primary);
-  }
-
-  .terminal-view.hidden {
-    display: none;
   }
 
   /* The runtime marks the drop target while files are dragged over it. */

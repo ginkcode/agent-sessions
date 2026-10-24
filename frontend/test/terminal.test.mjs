@@ -863,7 +863,7 @@ test('maximize clears on final tab close or exit, but not canceled agent close',
   });
 });
 
-test('terminal toolbar renders maximize and restore without replacing tab views', async () => {
+async function loadPanel() {
   const lib = (name) => JSON.stringify(new URL(`../src/lib/${name}.ts`, import.meta.url).href);
   const { default: Panel } = await loadServerComponent(new URL('../src/lib/components/terminal/TerminalPanel.svelte', import.meta.url), [
     ["'svelte'", JSON.stringify(import.meta.resolve('svelte'))],
@@ -875,11 +875,23 @@ test('terminal toolbar renders maximize and restore without replacing tab views'
     ["import { isMac } from '../../../main';", 'const isMac = false;'],
     ...['hosts', 'terminal', 'alerts', 'tabActions'].map(name => [`'../../${name}'`, lib(name)]),
     ...['ContextMenu', 'AgentIcon', 'AttentionDot'].map(name => [`import ${name} from '../common/${name}.svelte';`, `const ${name} = () => {};`]),
+    ["import Splitter from '../common/Splitter.svelte';", 'const Splitter = ($$renderer, props) => $$renderer.push(`<div role="separator" aria-label="${props.ariaLabel}"></div>`);'],
   ]);
+  return Panel;
+}
+
+const shellPane = (id, label = 'Shell') => ({ id, kind: 'shell', label, status: 'running' });
+
+test('terminal toolbar renders maximize and restore without replacing tab views', async () => {
+  const Panel = await loadPanel();
   try {
     for (const position of ['bottom', 'left']) for (const maximized of [false, true]) {
       globalThis.__componentFixture = {
-        terminals: { tabs: [{ id: 'generated-shell', kind: 'shell', label: 'Shell', status: 'running' }], active: 'generated-shell', attention: {}, height: 360, position, maximized },
+        terminals: {
+          tabs: [shellPane('generated-shell')],
+          groups: [{ id: 'g1', panes: ['generated-shell'], focus: 'generated-shell', sizes: [1] }],
+          active: 'generated-shell', attention: {}, height: 360, position, maximized,
+        },
         appState: {}, link: {},
       };
       const html = render(Panel).body;
@@ -889,6 +901,42 @@ test('terminal toolbar renders maximize and restore without replacing tab views'
       const dock = html.match(/<button[^>]*aria-label="Move terminal[^>]*>/)?.[0] ?? '';
       assert.match(dock, position === 'left' ? /to the bottom/ : /to the left/);
       assert.equal(/\sdisabled/.test(dock), maximized);
+      assert.doesNotMatch(html, /Resize terminal panes/, 'a single pane has no splitter');
+      assert.doesNotMatch(html, /class="segment[^"]*focused/);
+    }
+  } finally { delete globalThis.__componentFixture; }
+});
+
+test('a split tab renders its panes side by side under one tab', async () => {
+  const Panel = await loadPanel();
+  try {
+    for (const position of ['bottom', 'left']) {
+      globalThis.__componentFixture = {
+        terminals: {
+          tabs: [shellPane('a', 'Left'), shellPane('other', 'Other'), shellPane('b', 'Right')],
+          groups: [
+            { id: 'g1', panes: ['a', 'b'], focus: 'b', sizes: [0.25, 0.75] },
+            { id: 'g2', panes: ['other'], focus: 'other', sizes: [1] },
+          ],
+          active: 'b', attention: {}, height: 360, position, maximized: false,
+        },
+        appState: {}, link: {},
+      };
+      const html = render(Panel).body;
+      assert.equal((html.match(/role="tab"/g) ?? []).length, 2, 'one tab per group');
+      const tab = html.match(/<div class="tab[^"]*"[^>]*>[\s\S]*?class="tab-close[^>]*>/)?.[0] ?? '';
+      assert.match(tab, /class="tab[^"]* split/);
+      assert.deepEqual([...tab.matchAll(/data-segment="([^"]+)"/g)].map((m) => m[1]), ['a', 'b']);
+      assert.match(tab, /class="segment[^"]*focused[^"]*" data-segment="b"/);
+      assert.match(tab, /aria-label="Close Left, Right"/);
+      for (const id of ['a', 'b', 'other']) assert.match(html, new RegExp(`data-terminal-id="${id}"`));
+      assert.equal((html.match(/aria-label="Resize terminal panes"/g) ?? []).length, 1);
+      assert.match(html, /class="panel-body[^"]*"/);
+      assert.equal(/class="panel-body[^"]*stacked/.test(html), position === 'left');
+      const pane = (id) => html.match(new RegExp(`<div class="pane[^"]*"[^>]*data-pane="${id}"[^>]*>`))?.[0] ?? '';
+      assert.match(pane('a'), /flex-grow: 0.25/);
+      assert.match(pane('b'), /class="pane[^"]*focused/);
+      assert.match(pane('other'), /class="pane[^"]*hidden/);
     }
   } finally { delete globalThis.__componentFixture; }
 });
