@@ -141,7 +141,12 @@ PF-01…PF-15 cover synthetic baselines, transcript cache correctness/coalescing
 Codex source fast paths, checkpoint reuse, frontend listing retention and directory
 ignore-check batching. Dependencies, ≤4h estimates and acceptance criteria are in
 the briefs; status is also tracked in [TASKS.md](../../TASKS.md#follow-up--performance).
-Later milestones must receive their own documented task breakdown before coding.
+Next, before performance Milestone 2: [startup plan](../plan/performance-startup.md)
+and [sequential ST-00…ST-05 briefs](performance-startup.md), **1/6 complete**:
+ST-00 documentation complete, ST-01…ST-05 pending. This narrow M4 startup slice
+does not complete PF-07/08/10; the reported roughly 10-second delay has no measured
+exact-cause diagnosis yet. Later milestones still need their own documented task
+breakdown before coding.
 
 ## Editor essentials
 

@@ -18,6 +18,11 @@ later milestones build on the contracts defined in M0.
 | [editor-essentials.md](editor-essentials.md) | Project search and replace, new agent sessions and alerts, code navigation, Git changes: PS, AG, NAV and GIT tasks |
 | [performance.md](performance.md) | Performance roadmap; Milestone 1 synthetic baselines and targeted reuse, PF-01…PF-15; PF-01…PF-06, PF-09 and PF-11…PF-15 complete (12/15); PF-07 partial/blocked, PF-08/PF-10 blocked; M1 gate closed |
 
+Startup now precedes performance Milestone 2: [startup plan](performance-startup.md)
+and [sequential ST-00…ST-05 briefs](../tasks/performance-startup.md).
+ST-00 documentation complete; ST-01…ST-05 pending. M1 remains 12/15 with
+PF-07 partial/blocked and PF-08/PF-10 blocked; no measured exact-delay diagnosis.
+
 Detailed code-diagnostics task briefs: [../tasks/README.md](../tasks/README.md).
 Authoritative code-diagnostics wire contract: [code-diagnostics-contract.md](code-diagnostics-contract.md).
 

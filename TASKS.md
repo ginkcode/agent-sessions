@@ -392,6 +392,30 @@ performance milestone starts, write its detailed design and ≤4h task breakdown
 Milestone 1 estimate: **65 h**, focused tests included. If a package exceeds 4 h,
 split it before coding. Native GUI QA remains separately reported, not assumed.
 
+### Startup priority package
+
+Startup now precedes performance Milestone 2. [Plan and readiness/compatibility
+policy](docs/plan/performance-startup.md) · [Sequential ≤4h briefs](docs/tasks/performance-startup.md).
+Progress: **1/6 complete**, ST-00 documentation only; ST-01…ST-05 pending.
+The reported roughly 10-second launch delay is not a measured baseline; its exact
+cause is unknown. This narrow slice is pulled forward from performance M4, not a
+catalog overhaul. M1 stays **12/15 complete**, PF-07 partial/blocked and
+PF-08/PF-10 blocked; historical evidence and native QA limitations stand.
+
+| ID | Status | Scope | Est | Deps |
+|---|---|---|---|---|
+| [ST-00](docs/tasks/performance-startup.md#st-00--document-startup-scope-and-tasks) | Complete | Startup scope, status policy, safety and task documentation | 1 h | — |
+| [ST-01](docs/tasks/performance-startup.md#st-01--measure-the-real-startup-path) | Pending | Measure full startup with generated fixtures; choose intervention | 4 h | ST-00 |
+| [ST-02](docs/tasks/performance-startup.md#st-02--backend-discovery-readiness-contract) | Pending | Engine lifecycle status, events and compatible adapters | 4 h | ST-01 |
+| [ST-03](docs/tasks/performance-startup.md#st-03--truthful-frontend-startup-states) | Pending | Truthful frontend discovery/empty/error states | 3 h | ST-02 |
+| [ST-04](docs/tasks/performance-startup.md#st-04--remove-the-measured-startup-blocker) | Pending | One evidence-gated safe optimization | ≤4 h | ST-03; ST-01 evidence |
+| [ST-05](docs/tasks/performance-startup.md#st-05--integrated-startup-gate) | Pending | Integrated barriers, before/after evidence and QA limits | 4 h | ST-04 |
+
+Strictly sequential; **≤20 h** including focused tests. Split oversized tasks
+before coding. Generated fixtures and explicit roots only: no private session
+stores/logs or `scripts/qa-perf-bench.sh`. ST-00 makes no code changes;
+no Milestone 2 implementation is included.
+
 **Critical path to the MVP:**
 
 M0-01 → M0-02 → M0-03 → M0-07 → M0-08 → M0-09 → M0-10 → M1-13 → M1-16 → M1-20 → M1-24 → M1-28
