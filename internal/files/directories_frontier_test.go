@@ -110,9 +110,9 @@ func frontierTree(t *testing.T) string {
 	mkdir("wide/w001/ignored-cache/x")
 	mkdir(".git/objects")
 	mkdir("empty")
-	names := []string{"with space", "ünïcödé", "-leading-dash", "#hash", "!bang", "[brackets]", "*star"}
+	names := []string{"with space", "ünïcödé", "-leading-dash", "#hash", "!bang", "[brackets]"}
 	if runtime.GOOS != "windows" {
-		names = append(names, ":colon", "new\nline", `back\slash`, "?q")
+		names = append(names, "*star", ":colon", "new\nline", `back\slash`, "?q")
 	}
 	for _, name := range names {
 		mkdir("odd/" + name + "/child")
