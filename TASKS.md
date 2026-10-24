@@ -340,7 +340,7 @@ milestone totals above.
 
 ## Follow-up — Performance
 
-Planned 2026-10-24. Progress: **11/15 complete**, PF-01…PF-06, PF-09 and PF-11…PF-14 complete; PF-07 partial/blocked (A/B implemented, C safe opt-out); PF-08/PF-10 blocked; PF-15 not started.
+Planned 2026-10-24. Progress: **12/15 complete**, PF-01…PF-06, PF-09 and PF-11…PF-15 complete; PF-07 partial/blocked (A/B implemented, C safe opt-out); PF-08/PF-10 blocked. Milestone 1 gate closed; native GUI QA unperformed.
 [Roadmap](docs/plan/performance.md) ·
 [Milestone 1 briefs and dependency graph](docs/tasks/performance-m1.md).
 PF-01 completed 2026-10-24: synthetic catalog/provider benchmarks, correctness and
@@ -363,7 +363,7 @@ before coding (4 h): investigated cheap cost eligibility; no defensible policy
 established. Production Load/Blob immediately decline to zero-proof canonical
 fallback; experiment retained privately for tests, cold Blob proof prevented,
 deterministic bypass counts and isolated small/large/Blob evidence recorded.
-Parent/PF-08/PF-10 remain blocked. PF-09 completed with bounded Claude summary reuse; [evidence](docs/perf.md#pf-09--claude-checkpoint-summary-reuse-2026-10-24). PF-11 completed with bounded listing-only snapshots and immediate reopen; [evidence](docs/perf.md#pf-11--bounded-frontend-listing-snapshots-2026-10-24). PF-12 completed with mutation/hidden-save/Git listing invalidation and freshness/draft regressions; [evidence](docs/perf.md#pf-12--listing-freshness-and-draft-safety-2026-10-24). PF-13 completed with bounded cross-directory ignore frontiers and reference-equivalence tests; [evidence](docs/perf.md#pf-13--bounded-directory-frontiers-2026-10-24). PF-14 completed with 4096-path/256 KiB ignore batches and pathspec-safe anchoring; [evidence](docs/perf.md#pf-14--batched-ignore-checks-2026-10-24). Next task PF-15.
+Parent/PF-08/PF-10 remain blocked. PF-09 completed with bounded Claude summary reuse; [evidence](docs/perf.md#pf-09--claude-checkpoint-summary-reuse-2026-10-24). PF-11 completed with bounded listing-only snapshots and immediate reopen; [evidence](docs/perf.md#pf-11--bounded-frontend-listing-snapshots-2026-10-24). PF-12 completed with mutation/hidden-save/Git listing invalidation and freshness/draft regressions; [evidence](docs/perf.md#pf-12--listing-freshness-and-draft-safety-2026-10-24). PF-13 completed with bounded cross-directory ignore frontiers and reference-equivalence tests; [evidence](docs/perf.md#pf-13--bounded-directory-frontiers-2026-10-24). PF-14 completed with 4096-path/256 KiB ignore batches and pathspec-safe anchoring; [evidence](docs/perf.md#pf-14--batched-ignore-checks-2026-10-24). PF-15 completed the milestone gate: all deterministic gates pass, before/after evidence and remaining bottlenecks recorded; [evidence](docs/perf.md#pf-15--integrated-evidence-and-milestone-gate-2026-10-24). Milestone 2 needs its design and task breakdown before coding.
 [Decision and verification](docs/perf.md#pf-07c--cost-policy-decision-and-production-bypass-2026-10-24). [PF-07C brief](docs/tasks/performance-m1.md#pf-07c--cost-policy-decision-and-safe-production-bypass-4-h-pf-07b).
 - [PF-07A](docs/tasks/performance-m1.md#pf-07a--bounded-content-proof-and-accepting-source-methods-4-h-pf-06): bounded content proof, accepting Load/Blob methods and focused regression/verification (4 h; PF-06).
 - [PF-07B](docs/tasks/performance-m1.md#pf-07b--mutation-matrix-and-repeated-evidence-4-h-pf-07a): full mutation/overlay/parent/WAL/concurrency matrix and repeated benchmark evidence (4 h; PF-07A). PF-08 remains gated on the entire parent.
@@ -387,7 +387,7 @@ performance milestone starts, write its detailed design and ≤4h task breakdown
 | [PF-12](docs/tasks/performance-m1.md#pf-12--listing-freshness-and-draft-regressions) | complete | Listing freshness and draft safety | 4 | PF-11 |
 | [PF-13](docs/tasks/performance-m1.md#pf-13--bounded-directory-frontiers) | complete | Bounded directory frontiers | 3 | PF-03 |
 | [PF-14](docs/tasks/performance-m1.md#pf-14--batched-ignore-checks) | complete | Batched ignore checks | 4 | PF-13 |
-| [PF-15](docs/tasks/performance-m1.md#pf-15--integrated-evidence-and-milestone-gate) | ⬜ | Integration and before/after evidence | 4 | PF-01…PF-14 |
+| [PF-15](docs/tasks/performance-m1.md#pf-15--integrated-evidence-and-milestone-gate) | complete | Integration and before/after evidence | 4 | PF-01…PF-14 |
 
 Milestone 1 estimate: **65 h**, focused tests included. If a package exceeds 4 h,
 split it before coding. Native GUI QA remains separately reported, not assumed.

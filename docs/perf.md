@@ -1367,3 +1367,119 @@ All pass. Windows was only cross-vetted: candidate paths stay slash-separated an
 `./` anchoring is accepted by Git for Windows in principle, but no test ran on
 Windows and its reserved names are excluded from the fixture there. Timings are
 advisory. No real project, private data, installation, app launch or push.
+
+## PF-15 — Integrated evidence and milestone gate (2026-10-24)
+
+Milestone 1 gate. Revision `87a22e3` on `feature/improve-performance` with only
+documentation uncommitted; Apple M5 / 32 GiB, Darwin 27.0.0 arm64, Go 1.26.8,
+Git 2.54.0 (Apple Git-157), Node 22.23.2, GOMAXPROCS 10, same host as PF-01…PF-03.
+Historical sections above are unchanged; this section only adds new runs.
+
+### Deterministic gates
+
+| Gate | Result |
+|---|---|
+| `go build ./...`, `go vet ./...` | pass |
+| `GOOS=windows go vet ./...` (compiles Windows-only sources and tests) | pass |
+| `go test -count=1 ./...` (includes in-process RPC/local parity tests in `internal/app`) | pass: 36 packages, 3 without tests |
+| `go test -race -count=1` engine, `provider/...`, files, index | pass (10 packages) |
+| `npm test` / `npm run check` / `npm run build` | 677/677 pass / 0 errors (existing `ignoreDeprecations` warning) / pass (existing chunk-size advisory) |
+
+Not performed: Windows or Linux test execution (Windows-only tests were compiled,
+not run), native GUI QA of any milestone change, cold-disk or peak-RSS profiling,
+real session stores or projects, and `scripts/qa-perf-bench.sh` (it reads private
+data). Repo-wide lint keeps its existing unrelated findings; no cleanup attempted.
+
+### Before/after on the PF-01…PF-03 workloads
+
+Same commands and flags as the baselines; median [min–max] of three runs (PF-03:
+five). Timings are advisory; work counts are deterministic and asserted in tests.
+
+```sh
+go test ./internal/index ./internal/provider -run '^$' -bench '^BenchmarkSynthetic' -benchmem -benchtime=200ms -count=3
+go test ./internal/engine -run '^$' -bench '^BenchmarkTranscript$' -benchmem -benchtime=1x -count=3 -timeout 30m
+go test ./internal/files -run '^$' -bench 'BenchmarkProjectListing|BenchmarkSearch$|BenchmarkWideDirectories' -benchtime=5x -count=5 -benchmem
+```
+
+**Scans and catalog (PF-01 → now).**
+
+| Workload | ms/op before | ms/op now | Work before → now | B/op before → now |
+|---|---:|---:|---|---:|
+| Claude unchanged | 0.269 [0.266–0.273] | **0.177** [0.165–0.203] | decodes 64 → **0** | 188 KB → 150 KB |
+| Claude one-source append | 0.373 [0.366–0.374] | **0.251** [0.250–0.257] | decodes 64 → **1** | 1.24 MB → 1.20 MB |
+| Claude cold | 3.724 | 3.721 | unchanged (64 opens, 64 encodes) | 67.7 MB → 67.8 MB |
+| Codex unchanged | 3.103 | 3.419 [3.233–4.472] | unchanged (192 decodes, 64 encodes) | 1.36 MB |
+| Codex append | 3.335 | 3.252 | unchanged | 2.42 MB |
+| Codex cold | 6.044 | 6.429 [6.276–7.286] | unchanged | 68.8 MB |
+| Catalog 10k open-restore | 68.6 | 67.4 | unchanged | 53.2 MB |
+
+Claude's gain is PF-09. Codex and catalog code are unchanged by M1 (PF-10 is
+blocked); their differences are run-to-run noise on this host.
+
+**Transcripts (PF-02 → now).**
+
+| Workload | Loads before → now | Source bytes read | B/op before → now | ms/op before → now |
+|---|---|---:|---:|---:|
+| Claude 100 MB same-key ×4 | 4 → **1** | 400.6 MB → **100.2 MB** | 2.03 GB → **507 MB** | 1098 → 1178 |
+| Codex 100 MB same-key ×4 | 4 → **1** | 400.8 MB → **100.2 MB** (+ resolution 400.8 → 100.2 MB) | 2.44 GB → **609 MB** | 1868 → 1565 |
+| Claude/Codex 38 MB same-key ×4 | 4 → **1** | ÷4 | 810/977 MB → **202/244 MB** | 414/689 → 427/643 |
+| Independent keys ×4 | 4 → 4 | unchanged | unchanged | unchanged within noise |
+| Cold / invalidated / warm page | unchanged | unchanged | unchanged | unchanged within noise |
+
+Coalescing (PF-05) removes the duplicated work and ~¾ of the allocation for
+concurrent same-session requests; it does not make a single cold load faster, so
+same-key wall time stays roughly one cold load. Codex still reads every byte twice
+per cold load (canonical resolution plus transcript); PF-07/PF-08 were meant to
+remove that and remain blocked.
+
+**Project listing (PF-03 → now).**
+
+| Workload | ms/op before | ms/op now | Git processes |
+|---|---:|---:|---|
+| 20,001 files `List` | 152.3 [151.3–153.2] | 151.1 [150.4–151.6] | 6 → 6 |
+| 20,001 files `Directories` | 47.7 | 47.0 | 2 → 2 |
+| 1,000 files `List` | 45.3 [43.9–55.2] | 54.3 [47.7–60.1] | 6 → 6 |
+| Wide tree, 1,000 directories × 1 child | 6190 [6154–6679] (per-chunk oracle) | **53.2** [52.5–53.7] | check-ignore 1010 → **2** |
+
+The PF-03 fixture keeps its directories flat, so it cannot show PF-13/PF-14; the
+wide-tree benchmark does (per-chunk oracle = pre-PF-13 structure). The 1,000-file
+`List` spread overlaps the baseline; its median moved with Git subprocess noise,
+not code (component counts and allocations are identical). Reopening Go to File
+now shows the retained listing immediately (PF-11) and keeps it correct after app
+mutations (PF-12); that is request-count evidence, not measured GUI latency.
+
+### Milestone 1 outcome
+
+**12/15 complete** (PF-01…PF-06, PF-09, PF-11…PF-15). Not complete, not counted:
+
+- **PF-07 partial/blocked.** Full-byte source proof is correct but slower than the
+  plain load on large byte-heavy roots; production declines it (PF-07C).
+- **PF-08 blocked** on PF-07: engine/FTS still call ordinary `Load`/`Blob`.
+- **PF-10 blocked** on PF-07: unchanged Codex scans still do 192 checkpoint decodes
+  and 64 encodes per 64 sources.
+
+### Remaining bottlenecks
+
+1. **Full-parse transcripts.** Every cold or invalidated load re-reads and
+   re-parses the whole file: ~1.0 s (Claude) / ~1.6 s (Codex) at 100 MB, 0.5–0.6 GB
+   allocated, and any append invalidates the entire entry.
+2. **Codex double read.** A cold Codex load scans all records to resolve the
+   canonical source before reading the transcript.
+3. **Cold start and catalog.** Cold scans are unchanged; restoring a 10k catalog
+   costs ~67 ms and 53 MB of allocation; Codex unchanged scans still canonicalize
+   checkpoints.
+4. **Listings.** At 20k files, `List` is still ~150 ms split across `ls-files`,
+   status and directory discovery, recomputed on every refresh; no shared index.
+5. **Memory.** The transcript cache holds four whole transcripts (~400 MB at
+   100 MB each) with no byte budget.
+
+### Recommendations for Milestone 2
+
+Start Milestone 2 (incremental transcripts and bounded memory) as planned: resumable
+Claude/Codex parser state from committed byte offsets, append-only reuse validated by
+source identity, earliest-changed-index deltas, and a byte-budgeted transcript cache.
+Address the Codex double read inside that design rather than reviving the PF-07
+full-byte proof. Write its design and ≤4 h task breakdown in `docs/` before coding,
+as for Milestone 1. Native GUI QA of the M1 changes (Go to File reopen and mutation
+freshness, concurrent transcript opens) remains unperformed and should be done
+when an app run is requested.

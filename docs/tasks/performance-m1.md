@@ -1,6 +1,6 @@
 # Performance Milestone 1 — Baselines and targeted reuse
 
-- Status: in progress 2026-10-24; **11/15 tasks complete**.
+- Status: gate closed 2026-10-24; **12/15 tasks complete** (PF-07 partial, PF-08/PF-10 blocked).
 - Parent plan: [performance.md](../plan/performance.md).
 - All estimates include focused tests and are planning estimates, not promises.
 - Every task is ≤4 developer hours. Split it here and in `TASKS.md` before coding
@@ -26,11 +26,11 @@ PF-06 completed 2026-10-24; optional source contract, bounded canonical fallback
 ownership and Codex feasibility are in [../perf.md](../perf.md#pf-06--validated-source-loading-contract-2026-10-24).
 PF-07A/B implemented; PF-07C safe opt-out complete. PF-07 remains partial/blocked:
 no defensible automatic activation policy; production proof is off. PF-08/PF-10
-remain blocked. PF-09 and PF-11…PF-14 complete; PF-15 is next and unimplemented.
+remain blocked. PF-09 and PF-11…PF-15 complete; the milestone gate is closed.
 
 ## Task index
 
-PF-01 through PF-06, PF-09 and PF-11…PF-14 are **complete**; PF-07 is **partial/blocked** (A/B implemented, C safe opt-out complete; activation gated); all remaining rows are **not started**. Dependencies are completion gates, not mere ordering
+PF-01 through PF-06, PF-09 and PF-11…PF-15 are **complete**; PF-07 is **partial/blocked** (A/B implemented, C safe opt-out complete; activation gated); all remaining rows are **not started**. Dependencies are completion gates, not mere ordering
 suggestions. All implementation tasks also depend on the shared guardrails in the
 [parent plan](../plan/performance.md#shared-guardrails).
 
@@ -482,6 +482,11 @@ paths/truncation semantics. Tests cover nested ignore rules, ignored parents,
 empty folders, failure, cancellation, unusual filenames and Windows path behavior.
 
 ## PF-15 — Integrated evidence and milestone gate
+
+**Status:** complete 2026-10-24. All deterministic gates pass; PF-01…PF-03 workloads
+rerun with before/after tables, remaining bottlenecks and Milestone 2 recommendations
+in the [evidence](../perf.md#pf-15--integrated-evidence-and-milestone-gate-2026-10-24).
+Native GUI QA and Windows/Linux execution unperformed.
 
 **Goal:** establish what improved and what remains, without overstating results.
 
