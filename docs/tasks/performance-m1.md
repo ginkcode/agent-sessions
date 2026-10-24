@@ -1,6 +1,6 @@
 # Performance Milestone 1 — Baselines and targeted reuse
 
-- Status: in progress 2026-10-24; **3/15 tasks complete**.
+- Status: in progress 2026-10-24; **4/15 tasks complete**.
 - Parent plan: [performance.md](../plan/performance.md).
 - All estimates include focused tests and are planning estimates, not promises.
 - Every task is ≤4 developer hours. Split it here and in `TASKS.md` before coding
@@ -18,11 +18,13 @@ PF-02 completed 2026-10-24; transcript baseline evidence is appended to
 [../perf.md](../perf.md#pf-02--synthetic-transcript-baseline-2026-10-24).
 PF-03 completed 2026-10-24; project listing baseline evidence is appended to
 [../perf.md](../perf.md#pf-03--synthetic-project-listing-baseline-2026-10-24).
-No implementation has been performed for PF-04…PF-15.
+PF-04 completed 2026-10-24; atomic per-key transcript invalidation and deterministic
+race evidence are in [../perf.md](../perf.md#pf-04--atomic-transcript-invalidation-2026-10-24).
+No implementation has been performed for PF-05…PF-15.
 
 ## Task index
 
-PF-01, PF-02 and PF-03 are **complete**; all other rows are **not started**. Dependencies are completion gates, not mere ordering
+PF-01 through PF-04 are **complete**; all other rows are **not started**. Dependencies are completion gates, not mere ordering
 suggestions. All implementation tasks also depend on the shared guardrails in the
 [parent plan](../plan/performance.md#shared-guardrails).
 
@@ -124,6 +126,14 @@ helpers, frontend `test/go-to-file.test.mjs` and `test/file-drafts.test.mjs`.
 Git/symlink/platform cases are explicitly skipped; no user repositories are read.
 
 ## PF-04 — Atomic transcript cache invalidation
+
+**Status:** complete 2026-10-24. Existing four-entry LRU wrapped by a narrow
+coordinator with atomic lookup/token capture/invalidation/publication, unique
+per-key identities and clear epoch. Barrier race tests, bookkeeping/capacity,
+error/cancellation and paging regressions pass. Full backend race suite,
+build/vet, changed-line lint and frontend verification recorded in
+[../perf.md](../perf.md#pf-04--atomic-transcript-invalidation-2026-10-24), including
+pre-existing repository-wide lint failures. No coalescing or lifecycle change.
 
 **Goal:** prevent stale publication after invalidation without globally rejecting
 useful unrelated loads.

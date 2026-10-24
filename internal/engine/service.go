@@ -11,7 +11,6 @@ import (
 	"sort"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"unicode/utf8"
 
 	"github.com/ginkcode/agent-sessions/internal/bundle"
@@ -55,11 +54,9 @@ type Service struct {
 	scanErrs map[model.AgentID]error
 	states   map[model.AgentID]provider.ScanState
 
-	transcripts *LRU[string, *model.Transcript]
-	// transcriptGen counts evictions, so a load that raced one is not cached.
-	transcriptGen atomic.Uint64
-	bundles       *LRU[string, *bundle.Bundle]
-	dataDir       string
+	transcripts *transcriptCache
+	bundles     *LRU[string, *bundle.Bundle]
+	dataDir     string
 }
 
 // NewService wires a Service onto an existing catalog and provider set.
@@ -73,7 +70,7 @@ func NewService(catalog *scan.Catalog, providers provider.Set) *Service {
 		diag:        make(map[model.AgentID]provider.Diagnostics),
 		scanErrs:    make(map[model.AgentID]error),
 		states:      make(map[model.AgentID]provider.ScanState),
-		transcripts: NewLRU[string, *model.Transcript](transcriptLRUCapacity),
+		transcripts: newTranscriptCache(transcriptLRUCapacity),
 		bundles:     NewLRU[string, *bundle.Bundle](8),
 	}
 }
@@ -374,47 +371,49 @@ func (s *Service) ScanStates() map[model.AgentID]provider.ScanState {
 
 func (s *Service) loadTranscript(ctx context.Context, ref model.SessionRef) (*model.Transcript, error) {
 	key := ref.Key()
-	if tr, ok := s.transcripts.Get(key); ok {
+	tr, load := s.transcripts.begin(key)
+	if load.token == nil {
 		return tr, nil
 	}
+	var err error
 	prov, ok := s.providers.Get(ref.Agent)
 	if !ok {
-		return nil, fmt.Errorf("%w: %s", ErrUnknownProvider, ref.Agent)
+		err = fmt.Errorf("%w: %s", ErrUnknownProvider, ref.Agent)
+	} else {
+		tr, err = prov.Load(ctx, ref)
 	}
-	gen := s.transcriptGen.Load()
-	tr, err := prov.Load(ctx, ref)
+	// A load invalidated meanwhile is served to this caller but not cached.
+	s.transcripts.finish(key, load, tr, err)
 	if err != nil {
 		return nil, err
-	}
-	// A session that changed during the load may have been read before the
-	// change; serve it once but do not cache it.
-	if s.transcriptGen.Load() == gen {
-		s.transcripts.Put(key, tr)
 	}
 	return tr, nil
 }
 
+// EvictTranscript drops one cached transcript and prevents loads already in
+// flight for that session from caching their possibly stale result.
 func (s *Service) EvictTranscript(key string) {
-	s.transcriptGen.Add(1)
-	s.transcripts.Evict(key)
+	s.transcripts.evict(key)
 }
 
 // EvictTranscripts drops the cached transcripts of sessions a scan reported
-// changed or removed, so the next read loads their current content.
+// changed or removed, so the next read loads their current content. Loads of
+// other sessions are unaffected.
 func (s *Service) EvictTranscripts(refs ...[]model.SessionRef) {
-	s.transcriptGen.Add(1)
+	var keys []string
 	for _, list := range refs {
 		for _, ref := range list {
-			s.transcripts.Evict(ref.Key())
+			keys = append(keys, ref.Key())
 		}
 	}
+	s.transcripts.evict(keys...)
 }
 
 // ClearTranscripts drops every cached transcript, for scans that rebuild the
-// catalog without reporting which sessions changed.
+// catalog without reporting which sessions changed. No load started before it
+// can populate the cache.
 func (s *Service) ClearTranscripts() {
-	s.transcriptGen.Add(1)
-	s.transcripts.Clear()
+	s.transcripts.clear()
 }
 
 func (s *Service) evictTranscript(key string) {

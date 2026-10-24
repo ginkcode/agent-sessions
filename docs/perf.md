@@ -551,3 +551,56 @@ Frontend: `npm test` (666 passed), `npm run check` (0 errors, existing
 ignoreDeprecations warning), `npm run build` (existing chunk-size warning).
 No native GUI, Windows, or Linux runs; no cold-cache or peak-memory profile; no
 symlink-unavailable or Git-unavailable host was exercised (those paths skip).
+
+## PF-04 — Atomic transcript invalidation (2026-10-24)
+
+### Design and deterministic evidence
+
+`internal/engine/transcript_cache.go` wraps the existing LRU (capacity remains
+four transcripts). One coordinator mutex covers cache lookup plus token capture,
+per-key/batch eviction, clear and conditional publication. Provider I/O runs
+outside that mutex. Unique, non-zero-sized per-key token objects identify current
+outstanding loads; clear also advances an epoch. Invalidated requests may return
+their snapshot, but cannot publish it or remove a newer key's token.
+
+Bookkeeping contains only keys with current outstanding loads, not historical
+keys or tombstones. Completion/error removes the last pending token; eviction
+removes its key immediately; clear drops all tokens. Detached tokens live only
+with their outstanding callers. Thus bookkeeping is bounded by outstanding work,
+not by catalog size or the number of past invalidations. Active provider-work
+limits and coalescing remain PF-05, not implemented or claimed here.
+
+Barrier regressions in `internal/engine/transcript_cache_test.go` cover single
+and batch eviction/clear between lookup and publication, both old/new completion
+orders, removal/reappearance of the same key, snapshot delivery to old callers,
+publication-before-eviction, and isolation from unrelated/empty invalidations.
+Direct coordinator tests exercise 1,000 completed unique keys, 1,000 repeated
+same-key invalidation/clear cycles, multiple pending same-key attempts, failure
+cleanup, capacity/recency and useful publication after unrelated capacity churn.
+Cancellation/retry and unknown-provider cleanup are covered. Existing concurrent
+miss tests still require independent provider calls (no accidental coalescing).
+Existing paging/LRU and generated 38/100 MB transcript equivalence tests pass.
+No test uses sleeps as its ordering mechanism.
+
+Lifecycle review: `NewService` initializes the coordinator for both engine and
+direct service tests; all production reads use `loadTranscript`. Refresh/change,
+removal, promotion and full-clear paths retain their existing invalidation entry
+points. No engine-start requirement, new goroutine, owned context or shutdown
+hook is introduced; provider cancellation remains owned by each caller.
+
+### Verification and limits
+
+Environment: Go 1.26.8, Darwin arm64. Passed focused transcript/provider-helper
+race tests including generated large fixtures; paging and focused invalidation,
+capacity, cancellation and concurrent-miss race tests repeated 20 times;
+`gofumpt -d` on changed Go files; changed-line engine `golangci-lint` (0 issues).
+Frontend tests: 666 passed; Svelte check and production build passed (existing
+ignoreDeprecations/chunk-size warnings). `make test` (full backend race suite),
+`go build ./...` and `go vet ./...` passed. Repository-wide `make lint` reports
+121 existing issues in untouched lines (including errcheck, errorlint, gofumpt
+and staticcheck); repository-wide changed-line lint also reports 0 issues. No unrelated lint cleanup
+is included.
+
+This task establishes correctness, not a measured speedup. No new benchmark
+comparison or native GUI responsiveness claim; no private session/cache stores,
+installs, app launches, process termination, pushes or Windows packages.

@@ -340,16 +340,20 @@ milestone totals above.
 
 ## Follow-up — Performance
 
-Planned 2026-10-24. Progress: **3/15 complete**, PF-01/PF-02/PF-03 complete; PF-04…PF-15 not started.
+Planned 2026-10-24. Progress: **4/15 complete**, PF-01…PF-04 complete; PF-05…PF-15 not started.
 [Roadmap](docs/plan/performance.md) ·
 [Milestone 1 briefs and dependency graph](docs/tasks/performance-m1.md).
 PF-01 completed 2026-10-24: synthetic catalog/provider benchmarks, correctness and
 work-count regressions; repeated baseline and verification in [docs/perf.md](docs/perf.md#pf-01--synthetic-catalog-and-scanner-baseline-2026-10-24).
 PF-02 completed 2026-10-24: generated large transcript equivalence, repeated
 load/page/concurrency benchmarks, byte accounting and reusable deterministic barriers;
-[evidence](docs/perf.md#pf-02--synthetic-transcript-baseline-2026-10-24). Next: PF-04.
+[evidence](docs/perf.md#pf-02--synthetic-transcript-baseline-2026-10-24).
 PF-03 completed 2026-10-24: generated Git listing/cap/isolation tests, component
 benchmarks and frontend request-count baseline; [evidence](docs/perf.md#pf-03--synthetic-project-listing-baseline-2026-10-24).
+PF-04 completed 2026-10-24: atomic transcript invalidation using the existing LRU,
+per-key tokens and clear epoch; deterministic race/capacity/paging regressions and
+verification [evidence](docs/perf.md#pf-04--atomic-transcript-invalidation-2026-10-24).
+Next: PF-05 (no coalescing yet).
 
 These tasks are separate from the original milestone totals. Before each later
 performance milestone starts, write its detailed design and ≤4h task breakdown.
@@ -359,7 +363,7 @@ performance milestone starts, write its detailed design and ≤4h task breakdown
 | [PF-01](docs/tasks/performance-m1.md#pf-01--catalog-and-scan-baselines) | ✅ | Catalog and scan baselines | 4 | — |
 | [PF-02](docs/tasks/performance-m1.md#pf-02--transcript-baselines) | ✅ | Transcript baselines | 4 | — |
 | [PF-03](docs/tasks/performance-m1.md#pf-03--project-listing-baselines) | ✅ | Project listing baselines | 4 | — |
-| [PF-04](docs/tasks/performance-m1.md#pf-04--atomic-transcript-cache-invalidation) | ⬜ | Atomic transcript cache invalidation | 4 | PF-02 |
+| [PF-04](docs/tasks/performance-m1.md#pf-04--atomic-transcript-cache-invalidation) | ✅ | Atomic transcript cache invalidation | 4 | PF-02 |
 | [PF-05](docs/tasks/performance-m1.md#pf-05--coalesced-transcript-loads) | ⬜ | Coalesced loads and cancellation | 4 | PF-04 |
 | [PF-06](docs/tasks/performance-m1.md#pf-06--validated-source-loading-contract) | ⬜ | Validated source-loading contract | 3 | PF-02 |
 | [PF-07](docs/tasks/performance-m1.md#pf-07--codex-load-and-blob-fast-paths) | ⬜ | Codex Load/Blob fast paths | 4 | PF-06 |
