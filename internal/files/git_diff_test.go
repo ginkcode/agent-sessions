@@ -105,15 +105,17 @@ func TestGitDiffAddedDeletedAndUnborn(t *testing.T) {
 }
 func TestGitDiffSubdirLiteralAndProtection(t *testing.T) {
 	root, git := blameRepo(t)
-	for _, p := range []string{"sub/literal[1]", "sub/:colon", "outside", "auth.json", "store/data"} {
+	for _, p := range append([]string{"sub/literal[1]", "outside", "auth.json", "store/data"}, colonNames("sub/:colon")...) {
 		statusWrite(t, root, p, "base\n")
 	}
 	git("add", ".")
 	git("commit", "-m", "base")
 	statusWrite(t, root, "sub/literal[1]", "staged\n")
-	statusWrite(t, root, "sub/:colon", "colon\n")
+	for _, p := range colonNames("sub/:colon") {
+		statusWrite(t, root, p, "colon\n")
+	}
 	git("add", ".")
-	for _, p := range []string{"literal[1]", ":colon"} {
+	for _, p := range append([]string{"literal[1]"}, colonNames(":colon")...) {
 		got := getGitDiff(t, filepath.Join(root, "sub"), p, GitDiffStaged)
 		if got.Content.Path != p || len(got.Content.Changes) != 1 {
 			t.Fatalf("literal/subdir %+v", got)

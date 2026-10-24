@@ -20,10 +20,10 @@ func gitOK(t *testing.T, err error) {
 func TestGitWriteFirstCommitAndPaths(t *testing.T) {
 	root, git := blameRepo(t)
 	ctx := context.Background()
-	for _, name := range []string{"file", "other", "literal[1]", "literal1", ":(glob)*", "-option"} {
+	for _, name := range append([]string{"file", "other", "literal[1]", "literal1", "-option"}, colonNames(":(glob)*")...) {
 		statusWrite(t, root, name, "original\n")
 	}
-	gitOK(t, GitStage(ctx, root, []string{"literal[1]", ":(glob)*", "-option"}))
+	gitOK(t, GitStage(ctx, root, append([]string{"literal[1]", "-option"}, colonNames(":(glob)*")...)))
 	staged := git("diff", "--cached", "--name-only")
 	if strings.Contains(staged, "literal1") || !strings.Contains(staged, "literal[1]") {
 		t.Fatalf("not literal: %s", staged)
@@ -124,7 +124,7 @@ func TestGitDiscardProtectionAndDrafts(t *testing.T) {
 	gitOK(t, GitDiscard(ctx, EditPolicy{}, root, GitDiscardRequest{Paths: []string{"file"}}))
 	data, _ := os.ReadFile(filepath.Join(root, "file"))
 	if string(data) != "staged\n" {
-		t.Fatal("discard did not restore from index")
+		t.Fatalf("discard did not restore from index: %q", data)
 	}
 	gitOK(t, os.Remove(filepath.Join(root, "deleted")))
 	gitOK(t, GitDiscard(ctx, EditPolicy{}, root, GitDiscardRequest{Paths: []string{"deleted"}}))

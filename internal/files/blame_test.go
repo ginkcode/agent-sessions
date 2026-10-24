@@ -11,6 +11,24 @@ import (
 	"testing"
 )
 
+// awkwardName is a path Git quotes in plain output. Windows forbids control
+// characters in file names, so there it uses spaces and non-ASCII instead.
+func awkwardName(base string) string {
+	if runtime.GOOS == "windows" {
+		return base + " ü"
+	}
+	return base + "\nwith tab\t"
+}
+
+// colonNames are paths that look like pathspec magic. Windows forbids ':' and
+// '*' in file names, so they cannot exist there.
+func colonNames(names ...string) []string {
+	if runtime.GOOS == "windows" {
+		return nil
+	}
+	return names
+}
+
 func blameRepo(t *testing.T) (string, func(...string) string) {
 	t.Helper()
 	if _, err := exec.LookPath("git"); err != nil {
@@ -31,6 +49,9 @@ func blameRepo(t *testing.T) (string, func(...string) string) {
 	git("config", "user.name", "Blame Author")
 	git("config", "user.email", "blame@example.test")
 	git("config", "commit.gpgsign", "false")
+	// Windows runners set core.autocrlf in system config, which the code under
+	// test reads; keep checkouts byte-for-byte on every platform.
+	git("config", "core.autocrlf", "false")
 	return root, git
 }
 

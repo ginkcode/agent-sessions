@@ -30,11 +30,12 @@ func repoStatus(t *testing.T, root string) RepoStatus {
 }
 func TestRepoStatusChanges(t *testing.T) {
 	root, git := blameRepo(t)
+	oldName, newName, untracked := awkwardName("old name"), awkwardName("new name"), awkwardName("untracked space")
 	initial := repoStatus(t, root)
 	if !initial.OK || initial.HasCommits || initial.Detached || initial.Branch == "" || len(initial.Entries) != 0 {
 		t.Fatalf("unborn: %+v", initial)
 	}
-	for _, p := range []string{"staged", "unstaged", "both", "deleted", "old name\nwith tab\t", "sub/inside", "outside"} {
+	for _, p := range []string{"staged", "unstaged", "both", "deleted", oldName, "sub/inside", "outside"} {
 		statusWrite(t, root, p, "base\n")
 	}
 	git("add", ".")
@@ -45,8 +46,8 @@ func TestRepoStatusChanges(t *testing.T) {
 	statusWrite(t, root, "unstaged", "unstaged\n")
 	statusWrite(t, root, "both", "worktree\n")
 	os.Remove(filepath.Join(root, "deleted"))
-	git("mv", "old name\nwith tab\t", "new name\nwith tab\t")
-	statusWrite(t, root, "untracked space\n\t", "new\n")
+	git("mv", oldName, newName)
+	statusWrite(t, root, untracked, "new\n")
 	statusWrite(t, root, "sub/inside", "change\n")
 	statusWrite(t, root, "outside", "change\n")
 	got := repoStatus(t, root)
@@ -54,13 +55,13 @@ func TestRepoStatusChanges(t *testing.T) {
 	for _, e := range got.Entries {
 		entries[e.Path] = e
 	}
-	for p, xy := range map[string]string{"staged": "M/", "unstaged": "/M", "both": "M/M", "deleted": "/D", "untracked space\n\t": "/?", "new name\nwith tab\t": "R/"} {
+	for p, xy := range map[string]string{"staged": "M/", "unstaged": "/M", "both": "M/M", "deleted": "/D", untracked: "/?", newName: "R/"} {
 		e, ok := entries[p]
 		if !ok || e.Index+"/"+e.Worktree != xy {
 			t.Errorf("%q: %+v want %s", p, e, xy)
 		}
 	}
-	if entries["new name\nwith tab\t"].OriginalPath != "old name\nwith tab\t" {
+	if entries[newName].OriginalPath != oldName {
 		t.Fatal(entries)
 	}
 	sub := repoStatus(t, filepath.Join(root, "sub"))
