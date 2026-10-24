@@ -1094,3 +1094,65 @@ bounds and concurrent scans. Existing every-fixture-boundary resume, split
 usage/tool state and checkpoint roundtrip tests pass. Prior ScanState immutability
 is checked. No private stores, forbidden script, installation, app launch/kill,
 Windows package, extra agents, commits or pushes. Native GUI QA is unperformed.
+
+## PF-11 — Bounded frontend listing snapshots (2026-10-24)
+
+Frontend-only listing reuse, following PF-03's mocked-store baseline. No backend,
+wire/API, editor-content cache or fresh-presence policy changes. The listing LRU
+has **four entries**, keyed by captured data-host identity plus root (trailing
+separators removed, Windows drive/UNC separators normalized; case and symlink
+aliases deliberately not merged). Each retained snapshot is limited to **500,000
+serialized UTF-16 code units**: at most 2,000,000 serialized units across the LRU,
+not a measured JS heap-byte bound. Oversized replies still display, but replace
+any older retained entry with no admission. Saved tabs/editors/drafts use their
+existing independent store and are not subject to listing eviction.
+
+Copied/frozen arrays and status objects back immutable `$state.raw` replacement.
+Reopen publishes cached paths synchronously, then starts a fresh list independently
+of editor reconciliation. Existing sequence/epoch checks remain, with captured
+host/root checks before both visible and cached publication. Successful reset
+clears listings; guarded draft resets remain guarded. Cached paths/status are
+explicitly labelled retained/not yet verified until a successful response.
+Refreshing and truncation remain visible, refresh errors retain browsable paths
+plus an alert, and explicit refresh remains available after failure.
+
+### Deterministic work counts and evidence
+
+The extended PF-03 lifecycle regression still counts **0** new list requests for
+already-open show, **1** for close/reopen, **1** for explicit refresh and **1** for
+each new root/host. This is **not fewer backend requests**: before PF-11 close/
+reopen displayed no paths until list resolution; now it immediately displays the
+previous paths while performing the same refresh. A barrier test holds list,
+presence probe and content read unresolved: cached paths are visible immediately,
+**1 list + 1 probe** start without resolution; after a present probe, **1 read**
+still occurs. No cached listing replaces those calls. Refresh replacement removes
+old results rather than merging them; failure keeps hints without claiming success.
+
+Tests also cover LRU recency/eviction, oversized replacement/non-admission,
+independent draft/editor identity retention, immutable API ownership, root and
+host isolation (including late old-host completion), Windows separator and trailing
+separator normalization, same-root old-request and old-epoch rejection, loading,
+truncation, refresh failure and retry presentation. The harness uses the existing
+Svelte server module/component compiler and `test/resolver.mjs`; no new framework.
+
+### Verification and limitations
+
+From `frontend/`:
+
+```sh
+node --loader ./test/resolver.mjs --test test/file-drafts.test.mjs test/go-to-file.test.mjs
+npm test
+npm run check
+npm run build
+```
+
+Focused **38/38** and full **671/671** tests pass (no skips). Check passes with
+0 errors and the existing tsconfig `ignoreDeprecations` warning. Production build
+passes with Vite's large-chunk advisory. Node reports its existing experimental-loader warning. Backend is unchanged;
+Go tests/race/build/vet were **not rerun** for this frontend-only task. No native
+GUI/Windows responsiveness, wall-clock improvement or retained heap measurement
+is claimed. PF-12 remains next: comprehensive app-mutation/hidden-save/Git
+invalidation and reconnect freshness regressions are not implemented here.
+Snapshots are hints even when stale app mutations are not yet invalidated; every
+reopen revalidates and existing fresh file probes/reads/revision checks remain.
+No private data, installation, app launch/kill, extra agents, commits or pushes.

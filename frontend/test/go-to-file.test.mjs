@@ -162,6 +162,20 @@ test('picker footer counts listed files and changes, reports truncation and disa
   assert.equal(classTag(initial, 'footer', 'picker-footer'), undefined);
 });
 
+test('retained listing stays browsable during refresh and after failure with honest freshness and retry', async () => {
+  const listing = { files: ['cached.ts'], truncated: true };
+  const refreshing = await renderPicker({ listing, listingStale: true, refreshing: true });
+  assert.match(refreshing, /title="cached\.ts"/);
+  assert.match(refreshing, /Retained listing; not yet verified/);
+  assert.match(refreshing, /Refreshing…/);
+  assert.match(refreshing, /list cut short/);
+  const failed = await renderPicker({ listing, listingStale: true, listError: 'Refresh failed' });
+  assert.match(failed, /role="alert">Refresh failed/);
+  assert.match(failed, /title="cached\.ts"/);
+  assert.match(failed, /Retained listing; not yet verified/);
+  assert.doesNotMatch(classTag(failed, 'button', 'refresh-btn'), /\bdisabled\b/);
+});
+
 test('diagnostic badges keep ancestor totals when collapsed and include unlisted descendants without discovery changes', async () => {
   const counts = { error: 12345, warning: 2, stale: true, uncertain: true };
   const checks = { counts, partial: true, truncated: true, pathCounts: { files: new Map([['src/nested/a.ts', counts]]), folders: new Map([['src', counts], ['src/nested', counts]]) } };

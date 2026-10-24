@@ -12,6 +12,27 @@ import { parentFolders } from '../files';
  */
 const WRAP_KEY = 'agent-sessions:file-wrap';
 const DIFF_KEY = 'agent-sessions:file-diff';
+const LISTING_CACHE_LIMIT = 4;
+// Oversized replies remain visible, but are not retained across dialog lifetimes.
+const LISTING_SNAPSHOT_LIMIT = 500_000; // serialized UTF-16 code units, not heap bytes
+
+function listingKey(host: string | undefined, dir: string): string {
+  // Normalize separators only for Windows roots; a backslash is a valid POSIX name.
+  const root = /^(?:[a-z]:[\\/]|\\\\)/i.test(dir) ? dir.replace(/\\/g, '/') : dir;
+  const normalized = root.replace(/\/+$/, '') || '/';
+  return JSON.stringify([host ?? null, /^[a-z]:\/+$/i.test(root) ? normalized + '/' : normalized]);
+}
+
+function listingSnapshot(listing: FileListing): FileListing {
+  // Raw state and the cache share only immutable replacements, never API-owned arrays.
+  return Object.freeze({
+    ...listing,
+    files: Object.freeze([...listing.files]) as unknown as string[],
+    ...(listing.directories && { directories: Object.freeze([...listing.directories]) as unknown as string[] }),
+    ...(listing.ignored && { ignored: Object.freeze([...listing.ignored]) as unknown as string[] }),
+    ...(listing.status && { status: Object.freeze({ ...listing.status }) }),
+  });
+}
 
 /**
  * A file open in the viewer. A preview tab (one click, as in VS Code) is
@@ -113,7 +134,10 @@ export class FilesStore {
 
   /** The directory being browsed; null while the dialog is closed. */
   dir = $state<string | null>(null);
-  listing = $state<FileListing | null>(null);
+  listing = $state.raw<FileListing | null>(null);
+  /** Retained paths/status are hints until the current list request succeeds. */
+  listingStale = $state(false);
+  private listings = new Map<string, FileListing>();
   loadingList = $state(false);
   listError = $state<string | null>(null);
   /** A refresh is fetching the list again; the old one stays shown. */
@@ -328,19 +352,25 @@ export class FilesStore {
     this.save();
     this.clear();
     this.dir = dir;
+    const key = listingKey(this.dataHost, dir);
+    const cached = this.listings.get(key);
+    if (cached) {
+      this.listings.delete(key);
+      this.listings.set(key, cached);
+      this.listing = cached;
+      this.listingStale = true;
+    }
+    this.loadingList = !cached;
+    this.refreshing = !!cached;
     const saved = this.saved.get(dir);
     if (saved) {
       this.expanded = new Set(saved.expanded);
       this.tabs = saved.tabs;
       this.selected = saved.selected;
-      // The files may have changed since: read them again, keeping what
-      // shows until the new text arrives.
-      await this.reconcileDisplayed();
-      if (this.dir !== dir) return;
       this.notify(o => o.restored(dir));
     }
-    this.loadingList = true;
-    await this.list(dir);
+    // Cached paths never stand in for fresh presence probes or content reads.
+    await Promise.all([this.reconcileDisplayed(), this.list(dir)]);
   }
 
   /** Fetches the file list and the open files again, keeping both shown meanwhile. */
@@ -442,11 +472,22 @@ export class FilesStore {
   private async list(dir: string): Promise<void> {
     const seq = ++this.listSeq;
     const started = epoch();
-    const current = () => seq === this.listSeq && started === epoch() && this.dataHost === link.dataHost;
+    const host = this.dataHost;
+    const key = listingKey(host, dir);
+    if (this.listing) this.listingStale = true;
+    const current = () => seq === this.listSeq && started === epoch() && host === this.dataHost
+      && host === link.dataHost && this.dir === dir;
     try {
       const listing = await api.listFiles(dir);
       if (!current()) return;
-      this.listing = listing;
+      const snapshot = listingSnapshot(listing);
+      this.listings.delete(key);
+      if (JSON.stringify(snapshot).length <= LISTING_SNAPSHOT_LIMIT) {
+        this.listings.set(key, snapshot);
+        while (this.listings.size > LISTING_CACHE_LIMIT) this.listings.delete(this.listings.keys().next().value!);
+      }
+      this.listing = snapshot;
+      this.listingStale = false;
       this.listError = null;
     } catch (err) {
       if (!current() || isStaleReply(err)) return;
@@ -1007,6 +1048,7 @@ export class FilesStore {
     if (this.hasUnsaved || this.creating || this.renaming || this.deleting) return false;
     this.clear();
     this.saved.clear();
+    this.listings.clear();
     this.renameUncertain = null;
     this.deleteUncertain = null;
     this.editVersion++;
@@ -1026,6 +1068,7 @@ export class FilesStore {
     this.readSeq++;
     this.dir = null;
     this.listing = null;
+    this.listingStale = false;
     this.loadingList = false;
     this.refreshing = false;
     this.listError = null;

@@ -1,6 +1,6 @@
 # Performance Milestone 1 — Baselines and targeted reuse
 
-- Status: in progress 2026-10-24; **7/15 tasks complete**.
+- Status: in progress 2026-10-24; **8/15 tasks complete**.
 - Parent plan: [performance.md](../plan/performance.md).
 - All estimates include focused tests and are planning estimates, not promises.
 - Every task is ≤4 developer hours. Split it here and in `TASKS.md` before coding
@@ -26,11 +26,11 @@ PF-06 completed 2026-10-24; optional source contract, bounded canonical fallback
 ownership and Codex feasibility are in [../perf.md](../perf.md#pf-06--validated-source-loading-contract-2026-10-24).
 PF-07A/B implemented; PF-07C safe opt-out complete. PF-07 remains partial/blocked:
 no defensible automatic activation policy; production proof is off. PF-08/PF-10
-remain blocked. PF-09 complete; PF-11 is next; PF-11…PF-15 unimplemented.
+remain blocked. PF-09 and PF-11 complete; PF-12 is next; PF-12…PF-15 unimplemented.
 
 ## Task index
 
-PF-01 through PF-06 and PF-09 are **complete**; PF-07 is **partial/blocked** (A/B implemented, C safe opt-out complete; activation gated); all remaining rows are **not started**. Dependencies are completion gates, not mere ordering
+PF-01 through PF-06, PF-09 and PF-11 are **complete**; PF-07 is **partial/blocked** (A/B implemented, C safe opt-out complete; activation gated); all remaining rows are **not started**. Dependencies are completion gates, not mere ordering
 suggestions. All implementation tasks also depend on the shared guardrails in the
 [parent plan](../plan/performance.md#shared-guardrails).
 
@@ -399,6 +399,11 @@ addition/removal/change, duplicates, source deletion/replacement, versions and a
 Retained-state cost is recorded; previously returned checkpoint state stays immutable.
 
 ## PF-11 — Bounded frontend listing snapshots
+
+**Status:** complete 2026-10-24. Four-entry, size-limited immutable listing snapshots,
+immediate cached reopen with independent refresh, honest stale/error/truncation UI
+and preserved fresh probes/reads/editors; [evidence and limits](../perf.md#pf-11--bounded-frontend-listing-snapshots-2026-10-24).
+PF-12 mutation invalidation and broader freshness coverage remain next.
 
 **Goal:** reopen Go to File with immediate cached paths, then background refresh.
 

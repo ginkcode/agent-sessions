@@ -199,10 +199,13 @@
   />
 
   <div class="picker-list" role="region" aria-label="Project file browser" bind:this={resultsEl} oncontextmenu={(e) => { if (!query.trim()) onContext(e, '', true); }}>
+    {#if files.listError && !files.loadingList}
+      <div class="state error" role="alert">{files.listError}</div>
+    {/if}
     {#if files.loadingList}
       <div class="state"><LoadingSpinner size={16} label="Listing files…" /> Listing files…</div>
-    {:else if files.listError}
-      <div class="state error" role="alert">{files.listError}</div>
+    {:else if files.listError && !files.listing}
+      <!-- No snapshot to show after a failed initial request. -->
     {:else if query.trim()}
       {#if matches.length === 0}
         <div class="state">No files match.</div>
@@ -248,6 +251,8 @@
       <span class="footer-text">
         {#if files.listing}
           {files.listing.files.length.toLocaleString()} files{files.listing.truncated ? ' (list cut short)' : ''}
+          {#if files.listingStale}· Retained listing; not yet verified{/if}
+          {#if files.refreshing}· Refreshing…{/if}
           {#if files.listing.git}· .gitignore applied{/if}
           {#if changedCount > 0}· {changedCount} changed{/if}
           {#if checks.counts.error || checks.counts.warning}· Diagnostic counts include findings outside this listing and search.{/if}
