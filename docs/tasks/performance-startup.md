@@ -1,6 +1,6 @@
 # Startup responsiveness — sequential task briefs
 
-Status: original package **6/6 complete**; large-index follow-up **ST-06A complete, ST-06B pending** 2026-10-24. The original gate did not reproduce the user's continuing >10 s delay. Original completion:  ST-00/ST-01 complete; ST-02 complete (ST-02A engine, ST-02B adapters); ST-03/ST-04 complete; ST-05 integrated gate complete with native GUI/SSH/Windows execution explicitly unperformed. Package closed.
+Status: original package **6/6 complete**; large-index follow-up **ST-06A/ST-06B complete** 2026-10-24. The original gate did not reproduce the user's continuing >10 s delay. Original completion:  ST-00/ST-01 complete; ST-02 complete (ST-02A engine, ST-02B adapters); ST-03/ST-04 complete; ST-05 integrated gate complete with native GUI/SSH/Windows execution explicitly unperformed. Package closed.
 [Plan and status/compatibility contract](../plan/performance-startup.md) ·
 [Roadmap](../plan/performance.md) · [Tracker](../../TASKS.md#startup-priority-package).
 
@@ -482,7 +482,7 @@ cost; no claim that it fully reproduces the user's device or native UI timing.
 
 ## ST-06B — Publish cached hints before full integrity verification
 
-**Status:** design validated; implementation pending ST-06A evidence commit. **Estimate:** ≤4 h. **Dependency:** ST-06A.
+**Status:** complete 2026-10-24; [evidence](../perf.md#st-06b--early-writer-catalog-hints-2026-10-24). **Estimate:** ≤4 h. **Dependency:** ST-06A.
 
 Wails v2.14.0 darwin `frontend.go:248–253` already invokes `OnStartup` on a
 separate goroutine before `mainWindow.Run`; no asynchronous desktop startup rewrite

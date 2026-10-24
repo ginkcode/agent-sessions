@@ -1959,3 +1959,40 @@ Wails 2.14.0 already runs OnStartup on a goroutine (darwin frontend.go:248–253
 a desktop lifecycle rewrite is not required. Tests: `go test ./internal/index`,
 `go vet ./internal/index`, changed-code golangci-lint and `git diff --check` pass.
 The opt-in large test passed (129.742 s); ordinary test execution skips generation.
+
+
+## ST-06B — Early writer catalog hints (2026-10-24)
+
+Based on `99f9b6f`, the initial writer now opens the current-schema cache read-only,
+loads metadata atomically, closes that handle, and publishes provisional rows before
+mandatory full writer verification. Discovery remains incomplete. Existing writer
+publication replaces hints, including empty after recovery. Read-only failure falls
+through unchanged; writer failure clears hints before fallback. Promotion and real
+reader snapshot/state ordering are unchanged; Start/Close serialization is retained.
+
+Repeat ST-06A command/fixture (300.7 MiB, 170 sessions, five runs, warm OS page cache,
+no WAL at reopen; 57.533 s generation excluded):
+
+| Phase | Median | Max |
+|---|---:|---:|
+| Early read-only open + catalog + close | 1.336 ms | 1.709 ms |
+| Mandatory verified index.Open | 5.583755 s | 5.970426 s |
+| quick_check(1), separately measured | 5.783932 s | 6.020599 s |
+| LoadCatalog after verification | 738 µs | 956 µs |
+
+The early read timing is not full Engine.Start, Wails transport, or native paint.
+Channel-held verified-open tests prove actual engine groups/counts/sessions and a
+catalog event are available before verification can complete. Cases cover verified
+rows, empty rebuild, a real CHECK-constraint integrity failure recovered by Open,
+malformed metadata, missing cache, writer-open failure and canceled verification.
+A held watcher proves authoritative replacement before bootstrap. Existing reader
+promotion and Close/restart tests pass. Search/index progress can still wait behind
+engine startup; this fix makes the list queryable, not all actions immediately ready.
+
+Checks: full Go tests, vet, build and Windows cross-vet passed. Race tests engine /
+index / app / rpc passed (184.395 / 46.041 / 3.481 / 11.694 s); later added real
+integrity-recovery case passed in focused barriers under race `-count=3` (4.076 s).
+Changed-code lint: 0 issues; diff check passed. No frontend changes; frontend tests
+were not rerun. Native GUI, real remote/SSH/WSL and Windows execution were not run.
+No private logs/index content accessed, packaging, app replacement, installs or push.
+The exact user-device >10 s and degraded provider outcome remain unverified.

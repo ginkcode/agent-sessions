@@ -46,10 +46,21 @@ func TestStartupLargeIndexOpen(t *testing.T) {
 		fileMB(dbPath), fileMB(dbPath+"-wal"))
 
 	const runs = 5
-	var open, ping, check, migrate, catalog []time.Duration
+	var open, ping, check, migrate, catalog, hints []time.Duration
 	for range runs {
-		// The whole path as the writer runs it.
 		start := time.Now()
+		reader, err := OpenReadOnly(ctx, dir, key)
+		if err != nil {
+			t.Fatal(err)
+		}
+		cached, err := reader.LoadCatalog(ctx)
+		if err != nil || len(cached) != sessions {
+			t.Fatalf("hints rows=%d err=%v", len(cached), err)
+		}
+		_ = reader.Close()
+		hints = append(hints, time.Since(start))
+		// The whole verified path as the writer runs it.
+		start = time.Now()
 		db, err := Open(ctx, dir, key)
 		if err != nil {
 			t.Fatal(err)
@@ -103,6 +114,7 @@ func TestStartupLargeIndexOpen(t *testing.T) {
 		name string
 		d    []time.Duration
 	}{
+		{"read-only catalog hints", hints},
 		{"index.Open total", open},
 		{"  ping", ping},
 		{"  quick_check(1)", check},

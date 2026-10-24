@@ -45,8 +45,38 @@ func (e *Engine) startCache(ctx context.Context) bool {
 	}
 }
 
+// publishWriterHints makes only cached metadata queryable before the full-file
+// integrity scan. These are provisional rows, not verified scan state. Close the
+// reader before recovery: a retained handle can obstruct file replacement on Windows.
+func (e *Engine) publishWriterHints(ctx context.Context, dir, key string) context.Context {
+	done := startupObservation(ctx).begin("catalog_hints")
+	db, err := index.OpenReadOnly(ctx, dir, key)
+	if err != nil {
+		done(false)
+		return ctx
+	}
+	metas, err := db.LoadCatalog(ctx)
+	closeErr := db.Close()
+	if err != nil || closeErr != nil || ctx.Err() != nil {
+		done(false)
+		return ctx
+	}
+	if e.svc.Catalog() != nil {
+		e.svc.Catalog().Reset(metas)
+	}
+	e.events.NotifyFullRefresh()
+	ctx = e.discoveryReconciling(ctx, DiscoveryCacheWriter)
+	done(true)
+	return ctx
+}
+
 func (e *Engine) startWriter(ctx context.Context, dir, key string, lock *index.Lock) bool {
-	db, metas, err := openWriter(ctx, dir, key)
+	ctx = e.publishWriterHints(ctx, dir, key)
+	open := openWriter
+	if e.writerOpen != nil {
+		open = e.writerOpen
+	}
+	db, metas, err := open(ctx, dir, key)
 	if err != nil {
 		_ = lock.Unlock()
 		return false

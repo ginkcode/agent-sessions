@@ -1,6 +1,6 @@
 # Startup responsiveness — priority package before Milestone 2
 
-Status: original package **complete** 2026-10-24 (6/6); ST-06 large-index follow-up reopened after the user retest. Original gate: ST-00 documentation, ST-01 measurement, ST-02 (ST-02A engine, ST-02B adapters), ST-03, ST-04 and the ST-05 integrated gate. Native GUI, real SSH and Windows execution were not performed.
+Status: original package **complete** 2026-10-24 (6/6); ST-06A/B large-index follow-up complete after the user retest (synthetic evidence only). Original gate: ST-00 documentation, ST-01 measurement, ST-02 (ST-02A engine, ST-02B adapters), ST-03, ST-04 and the ST-05 integrated gate. Native GUI, real SSH and Windows execution were not performed.
 [Sequential task briefs](../tasks/performance-startup.md) ·
 [Performance roadmap](performance.md) · [Task tracker](../../TASKS.md#startup-priority-package).
 

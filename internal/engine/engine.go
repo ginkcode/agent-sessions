@@ -57,6 +57,8 @@ type Engine struct {
 	cacheEnabled     bool
 	cacheDirOverride string
 	roots            paths.Roots
+	// writerOpen overrides verified opening in barrier/recovery tests only.
+	writerOpen func(context.Context, string, string) (*index.DB, []model.SessionMeta, error)
 
 	// Cache roles (see cache.go). lock is held while this engine is the
 	// index writer; readDB is a reader's read-only handle on the writer's
