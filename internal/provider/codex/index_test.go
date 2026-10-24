@@ -174,9 +174,15 @@ func TestScanIndex_ChangedTitleOnUnchangedRolloutAndFallback(t *testing.T) {
 	if _, err := db.Exec(`UPDATE threads SET title = 'Updated index title' WHERE id = ?`, indexID); err != nil {
 		t.Fatal(err)
 	}
-	second, err := p.Scan(context.Background(), first.State)
+	work := new(provider.ScanWork)
+	second, err := p.Scan(provider.WithScanWork(context.Background(), work), first.State)
 	if err != nil {
 		t.Fatal(err)
+	}
+	// Baseline: index-only changes read no rollout bytes, but the canonical
+	// pass still decodes/re-encodes the unchanged source checkpoint.
+	if work.SourceOpens.Load() != 0 || work.Records.Load() != 0 || work.CheckpointDecodes.Load() != 3 || work.CheckpointEncodes.Load() != 1 {
+		t.Errorf("index work opens/records/decodes/encodes = %d/%d/%d/%d", work.SourceOpens.Load(), work.Records.Load(), work.CheckpointDecodes.Load(), work.CheckpointEncodes.Load())
 	}
 	if len(second.Changed) != 1 || second.Changed[0].Title != "Updated index title" {
 		t.Fatalf("unchanged rollout did not emit changed index title: %+v", second.Changed)

@@ -433,6 +433,7 @@ type sourceScan struct {
 
 // Scan parses rollout metadata from discovered JSONL files.
 func (p *Provider) Scan(ctx context.Context, prev provider.ScanState) (provider.ScanResult, error) {
+	work := provider.ScanWorkFromContext(ctx)
 	result := provider.ScanResult{
 		State: provider.ScanState{Sources: make(map[string]provider.SourceState)},
 	}
@@ -586,12 +587,18 @@ feed:
 	// index values and a later absent index can fall back accurately.
 	for path, state := range result.State.Sources {
 		var cp checkpoint
+		if work != nil {
+			work.CheckpointDecodes.Add(1)
+		}
 		if err := json.Unmarshal(state.Checkpoint, &cp); err != nil {
 			return provider.ScanResult{}, fmt.Errorf("codex: decode rollout checkpoint %q: %w", path, err)
 		}
 		if canonical, ok := byID[cp.finalize(path, time.Unix(0, state.ModTimeNs)).Ref.ID]; ok {
 			meta := canonical.meta
 			cp.Canonical = &meta
+		}
+		if work != nil {
+			work.CheckpointEncodes.Add(1)
 		}
 		state.Checkpoint, err = json.Marshal(cp)
 		if err != nil {
@@ -611,6 +618,9 @@ feed:
 			}
 		}
 		var cp checkpoint
+		if work != nil {
+			work.CheckpointDecodes.Add(1)
+		}
 		if err := json.Unmarshal(old.Checkpoint, &cp); err != nil {
 			result.Diag.Warn(path, 0, "invalid previous scan checkpoint: %v", err)
 			continue
@@ -686,9 +696,13 @@ func (p *Provider) scanSource(ctx context.Context, path string, old provider.Sou
 		return out
 	}
 
+	work := provider.ScanWorkFromContext(ctx)
 	var cp checkpoint
 	resume := hasOld && len(old.Checkpoint) > 0 && old.Offset >= 0 && old.Offset <= old.Size && old.Size <= info.Size()
 	if resume {
+		if work != nil {
+			work.CheckpointDecodes.Add(1)
+		}
 		if err := json.Unmarshal(old.Checkpoint, &cp); err != nil {
 			out.diag.Warn(path, 0, "invalid scan checkpoint: %v", err)
 			resume = false
@@ -728,6 +742,9 @@ func (p *Provider) scanSource(ctx context.Context, path string, old provider.Sou
 		start = old.Offset
 	}
 
+	if work != nil {
+		work.SourceOpens.Add(1)
+	}
 	r, err := jsonl.Open(path, start)
 	if err != nil {
 		out.err = fmt.Errorf("codex: open rollout %q: %w", path, err)
@@ -760,6 +777,10 @@ func (p *Provider) scanSource(ctx context.Context, path string, old provider.Sou
 			out.err = fmt.Errorf("read rollout %s: %w", path, err)
 			return out
 		}
+		if work != nil {
+			work.Records.Add(1)
+			work.RecordBytes.Add(int64(len(line)))
+		}
 		cp.consume(line, &out.diag)
 	}
 
@@ -780,6 +801,9 @@ func (p *Provider) scanSource(ctx context.Context, path string, old provider.Sou
 		}
 	}
 
+	if work != nil {
+		work.CheckpointEncodes.Add(1)
+	}
 	encoded, err := json.Marshal(cp)
 	if err != nil {
 		out.err = fmt.Errorf("marshal checkpoint %s: %w", path, err)

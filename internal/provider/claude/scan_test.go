@@ -256,9 +256,15 @@ func TestScanSubagentAndMetadataChange(t *testing.T) {
 	if err := os.WriteFile(metaPath, []byte(`{"agentType":"Plan","description":"Find a newer function","toolUseId":"parent-call-2"}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	changed, err := p.Scan(context.Background(), unchanged.State)
+	work := new(provider.ScanWork)
+	changed, err := p.Scan(provider.WithScanWork(context.Background(), work), unchanged.State)
 	if err != nil || len(changed.Changed) != 1 {
 		t.Fatalf("changed = %+v, %v", changed.Changed, err)
+	}
+	// Baseline: a sidecar-only change resumes at the saved offset (one open, no
+	// records) but decodes every checkpoint and re-encodes only the subagent.
+	if work.SourceOpens.Load() != 1 || work.Records.Load() != 0 || work.CheckpointDecodes.Load() != 2 || work.CheckpointEncodes.Load() != 1 {
+		t.Errorf("sidecar work opens/records/decodes/encodes = %d/%d/%d/%d", work.SourceOpens.Load(), work.Records.Load(), work.CheckpointDecodes.Load(), work.CheckpointEncodes.Load())
 	}
 	m := changed.Changed[0]
 	if m.AgentName != "Plan" || m.Title != "Find a newer function" || m.ParentToolCallID != "parent-call-2" || m.Counts != child.Counts || m.Tokens != child.Tokens {

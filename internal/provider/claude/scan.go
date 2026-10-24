@@ -421,9 +421,13 @@ func (p *Provider) scanSource(ctx context.Context, src source, old provider.Sour
 		return out
 	}
 
+	work := provider.ScanWorkFromContext(ctx)
 	var cp checkpoint
 	resume := hasOld && len(old.Checkpoint) != 0 && old.Offset >= 0 && old.Size <= info.Size() && old.Offset <= info.Size()
 	if resume {
+		if work != nil {
+			work.CheckpointDecodes.Add(1)
+		}
 		if err := json.Unmarshal(old.Checkpoint, &cp); err != nil {
 			out.diag.Warn(src.Path, 0, "invalid scan checkpoint: %v", err)
 			resume = false
@@ -482,6 +486,9 @@ func (p *Provider) scanSource(ctx context.Context, src source, old provider.Sour
 	if resume {
 		offset = old.Offset
 	}
+	if work != nil {
+		work.SourceOpens.Add(1)
+	}
 	r, err := jsonl.Open(src.Path, offset)
 	if err != nil {
 		out.diag.Warn(src.Path, 0, "open transcript: %v", err)
@@ -508,6 +515,10 @@ func (p *Provider) scanSource(ctx context.Context, src source, old provider.Sour
 			out.err = fmt.Errorf("read transcript %s: %w", src.Path, err)
 			return out
 		}
+		if work != nil {
+			work.Records.Add(1)
+			work.RecordBytes.Add(int64(len(line)))
+		}
 		cp.consume(line, &out.diag)
 	}
 	cp.LinesRead = lineBase + r.LineNo()
@@ -520,6 +531,9 @@ func (p *Provider) scanSource(ctx context.Context, src source, old provider.Sour
 				out.meta.RepoRoot = repo.MainRoot
 			}
 		}
+	}
+	if work != nil {
+		work.CheckpointEncodes.Add(1)
 	}
 	checkpointBytes, err := json.Marshal(cp)
 	if err != nil {
