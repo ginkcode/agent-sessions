@@ -519,7 +519,7 @@ mandatory. Generated fixtures only, no private stores or real host connections.
 | ST-07C | Complete | Prepared RPC startup, early initialize and method gate | ≤4 h |
 | ST-07D | Complete | CLI wiring and generated real-engine integration | ≤3 h |
 | ST-07E | Complete | Opt-in content-free remote phase timing | ≤3 h |
-| ST-07F | Pending | Integrated regression gate and repeated evidence | ≤3 h |
+| ST-07F | Complete | Integrated regression gate and repeated evidence | ≤3 h |
 
 Execute sequentially; commit per completed task, no push. Split oversized work
 before coding. Each scope includes focused tests.
@@ -594,3 +594,8 @@ successful remote catalog calls. Fake SSH observation tests PASS; RPC/remote rac
 suites PASS (9.329 / 20.082 s), changed-code lint 0 issues. Nine-trial generated
 150 ms workload: first successful empty catalog response median 150.933 ms before /
 486 µs after; this is not useful nonempty data or real SSH latency.
+
+ST-07F complete: [integrated evidence and retest instructions](../perf.md#st-07--remote-early-catalog-handshake-2026-10-24).
+Full Go test/vet/build/Windows cross-vet PASS; focused race gate repeated three times
+PASS. No real host/GUI/Windows or 300 MiB end-to-end RPC measurement; frontend unchanged
+and not rerun. Existing PF blockers remain unchanged; nothing pushed.

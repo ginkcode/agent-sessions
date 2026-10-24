@@ -239,3 +239,5 @@ reply at current-lifetime catalog readiness and gate noncatalog operations until
 startup finishes. Keep local startup, integrity recovery and wire compatibility.
 Join startup before diagnostics expiry/engine Close. Measure connection phases with
 opt-in content-free observers; generated evidence is not native SSH/UI verification.
+
+ST-07A–F complete: [generated integration evidence](../perf.md#st-07--remote-early-catalog-handshake-2026-10-24). Real SSH/native timing remains unverified.

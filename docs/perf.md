@@ -1996,3 +1996,66 @@ Changed-code lint: 0 issues; diff check passed. No frontend changes; frontend te
 were not rerun. Native GUI, real remote/SSH/WSL and Windows execution were not run.
 No private logs/index content accessed, packaging, app replacement, installs or push.
 The exact user-device >10 s and degraded provider outcome remain unverified.
+
+
+## ST-07 — Remote early catalog handshake (2026-10-24)
+
+Based on `b41456d`, Go 1.26.8 darwin/arm64. Production CLI now prepares the
+backend and diagnostics identity/capabilities before launching a Serve-owned startup
+task. Initialize returns when the new discovery lifetime publishes CatalogUsable,
+or when Start finishes. Discovery completion still means reconciliation, not socket
+readiness. Existing synchronous starters and wire protocol version 1 are unchanged.
+
+Catalog/status/ping calls can run early. All other RPC methods wait on a cancelable
+startup gate before entering engine code. Serve cancels and joins startup before
+expiring diagnostics; CLI closes the engine last. This preserves local synchronous
+Start, integrity/recovery and avoids a late Start reviving a closed engine.
+
+### Generated evidence and limits
+
+`AS_STARTUP_BASELINE=1 go test ./internal/rpc -run '^TestRemoteStartupMeasurements$' -v -count=1 -timeout 60s`
+uses nine trials per mode, in-process pipes and a fake discovery backend. It publishes
+readiness then performs **150 ms of artificial startup work**. Fixture/setup excluded.
+This is a scheduling/handshake measurement, NOT a large-database or SSH benchmark.
+
+| Initialize → first successful catalog response | Median | Max |
+|---|---:|---:|
+| Synchronous starter baseline | 151.484 ms | 153.172 ms |
+| Prepared early-catalog startup | 467 µs | 547 µs |
+
+The measured fake response is empty: this does not assert usable nonempty data.
+Separately, the real-engine generated-cache integration holds watcher registration
+under engine.mu and reads a nonempty cached list, groups/counts and discovery over
+RPC before releasing startup. It also verifies remote diagnostics identity/capability
+survives pre-start preparation. ST-06 engine tests hold writer integrity opening and
+verify early cached hints (including malformed/corrupt recovery cases); ST-07 observes
+the same CatalogUsable state. No full 300 MiB RPC/SSH end-to-end measurement was run.
+
+Observers are opt-in/context-local, contain phase names/timings/success only, and have
+no default logging or wire payload. Client probe/bundle selection/deploy/preface/
+initialize, server preparation/identity/catalog-ready/full Start and first successful
+catalog responses are independently observable. Empty success is not a usable-row
+metric. No cross-process clock subtraction. Fake SSH tests verify handshake phases;
+real authentication/network/deployment costs remain unknown.
+
+### Verification and retesting
+
+Full `go test ./...`, `go vet ./...`, `go build ./...`, `GOOS=windows go vet ./...`
+PASS. RPC/remote race suites PASS (9.329 / 20.082 s), CLI/app earlier race suites PASS
+(2.121 / 2.891 s). Final focused engine/RPC/app/CLI readiness, discovery, connection and
+serve tests `-race -count=3` PASS (4.417 / 4.684 / 2.569 / 3.174 s). Changed-code lint
+0 issues; diff check PASS. Tests cover early data, stale lifetimes, no-watcher
+fallback, failed startup, shutdown/cancellation, late failure disconnect, gated RPC
+cancellation, duplicate initialize, env roots and retained backend optional interfaces.
+Frontend unchanged; frontend tests/check/build not rerun. Real SSH/WSL, native GUI,
+Windows execution and remote deployment unperformed. No private data or cache read.
+
+To retest, rebuild **both desktop and bundled remote servers** through the existing
+packaging target (`make package-macos` for macOS), not just the desktop executable.
+Use only inspected/approved build destinations. For isolated bundle verification use
+`make remote-servers REMOTE_DIR=<fresh temporary directory>`; no bundle build or app
+replacement was performed here. The launcher matches bundle checksums even for the
+same app version; without a fresh bundle the old server may still be selected.
+SSH setup/probe/deploy, full verification, gated actions and final reconciliation can
+still take time. These changes remove catalog visibility's dependency on full remote
+startup; they do not establish a measured user-host or native responsiveness result.
