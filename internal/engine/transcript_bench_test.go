@@ -74,6 +74,7 @@ func TestTranscriptBaselineEquivalence(t *testing.T) {
 						t.Fatal("large messages differ from small equivalent")
 					}
 					svc := NewService(nil, provider.Set{p})
+					svc.transcripts.start(ctx)
 					first, err := svc.GetMessages(ctx, ref, -1, 50)
 					if err != nil {
 						t.Fatal(err)
@@ -118,7 +119,11 @@ func TestTranscriptConcurrentMissBaseline(t *testing.T) {
 					errs <- err
 				}(refs[i])
 			}
-			attempts := make([]*providertest.LoadAttempt, 4)
+			wantLoads := 4
+			if same {
+				wantLoads = 1
+			}
+			attempts := make([]*providertest.LoadAttempt, wantLoads)
 			for i := range attempts {
 				attempts[i] = <-gate.Started
 			}
@@ -136,15 +141,15 @@ func TestTranscriptConcurrentMissBaseline(t *testing.T) {
 					t.Fatal("concurrent output differs")
 				}
 			}
-			if gate.Calls.Load() != 4 {
-				t.Fatal("baseline should perform four loads")
+			if gate.Calls.Load() != int64(wantLoads) {
+				t.Fatal("unexpected provider load count")
 			}
 			for _, ref := range refs {
 				if _, err := svc.GetMessages(t.Context(), ref, -1, 50); err != nil {
 					t.Fatal(err)
 				}
 			}
-			if gate.Calls.Load() != 4 {
+			if gate.Calls.Load() != int64(wantLoads) {
 				t.Fatal("warm requests called provider")
 			}
 		})
@@ -169,9 +174,8 @@ func measuredLiveHeap(tb testing.TB, p provider.Provider, ref model.SessionRef) 
 	return int64(after.HeapAlloc) - int64(before.HeapAlloc), tr
 }
 
-// sameKeyBaselineLoads is the current uncoalesced behavior: all four concurrent
-// misses reach the provider. PF-05 is expected to change this to 1.
-const sameKeyBaselineLoads = 4
+// Same-generation concurrent misses now share one provider load.
+const sameKeyBaselineLoads = 1
 
 // concurrentPages starts four requests and releases provider loads only after
 // wantLoads calls are blocked, so every intended miss overlaps without sleeps.
@@ -236,6 +240,14 @@ func BenchmarkTranscript(b *testing.B) {
 						work := new(provider.LoadWork)
 						scans := new(provider.ScanWork)
 						ctx := provider.WithScanWork(provider.WithLoadWork(context.Background(), work), scans)
+						svc.transcripts.start(ctx)
+						if mode == "warm-page" {
+							// Warm without accounting; timed hits must not invoke the provider.
+							svc.transcripts.start(context.Background())
+							if _, err := svc.GetMessages(context.Background(), ref, -1, 50); err != nil {
+								b.Fatal(err)
+							}
+						}
 						b.ReportAllocs()
 						b.ResetTimer()
 						for i := 0; i < b.N; i++ {
@@ -245,6 +257,7 @@ func BenchmarkTranscript(b *testing.B) {
 							case "cold-page":
 								b.StopTimer()
 								svc = NewService(nil, provider.Set{routed})
+								svc.transcripts.start(ctx)
 								b.StartTimer()
 								_, err = svc.GetMessages(ctx, ref, -1, 50)
 							case "warm-page":
@@ -256,12 +269,17 @@ func BenchmarkTranscript(b *testing.B) {
 								b.StopTimer()
 								gate := providertest.NewBarrier(routed, 4)
 								svc = NewService(nil, provider.Set{gate})
+								svc.transcripts.start(ctx)
 								batch := refs
 								if len(refs) == 1 {
 									batch = []model.SessionRef{ref, ref, ref, ref}
 								}
 								b.StartTimer()
-								err = concurrentPages(svc, gate, ctx, batch, sameKeyBaselineLoads)
+								wantLoads := sameKeyBaselineLoads
+								if len(refs) > 1 {
+									wantLoads = len(refs)
+								}
+								err = concurrentPages(svc, gate, ctx, batch, wantLoads)
 								b.StopTimer()
 								gate.Close()
 								b.StartTimer()
@@ -275,7 +293,7 @@ func BenchmarkTranscript(b *testing.B) {
 						if mode == "warm-page" {
 							want = 0
 						}
-						if mode == "same-key-4" || mode == "independent-key-4" {
+						if mode == "independent-key-4" {
 							want *= 4
 						}
 						if work.Calls.Load() != want || work.SourceOpens.Load() != want || work.SourceBytes.Load() != want*size {

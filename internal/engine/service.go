@@ -370,24 +370,14 @@ func (s *Service) ScanStates() map[model.AgentID]provider.ScanState {
 }
 
 func (s *Service) loadTranscript(ctx context.Context, ref model.SessionRef) (*model.Transcript, error) {
-	key := ref.Key()
-	tr, load := s.transcripts.begin(key)
-	if load.token == nil {
-		return tr, nil
-	}
-	var err error
+	// Preserve unknown-provider errors without scheduling shared work.
 	prov, ok := s.providers.Get(ref.Agent)
 	if !ok {
-		err = fmt.Errorf("%w: %s", ErrUnknownProvider, ref.Agent)
-	} else {
-		tr, err = prov.Load(ctx, ref)
+		return nil, fmt.Errorf("%w: %s", ErrUnknownProvider, ref.Agent)
 	}
-	// A load invalidated meanwhile is served to this caller but not cached.
-	s.transcripts.finish(key, load, tr, err)
-	if err != nil {
-		return nil, err
-	}
-	return tr, nil
+	return s.transcripts.load(ctx, ref.Key(), func(loadCtx context.Context) (*model.Transcript, error) {
+		return prov.Load(loadCtx, ref)
+	})
 }
 
 // EvictTranscript drops one cached transcript and prevents loads already in

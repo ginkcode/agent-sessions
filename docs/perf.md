@@ -604,3 +604,94 @@ is included.
 This task establishes correctness, not a measured speedup. No new benchmark
 comparison or native GUI responsiveness claim; no private session/cache stores,
 installs, app launches, process termination, pushes or Windows packages.
+
+
+## PF-05 — Coalesced transcript loads (2026-10-24)
+
+### Design and deterministic evidence
+
+The transcript-specific coordinator still uses the existing four-entry LRU.
+Current flight pointer identity replaces PF-04's explicit token/epoch: eviction
+or clear detaches the pointer, and only the matching current flight can publish
+or delete itself. Detached readers can finish with their original snapshot;
+new readers never join obsolete work. No historical key tombstones are retained.
+
+Shared contexts belong to the service/engine lifetime, never the first waiter.
+Standalone `NewService` uses a background lifetime; its last departing waiter
+cancels orphan work. Engine Start binds the owner even with caching disabled;
+Close cancels current and detached loads, including before Start. Restart installs
+a fresh lifetime; repeated Start is a no-op. Unknown-provider errors remain
+synchronous. Caller cancellation is independent, and shutdown releases waiters
+even when a provider ignores cancellation. Such a provider cannot be forcibly
+terminated: it retains its slot and owned-flight record until it returns.
+
+A four-slot context-aware semaphore bounds actual provider I/O, including
+superseded/orphaned work. Queued flights are cancellable and do not hold the cache
+lock. Bookkeeping is proportional to outstanding requests/unfinished loads, not
+all keys ever seen; there is no admission/queue-size policy in this task.
+
+PF-02 barriers cover four shared successful waiters, distinct simultaneous keys,
+shared failure/retry, first/other/last cancellation, owner cancellation, both
+old/new completion orders after single/batch/clear invalidation, orphan versus
+retry identity, uncooperative shutdown completion, engine Close/restart and the
+concurrency bound with a cancelled queued request. State observations use locked
+predicates (with a timeout only as a failure guard), not sleeps. PF-02 concurrent
+tests/benchmarks now expect one same-key provider attempt, four independent-key
+attempts, so they do not wait for four announcements from one shared flight.
+Synthetic work collectors are attached to the owning lifetime, not a waiter.
+
+### Repeated same-key evidence
+
+Darwin arm64, Apple M5, Go 1.26.8, default GOMAXPROCS=10; generated temporary
+38/100 MB PF-02 fixtures, four page requests per cold same-key batch, construction
+excluded. Three one-iteration runs, same host as PF-02. Command:
+
+```sh
+go test ./internal/engine -run '^$' -bench '^BenchmarkTranscript/(claude|codex)/(38MB|100MB)/same-key-4$' -benchtime=1x -count=3
+```
+
+Historical before results are preserved in PF-02 above. Times are median
+[min–max] milliseconds; allocation ranges are measured per four-request batch.
+
+| Fixture | PF-02 before ms | PF-05 after ms | After B/op | After allocs/op |
+|---|---:|---:|---:|---:|
+| Claude 38 MB | 414.350 [409.230–417.495] | 392.843 [392.030–402.451] | 202,494,536–202,496,512 | 36,798–36,801 |
+| Claude 100 MB | 1098.335 [1091.759–1102.975] | 1026.776 [1015.688–1043.684] | 506,818,920–506,822,400 | 36,801–36,809 |
+| Codex 38 MB | 689.030 [688.688–701.021] | 590.582 [589.012–606.494] | 244,288,392–244,306,984 | 50,152–50,170 |
+| Codex 100 MB | 1867.675 [1847.085–1884.795] | 1640.225 [1625.508–1653.801] | 609,430,536–609,447,688 | 50,152–50,167 |
+
+All runs assert **4 → 1 loads and source opens per batch**, with logical source
+bytes respectively 152,622,212 → 38,155,553; 400,622,724 → 100,155,681;
+152,792,932 → 38,198,233; and 400,793,444 → 100,198,361. Allocations/bytes
+are approximately one quarter of PF-02 (before B/op ranges in its table).
+Codex resolution-record bytes also fall fourfold but still scan the source once:
+38,196,812 / 100,196,940 after. Page JSON remains 3,722,952 / 9,777,652 bytes
+for Claude, 3,723,052 / 9,777,752 for Codex. Measured single-transcript live
+heap remains roughly 40.4 / 101.7 MB; retained-size estimates remain 38.2 / 100.2
+MB, not a new cache-memory saving measurement.
+
+Wall-clock improvement is modest relative to work/allocation reduction because
+previous loads ran in parallel; these are synthetic one-shot batches, not a
+native UI latency distribution, physical disk measurements or serial repeated
+cache hits. Concurrent backend verification ran during these samples, adding
+noise; no statistical speedup guarantee is claimed. Full parsing, Codex canonical
+resolution, large payloads and the count-based cache budget remain unchanged.
+A separate one-iteration Claude 38 MB run verifies cold-page, warm-page,
+invalidated and independent-key-4 work-count expectations; it is not comparative
+evidence for those modes.
+
+### Verification and limits
+
+Passed full `go test -race ./...`, `go test ./...`, `go build ./...`, `go vet ./...`;
+focused coordinator race cases repeated 50 times; generated transcript equivalence
+and paging regressions; changed-line engine `golangci-lint` (0 issues), and diff
+whitespace checks. Frontend `npm test`, `npm run check`, `npm run build` passed.
+An initial broad three-repeat race command with all large fixtures exceeded its
+180-second aggregate timeout while parsing (not a barrier deadlock); the full
+race suite passed with its normal timeout, and the focused repeated race run
+excludes those expensive equivalence fixtures. Repository-wide lint debt recorded
+in PF-04 is not changed or cleaned up here.
+
+No native GUI/Windows/RPC latency claim. No private stores, QA perf script,
+installs, app launches, process termination, pushes or Windows packages. PF-06
+through PF-15 remain unimplemented; changes are left uncommitted for review.

@@ -210,6 +210,9 @@ func (e *Engine) Start(ctx context.Context) error {
 	}
 	e.started = true
 	e.closed = false
+	if e.svc != nil {
+		e.svc.transcripts.start(ctx)
+	}
 
 	if e.emitter == nil {
 		e.emitter = NopEmitter{}
@@ -318,6 +321,9 @@ func (e *Engine) Close() error {
 	}
 	e.closed = true
 	e.started = false
+	if e.svc != nil {
+		e.svc.transcripts.stop()
+	}
 
 	events := e.events
 	closeWatch := e.closeWatch

@@ -1,6 +1,6 @@
 # Performance Milestone 1 — Baselines and targeted reuse
 
-- Status: in progress 2026-10-24; **4/15 tasks complete**.
+- Status: in progress 2026-10-24; **5/15 tasks complete**.
 - Parent plan: [performance.md](../plan/performance.md).
 - All estimates include focused tests and are planning estimates, not promises.
 - Every task is ≤4 developer hours. Split it here and in `TASKS.md` before coding
@@ -20,11 +20,13 @@ PF-03 completed 2026-10-24; project listing baseline evidence is appended to
 [../perf.md](../perf.md#pf-03--synthetic-project-listing-baseline-2026-10-24).
 PF-04 completed 2026-10-24; atomic per-key transcript invalidation and deterministic
 race evidence are in [../perf.md](../perf.md#pf-04--atomic-transcript-invalidation-2026-10-24).
-No implementation has been performed for PF-05…PF-15.
+PF-05 completed 2026-10-24; coalesced loads, owned cancellation and repeated
+same-key evidence are in [../perf.md](../perf.md#pf-05--coalesced-transcript-loads-2026-10-24).
+No implementation has been performed for PF-06…PF-15.
 
 ## Task index
 
-PF-01 through PF-04 are **complete**; all other rows are **not started**. Dependencies are completion gates, not mere ordering
+PF-01 through PF-05 are **complete**; all other rows are **not started**. Dependencies are completion gates, not mere ordering
 suggestions. All implementation tasks also depend on the shared guardrails in the
 [parent plan](../plan/performance.md#shared-guardrails).
 
@@ -153,6 +155,11 @@ unrelated eviction isolation, removal/reappearance, and bounded bookkeeping;
 existing paging/cache tests and affected race tests pass.
 
 ## PF-05 — Coalesced transcript loads
+
+**Status:** complete 2026-10-24. Narrow current-flight coordinator, independent
+waiters, lifetime/orphan cancellation, four-provider-load bound and engine restart
+coverage; deterministic race tests and repeated synthetic evidence in
+[../perf.md](../perf.md#pf-05--coalesced-transcript-loads-2026-10-24).
 
 **Goal:** concurrent requests for the same current session share one provider load.
 
