@@ -74,6 +74,7 @@ func (r *Runner) Run(ctx context.Context, prev map[model.AgentID]provider.ScanSt
 			continue
 		}
 		d, err := p.Detect(ctx)
+		ObserveDetection(ctx, p.ID(), d.Present, err)
 		if err != nil {
 			report.Errors[p.ID()] = fmt.Errorf("detect: %w", err)
 		} else if d.Present {
@@ -129,6 +130,7 @@ func (r *Runner) Run(ctx context.Context, prev map[model.AgentID]provider.ScanSt
 	handled := make(map[model.AgentID]bool, len(detected))
 	for o := range results {
 		handled[o.id] = true
+		ObserveScan(ctx, o.id, o.err)
 		if o.err != nil {
 			report.Errors[o.id] = fmt.Errorf("scan: %w", o.err)
 			continue

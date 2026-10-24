@@ -321,6 +321,7 @@ func (r *Refresher) Bootstrap(ctx context.Context) error {
 			return err
 		}
 		d, err := p.Detect(ctx)
+		scan.ObserveDetection(ctx, p.ID(), d.Present, err)
 		if err != nil {
 			r.recordError(p.ID(), fmt.Errorf("detect: %w", err))
 		} else if d.Present {
@@ -349,7 +350,8 @@ func (r *Refresher) Bootstrap(ctx context.Context) error {
 				if ctx.Err() != nil {
 					return
 				}
-				_, _, _ = r.Refresh(ctx, p)
+				_, _, err := r.Refresh(ctx, p)
+				scan.ObserveScan(ctx, p.ID(), err)
 			}
 		}()
 	}

@@ -1,6 +1,6 @@
 # Startup responsiveness — sequential task briefs
 
-Status: **2/6 complete** 2026-10-24: ST-00/ST-01 complete; ST-02…ST-05 pending.
+Status: **2/6 complete; ST-02 partial (A complete, B pending)** 2026-10-24: ST-00/ST-01 complete; ST-02A engine complete; ST-02B adapters and ST-03…ST-05 pending.
 [Plan and status/compatibility contract](../plan/performance-startup.md) ·
 [Roadmap](../plan/performance.md) · [Tracker](../../TASKS.md#startup-priority-package).
 
@@ -25,12 +25,13 @@ Likely files are integration points, not instructions to create duplicate system
 |---|---|---|---|---|
 | [ST-00](#st-00--document-startup-scope-and-tasks) | Complete | Scope, contracts, briefs and links | 1 h | None |
 | [ST-01](#st-01--measure-the-real-startup-path) | Complete | Full-startup baseline; ST-04 measurement blocker | 4 h | ST-00 |
-| [ST-02](#st-02--backend-discovery-readiness-contract) | Pending | Lifecycle status snapshot/event across adapters | 4 h | ST-01 |
-| [ST-03](#st-03--truthful-frontend-startup-states) | Pending | Honest readiness and compatible empty/error states | 3 h | ST-02 |
+| [ST-02A](#st-02--backend-discovery-readiness-contract) | Complete | Engine lifecycle snapshot/event and outcomes | ≤4 h | ST-01 |
+| ST-02B | Pending | Compatible App/RPC adapters and parity | ≤4 h | ST-02A |
+| [ST-03](#st-03--truthful-frontend-startup-states) | Pending | Honest readiness and compatible empty/error states | 3 h | ST-02B |
 | [ST-04](#st-04--remove-the-measured-startup-blocker) | Pending, measurement-blocked | One evidence-selected safe optimization | ≤4 h | ST-03; ST-01 evidence |
 | [ST-05](#st-05--integrated-startup-gate) | Pending | Integration, before/after evidence and limits | 4 h | ST-04 |
 
-Total planned effort: **≤20 h**. ST-00 is documentation only.
+Total planned effort: **≤24 h after ST-02 split**. ST-00 is documentation only.
 Reviewed task commits are separate, on `feature/improve-performance` with
 required attribution; no push. Do not begin Milestone 2 implementation here.
 
@@ -94,7 +95,101 @@ is recorded. Focused tests pass; no private roots discovered.
 
 ## ST-02 — Backend discovery readiness contract
 
-**Status:** pending. **Estimate:** 4 h. **Dependency:** ST-01.
+**Status:** split before coding (2026-10-24): **ST-02A complete** (engine),
+**ST-02B pending** (adapters). Adapter negotiation/routing plus lifecycle and
+outcome capture exceeded 4 h together. **Dependency:** ST-01. ST-03 requires
+both slices; ST-02 as a whole is not complete until ST-02B passes.
+
+- **ST-02A (≤4 h, complete):** engine-owned snapshot/event, lifecycle and
+  attempt invalidation, actual detection/outcome capture, barrier-driven tests.
+- **ST-02B (≤4 h, pending):** additive optional Backend/App/Wails/RPC adapters,
+  capability, unknown-method/unavailable fallback, client notification routing,
+  mocks, generated Wails bindings/TS types and local-vs-RPC parity tests. No
+  frontend presentation work. All original adapter acceptance remains required.
+
+**Final contract (ST-02A, `internal/engine/discovery.go`).** Optional
+`engine.DiscoveryBackend` with `DiscoveryStatus(context.Context) (DiscoveryStatus, error)`
+(not added to `Backend`, so older backends/mocks still compile); `*Engine`
+implements it. Event `discovery:status` (`engine.DiscoveryStatusEvent`) carries
+the full snapshot on every change. JSON fields:
+
+| Field | Meaning |
+|---|---|
+| `lifetime` | Increments on every `Start`; `0` only before the first Start (`state: initializing`) |
+| `revision` | Increments on every change within a lifetime; order by (`lifetime`, `revision`) |
+| `state` | `initializing` → `restoring` (cache path) → `reconciling` → terminal `settled` / `degraded` / `failed` |
+| `catalogUsable` | Catalog published and queryable (cached, partial or legitimately empty); independent of `complete` |
+| `complete` | Latest attempt reached a terminal state |
+| `cacheMode` | `writer`, `reader`, `disabled`, `fallback` (cache unusable, in-memory scan), `none` (zero configured providers) |
+| `configuredProviders` | Providers the engine was built with |
+| `detectedProviders` | Providers whose `Detect` reported present in the latest attempt |
+| `failedProviders` | Providers with a detect or scan error (or refused duplicate ID) in the latest attempt |
+| `detectionComplete` | Every configured provider answered `Detect` in the latest attempt |
+
+Outcome rules: `settled` = no provider failures and detection complete
+(including successful empty and zero detected/configured providers);
+`degraded` = isolated provider failures or incomplete detection with at least one
+healthy provider; `failed` = cancellation error, or providers configured and none
+healthy. Live-badge errors are not discovery failures. Cache failure followed by
+successful in-memory scan is `settled` with `cacheMode: fallback`. “No Agents
+Detected” is truthful only for `complete && detectionComplete &&
+detectedProviders == 0 && failedProviders == 0`; detection never derives from
+catalog rows, FTS progress or `catalog:changed`. Status values carry no paths
+or error text; diagnostics remain the detail channel. Reader promotion starts a
+new `reconciling` attempt with `cacheMode: writer` in the same lifetime; the
+superseded reader attempt cannot publish. Close ends the lifetime: an incomplete
+lifetime reads as `failed`/complete without an event, and no later callback can
+publish into it or a later lifetime.
+
+**Reserved for ST-02B (names fixed here; not yet implemented):** RPC method
+`discoveryStatus` (no params, returns `DiscoveryStatus`), capability
+`Capabilities.DiscoveryStatus` / JSON `discoveryStatus` (omitempty, absent on
+old servers), client forwards notification `discovery:status` like
+`index:progress`. Client returns `engine.ErrUnsupportedAction` without the
+capability, and maps JSON-RPC `-32601`/`unsupported` to it. Wails App method
+`DiscoveryStatus() (app.DiscoveryStatusReply, error)` with JSON
+`{available: boolean, status?: DiscoveryStatus}`; `available:false` means
+“startup status unavailable” (old host or backend without
+`DiscoveryBackend`), never fabricated completion. Offline routes return their
+existing offline error. Remote events stay connection-generation scoped.
+
+**ST-02A evidence (2026-10-24).** Detection/scan outcomes are captured by a
+context `scan.DiscoveryObserver` invoked inside the existing Runner and
+Refresher Bootstrap passes: no extra `Detect`/`Scan`, unchanged scheduling,
+worker counts and watcher timing. Status lives in a separate `discoveryOwner`
+(read RWMutex; publish mutex orders events; lock order `e.mu` → publish → read),
+so reads never wait on `e.mu`. Writer/reader `LoadSnapshot`, commit → catalog
+apply → event order, ClearCache/Forget/Retire exclusion, cache recovery and
+promotion logic are unchanged; status calls are added after publication only.
+Lifecycle change: disabled/fallback bootstrap now runs on the lifetime's
+cancellable `runCtx` in `e.bg` with dependencies captured under `e.mu`
+(previously an unowned goroutine on Start's ctx), so Close cancels and waits for
+it and an old scan cannot use a restarted lifetime's catalog bus.
+Tests (`internal/engine/discovery_test.go`, startup barrier test): 24-case
+matrix (disabled/writer/reader/fallback × successful empty, zero detected, isolated
+detect failure, isolated scan failure, all failed, zero configured); held-startup
+status read (watcher barrier, writer and reader: `reconciling`, `catalogUsable`,
+not complete) without waiting on `e.mu`; Close cancels a held bootstrap and drops
+its late result, then restart settles lifetime 2 (disabled and writer); late
+lifetime/attempt rejection; reader promotion with the reader's Detect held at a
+barrier — writer attempt settles and the released reader result cannot overwrite
+it. No sleeps; channel barriers with a 10 s failure timeout only.
+Limitations: status events are emitted synchronously (`beginDiscovery`,
+`restoring`, `reconciling` while Start holds `e.mu`); a blocking emitter would
+delay Start. Manual `Scan`/watcher refreshes after the attempt do not update
+status. No adapter, RPC, Wails, frontend or transport change in ST-02A.
+
+**Recorded checks (final tree):** `go test -race -count=1 ./internal/engine
+./internal/scan ./internal/index ./internal/watch` PASS (169.589s / 2.102s /
+37.243s / 3.858s); focused discovery/startup barrier race tests, `-count=3`,
+PASS (2.347s). `go test ./...` PASS (engine 16.053s); `go vet ./...`,
+`go build ./...`, `GOOS=windows go vet ./...` all PASS (exit 0).
+`git diff --check` PASS. Initial promotion test timed out because it held Scan
+while Retire correctly waited; corrected to hold Detect outside the per-provider
+scan exclusion, then repeated race/full gates passed. Frontend checks not run:
+no frontend files changed. No private roots, benchmark script, app launch,
+install, process termination, Windows packaging, commit or push.
+
 
 **Likely files:** `internal/engine/{engine,cache,events}.go`, Backend/local/App and
 RPC adapters and tests. Finalize concrete DTO/event/capability names here before
@@ -120,7 +215,7 @@ existing cache recovery/exclusion invariants are retained. Run affected race tes
 
 ## ST-03 — Truthful frontend startup states
 
-**Status:** pending. **Estimate:** 3 h. **Dependency:** ST-02.
+**Status:** pending. **Estimate:** 3 h. **Dependency:** ST-02B (complete ST-02).
 
 **Likely files:** `frontend/src/lib/stores/appState.svelte.ts`,
 `frontend/src/lib/components/sidebar/GroupTree.svelte`,

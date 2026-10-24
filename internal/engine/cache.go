@@ -57,6 +57,7 @@ func (e *Engine) startWriter(ctx context.Context, dir, key string, lock *index.L
 		e.svc.Catalog().Reset(metas)
 	}
 	e.events.NotifyFullRefresh()
+	ctx = e.discoveryReconciling(ctx, DiscoveryCacheWriter)
 	done(true)
 
 	stateDone := startupObservation(ctx).begin("state_restore")
@@ -116,6 +117,7 @@ func (e *Engine) startReader(ctx context.Context, dir, key string) {
 		e.svc.Catalog().Reset(metas)
 	}
 	e.events.NotifyFullRefresh()
+	ctx = e.discoveryReconciling(ctx, DiscoveryCacheReader)
 	done(true)
 
 	opts = append(opts, index.WithOnChanged(e.onChanged))
@@ -240,6 +242,7 @@ func (e *Engine) promote(ctx context.Context, dir, key string, lock *index.Lock)
 	if events != nil {
 		events.NotifyFullRefresh()
 	}
+	ctx = e.discoveryReconciling(ctx, DiscoveryCacheWriter)
 	e.bootstrap(ctx, refresher)
 	e.bg.Go(func() { index.Cleanup(dir, key, index.UnusedFor) })
 	return true
@@ -248,8 +251,7 @@ func (e *Engine) promote(ctx context.Context, dir, key string, lock *index.Lock)
 func (e *Engine) bootstrap(ctx context.Context, r *index.Refresher) {
 	e.bg.Go(func() {
 		done := startupObservation(ctx).begin("bootstrap")
-		err := r.Bootstrap(ctx)
-		e.svc.ApplyReport(r.Report())
+		err := e.runBootstrap(ctx, r)
 		done(err == nil)
 	})
 }

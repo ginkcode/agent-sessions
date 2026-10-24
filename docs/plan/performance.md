@@ -18,7 +18,7 @@ Measure synthetic workloads first and preserve correctness while removing work.
 | Performance milestone | Scope | Status |
 |---|---|---|
 | 1 | Synthetic baselines; correct/coalesced transcript loads; validated Codex source fast paths; unchanged checkpoint reuse; frontend listing retention; directory ignore-check batching | Gate closed; PF-01…PF-06, PF-09 and PF-11…PF-15 complete (12/15), PF-07 partial, PF-08/PF-10 blocked |
-| Startup priority | Narrow startup responsiveness package pulled forward from M4, before M2; [plan](performance-startup.md), [ST-00…ST-05 briefs](../tasks/performance-startup.md) | ST-00/ST-01 complete; ST-02…ST-05 pending; exact reported-delay cause unknown |
+| Startup priority | Narrow startup responsiveness package pulled forward from M4, before M2; [plan](performance-startup.md), [ST-00…ST-05 briefs](../tasks/performance-startup.md) | ST-00/ST-01 complete; ST-02A engine complete; ST-02B adapters and ST-03…ST-05 pending; exact reported-delay cause unknown |
 | 2 | Provider-owned incremental transcript state, immutable snapshots, byte-bounded cache, revision-aware FTS reuse, compatible transcript deltas | Roadmap only |
 | 3 | Shared per-root project index, separate Git-status freshness, coalesced refresh and safe invalidation | Roadmap only |
 | 4 | Per-source persistent checkpoints, targeted scans, progressive cold discovery, catalog deltas/paging, bounded fair FTS job batches | Roadmap only |

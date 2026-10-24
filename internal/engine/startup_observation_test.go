@@ -253,6 +253,20 @@ func TestStartupPublicationQueryableDuringWatcherSetup(t *testing.T) {
 				}
 				_ = e.Close()
 			}()
+			statusReply := make(chan DiscoveryStatus, 1)
+			go func() { s, _ := e.DiscoveryStatus(ctx); statusReply <- s }()
+			select {
+			case s := <-statusReply:
+				mode := DiscoveryCacheWriter
+				if reader {
+					mode = DiscoveryCacheReader
+				}
+				if s.State != DiscoveryReconciling || !s.CatalogUsable || s.Complete || s.DetectionComplete || s.CacheMode != mode {
+					t.Fatalf("held-startup status=%+v", s)
+				}
+			case <-time.After(10 * time.Second):
+				t.Fatal("status read blocked on startup mutex")
+			}
 			rows, err := e.ListSessions(ctx, "", FilterOpts{}, SortOpts{})
 			if err != nil || len(rows) != 1 {
 				t.Fatalf("cached rows=%d err=%v", len(rows), err)

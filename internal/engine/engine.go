@@ -27,7 +27,8 @@ var _ Backend = (*Engine)(nil)
 // scanner, indexer, watcher, destructive action manager, and catalog event bus.
 // It has zero GUI or Wails dependencies and implements Backend.
 type Engine struct {
-	mu sync.Mutex
+	mu        sync.Mutex
+	discovery discoveryOwner
 
 	svc             *Service
 	runner          *scan.Runner
@@ -194,6 +195,7 @@ func (e *Engine) SetEmitter(emitter Emitter) {
 		emitter = NopEmitter{}
 	}
 	e.emitter = emitter
+	e.setDiscoveryEmitter(emitter)
 	if e.events != nil {
 		e.events.emitter = emitter
 	}
@@ -221,35 +223,27 @@ func (e *Engine) Start(ctx context.Context) error {
 	}
 	e.events = NewCatalogBus(e.emitter)
 
-	if !e.cacheEnabled {
-		if e.runner != nil {
-			go func() {
-				done := startupObservation(ctx).begin("bootstrap")
-				done(e.Scan(ctx) == nil)
-			}()
-		}
-		return nil
-	}
-
-	if e.svc == nil || len(e.svc.Providers()) == 0 {
-		return nil
-	}
-
-	runCtx, cancel := context.WithCancel(ctx)
+	runCtx, cancel := context.WithCancel(e.beginDiscovery(ctx))
 	e.runCtx = runCtx
 	e.runCancel = cancel
+	if !e.cacheEnabled {
+		e.startRunnerDiscovery(runCtx, DiscoveryCacheDisabled)
+		return nil
+	}
+
+	if len(e.svc.Providers()) == 0 {
+		e.discoverySettledEmpty(runCtx)
+		return nil
+	}
+
+	e.discoveryRestoring(runCtx)
 	if e.startCache(runCtx) {
 		return nil
 	}
 	if e.svc.Catalog() != nil {
 		e.svc.Catalog().Reset(nil)
 	}
-	if e.runner != nil {
-		go func() {
-			done := startupObservation(ctx).begin("bootstrap")
-			done(e.Scan(ctx) == nil)
-		}()
-	}
+	e.startRunnerDiscovery(runCtx, DiscoveryCacheFallback)
 	return nil
 }
 
@@ -327,6 +321,7 @@ func (e *Engine) Close() error {
 	}
 	e.closed = true
 	e.started = false
+	e.stopDiscovery()
 	if e.svc != nil {
 		e.svc.transcripts.stop()
 	}

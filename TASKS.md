@@ -396,7 +396,7 @@ split it before coding. Native GUI QA remains separately reported, not assumed.
 
 Startup now precedes performance Milestone 2. [Plan and readiness/compatibility
 policy](docs/plan/performance-startup.md) · [Sequential ≤4h briefs](docs/tasks/performance-startup.md).
-Progress: **2/6 complete**, ST-00 documentation and ST-01 measurement complete; ST-02…ST-05 pending; ST-04 measurement-blocked.
+Progress: **2/6 complete; ST-02 partial (A complete, B pending)**, ST-00 documentation and ST-01 measurement complete; ST-02A engine complete; ST-02B adapters and ST-03…ST-05 pending; ST-04 measurement-blocked.
 The reported roughly 10-second launch delay is not a measured baseline; its exact
 cause is unknown. This narrow slice is pulled forward from performance M4, not a
 catalog overhaul. M1 stays **12/15 complete**, PF-07 partial/blocked and
@@ -406,12 +406,13 @@ PF-08/PF-10 blocked; historical evidence and native QA limitations stand.
 |---|---|---|---|---|
 | [ST-00](docs/tasks/performance-startup.md#st-00--document-startup-scope-and-tasks) | Complete | Startup scope, status policy, safety and task documentation | 1 h | — |
 | [ST-01](docs/tasks/performance-startup.md#st-01--measure-the-real-startup-path) | Complete | Repeated full startup baseline; ST-04 measurement blocker | 4 h | ST-00 |
-| [ST-02](docs/tasks/performance-startup.md#st-02--backend-discovery-readiness-contract) | Pending | Engine lifecycle status, events and compatible adapters | 4 h | ST-01 |
-| [ST-03](docs/tasks/performance-startup.md#st-03--truthful-frontend-startup-states) | Pending | Truthful frontend discovery/empty/error states | 3 h | ST-02 |
+| [ST-02A](docs/tasks/performance-startup.md#st-02--backend-discovery-readiness-contract) | Complete | Engine lifecycle snapshot/event and actual detection outcomes | ≤4 h | ST-01 |
+| ST-02B | Pending | Optional Backend/App/RPC adapters, capability, unavailable fallback and parity | ≤4 h | ST-02A |
+| [ST-03](docs/tasks/performance-startup.md#st-03--truthful-frontend-startup-states) | Pending | Truthful frontend discovery/empty/error states | 3 h | ST-02B |
 | [ST-04](docs/tasks/performance-startup.md#st-04--remove-the-measured-startup-blocker) | Pending, measurement-blocked | One evidence-gated safe optimization | ≤4 h | ST-03; ST-01 evidence |
 | [ST-05](docs/tasks/performance-startup.md#st-05--integrated-startup-gate) | Pending | Integrated barriers, before/after evidence and QA limits | 4 h | ST-04 |
 
-Strictly sequential; **≤20 h** including focused tests. Split oversized tasks
+Strictly sequential; **≤24 h after ST-02 split** including focused tests. Split oversized tasks
 before coding. Generated fixtures and explicit roots only: no private session
 stores/logs or `scripts/qa-perf-bench.sh`. ST-00 makes no code changes;
 no Milestone 2 implementation is included.
