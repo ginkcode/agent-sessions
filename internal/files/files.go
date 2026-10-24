@@ -291,10 +291,12 @@ func statusOf(x, y byte) Status {
 	return Modified
 }
 
-// gitChanges returns the lines of rel that differ from the last commit, or
-// nil outside a work tree, before the first commit, or for an unchanged file.
-func gitChanges(ctx context.Context, root, rel string) []LineChange {
-	out, ok := runGit(ctx, root, "diff", "--no-color", "--no-ext-diff", "-U0", "HEAD", "--", rel)
+// gitChanges returns the lines of the resolved file full that differ from the
+// last commit, or nil outside a work tree, before the first commit, or for an
+// unchanged file. Like blame, git is found from the file's directory, so files
+// in repositories below a plain directory (or in submodules) diff too.
+func gitChanges(ctx context.Context, full string) []LineChange {
+	out, ok := runGit(ctx, filepath.Dir(full), "diff", "--no-color", "--no-ext-diff", "-U0", "HEAD", "--", filepath.Base(full))
 	if !ok {
 		return nil
 	}
@@ -459,7 +461,7 @@ func Read(ctx context.Context, root, rel string) (Content, error) {
 		return out, nil
 	}
 	out.Edit = textEditInfo(data)
-	out.Changes = gitChanges(ctx, root, out.Path)
+	out.Changes = gitChanges(ctx, full)
 	return out, nil
 }
 

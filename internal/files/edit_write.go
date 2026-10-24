@@ -127,7 +127,9 @@ func Save(ctx context.Context, policy EditPolicy, root string, req SaveRequest) 
 	// Diffing against git does not touch the file; do it unlocked.
 	unlock()
 	if err == nil && res.Content != nil {
-		res.Content.Changes = gitChanges(ctx, root, res.Content.Path)
+		if full, err := Resolve(root, res.Content.Path); err == nil {
+			res.Content.Changes = gitChanges(ctx, full)
+		}
 	}
 	return res, err
 }
