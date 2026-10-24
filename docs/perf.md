@@ -1924,3 +1924,38 @@ changes in ST-05): `npm test` **697/697 PASS** (0 failed/skipped/cancelled,
 9.99 s), `npm run check` **0 errors**, 508 files, 1 existing `ignoreDeprecations`
 warning; `npm run build` **PASS** (1.42 s, existing >500 kB chunk warning).
 No frontend lint script is configured. `git diff --check` **PASS**.
+
+
+## ST-06A — Large-index startup baseline (2026-10-24)
+
+Base revision `f568075`, Go 1.26.8 darwin/arm64, generated fixtures only.
+`AS_STARTUP_BASELINE=1 go test ./internal/index -run '^TestStartupLargeIndexOpen$' -v -count=1 -timeout 10m`
+produced a **300.7 MiB** checkpointed database: 170 sessions, one with 3,000
+messages, others with 200–599, deterministic pseudo-random text from 30,000 words.
+Metadata uses CommitScan; messages use the production replaceFTSDocs path including
+FTS triggers/revision checks. Generation (48.522 s) excluded from timings. Clean
+close removed WAL; this is NOT a WAL-recovery or cold filesystem-cache benchmark.
+Five opens use a warm OS page cache, fresh SQL handles; timings are advisory.
+
+| Phase | Median | Max |
+|---|---:|---:|
+| index.Open | 5.358406 s | 5.928286 s |
+| Ping (separate handle) | 445 µs | 487 µs |
+| quick_check(1) | 5.327165 s | 5.368377 s |
+| runMigrations including its own check | 5.297570 s | 5.530944 s |
+| LoadCatalog | 778 µs | 1.004 ms |
+
+Measurements of substeps are independent, not additive or subtracted. An earlier
+266.3 MiB fixture measured Open 4.680 s / check 4.663 s median. The generator was
+corrected to target checkpointed database size rather than double-counting DB+WAL.
+This reproduces a large pre-publication cost, not the user's exact >10 s delay or
+native GUI paint. Private indexes/logs were never opened. Local degraded discovery
+is a separate unresolved issue; provider failure details were not inspected.
+
+Selected ST-06B intervention: read and publish current-schema cached metadata under
+the writer-role lock before mandatory full integrity verification. Keep original
+synchronous engine startup serialization, reader snapshots, promotion, and recovery.
+Wails 2.14.0 already runs OnStartup on a goroutine (darwin frontend.go:248–253);
+a desktop lifecycle rewrite is not required. Tests: `go test ./internal/index`,
+`go vet ./internal/index`, changed-code golangci-lint and `git diff --check` pass.
+The opt-in large test passed (129.742 s); ordinary test execution skips generation.

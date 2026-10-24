@@ -1,6 +1,6 @@
 # Startup responsiveness — sequential task briefs
 
-Status: original package **6/6 complete**; large-index follow-up **ST-06A in progress, ST-06B pending** 2026-10-24. The original gate did not reproduce the user's continuing >10 s delay. Original completion:  ST-00/ST-01 complete; ST-02 complete (ST-02A engine, ST-02B adapters); ST-03/ST-04 complete; ST-05 integrated gate complete with native GUI/SSH/Windows execution explicitly unperformed. Package closed.
+Status: original package **6/6 complete**; large-index follow-up **ST-06A complete, ST-06B pending** 2026-10-24. The original gate did not reproduce the user's continuing >10 s delay. Original completion:  ST-00/ST-01 complete; ST-02 complete (ST-02A engine, ST-02B adapters); ST-03/ST-04 complete; ST-05 integrated gate complete with native GUI/SSH/Windows execution explicitly unperformed. Package closed.
 [Plan and status/compatibility contract](../plan/performance-startup.md) ·
 [Roadmap](../plan/performance.md) · [Tracker](../../TASKS.md#startup-priority-package).
 
@@ -463,7 +463,7 @@ in this package.
 
 ## ST-06A — Reproduce large-index startup cost
 
-**Status:** in progress 2026-10-24. **Estimate:** ≤4 h. **Dependency:** ST-05.
+**Status:** complete 2026-10-24; [evidence](../perf.md#st-06a--large-index-startup-baseline-2026-10-24). **Estimate:** ≤4 h. **Dependency:** ST-05.
 
 The user still observes >10 s of empty discovery locally, with a session containing
 2,952 messages, while a remote host loads in <3 s. Earlier synthetic fixtures were
@@ -482,7 +482,12 @@ cost; no claim that it fully reproduces the user's device or native UI timing.
 
 ## ST-06B — Publish cached hints before full integrity verification
 
-**Status:** pending design validation. **Estimate:** ≤4 h. **Dependency:** ST-06A.
+**Status:** design validated; implementation pending ST-06A evidence commit. **Estimate:** ≤4 h. **Dependency:** ST-06A.
+
+Wails v2.14.0 darwin `frontend.go:248–253` already invokes `OnStartup` on a
+separate goroutine before `mainWindow.Run`; no asynchronous desktop startup rewrite
+is needed. Catalog queries and discovery snapshots do not take the engine mutex.
+Keep synchronous Engine.Start and its existing Close/ClearCache serialization.
 
 Candidate design: while owning the writer lock, read only the current-schema cache
 metadata through the existing read-only API and publish a consistent cached snapshot

@@ -396,7 +396,7 @@ split it before coding. Native GUI QA remains separately reported, not assumed.
 
 Startup now precedes performance Milestone 2. [Plan and readiness/compatibility
 policy](docs/plan/performance-startup.md) · [Sequential ≤4h briefs](docs/tasks/performance-startup.md).
-Progress: original **6/6 complete**; **ST-06A in progress / ST-06B pending** after the user retest still showed >10 s. Historical package gate 2026-10-24: ST-00…ST-04 complete; ST-05 integrated gate complete ([evidence](docs/perf.md#st-05--integrated-startup-gate-2026-10-24)) with native GUI/SSH/Windows execution explicitly unperformed. ST-04 resolves its measurement gate with generated fanout and fast/slow provider evidence; early disabled/fallback catalog notification is the one selected fix. Watcher fanout scaling remains a follow-up.
+Progress: original **6/6 complete**; **ST-06A complete / ST-06B pending** after the user retest still showed >10 s. Historical package gate 2026-10-24: ST-00…ST-04 complete; ST-05 integrated gate complete ([evidence](docs/perf.md#st-05--integrated-startup-gate-2026-10-24)) with native GUI/SSH/Windows execution explicitly unperformed. ST-04 resolves its measurement gate with generated fanout and fast/slow provider evidence; early disabled/fallback catalog notification is the one selected fix. Watcher fanout scaling remains a follow-up.
 The reported roughly 10-second launch delay is not a measured baseline; its exact
 cause is unknown. This narrow slice is pulled forward from performance M4, not a
 catalog overhaul. M1 stays **12/15 complete**, PF-07 partial/blocked and
@@ -411,7 +411,7 @@ PF-08/PF-10 blocked; historical evidence and native QA limitations stand.
 | [ST-03](docs/tasks/performance-startup.md#st-03--truthful-frontend-startup-states) | Complete | Truthful frontend discovery/empty/error states | 3 h | ST-02B |
 | [ST-04](docs/tasks/performance-startup.md#st-04--remove-the-measured-startup-blocker) | Complete | Measured fanout; early runner provider publication | ≤4 h | ST-03; ST-01 evidence |
 | [ST-05](docs/tasks/performance-startup.md#st-05--integrated-startup-gate) | Complete | Integrated barriers, before/after evidence and QA limits | 4 h | ST-04 |
-| [ST-06A](docs/tasks/performance-startup.md#st-06a--reproduce-large-index-startup-cost) | In progress | Generated large FTS cache: open/integrity/catalog timings | ≤4 h | ST-05 |
+| [ST-06A](docs/tasks/performance-startup.md#st-06a--reproduce-large-index-startup-cost) | Complete | Generated large FTS cache: open/integrity/catalog timings | ≤4 h | ST-05 |
 | [ST-06B](docs/tasks/performance-startup.md#st-06b--publish-cached-hints-before-full-integrity-verification) | Pending design validation | Early cached hints, mandatory integrity and recovery | ≤4 h | ST-06A |
 
 
