@@ -85,6 +85,37 @@ test('renderMarkdown converts markdown and strictly neutralizes XSS vectors', ()
   assert.ok(validLink.includes('target="_blank"'));
 });
 
+test('inline prose decodes entities once and protects escaped punctuation', () => {
+  const cases = [
+    ['&nbsp;&#160;&#xA0;', '<p>\u00a0\u00a0\u00a0</p>'],
+    ['&amp;nbsp; &unknown; &#0;', '<p>&amp;nbsp; &amp;unknown; �</p>'],
+    [String.raw`\_\_class\_vars\_\_ \*literal\* \[not a link](https://x.dev)`, '<p>__class_vars__ *literal* [not a link](https://x.dev)</p>'],
+    ['&#42;literal&#42; &lt;script&gt;', '<p>*literal* &lt;script&gt;</p>'],
+    [String.raw`\path \\`, '<p>\\path \\</p>'],
+    ['\u00000\u0000 `safe`', '<p>�0� <code class="inline-code">safe</code></p>'],
+    ['\\`not code\\`', '<p>`not code`</p>'],
+  ];
+  for (const [source, want] of cases) assert.equal(renderMarkdown(source), want);
+  assert.equal(renderMarkdown('`&nbsp; \\_name`'), '<p><code class="inline-code">&amp;nbsp; \\_name</code></p>');
+  const code = renderMarkdown('```text\n&nbsp; \\_name\n```');
+  assert.match(code, /data-code="&amp;nbsp; \\_name"/);
+});
+
+test('links normalize prose escapes and entities before validating destinations', () => {
+  const safe = renderMarkdown(String.raw`[\_name\_ &amp; docs](https://x.dev/?a=1&amp;b=2)`);
+  assert.match(safe, /href="https:\/\/x.dev\/\?a=1&amp;b=2"/);
+  assert.match(safe, />_name_ &amp; docs<\/a>/);
+  for (const url of ['javascript&#58;alert', String.raw`javascript\:alert`, 'https://x.dev/&#10;bad']) {
+    assert.match(renderMarkdown(`[x](${url})`), /href="#"/);
+    assert.doesNotMatch(renderMarkdown(`[x](${url})`, true), /data-file-link/);
+  }
+  const quote = renderMarkdown('[x](https://x.dev/&quot;onmouseover=&quot;bad)');
+  assert.match(quote, /&quot;onmouseover=&quot;bad/);
+  assert.doesNotMatch(quote, /"onmouseover="/);
+  assert.doesNotMatch(renderMarkdown('[x](&#47;absolute)', true), /data-file-link/);
+  assert.match(renderMarkdown('[x](src/a&amp;b.ts)', true), /data-file-link="src\/a&amp;b.ts"/);
+});
+
 test('renderMarkdown leaves mermaid blocks for the diagram renderer', () => {
   const md = renderMarkdown('```Mermaid\ngraph TD\n  A["<img src=x onerror=alert(1)>"] --> B\n```');
   assert.ok(md.includes('class="code-block-container mermaid-block"'));

@@ -1,5 +1,7 @@
 # NAV-04 — Navigation in the viewer
 
+Shared hover Markdown correctness is tracked in the [NAV-05 HD-01/02 follow-up](NAV-05.md#hover-documentation-follow-up-2026-10-24); both viewer and editor use `hoverHtml`.
+
 - Status: ✅ Done (2026-10-24)
 - Estimate: 4 h
 - Dependencies: NAV-02

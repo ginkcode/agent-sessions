@@ -1,5 +1,23 @@
 # NAV-05 — Navigation in the editor
 
+## Hover documentation follow-up (2026-10-24)
+
+- HD-01 complete: shared inline Markdown recognizes basic named/numeric entities
+  and punctuation escapes once, preserving code literals, safe links and raw-HTML
+  neutralization. Destinations normalize before validation/attribute escaping;
+  source NULs cannot forge renderer tokens. Focused renderer/navigation/editor
+  tests: 62/62 PASS. An initial new test had invalid JavaScript backtick quoting;
+  corrected the fixture and reran successfully.
+- HD-02 pending: adapt indentation-delimited documentation admonitions only for
+  Markdown hovers, with matching viewer/editor styles and synthetic Python
+  documentation regressions. Run focused/full frontend tests, check/build and
+  diff checks. Native tooltip appearance remains unverified without an app test.
+
+The reported class hover displays literal `&nbsp;`, backslashes around attribute
+names and `!!! abstract "Usage Documentation"`. The first two are standard inline
+Markdown gaps; the third is a provider documentation extension. No backend or
+hover lifecycle changes, dependencies, private data or app launch are needed.
+
 - Status: ✅ Done (2026-10-24)
 - Estimate: 3 h
 - Dependencies: NAV-04

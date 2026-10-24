@@ -329,7 +329,7 @@ milestone totals above.
 | [NAV-02](docs/tasks/NAV-02.md) | ✅ | Navigation over the wire | 3 |
 | [NAV-03](docs/tasks/NAV-03.md) | ✅ | Read-only external definitions | 3 |
 | [NAV-04](docs/tasks/NAV-04.md) | ✅ | Navigation in the viewer | 4 |
-| [NAV-05](docs/tasks/NAV-05.md) | ✅ | Navigation in the editor | 3 |
+| [NAV-05](docs/tasks/NAV-05.md) | ✅ | Navigation in the editor; HD-01 complete / HD-02 hover formatting follow-up pending | 3 |
 | [NAV-06](docs/tasks/NAV-06.md) | ✅ | References list | 3 |
 | [GIT-01](docs/tasks/GIT-01.md) | ✅ | Repository status | 3 |
 | [GIT-02](docs/tasks/GIT-02.md) | ✅ | Stage, unstage, discard, commit | 4 |

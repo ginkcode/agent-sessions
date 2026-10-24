@@ -61,32 +61,60 @@ function renderEmphasis(text: string): string {
   return out;
 }
 
-function renderInline(text: string, fileLinks = false): string {
-  // First escape raw HTML
-  let out = escapeHtml(text);
+const namedEntities: Record<string, string> = {
+  nbsp: ' ', amp: '&', lt: '<', gt: '>', quot: '"', apos: "'",
+};
+const inlineLiteral = /\\([!"#$%&'()*+,\-./:;<=>?@[\\\]^_`{|}~])|&(#x[\da-f]+|#\d+|[a-z][a-z\d]*);/gi;
 
-  // Code spans and links are rendered first and set aside, so emphasis never
-  // rewrites code or URLs. Placeholders use NUL, which escaped text lacks.
+const literalStart = new RegExp(`^(?:${inlineLiteral.source})`, 'i');
+
+function literalText(match: string, punctuation?: string, entity?: string): string {
+  if (punctuation) return punctuation;
+  if (!entity) return match;
+  if (!entity.startsWith('#')) return Object.hasOwn(namedEntities, entity) ? namedEntities[entity] : match;
+  const value = entity[1].toLowerCase() === 'x' ? parseInt(entity.slice(2), 16) : Number(entity.slice(1));
+  return value > 0 && value <= 0x10ffff && !(value >= 0xd800 && value <= 0xdfff)
+    ? String.fromCodePoint(value) : '�';
+}
+
+function renderInline(text: string, fileLinks = false, links = true): string {
+  // Source NULs cannot impersonate our tokens. Restoring tokens is single-pass.
+  const source = text.replace(/\u0000/g, '�');
   const stashed: string[] = [];
   const stash = (html: string) => `\u0000${stashed.push(html) - 1}\u0000`;
-
-  // Inline code: `code`
-  out = out.replace(/`([^`]+)`/g, (_match, code) => stash(`<code class="inline-code">${code}</code>`));
-
-  // Links: [label](url)
-  out = out.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_match, label, url) => {
-    // Relative links are inert metadata, handled only by the project viewer.
-    // Never turn schemes, protocol-relative URLs or absolute paths into files.
-    if (fileLinks && !/^[a-z][a-z\d+.-]*:|^[\\/]|[\u0000-\u0020]/i.test(url)) {
-      return stash(`<a href="#" data-file-link="${url}">${renderEmphasis(label)}</a>`);
+  let out = '';
+  let i = 0;
+  while (i < source.length) {
+    const rest = source.slice(i);
+    const code = source[i] === '`' && rest.match(/^`([^`]+)`/);
+    if (code) {
+      out += stash(`<code class="inline-code">${escapeHtml(code[1])}</code>`);
+      i += code[0].length;
+      continue;
     }
-    const safeUrl = sanitizeHref(url);
-    return stash(`<a href="${safeUrl}" target="_blank" rel="noopener noreferrer">${renderEmphasis(label)}</a>`);
-  });
-
-  out = renderEmphasis(out);
-
-  return out.replace(/\u0000(\d+)\u0000/g, (_match, idx) => stashed[Number(idx)]);
+    const literal = rest.match(literalStart);
+    if (literal) {
+      out += stash(escapeHtml(literalText(literal[0], literal[1], literal[2])));
+      i += literal[0].length;
+      continue;
+    }
+    const link = links && source[i] === '[' && rest.match(/^\[([^\]]+)\]\(([^)]+)\)/);
+    if (link) {
+      const url = link[2].replace(inlineLiteral, literalText).trim();
+      const label = renderInline(link[1], fileLinks, false);
+      // Validate normalized destinations before escaping them for attributes.
+      const controls = /[\u0000- \u007f]/.test(url);
+      if (fileLinks && url && !controls && !/^[a-z][a-z\d+.-]*:|^[\\/]/i.test(url)) {
+        out += stash(`<a href="#" data-file-link="${escapeHtml(url)}">${label}</a>`);
+      } else {
+        out += stash(`<a href="${controls ? '#' : sanitizeHref(url)}" target="_blank" rel="noopener noreferrer">${label}</a>`);
+      }
+      i += link[0].length;
+      continue;
+    }
+    out += escapeHtml(source[i++]);
+  }
+  return renderEmphasis(out).replace(/\u0000(\d+)\u0000/g, (_match, idx) => stashed[Number(idx)]);
 }
 
 const TABLE_SEPARATOR = /^\s*\|?\s*[-:]+[-| :]*\|?\s*$/;
