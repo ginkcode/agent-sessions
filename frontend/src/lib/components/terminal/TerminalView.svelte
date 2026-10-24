@@ -224,12 +224,15 @@
   });
 
   $effect(() => {
-    if (!active || !term) return;
+    // A toolbar resize keeps the active tab, but should restore typing focus.
+    void terminals.maximized;
+    if (!active || !term || !terminals.open) return;
     const t = term;
-    requestAnimationFrame(() => {
+    const frame = requestAnimationFrame(() => {
       resize();
       t.focus();
     });
+    return () => cancelAnimationFrame(frame);
   });
 
   function openMenu(event: MouseEvent) {

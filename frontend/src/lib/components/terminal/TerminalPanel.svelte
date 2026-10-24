@@ -79,7 +79,7 @@
   <ContextMenu x={tabContext.x} y={tabContext.y} items={tabItems} ariaLabel="Terminal tab actions" onClose={() => (tabContext = null)} />
 {/if}
 
-<section class="terminal-panel" class:hidden aria-label="Terminal" style="height: {terminals.height}px">
+<section class="terminal-panel" class:hidden class:maximized={terminals.maximized} aria-label="Terminal" style:height={terminals.maximized ? undefined : `${terminals.height}px`}>
   <header class="panel-header">
     <div class="tabs" role="tablist" aria-label="Terminals">
       {#each terminals.tabs as tab, index (tab.id)}
@@ -144,6 +144,7 @@
         class="icon-button"
         title={terminals.position === 'left' ? 'Move terminal to the bottom' : 'Move terminal to the left, below the session list'}
         aria-label={terminals.position === 'left' ? 'Move terminal to the bottom' : 'Move terminal to the left'}
+        disabled={terminals.maximized}
         onclick={() => terminals.setPosition(terminals.position === 'left' ? 'bottom' : 'left')}
       >
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -153,6 +154,22 @@
             <path d="M3 15h18" />
           {:else}
             <path d="M3 15h11M14 3v18" />
+          {/if}
+        </svg>
+      </button>
+      <button
+        type="button"
+        class="icon-button"
+        title={terminals.maximized ? 'Restore terminal' : 'Maximize terminal'}
+        aria-label={terminals.maximized ? 'Restore terminal' : 'Maximize terminal'}
+        aria-pressed={terminals.maximized}
+        onclick={() => terminals.toggleMaximized()}
+      >
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          {#if terminals.maximized}
+            <path d="M8 3v5H3m13-5v5h5M8 21v-5H3m13 5v-5h5" />
+          {:else}
+            <path d="M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5" />
           {/if}
         </svg>
       </button>
@@ -199,6 +216,12 @@
     max-height: 70vh;
     background: var(--bg-primary);
     color: var(--text-primary);
+  }
+
+  .terminal-panel.maximized {
+    flex: 1 1 0;
+    min-height: 0;
+    max-height: none;
   }
 
   .terminal-panel.hidden {

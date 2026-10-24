@@ -106,6 +106,7 @@ export class TerminalsStore {
   tabs = $state<PanelTab[]>([]);
   active = $state<string | null>(null);
   open = $state(false);
+  maximized = $state(false);
   height = $state(PANEL_HEIGHT.default);
   position = $state<PanelPosition>('bottom');
   /** A running agent tab whose close waits for confirmation. */
@@ -486,8 +487,13 @@ export class TerminalsStore {
     if (this.tabs.length === 0) await this.newShell(cwd);
   }
 
+  toggleMaximized(): void {
+    if (this.open) this.maximized = !this.maximized;
+  }
+
   setOpen(open: boolean): void {
     this.open = open;
+    if (!open) this.maximized = false;
     this.save();
     this.noteViewing();
   }
@@ -545,6 +551,7 @@ export class TerminalsStore {
   }
 
   setHeight(height: number, windowHeight: number): void {
+    if (this.maximized) return;
     this.height = clampPanelHeight(height, windowHeight);
     this.save();
   }

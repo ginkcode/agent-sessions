@@ -268,7 +268,8 @@
 
   // On the left the panel sits below the sidebar and the session list, as
   // wide as both, and the transcript keeps the full height.
-  let panelLeft = $derived(launcher.info.panel && terminals.position === 'left');
+  let panelMaximized = $derived(launcher.info.panel && terminals.open && terminals.maximized);
+  let panelLeft = $derived(launcher.info.panel && terminals.position === 'left' && !panelMaximized);
 </script>
 
 <div class="app-layout">
@@ -276,6 +277,7 @@
   <div
     class="workspace"
     class:panel-left={panelLeft}
+    class:panel-maximized={panelMaximized}
     style:grid-template-columns={panelLeft
       ? `${preferences.widths.sidebar}px 0 ${preferences.widths.sessionList}px 0 minmax(0, 1fr)`
       : undefined}
@@ -286,6 +288,7 @@
       class="pane sidebar"
       style="width: {preferences.widths.sidebar}px"
       aria-label="Navigation and grouping"
+      inert={panelMaximized}
     >
     <header class="pane-header sidebar-header">
       <div class="brand">
@@ -389,16 +392,16 @@
       </div>
     </header>
 
-    <div class="sidebar-mode-section" class:stale inert={stale}>
+    <div class="sidebar-mode-section" class:stale inert={stale || panelMaximized}>
       <ModeSelector />
       <PathFilter />
     </div>
 
-    <div class="sidebar-content" class:stale inert={stale}>
+    <div class="sidebar-content" class:stale inert={stale || panelMaximized}>
       <GroupTree />
     </div>
 
-    <div class:stale inert={stale}>
+    <div class:stale inert={stale || panelMaximized}>
       <AgentSummary />
     </div>
 
@@ -523,7 +526,7 @@
     class:stale
     style="width: {preferences.widths.sessionList}px"
     aria-label="Session list"
-    inert={stale}
+    inert={stale || panelMaximized}
   >
     <SessionList />
   </section>
@@ -536,7 +539,7 @@
   />
 
   <!-- Pane 3: Transcript View -->
-  <main class="pane transcript-container" class:stale aria-label="Transcript details" inert={stale}>
+  <main class="pane transcript-container" class:stale aria-label="Transcript details" inert={stale || panelMaximized}>
     <TranscriptView />
   </main>
 
@@ -566,7 +569,7 @@
   </div>
   <!-- Outside .shell: the inert on stale panes never reaches the terminals. -->
   {#if launcher.info.panel}
-    {#if terminals.open}
+    {#if terminals.open && !panelMaximized}
       <div class="panel-splitter">
         <Splitter direction="vertical" ariaLabel="Resize terminal panel" onResize={handlePanelResize} />
       </div>
@@ -598,6 +601,18 @@
     flex: 1 1 0;
     min-height: 0;
     overflow: hidden;
+  }
+
+  .panel-maximized .shell {
+    flex: 0 0 0;
+    min-height: 0;
+    overflow: visible;
+  }
+
+  .panel-maximized .shell > .pane,
+  .panel-maximized .shell > :global(.splitter),
+  .panel-maximized .stale-overlay {
+    display: none;
   }
 
   .panel-splitter {
