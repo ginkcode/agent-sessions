@@ -303,7 +303,12 @@ func (e *Engine) startRunnerDiscovery(ctx context.Context, mode string) {
 	e.bg.Go(func() {
 		sctx, attempt := e.observedDiscovery(ctx)
 		done := startupObservation(ctx).begin("bootstrap")
-		report := runner.Run(sctx, svc.ScanStates())
+		report := runner.RunWithOnApplied(sctx, svc.ScanStates(), func(model.AgentID) {
+			// Runner has already applied this provider's catalog result. Wake
+			// browsing without waiting for unrelated providers; keep discovery
+			// reconciling until the aggregate report is available below.
+			events.NotifyFullRefresh()
+		})
 		svc.ApplyReport(report)
 		svc.ClearTranscripts()
 		events.NotifyFullRefresh()

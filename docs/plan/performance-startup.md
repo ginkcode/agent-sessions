@@ -1,6 +1,6 @@
 # Startup responsiveness — priority package before Milestone 2
 
-Status: ST-00 documentation, ST-01 measurement and ST-02 (ST-02A engine, ST-02B adapters) complete 2026-10-24; ST-03 complete; ST-04/ST-05 pending.
+Status: ST-00 documentation, ST-01 measurement and ST-02 (ST-02A engine, ST-02B adapters) complete 2026-10-24; ST-03/ST-04 complete; ST-05 pending.
 [Sequential task briefs](../tasks/performance-startup.md) ·
 [Performance roadmap](performance.md) · [Task tracker](../../TASKS.md#startup-priority-package).
 
@@ -51,12 +51,24 @@ Milestone 2 still requires its own design and task breakdown after this package.
 
 [Full repeated generated-startup evidence](../perf.md#st-01--full-engine-startup-baseline-2026-10-24)
 records opt-in observation, nine trials per mode, work counts and focused tests.
-ST-01 is complete without a performance intervention. ST-04 is measurement-blocked:
+ST-01 is complete without a performance intervention. At ST-01, ST-04 was measurement-blocked (resolved below):
 ~4 ms watcher setup dominates this small warm fixture, but cached publication is
 already ~2 ms and catalog reads bypass engine mu. No evidence explains the
 reported 10-second delay. Generated fanout, multi-provider and adapter/frontend
 measurement is required before selecting a safe bounded change; ST-02/03 remain
-sequential work (ST-02/ST-03 complete; ST-04 measurement-blocked). Native paint remains unmeasured.
+sequential work (ST-02/ST-03 complete). Native paint remains unmeasured.
+
+## ST-04 result
+
+[Generated evidence](../perf.md#st-04--startup-scaling-and-runner-publication-2026-10-24)
+resolves the measurement blocker. Warm-writer watcher setup scales with empty
+watch directories (Start median 6.1 / 45.2 / 415.2 ms at 0 / 1k / 10k extra
+directories; publication stays ~2 ms). Owned asynchronous watcher setup is a
+documented follow-up, not selected, because of its lifecycle/reconciliation
+scope. The selected bounded fix makes disabled/fallback runner discovery emit a
+catalog event after each successful provider application: with a 300 ms slow
+fake provider, first event median ~401 → ~100 ms (the preserved debounce);
+queryability and discovery completion unchanged. No reported-delay diagnosis.
 
 ## Readiness/status compatibility policy
 
@@ -125,7 +137,7 @@ Fourteen new deterministic tests; frontend tests **697/697**, check **0 errors**
 (one existing config warning), build **PASS** (existing chunk-size warning).
 [Full ST-03 evidence](../tasks/performance-startup.md#st-03--truthful-frontend-startup-states).
 Native GUI/remote use unverified; no backend changes or startup speedup claimed.
-ST-04 remains measurement-blocked; M1 blockers unchanged.
+ST-04 later resolved its measurement gate (see ST-04 result); M1 blockers unchanged.
 
 ## Measurement and intervention gate
 

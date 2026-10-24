@@ -1,6 +1,6 @@
 # Startup responsiveness — sequential task briefs
 
-Status: **4/6 complete** 2026-10-24: ST-00/ST-01 complete; ST-02 complete (ST-02A engine, ST-02B adapters); ST-03 complete; ST-04/ST-05 pending.
+Status: **5/6 complete** 2026-10-24: ST-00/ST-01 complete; ST-02 complete (ST-02A engine, ST-02B adapters); ST-03/ST-04 complete; ST-05 pending.
 [Plan and status/compatibility contract](../plan/performance-startup.md) ·
 [Roadmap](../plan/performance.md) · [Tracker](../../TASKS.md#startup-priority-package).
 
@@ -28,7 +28,7 @@ Likely files are integration points, not instructions to create duplicate system
 | [ST-02A](#st-02--backend-discovery-readiness-contract) | Complete | Engine lifecycle snapshot/event and outcomes | ≤4 h | ST-01 |
 | [ST-02B](#st-02--backend-discovery-readiness-contract) | Complete | Compatible App/RPC adapters and parity | ≤4 h | ST-02A |
 | [ST-03](#st-03--truthful-frontend-startup-states) | Complete | Honest readiness and compatible empty/error states | 3 h | ST-02B |
-| [ST-04](#st-04--remove-the-measured-startup-blocker) | Pending, measurement-blocked | One evidence-selected safe optimization | ≤4 h | ST-03; ST-01 evidence |
+| [ST-04](#st-04--remove-the-measured-startup-blocker) | Complete | Measured fanout; early runner provider publication | ≤4 h | ST-03; ST-01 evidence |
 | [ST-05](#st-05--integrated-startup-gate) | Pending | Integration, before/after evidence and limits | 4 h | ST-04 |
 
 Total planned effort: **≤24 h after ST-02 split**. ST-00 is documentation only.
@@ -65,7 +65,7 @@ are checked. No implementation, private data access or benchmark run.
 45 generated full startups across cold/warm writer, warm reader, disabled and
 fallback; opt-in backend/frontend content-free observations; deterministic
 writer/reader watcher barriers, focused race and frontend checks. No optimization
-or native paint claim. ST-04 remains measurement-blocked; sequential ST-02 is next.
+or native paint claim. ST-04 remained measurement-blocked at that point (resolved in ST-04); sequential ST-02 was next.
 
 **Likely files:** `internal/engine/{engine,cache}.go` and startup tests,
 `internal/index`/`internal/watch` test seams, frontend API/store tests,
@@ -275,7 +275,7 @@ Final frontend gates: `npm test` **697/697 PASS** (0 failed/skipped/cancelled),
 warning; `npm run build` **PASS** (1.10 s, existing chunk-size warning).
 `git diff --check` PASS. Native GUI paint/layout and real remote/SSH use remain
 unverified; this is truthful presentation, not a measured startup speedup or a
-diagnosis of the reported ten-second delay. ST-04 remains measurement-blocked.
+diagnosis of the reported ten-second delay. ST-04 was then still measurement-blocked.
 No private data/cache access, installs, app launch, process termination, packaging,
 commit or push. No Go changes/checks required for this frontend-only task.
 
@@ -304,19 +304,68 @@ Native GUI paint/layout remains unverified unless separately exercised.
 
 ## ST-04 — Remove the measured startup blocker
 
-**Status:** pending, measurement-blocked. **Estimate:** ≤4 h.
+**Status:** complete 2026-10-24 (measurement gate resolved; one bounded
+notification intervention). **Estimate:** ≤4 h.
 **Dependency:** ST-03 and the ST-01 measurement/decision.
 
-**Selected intervention:** none; measurement-blocked by ST-01 synthetic evidence
-([baseline/decision](../perf.md#st-01--full-engine-startup-baseline-2026-10-24)).
-Warm watcher setup (~4 ms) dominates synchronous setup on this tiny fixture but
-publication (~2 ms) already precedes it and queries bypass engine mu. No measured
-10-second delay, transport/frontend bottleneck, or meaningful multi-provider
-notification delay supports an intervention. Before coding, run a generated watch
-directory-fanout sweep and fast/slow provider cases, then approved generated-root
-adapter/frontend hydration measurements; keep fixture creation excluded. Select
-only the demonstrated blocker and its deterministic lifecycle/ordering tests.
-Do not assume synchronous watchers explain the reported delay.
+**Pre-implementation evidence and selection (2026-10-24, HEAD `0c65dd4`).**
+Generated full warm-writer startup, equal 256 rows / 4,096 records; nine trials at
+0/1,000/10,000 leaf directories (+0/10/100 buckets) under the Claude projects
+watch root. Fixture creation, seeding and Close excluded, explicit throwaway
+provider/cache roots. Start median **6.115 / 45.189 / 415.195 ms**; watcher setup
+**3.349 / 42.276 / 412.209 ms**; publication endpoint **1.768 / 1.800 / 2.023 ms**.
+Each tier has zero opens/records/record bytes/encodes and 2,304 checkpoint decodes.
+This demonstrates fanout scaling at the synchronous App.OnStartup boundary, not a
+10-second diagnosis; queries bypass engine mu and cached rows are already usable.
+Owned asynchronous watcher installation would require broader lifecycle and
+installation reconciliation work, so it is deliberately not selected here.
+
+**One selected intervention:** notify disabled/fallback startup after each
+successful runner catalog application, retaining the final full refresh. Nine
+generated two-provider trials per mode, one artificial 300 ms slow scan: first
+nonempty query median **1.311 / 1.353 ms**, first catalog event **402.322 /
+402.341 ms**, bootstrap **300.290 / 300.350 ms** (disabled/fallback). Eighteen scans
+per mode, two final rows/trial, no real sources. Fast rows already exist but their
+notification unnecessarily waits for the slowest scan plus the 100 ms bus window.
+Use a serial per-run runner callback after catalog application/report updates;
+no shared mutable runner callback, extra scans, cache, integrity change, watcher
+scheduling or discovery-completion change. Detection remains sequential.
+
+**Acceptance tests fixed before implementation:** channel-held slow provider;
+fast catalog rows visible when notification arrives while discovery remains
+reconciling; no failed-provider callback; absent/duplicate/cancelled results do not
+publish successful application; live-error successful application still notifies;
+final report/catalog parity and one scan/provider; successful empty/removal
+applications notify; Close cancels/joins held bootstrap and restart uses the new
+bus. Keep final terminal/full refresh for empty/failure recovery. Focused runner,
+engine startup/discovery/cache/exclusion race coverage and vet; repeat generated
+publication measurements. Existing 100 ms coalescing is preserved, so fast events
+may still coalesce with other completed work. No adapter/frontend/native elapsed
+claim; ST-05 remains pending.
+
+**Implementation evidence (2026-10-24).** `scan.Runner.RunWithOnApplied` invokes
+an optional per-pass callback on the collecting goroutine after a successful
+`applyLive` and report state/diag update; `Run` is unchanged (nil callback).
+`startRunnerDiscovery` passes a callback that calls `NotifyFullRefresh` on the bus
+captured under `e.mu`; the final apply/clear/full refresh/terminal status remain.
+Cache-backed writer/reader/promotion paths already notify per provider through
+`Refresher.onChanged` and are unchanged. Paired final reruns (construction
+excluded, nine trials, disabled/fallback): first catalog event median
+**401.241 / 401.255 → 100.162 / 100.192 ms**, first nonempty query
+1.178 / 1.223 → 1.175 / 1.203 ms (unchanged: rows were already queryable), bootstrap
+~300.2 ms unchanged, 18 scans/mode, 2 final rows/trial. The remaining ~100 ms is
+the preserved bus debounce. Tests: `internal/scan/publication_test.go`
+(nine-outcome callback matrix; channel-held slow provider with release/cancel)
+and `TestStartupRunnerPublishesFastProvider` (disabled/fallback × complete/Close-
+restart: real bus event and fast rows while held and reconciling; terminal
+settled; final two rows; one scan/provider/lifetime; restarted bus emits).
+Focused scan/engine race PASS (2.186 s / 4.101 s), full opt-in startup race PASS
+(33.251 s), fresh index/watch race PASS (41.753 s / 3.893 s), full scan/engine
+package tests PASS (1.060 s / 16.117 s), app regression PASS (1.848 s), vet and
+diff check PASS. Frontend untouched; native/transport/hydration timing and full
+repository gates remain ST-05 work, not claimed here.
+Fanout scaling remains a documented, unselected follow-up. See
+[perf.md](../perf.md#st-04--startup-scaling-and-runner-publication-2026-10-24).
 
 Choose **one**, not every candidate:
 

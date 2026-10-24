@@ -44,26 +44,7 @@ func TestStartupBaseline(t *testing.T) {
 	if os.Getenv("AS_STARTUP_BASELINE") != "1" {
 		t.Skip("set AS_STARTUP_BASELINE=1 for repeated generated full startup")
 	}
-	root := t.TempDir()
-	roots := paths.Roots{Claude: filepath.Join(root, "claude"), Codex: filepath.Join(root, "codex"), OpenCodeData: filepath.Join(root, "opencode"), Cache: filepath.Join(root, "cache")}
-	project := filepath.Join(roots.Claude, "projects", "generated")
-	if err := os.MkdirAll(project, 0700); err != nil {
-		t.Fatal(err)
-	}
-	// 256 sessions, 16 records each. CWD is generated and has no git ancestors
-	// below the temporary root; prompts are fixed synthetic strings.
-	var fixtureBytes int
-	for i := range 256 {
-		var body string
-		for j := range 16 {
-			body += fmt.Sprintf("{\"type\":\"user\",\"uuid\":\"%d-%d\",\"sessionId\":\"generated-%d\",\"timestamp\":\"2026-01-01T00:00:00Z\",\"cwd\":%q,\"message\":{\"role\":\"user\",\"content\":\"generated startup fixture\"}}\n", i, j, i, root)
-		}
-		fixtureBytes += len(body)
-		if err := os.WriteFile(filepath.Join(project, fmt.Sprintf("generated-%d.jsonl", i)), []byte(body), 0600); err != nil {
-			t.Fatal(err)
-		}
-	}
-	t.Logf("fixture sessions=256 records=4096 bytes=%d; repeats=9", fixtureBytes)
+	root, roots := startupGeneratedFixture(t)
 	// Seed through a full engine startup, excluded from all measured intervals.
 	seed := NewEngine(WithRoots(roots))
 	runStartupTrial(t, seed, false)
@@ -114,18 +95,48 @@ func TestStartupBaseline(t *testing.T) {
 					_ = lock.Unlock()
 				}
 			}
-			keys := make([]string, 0, len(metrics))
-			for k := range metrics {
-				keys = append(keys, k)
-			}
-			sort.Strings(keys)
-			for _, k := range keys {
-				v := metrics[k]
-				sort.Float64s(v)
-				t.Logf("%s ms min/median/p95/max=%.3f/%.3f/%.3f/%.3f n=%d", k, v[0], v[len(v)/2], v[(95*len(v)+99)/100-1], v[len(v)-1], len(v))
-			}
+			logStartupMetrics(t, metrics)
 			t.Logf("aggregate scan work opens/records/record_bytes/checkpoint_decodes/checkpoint_encodes=%v", sums)
 		})
+	}
+}
+
+func startupGeneratedFixture(t *testing.T) (string, paths.Roots) {
+	t.Helper()
+	root := t.TempDir()
+	roots := paths.Roots{Claude: filepath.Join(root, "claude"), Codex: filepath.Join(root, "codex"), OpenCodeData: filepath.Join(root, "opencode"), Cache: filepath.Join(root, "cache")}
+	project := filepath.Join(roots.Claude, "projects", "generated")
+	if err := os.MkdirAll(project, 0700); err != nil {
+		t.Fatal(err)
+	}
+	// 256 sessions, 16 records each. CWD is generated and has no git ancestors
+	// below the temporary root; prompts are fixed synthetic strings.
+	var fixtureBytes int
+	for i := range 256 {
+		var body string
+		for j := range 16 {
+			body += fmt.Sprintf("{\"type\":\"user\",\"uuid\":\"%d-%d\",\"sessionId\":\"generated-%d\",\"timestamp\":\"2026-01-01T00:00:00Z\",\"cwd\":%q,\"message\":{\"role\":\"user\",\"content\":\"generated startup fixture\"}}\n", i, j, i, root)
+		}
+		fixtureBytes += len(body)
+		if err := os.WriteFile(filepath.Join(project, fmt.Sprintf("generated-%d.jsonl", i)), []byte(body), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Logf("fixture sessions=256 records=4096 bytes=%d; repeats=9", fixtureBytes)
+	return root, roots
+}
+
+func logStartupMetrics(t *testing.T, metrics map[string][]float64) {
+	t.Helper()
+	keys := make([]string, 0, len(metrics))
+	for k := range metrics {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		v := metrics[k]
+		sort.Float64s(v)
+		t.Logf("%s ms min/median/p95/max=%.3f/%.3f/%.3f/%.3f n=%d", k, v[0], v[len(v)/2], v[(95*len(v)+99)/100-1], v[len(v)-1], len(v))
 	}
 }
 

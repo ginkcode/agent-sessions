@@ -39,6 +39,15 @@ type outcome struct {
 // Run scans each detected provider. Failed and absent providers retain their
 // previous state and catalog entries until a successful scan replaces them.
 func (r *Runner) Run(ctx context.Context, prev map[model.AgentID]provider.ScanState) Report {
+	return r.RunWithOnApplied(ctx, prev, nil)
+}
+
+// RunWithOnApplied is Run with a per-pass notification after each successful
+// catalog application and report update (including successful empty results).
+// onApplied runs serially on the collecting goroutine, not provider workers;
+// it must return promptly and must not call Run on this runner. A live-status
+// error does not prevent a successful session application from being reported.
+func (r *Runner) RunWithOnApplied(ctx context.Context, prev map[model.AgentID]provider.ScanState, onApplied func(model.AgentID)) Report {
 	report := Report{
 		States: make(map[model.AgentID]provider.ScanState, len(prev)),
 		Diag:   make(map[model.AgentID]provider.Diagnostics),
@@ -145,6 +154,9 @@ func (r *Runner) Run(ctx context.Context, prev map[model.AgentID]provider.ScanSt
 			d := report.Diag[o.id]
 			d.Warn("", 0, "live: %v", o.liveErr)
 			report.Diag[o.id] = d
+		}
+		if onApplied != nil {
+			onApplied(o.id)
 		}
 	}
 	if err := ctx.Err(); err != nil {

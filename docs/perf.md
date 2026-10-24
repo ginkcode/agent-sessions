@@ -1487,6 +1487,11 @@ when an app run is requested.
 
 ## ST-01 — Full engine startup baseline (2026-10-24)
 
+Historical ST-01 gate below is preserved; the subsequent
+[ST-04 measurements/decision](#st-04--startup-scaling-and-runner-publication-2026-10-24)
+resolve the measurement blocker with a bounded runner-publication fix, not watcher
+deferral or a diagnosis of the reported delay.
+
 **Revision/environment:** `0d734ad` plus uncommitted ST-01 observation/tests only,
 branch `feature/improve-performance`; Darwin arm64, Apple M5, Go 1.26.8,
 Node 22.23.2, npm 10.9.8. No performance intervention. This section is new
@@ -1651,3 +1656,109 @@ No frontend lint script/configured lint executable is present; TypeScript/Svelte
 checks and production build cover affected frontend code. No full-repository Go
 tests, native app, remote host, Windows packaging or GUI
 paint check was run for ST-01. No tools installed; no commit or push made.
+
+## ST-04 — Startup scaling and runner publication (2026-10-24)
+
+**Revision/environment:** `0c65dd4` plus uncommitted ST-04 changes, branch
+`feature/improve-performance`; Darwin arm64, Apple M5, Go 1.26.8. Generated
+fixtures, explicit throwaway provider/cache roots, no private stores or caches,
+native app, installs or QA shell benchmark. Opt-in ST-01 observation; fixture
+creation, cache seeding, engine construction and Close are excluded. Each cell
+is **min / median / p95 / max** (ms), n=9, nearest-rank p95 equals max; advisory,
+not CI thresholds. This does not diagnose the reported roughly 10-second delay.
+
+### Generated watch-directory fanout (warm writer)
+
+`TestStartupFanout`: the ST-01 Claude fixture (256 sessions, 4,096 records,
+~1.01–1.03 MB; bytes vary with temp-path length) plus empty leaf directories under
+`<generated-claude>/projects/fanout/bucket-NN/leaf-NNNNN` (100 per bucket). One
+unmeasured seed startup, then nine full warm-writer Engine.Start trials per tier,
+queries immediately after Start, completion awaited per ST-01.
+
+| Extra leaf / bucket dirs | Start duration | Watcher setup | Publication endpoint | First sessions endpoint | Bootstrap endpoint |
+|---|---|---|---|---|---|
+| 0 / 0 | 5.834 / 6.115 / 6.693 / 6.693 | 3.257 / 3.349 / 3.742 / 3.742 | 1.657 / 1.768 / 2.023 / 2.023 | 6.840 / 7.077 / 7.798 / 7.798 | 8.268 / 8.642 / 9.227 / 9.227 |
+| 1,000 / 10 | 43.638 / 45.189 / 47.902 / 47.902 | 40.947 / 42.276 / 45.226 / 45.226 | 1.721 / 1.800 / 1.997 / 1.997 | 44.712 / 46.006 / 48.710 / 48.710 | 46.046 / 47.609 / 50.459 / 50.459 |
+| 10,000 / 100 | 412.766 / 415.195 / 418.404 / 418.404 | 409.581 / 412.209 / 415.538 / 415.538 | 1.862 / 2.023 / 2.277 / 2.277 | 413.473 / 416.575 / 419.747 / 419.747 | 416.159 / 418.445 / 421.560 / 421.560 |
+
+DB open/integrity (~0.8–1.1 ms), catalog restore (~0.85 ms), state restore
+(~0.9 ms) and query durations (<1.2 ms) stay flat. Work per tier across nine
+trials: 0 source opens, 0 records, 0 record bytes, **2,304 checkpoint decodes**,
+0 encodes. Watcher setup scales roughly linearly (~41 µs/directory) and dominates
+synchronous `Engine.Start` and the `App.OnStartup` return, which Wails runs on its
+own goroutine. Bootstrap starts after watcher installation, so its endpoint shifts
+too. Cached publication stays ~2 ms and catalog queries bypass `e.mu`, so a client
+calling them concurrently can read rows earlier than the harness's post-Start
+query. **Not selected:** owned asynchronous watcher installation would change
+watcher lifetime, Close/restart, promotion and install/event reconciliation;
+that is a separate bounded follow-up (fanout timing with concurrent client
+queries plus held-install race tests), not part of ST-04. No 10 s result at 10k
+directories on this machine; Windows/WSL disk and kqueue/inotify limits unmeasured.
+
+### Fast/slow provider publication (disabled and fallback)
+
+`TestStartupProviderPublication`: two generated fake providers (one row each);
+the slow one sleeps 300 ms in Scan to model an unrelated slow provider. Nine
+trials per mode, 18 scans/mode, 2 final rows/trial, logical source ScanWork 0
+(fakes). `first_nonempty_query_end` polls ListSessions at 1 ms;
+`first_catalog_event_end` is when the real `catalog:changed` emit fires.
+Paired final reruns, collector created immediately before Start:
+
+| Mode | Metric | Before | After |
+|---|---|---|---|
+| Disabled | First catalog event | 400.806 / 401.241 / 401.694 / 401.694 | 100.147 / 100.162 / 100.578 / 100.578 |
+| Disabled | First nonempty query | 1.070 / 1.178 / 1.196 / 1.196 | 1.132 / 1.175 / 1.414 / 1.414 |
+| Disabled | Bootstrap endpoint | 300.182 / 300.199 / 300.586 / 300.586 | 300.153 / 300.205 / 300.471 / 300.471 |
+| Fallback | First catalog event | 400.318 / 401.255 / 401.435 / 401.435 | 100.169 / 100.192 / 100.362 / 100.362 |
+| Fallback | First nonempty query | 1.187 / 1.223 / 1.369 / 1.369 | 1.183 / 1.203 / 1.404 / 1.404 |
+| Fallback | Bootstrap endpoint | 300.197 / 300.250 / 300.403 / 300.403 | 300.192 / 300.219 / 300.410 / 300.410 |
+
+Pre-implementation first run (recorded in the brief before coding): event
+402.322 / 402.341 ms, query 1.311 / 1.353 ms. Before the fix, the runner applied
+the fast provider's rows at ~1 ms but the frontend had no catalog event until the
+slowest scan finished plus the 100 ms bus debounce. After it, the event follows the
+fast application plus the preserved debounce; queryability and total discovery
+time are unchanged. Event-driven clients, such as the ST-03 reload queue, see fast
+rows ~300 ms earlier in this artificial case. Coupling scales with the slowest
+provider; real provider scan times were not measured here.
+
+### Selected intervention and evidence
+
+`scan.Runner.RunWithOnApplied` invokes an optional callback serially on the
+collecting goroutine after each successful catalog application and report update,
+including empty/removal results and successful scans with live errors; never for
+detection/scan failures, absent or duplicate providers or cancellation. `Run` is
+the nil-callback form. Disabled/fallback `startRunnerDiscovery` uses it to call
+`NotifyFullRefresh` on its lifetime's captured bus; final apply, transcript clear,
+full refresh and terminal discovery status are unchanged, so discovery remains
+reconciling until aggregation. Cache-backed paths, integrity, atomic snapshots,
+watchers, promotion and ClearCache/Forget/Retire exclusion are untouched.
+
+Deterministic tests (channels; timeouts only detect deadlock):
+`TestRunnerOnAppliedOutcomes` (nine outcomes, callback after catalog
+application, final state, one scan), `TestRunnerOnAppliedDoesNotWaitForSlowProvider`
+(held slow scan: fast callback/rows first; release → final parity; cancel → no
+slow callback, cancellation error) and `TestStartupRunnerPublishesFastProvider`
+(disabled/fallback × normal/Close-restart: real bus event and one fast row while
+held and reconciling; settled terminal; two final rows; Close joins cancelled
+held scan; restarted lifetime emits on its new bus; one scan/provider/lifetime).
+
+### Reproduction and checks
+
+```sh
+AS_STARTUP_BASELINE=1 go test ./internal/engine -run '^TestStartup(Fanout|ProviderPublication)$' -count=1 -v
+go test -race ./internal/scan ./internal/engine -run 'Test(Runner|Startup|Discovery|SharedCache_|.*(ClearCache|Forget|Retire))' -count=1
+AS_STARTUP_BASELINE=1 go test -race ./internal/engine -run '^TestStartup' -count=1
+go test -race ./internal/index ./internal/watch -count=1
+go test ./internal/scan ./internal/engine -count=1
+go vet ./internal/scan ./internal/engine
+git diff --check
+```
+
+Recorded: final focused scan/engine race PASS (2.186 s / 4.101 s); final non-race
+fanout/publication sweep PASS (11.707 s); app regression PASS (1.848 s);
+opt-in startup race
+including both sweeps PASS (33.251 s); index/watch race PASS (41.753 s / 3.893 s);
+full scan/engine packages PASS (1.060 s / 16.117 s); vet and diff check PASS.
+No frontend change, so no frontend checks; no full-repository Go suite, native app,
+remote host, Windows build or GUI paint check. No tools installed; no commit/push.
