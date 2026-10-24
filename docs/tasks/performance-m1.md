@@ -1,6 +1,6 @@
 # Performance Milestone 1 — Baselines and targeted reuse
 
-- Status: in progress 2026-10-24; **2/15 tasks complete**.
+- Status: in progress 2026-10-24; **3/15 tasks complete**.
 - Parent plan: [performance.md](../plan/performance.md).
 - All estimates include focused tests and are planning estimates, not promises.
 - Every task is ≤4 developer hours. Split it here and in `TASKS.md` before coding
@@ -16,11 +16,13 @@ PF-01 completed 2026-10-24; repeated synthetic baseline and verification are in
 [../perf.md](../perf.md#pf-01--synthetic-catalog-and-scanner-baseline-2026-10-24).
 PF-02 completed 2026-10-24; transcript baseline evidence is appended to
 [../perf.md](../perf.md#pf-02--synthetic-transcript-baseline-2026-10-24).
-No implementation has been performed for PF-03…PF-15.
+PF-03 completed 2026-10-24; project listing baseline evidence is appended to
+[../perf.md](../perf.md#pf-03--synthetic-project-listing-baseline-2026-10-24).
+No implementation has been performed for PF-04…PF-15.
 
 ## Task index
 
-PF-01 and PF-02 are **complete**; all other rows are **not started**. Dependencies are completion gates, not mere ordering
+PF-01, PF-02 and PF-03 are **complete**; all other rows are **not started**. Dependencies are completion gates, not mere ordering
 suggestions. All implementation tasks also depend on the shared guardrails in the
 [parent plan](../plan/performance.md#shared-guardrails).
 
@@ -98,6 +100,13 @@ No cache optimization is included.
 exclude generation, and repeated provider work is observable without wall-clock assertions.
 
 ## PF-03 — Project listing baselines
+
+**Status:** complete 2026-10-24. Generated below/above-cap Git trees, nested
+ignore/deleted/untracked/empty/symlink and root/context isolation regressions;
+request-local Git counts, repeated component benchmarks and mocked store lifecycle
+request counts. Full race suite and frontend tests/check/build pass; new-code lint
+passes, existing files-package lint debt remains. Native GUI/Windows not measured.
+[Evidence and limits](../perf.md#pf-03--synthetic-project-listing-baseline-2026-10-24).
 
 **Goal:** separate Git subprocess, path validation, directory walk and UI reopen costs.
 

@@ -469,3 +469,85 @@ BenchmarkTranscript/codex/100MB/independent-key-4-10     	       1	1897342249 ns
 PASS
 ok  	github.com/ginkcode/agent-sessions/internal/engine	138.861s
 ```
+
+## PF-03 — Synthetic project listing baseline (2026-10-24)
+
+PF-03 complete; PF-01/PF-02 evidence above is unchanged. No listing optimization.
+
+### Method and correctness
+
+- Revision `035ef9f` plus uncommitted PF-03 work (PF-01/PF-02 committed during the
+  task as `bb9eb49`/`e5bbc44`; files under test unchanged by them), Apple M5 / 32 GiB,
+  Darwin 27.0.0 arm64, Go 1.26.8, Git 2.54.0 (Apple Git-157), GOMAXPROCS 10.
+- `internal/files/listing_bench_test.go` generates a Git repository in `TempDir` per
+  case, with Git global/system config disabled, `HOME`/`XDG_CONFIG_HOME` redirected
+  and inherited `GIT_*` variables cleared. Tracked state is index-only (no commit).
+  Each tree has 16 source directories, root and nested `.gitignore` (directory,
+  glob and negation rules), an ignored directory tree, a deleted tracked file, an
+  untracked file and empty directories. No user repository or session store is read.
+- `TestSyntheticListingBaseline` covers 128 and 20,001 generated files: listed
+  count/cap/truncation, deleted/untracked status, ignored and negated paths,
+  sorted output, empty-directory inclusion, ignored-directory exclusion, a nested
+  subroot listing, and that an uncounted context records no Git work.
+  `TestSyntheticListingSymlinkIsolation` checks in/out-of-root directory and file
+  symlinks stay leaves, `Resolve` refuses outside targets and search does not read
+  them (skips when symlinks are unavailable). `TestSyntheticGitDirectoryCap` checks
+  the Git directory walker's 20,000 cap. Git-unavailable cases skip.
+- Git-count seam: an unexported context key whose callback runs before each `git`
+  command in `runGit` and `ignoredDirectories`. Absent by default; request-local, so
+  concurrent listings cannot pollute counts. Both sizes run 6 commands per `List`:
+  `ls-files` ×2, `rev-parse` ×1, `status` ×1, `check-ignore` ×2 (one per directory
+  batch, here root and `nested`).
+- Baseline observation, not changed: `Search` uses `gitFiles` directly and does not
+  apply `List`'s 20,000-file cap, so it is untruncated and finds paths beyond the
+  listing boundary.
+- Frontend: `file-drafts.test.mjs` "PF-03 listing baseline" uses the existing store
+  mocks and deferred replies (no sleeps): reopening an already-open populated root
+  makes 0 requests; close drops the listing but keeps tabs/drafts/expansion;
+  reopen and refresh each make 1 request while refresh keeps the old snapshot; a
+  closed root's late reply cannot populate another root; the same path on another
+  host is refetched. This is request behavior, not native GUI latency.
+
+### Results
+
+`go test ./internal/files -run '^$' -bench 'BenchmarkProjectListing|BenchmarkSearch$' -benchtime=5x -count=5 -benchmem`,
+then the `Status`/`Ignored` components separately with the same flags. Generation
+is outside timers; filesystem caches are warm after setup (not a cold-disk run).
+Time is min / median / max of five runs; bytes and allocations are medians.
+`List` is the composite; components are measured independently and overlap it.
+
+| Benchmark | ms/op | Git/op | B/op | allocs/op |
+|---|---:|---:|---:|---:|
+| 1000/List | 43.9 / 45.3 / 55.2 | 6 | 1,457,128 | 8,232 |
+| 1000/GitFiles | 8.6 / 8.6 / 8.8 | 1 | 682,544 | 3,163 |
+| 1000/Status | 14.0 / 14.2 / 25.8 | 2 | 305,681 | 250 |
+| 1000/Ignored | 6.7 / 7.0 / 7.1 | 1 | 22,497 | 113 |
+| 1000/Directories | 14.2 / 14.4 / 15.2 | 2 | 446,152 | 4,702 |
+| 1000/Walk | 0.93 / 0.93 / 0.95 | 0 | 301,600 | 3,377 |
+| 1000/Resolve | 0.017 / 0.018 / 0.019 | 0 | 7,808 | 85 |
+| 20001/List | 151.3 / 152.3 / 153.2 | 6 | 24,903,505 | 142,959 |
+| 20001/GitFiles | 50.5 / 51.2 / 53.4 | 1 | 13,369,676 | 60,304 |
+| 20001/Status | 38.2 / 39.2 / 65.6 | 2 | 4,440,948 | 378 |
+| 20001/Ignored | 13.3 / 13.5 / 13.7 | 1 | 22,632 | 113 |
+| 20001/Directories | 47.3 / 47.7 / 49.1 | 2 | 7,068,936 | 82,161 |
+| 20001/Walk | 13.4 / 13.8 / 14.6 | 0 | 6,400,214 | 60,440 |
+| 20001/Resolve | 0.016 / 0.018 / 0.022 | 0 | 7,808 | 85 |
+| Search (existing, 5,000 files) | 108.5 / 109.4 / 111.9 | — | 103,651,028 | 122,980 |
+
+- At 20,001 files, Git file listing (≈51 ms, including one `Lstat` per path),
+  directory discovery with `check-ignore` (≈48 ms) and status (≈39 ms) dominate
+  `List`; ignored listing adds ≈13 ms. The non-Git walk is ≈14 ms and path
+  validation is ≈18 µs. The first `Status` run of each size is a warm-up outlier.
+- These guide PF-11/PF-13/PF-14; absolute timings are advisory and host-specific.
+
+### Verification and limits
+
+Passed: `go test ./internal/files -run TestSynthetic -v`; `go test -race ./internal/files`;
+`make test` (full race suite); `go vet ./...`; `go build ./...`; gofumpt on changed
+files; `golangci-lint run --new-from-rev=HEAD ./internal/files/...` (0 issues).
+Package-wide `golangci-lint` on `internal/files` reports 39 existing issues in
+untouched lines (errcheck, gofumpt, staticcheck, errorlint), not introduced here.
+Frontend: `npm test` (666 passed), `npm run check` (0 errors, existing
+ignoreDeprecations warning), `npm run build` (existing chunk-size warning).
+No native GUI, Windows, or Linux runs; no cold-cache or peak-memory profile; no
+symlink-unavailable or Git-unavailable host was exercised (those paths skip).

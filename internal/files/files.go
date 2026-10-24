@@ -149,6 +149,16 @@ func List(ctx context.Context, root string) (Listing, error) {
 	return walk(ctx, root)
 }
 
+// gitInvocationKey enables request-local work accounting in synthetic baselines.
+// The optional callback runs synchronously just before a Git command is started.
+type gitInvocationKey struct{}
+
+func countGitInvocation(ctx context.Context, command string) {
+	if observe, ok := ctx.Value(gitInvocationKey{}).(func(string)); ok {
+		observe(command)
+	}
+}
+
 // runGit runs git in root and returns its output.
 func runGit(ctx context.Context, root string, args ...string) ([]byte, bool) {
 	git, err := exec.LookPath("git")
@@ -162,6 +172,7 @@ func runGit(ctx context.Context, root string, args ...string) ([]byte, bool) {
 	hideConsole(cmd)
 	var stdout bytes.Buffer
 	cmd.Stdout = &stdout
+	countGitInvocation(ctx, args[0])
 	if cmd.Run() != nil {
 		return nil, false
 	}

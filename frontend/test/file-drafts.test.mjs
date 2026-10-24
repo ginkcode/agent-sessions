@@ -40,6 +40,60 @@ async function setup(initial = content()) {
   return { store, fixture, tab: store.activeTab };
 }
 
+test('PF-03 listing baseline: same-open reuse, close/reopen refetch, refresh and root/host isolation', async () => {
+  const { store, fixture, tab } = await setup();
+  store.startEditing(tab.path);
+  store.updateDraft(tab, 'retained draft');
+  store.expanded = new Set(['nested']);
+  const requests = [];
+  fixture.api.listFiles = (dir) => {
+    const reply = deferred();
+    requests.push({ dir, host: fixture.link.dataHost, reply });
+    return reply.promise;
+  };
+  await store.show('/p');
+  assert.equal(requests.length, 0, 'already-open populated listing is reused');
+  store.close();
+  assert.equal(store.listing, null, 'close drops the listing, not drafts');
+  const reopening = store.show('/p');
+  await tick();
+  assert.equal(requests.length, 1);
+  assert.equal(store.listing, null);
+  assert.equal(store.loadingList, true);
+  assert.equal(store.activeTab, tab);
+  assert.equal(tab.edit.draft, 'retained draft');
+  assert.deepEqual([...store.expanded], ['nested']);
+  const listing = { root: '/p', files: ['a.txt'], directories: ['empty'], truncated: true };
+  requests[0].reply.resolve(listing);
+  await reopening;
+  assert.equal(store.listing, listing);
+  const refreshing = store.refresh();
+  assert.equal(requests.length, 2);
+  assert.equal(store.listing, listing, 'refresh retains the old visible snapshot');
+  store.close();
+  const other = store.show('/other');
+  assert.equal(requests.length, 3);
+  requests[1].reply.resolve({ root: '/p', files: ['stale'] });
+  await refreshing;
+  assert.equal(store.listing, null, 'closed-root reply cannot populate another root');
+  requests[2].reply.resolve({ root: '/other', files: ['other'] });
+  await other;
+  assert.deepEqual(store.listing.files, ['other']);
+  assert.equal(store.draftTargets[0].tab, tab);
+  store.updateDraft(tab, tab.edit.baseline);
+  store.close();
+  fixture.link.dataHost = 'remote';
+  const remote = store.show('/other');
+  assert.equal(requests.length, 4);
+  assert.equal(store.listing, null, 'same path on another host is not reused');
+  requests[3].reply.resolve({ root: '/other', files: ['remote'] });
+  await remote;
+  assert.deepEqual(requests.map(({ dir, host }) => [dir, host]), [
+    ['/p', undefined], ['/p', undefined], ['/other', undefined], ['/other', 'remote'],
+  ]);
+  assert.deepEqual(store.listing.files, ['remote']);
+});
+
 test('editor text preserves intended newline/BOM and serialized limits include disk expansion', () => {
   assert.equal(editorText(content('\uFEFFone\r\n\uFEFFtwo\r\n', 'r', { bom: true, newline: 'crlf' })), 'one\n\uFEFFtwo\n');
   assert.equal(editorText(content('\uFEFFx', 'r', { bom: false })), '\uFEFFx');

@@ -101,6 +101,7 @@ func ignoredDirectories(ctx context.Context, root string, paths []string) (map[s
 	cmd.Stdin = strings.NewReader(strings.Join(paths, "\x00") + "\x00")
 	var stdout bytes.Buffer
 	cmd.Stdout = &stdout
+	countGitInvocation(ctx, "check-ignore")
 	if err := cmd.Run(); err != nil {
 		if exit, ok := err.(*exec.ExitError); !ok || exit.ExitCode() != 1 {
 			return nil, false
