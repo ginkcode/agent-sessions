@@ -599,3 +599,27 @@ ST-07F complete: [integrated evidence and retest instructions](../perf.md#st-07-
 Full Go test/vet/build/Windows cross-vet PASS; focused race gate repeated three times
 PASS. No real host/GUI/Windows or 300 MiB end-to-end RPC measurement; frontend unchanged
 and not rerun. Existing PF blockers remain unchanged; nothing pushed.
+
+
+## ST-08 — Startup connection snapshot rollback (2026-10-24)
+
+ST-08A complete (≤2 h): fix ConnectionStore initial-snapshot admission. The backend
+captures Local before diagnostics enrichment, which can wait behind local startup;
+a later snapshot may overwrite newer remote events and seed the link as Local.
+Reuse discovery's event counter plus an init/destroy lifecycle token. Live events
+win; destroyed initializations cannot seed or refresh. Keep normal snapshot seeding
+and genuine disconnect behavior. Do not serialize hydration or weaken API guards.
+
+ST-08B pending (≤3 h): deferred-promise regressions for stale Local after connecting/
+connected, destroy/re-init, normal snapshot/error/disconnect, and late catalog replies
+using real API epoch guards. Assert remote phase/host/title/link/data identity and no
+extra reset. Confirmed scope is host-identity rollback, not an independently proven
+Local-row overwrite. Document a separate fix if tests reveal one. Full frontend tests,
+check/build and diff checks; native GUI unverified. Generated fixtures only, no Go
+changes expected, no app launch/private data/packaging/push. Commit each task.
+
+ST-08A: event-counter/lifecycle admission implemented; five deferred regression
+cases cover connecting/connected stale Local snapshot, destroy/re-init, ordinary
+seed/disconnect and failure. Focused connection/discovery 39/39 PASS. Initial fixture
+failed two assertions because Proxy receivers lost bound mutation state; fixture
+methods bound correctly and suite rerun. ST-08B full gate/epoch regression pending.

@@ -340,7 +340,7 @@ async function loadConnectionStore() {
     [
       "import { api, subscribeConnectionState, subscribeAskpassPrompt } from '../api';",
       fixtureStore('api', '__storeFixture') +
-        'const subscribeConnectionState = () => () => {}; const subscribeAskpassPrompt = () => () => {};',
+        'const subscribeConnectionState = (fn) => globalThis.__storeFixture.subscribeState?.(fn) ?? (() => {}); const subscribeAskpassPrompt = () => () => {};',
     ],
     ["'../tree'", lib('../tree.ts')],
     ["'../hosts'", lib('../hosts.ts')],
@@ -632,4 +632,108 @@ test('hostInOtherWindow explains a host open in another window', async () => {
 
   const wsl = hostInOtherWindow('wsl:Ubuntu', new Error('wsl:Ubuntu is open in another window'));
   assert.doesNotMatch(wsl.title, /^wsl:/);
+});
+
+
+async function startupConnectionFixture(run) {
+  const { ConnectionStore } = await loadConnectionStore();
+  const snapshots = [];
+  const listeners = [];
+  const seeds = [];
+  const resets = [];
+  let refreshes = 0;
+  const link = {
+    dataHost: undefined,
+    phase: 'local',
+    seed(phase, host) { seeds.push({ phase, host }); this.phase = phase; this.dataHost = host; },
+    update(phase, host) {
+      this.phase = phase;
+      if (phase !== 'local' && phase !== 'connected') return false;
+      this.dataHost = phase === 'local' ? undefined : host;
+      return true;
+    },
+  };
+  const appState = { targetHost: undefined, sessions: [], reset(host) {
+    resets.push(host); this.targetHost = host; this.sessions = [{ id: host ?? 'local' }];
+  } };
+  for (const name of ['seed', 'update']) link[name] = link[name].bind(link);
+  appState.reset = appState.reset.bind(appState);
+  const noop = { reset() {}, connectionChanged() {} };
+  globalThis.__storeFixture = {
+    api: { connectionState() { const d = deferred(); snapshots.push(d); return d.promise; } },
+    subscribeState(fn) { listeners.push(fn); return () => {}; },
+    link, appState, manage: noop, search: noop, handoff: noop, exporter: noop,
+    importer: noop, contentSearch: noop, files: noop,
+  };
+  const store = new ConnectionStore();
+  store.refreshHosts = async () => { refreshes++; };
+  try { await run({ store, snapshots, listeners, seeds, resets, link, appState, refreshes: () => refreshes }); }
+  finally { store.destroy(); delete globalThis.__storeFixture; }
+}
+
+for (const phase of ['connecting', 'connected']) {
+  test(`startup Local snapshot cannot overwrite newer ${phase} remote event`, async () => {
+    await startupConnectionFixture(async ({ store, snapshots, listeners, seeds, resets, link, appState }) => {
+      const init = store.init();
+      listeners[0]({ phase, host: 'remote-box', generation: 7 });
+      const title = store.title;
+      snapshots[0].resolve({ phase: 'local', generation: 0 });
+      await init;
+      assert.equal(store.phase, phase);
+      assert.equal(store.host, 'remote-box');
+      assert.equal(store.generation, 7);
+      assert.equal(store.title, title);
+      assert.deepEqual(seeds, [], 'stale snapshot must not reseed data identity');
+      if (phase === 'connected') {
+        assert.equal(link.dataHost, 'remote-box');
+        assert.equal(appState.targetHost, 'remote-box');
+        assert.deepEqual(appState.sessions, [{ id: 'remote-box' }]);
+        assert.deepEqual(resets, ['remote-box']);
+      }
+    });
+  });
+}
+
+test('destroy/re-init rejects prior snapshots and subscription callbacks', async () => {
+  await startupConnectionFixture(async ({ store, snapshots, listeners, seeds, refreshes }) => {
+    const old = store.init();
+    store.destroy();
+    const current = store.init();
+    listeners[1]({ phase: 'connected', host: 'new-box', generation: 9 });
+    listeners[0]({ phase: 'local', generation: 0 });
+    snapshots[0].resolve({ phase: 'local', generation: 0 });
+    await old;
+    assert.equal(refreshes(), 0, 'destroyed init must not refresh hosts');
+    assert.equal(store.host, 'new-box');
+    snapshots[1].resolve({ phase: 'local', generation: 0 });
+    await current;
+    assert.equal(store.host, 'new-box');
+    assert.equal(refreshes(), 1);
+    assert.deepEqual(seeds, []);
+  });
+});
+
+test('ordinary snapshot seeds once and genuine disconnect still resets Local', async () => {
+  await startupConnectionFixture(async ({ store, snapshots, listeners, seeds, resets, link }) => {
+    const init = store.init();
+    snapshots[0].resolve({ phase: 'local', generation: 0 });
+    await init;
+    assert.deepEqual(seeds, [{ phase: 'local', host: undefined }]);
+    listeners[0]({ phase: 'connected', host: 'box', generation: 1 });
+    listeners[0]({ phase: 'local', generation: 2 });
+    assert.equal(store.phase, 'local');
+    assert.equal(link.dataHost, undefined);
+    assert.deepEqual(resets, ['box', undefined]);
+  });
+});
+
+test('failed initial snapshot does not undo newer remote state', async () => {
+  await startupConnectionFixture(async ({ store, snapshots, listeners, seeds }) => {
+    const init = store.init();
+    listeners[0]({ phase: 'connected', host: 'box', generation: 1 });
+    snapshots[0].reject(new Error('generated failure'));
+    await init;
+    assert.equal(store.host, 'box');
+    assert.deepEqual(seeds, []);
+  });
 });

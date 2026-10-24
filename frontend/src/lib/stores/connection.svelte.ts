@@ -63,6 +63,8 @@ export class ConnectionStore {
   private unsubscribeState: (() => void) | null = null;
   private unsubscribeAskpass: (() => void) | null = null;
   private initialized = false;
+  private lifecycle = 0;
+  private connectionEvents = 0;
   private title = '';
   private resetCallbacks = new Set<(generation: number, host?: string) => void>();
 
@@ -97,28 +99,36 @@ export class ConnectionStore {
   async init(): Promise<void> {
     if (this.initialized) return;
     this.initialized = true;
+    const lifecycle = ++this.lifecycle;
+    const active = () => this.initialized && this.lifecycle === lifecycle;
 
     this.unsubscribeState = subscribeConnectionState((state) => {
+      if (!active()) return;
+      this.connectionEvents++;
       this.applyState(state);
     });
 
     this.unsubscribeAskpass = subscribeAskpassPrompt((prompt) => {
-      this.pendingAskpass = prompt;
+      if (active()) this.pendingAskpass = prompt;
     });
 
+    const seen = this.connectionEvents;
     try {
       const state = await api.connectionState();
-      if (state) {
+      // Local identity enrichment can wait behind engine startup. Any live
+      // connection event received meanwhile is newer than this snapshot.
+      if (active() && seen === this.connectionEvents && state) {
         this.applyState(state, false);
       }
     } catch {
       // Backend may not be available yet or in mock mode
     }
 
-    await this.refreshHosts();
+    if (active()) await this.refreshHosts();
   }
 
   destroy(): void {
+    this.lifecycle++;
     this.unsubscribeState?.();
     this.unsubscribeState = null;
     this.unsubscribeAskpass?.();

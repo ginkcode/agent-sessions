@@ -241,3 +241,5 @@ Join startup before diagnostics expiry/engine Close. Measure connection phases w
 opt-in content-free observers; generated evidence is not native SSH/UI verification.
 
 ST-07A–F complete: [generated integration evidence](../perf.md#st-07--remote-early-catalog-handshake-2026-10-24). Real SSH/native timing remains unverified.
+
+ST-08 correctness follow-up: [startup connection snapshot rollback](../tasks/performance-startup.md#st-08--startup-connection-snapshot-rollback-2026-10-24). Newer connection events must outrank delayed initial Local snapshots; preserve catalog epoch guards.
