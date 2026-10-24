@@ -176,7 +176,7 @@
 
     <div class="header-actions">
       {#if runningTab}
-        <span class="running-badge" title="This session is running in the terminal panel">● Running in terminal</span>
+        <span class="running-badge" title="This session is running in the terminal panel">● Running</span>
       {/if}
       {#if launcher.canOpen || canOpenOther}
         <div class="menu-container resume-split" bind:this={resumeMenuRoot}>

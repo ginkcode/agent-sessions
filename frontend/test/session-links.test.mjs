@@ -179,7 +179,7 @@ test('the header shows a session running in the panel and a button to its tab', 
       terminals: { tabFor: (ref, host) => (ref.id === 's1' && host === '' ? { id: 't9' } : undefined), show: (id) => shown.push(id) },
     },
   );
-  assert.match(html, /Running in terminal/);
+  assert.match(html, /● Running</);
   assert.match(unescapeHTML(html), /resume-main[^"]*"[^>]*title="Show the terminal tab running this session"[^>]*>\s*Show terminal/);
   assert.doesNotMatch(html, />\s*Resume\s*</);
 
@@ -188,7 +188,7 @@ test('the header shows a session running in the panel and a button to its tab', 
     launcher: { canOpen: true, openMode: 'panel', canOpenPanel: true },
     terminals: { tabFor: () => undefined },
   });
-  assert.doesNotMatch(idle, /Running in terminal/);
+  assert.doesNotMatch(idle, /● Running</);
   assert.match(idle, />\s*Resume\s*</);
 });
 
