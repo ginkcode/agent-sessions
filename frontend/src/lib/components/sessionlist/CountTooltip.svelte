@@ -21,18 +21,20 @@
 </div>
 
 <style>
+  /* An elevated surface of the current theme, not an inverted chip. */
   .count-tooltip {
     display: flex;
     align-items: center;
     gap: 4px;
     padding: 3px 8px;
-    background-color: var(--text-primary);
-    color: var(--bg-primary);
+    background-color: var(--bg-primary);
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
     border-radius: 4px;
     font-size: 0.7rem;
     font-family: var(--font-mono);
     white-space: nowrap;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+    box-shadow: 0 2px 8px rgba(15, 23, 42, 0.12);
     z-index: 100;
     pointer-events: none;
   }
@@ -42,28 +44,25 @@
   }
 
   .count-item.user {
-    color: #60a5fa;
+    color: #2563eb;
   }
 
   .count-item.assistant {
-    color: #a78bfa;
+    color: #7c3aed;
   }
 
   .count-item.tools {
-    color: #34d399;
+    color: #047857;
   }
 
   .count-item.errors {
-    color: #f87171;
+    color: #dc2626;
   }
 
-  /* The inverted chip would be light in dark mode; use an elevated dark
-     surface with role tints that stay readable on it. */
+  /* Role tints stay readable on the raised dark surface. */
   @media screen {
     :global([data-theme="dark"]) .count-tooltip {
       background-color: var(--bg-tertiary);
-      color: var(--text-primary);
-      border: 1px solid var(--border-color);
       box-shadow: 0 4px 12px rgba(0, 0, 0, 0.45);
     }
 
@@ -73,6 +72,10 @@
 
     :global([data-theme="dark"]) .count-item.assistant {
       color: #c4b5fd;
+    }
+
+    :global([data-theme="dark"]) .count-item.tools {
+      color: #34d399;
     }
 
     :global([data-theme="dark"]) .count-item.errors {

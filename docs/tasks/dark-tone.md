@@ -6,6 +6,22 @@ should retain lighter/darker surface layers, equivalent to the light-mode hierar
 The native title bar remains OS-managed; its appearance can vary with focus and
 system settings.
 
+## DT-05 — Theme-matched count tooltip in light mode (complete)
+
+Follow-up report: light mode still showed the wrong theme, because the base chip
+was inverted (a #0b1220 chip on the light list). Make the base tooltip a light
+elevated surface: `--bg-primary` background, `--text-primary` text,
+`--border-color` hairline and a soft shadow, with role colors at least 4.5:1 on
+white (user #2563eb, assistant #7c3aed, tool calls #047857, errors #dc2626). The
+DT-04 screen-dark surface and tints remain, now also overriding tool calls
+(#34d399). Update the regression test; run frontend tests, check, build and diff
+checks.
+
+Verification: frontend 728/728 PASS; check 0 errors (existing tsconfig
+warning); build PASS (existing chunk-size warning); diff check clean. The test
+rejects the inverted chip and asserts ≥4.5:1 for every role color and text on
+both tooltip surfaces. Native appearance not exercised.
+
 ## DT-04 — Session-list count tooltip (complete)
 
 Report: hovering a session row's message count in dark mode shows a light chip
