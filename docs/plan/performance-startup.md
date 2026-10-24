@@ -228,3 +228,14 @@ exclude database-size-dependent integrity costs. [ST-06A/B](../tasks/performance
 measure a generated large FTS index first, then validate early read-only cached-hint
 publication while retaining mandatory writer integrity checking and recovery. This
 extends startup work before M2, not the completed historical small-fixture gate.
+
+
+## Remote startup follow-up — ST-07 (2026-10-24)
+
+[Sequential briefs](../tasks/performance-startup.md#st-07--remote-startup-responsiveness-2026-10-24).
+Remote initialize currently waits for full Engine.Start, hiding ST-06B cached hints.
+Prepare capabilities/diagnostics identity first, then track startup under RPC Serve;
+reply at current-lifetime catalog readiness and gate noncatalog operations until
+startup finishes. Keep local startup, integrity recovery and wire compatibility.
+Join startup before diagnostics expiry/engine Close. Measure connection phases with
+opt-in content-free observers; generated evidence is not native SSH/UI verification.

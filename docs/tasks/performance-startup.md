@@ -504,3 +504,70 @@ failure followed by fallback cannot leave ghost hints; cancellation/Close/restar
 reader promotion invariants preserved. Repeated generated large-index timing must
 show publication no longer waits for the full integrity scan. Native responsiveness
 remains unverified. Split before coding if design exceeds this scope.
+
+
+## ST-07 — Remote startup responsiveness (2026-10-24)
+
+Approved follow-up: remote initialize currently hides early cached hints behind
+synchronous Engine.Start. Local Start stays synchronous; integrity/recovery stays
+mandatory. Generated fixtures only, no private stores or real host connections.
+
+| Task | Status | Scope | Estimate |
+|---|---|---|---|
+| ST-07A | Complete | Document readiness/admission/lifecycle contracts | 1 h |
+| ST-07B | Pending | Atomic discovery snapshot/change subscription | ≤3 h |
+| ST-07C | Pending | Prepared RPC startup, early initialize and method gate | ≤4 h |
+| ST-07D | Pending | CLI wiring and generated real-engine integration | ≤3 h |
+| ST-07E | Pending | Opt-in content-free remote phase timing | ≤3 h |
+| ST-07F | Pending | Integrated regression gate and repeated evidence | ≤3 h |
+
+Execute sequentially; commit per completed task, no push. Split oversized work
+before coding. Each scope includes focused tests.
+
+### ST-07B acceptance
+Add a snapshot-plus-change-channel watcher under discovery's existing mutex.
+Begin/update/stop wake subscribers with no missed event or stale-lifetime readiness.
+Use the writerOpen barrier to prove CatalogUsable precedes verification; cover
+restart and canceled/failed/no-cache cases. Preserve local Start/Close semantics.
+
+### ST-07C acceptance
+Keep SetStarter compatible; add prepared backend/capabilities/roots/start composition.
+Do not wrap Backend or lose optional interfaces. Apply client env before preparation;
+compute diagnostics host identity/capabilities before Start can take engine.mu.
+Register an owned startup task before launching with Serve-lifetime cancellation.
+Initialize returns at new-lifetime CatalogUsable or successful Start completion;
+without discovery observation wait for completion. Errors before readiness fail
+initialize; errors afterward terminate connection. Duplicate initialize stays refused.
+
+Only ping, listGroups, listSessions, agentCounts, getSessionMeta, discoveryStatus
+may run before full Start completes. Every other method waits cancellation-aware
+outside backend locks (deny by default). Test cancelRequest and unknown methods.
+Shutdown cancels Serve, closes transport, joins handlers/startup, then expires
+diagnostics; CLI closes engine last. No scheduled Start after Close.
+
+### ST-07D acceptance
+Production serve switches to preparation; publish engine ownership before startup.
+Preserve env-root ordering, two clients/shared cache, idle timeout and host identity.
+Real engine with generated cached rows and a held startup phase: initialize and
+catalog requests succeed while full Start is held; other requests wait. Disconnect
+must cancel/join startup and release cache ownership. Existing synchronous starters,
+reader snapshots/promotion and local restart remain unchanged. Test pre-connected
+events recovered by discovery snapshot and host/generation isolation.
+
+### ST-07E acceptance
+Context-local, opt-in, content-free phases: probe, bundle selection/hash, deploy,
+preface, initialize, server preparation/identity/catalog-ready/full Start, first
+successful groups/counts/sessions. No default logging, payloads, errors, host/path
+identifiers or cross-process timestamp subtraction. Generated fake SSH/pipe tests
+only; distinguish empty responses from actual usable rows. Record distributions,
+not CI latency thresholds. Reuse StartupObservation rather than global hooks.
+
+### ST-07F acceptance
+Repeat synthetic before/after measurements in docs/perf.md; deterministic barriers
+prove catalog availability independent of verification, not only a faster handshake.
+Affected race tests; full Go test/vet/build, Windows cross-vet, changed-code installed
+lint and diff check. Run frontend checks if frontend changes; report native GUI,
+real SSH/WSL and Windows execution unperformed. Retest instructions must rebuild
+remote bundles as well as desktop; checksum matching already handles same-version
+rebuilds. Build bundles only into a fresh temporary directory if needed. No installs,
+private data, process termination, app replacement, packaging or push.
