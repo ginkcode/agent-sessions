@@ -77,6 +77,16 @@ the terminal menu's items. Full frontend tests pass; check 0 errors.
 Out of scope: moving panes between tabs, keyboard pane navigation, persisting
 layouts.
 
-## TS-04 — Regression gate
+## TS-04 — Regression gate (complete)
 
 Full frontend tests, check, build and diff check.
+
+Result: `npm test` 741 pass, 0 fail; `npm run check` 0 errors (the existing
+tsconfig warning); `npm run build` succeeds (the existing chunk-size warning);
+`git diff --check` clean.
+
+Not exercised without the app, to check by hand: split twice and type in each
+pane; drag the splitters, docked at the bottom and on the left; maximize;
+close panes and whole tabs; let a shell exit; split a resumed agent; ⌘\ or
+Ctrl+Shift+5 while typing in a terminal; drop a file on each pane. Ctrl+Shift+5
+may be taken on Windows by input-language switching.

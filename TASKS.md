@@ -440,4 +440,4 @@ Startup regression follow-up: **ST-08A / ST-08B complete** — [stale initial co
 
 Go to File blame: **NB-01…NB-04 complete** — [Git in nested repositories](docs/tasks/nested-repo-blame.md), line blame, changed-line markers and status tints for repositories under a non-Git directory.
 
-Internal terminal split: **TS-01…TS-04 planned** — [split terminals](docs/tasks/terminal-split.md), several shells side by side in one tab, as in VS Code.
+Internal terminal split: **TS-01…TS-04 complete** — [split terminals](docs/tasks/terminal-split.md), several shells side by side in one tab, as in VS Code.
