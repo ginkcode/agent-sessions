@@ -1,9 +1,18 @@
 # Native-tone dark surfaces (2026-10-24)
 
 Target: #2C2C2B, matching raw screenshot title-bar pixels RGB (44,44,43).
-The user chose to match all large surfaces, including terminal and transcript.
+The initial choice matched all large surfaces. The user clarified that dark mode
+should retain lighter/darker surface layers, equivalent to the light-mode hierarchy.
 The native title bar remains OS-managed; its appearance can vary with focus and
 system settings.
+
+## DT-03 — Restore layered surfaces (complete)
+
+Clarification: use #242423 for the primary content/terminal canvas, #2c2c2b for
+secondary panels/message cards, and #383837 for tertiary controls. This restores
+the light-mode surface hierarchy without reintroducing a blue/purple cast.
+Update terminal fallback and regression expectations; verify text contrast on
+all three layers. Light mode and semantic colors remain unchanged.
 
 ## DT-01 — Palette update (complete)
 
@@ -31,3 +40,7 @@ precedence/cursor background and preserved ANSI black. Run frontend tests,
 check/build and diff checks. Native visual matching is unverified unless tested.
 Manual follow-up: compare titlebar, sidebar, list, transcript, terminal and editor
 in dark/system-dark; inspect controls, hover and selection; verify light mode.
+
+DT-03 verification: frontend 724/724 PASS; check 0 errors (existing tsconfig
+warning); build PASS (existing chunk-size warning); diff check clean. Text
+contrast passes on all three layers. Native appearance not exercised.

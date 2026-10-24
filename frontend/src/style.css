@@ -55,7 +55,7 @@
 @media screen {
   [data-theme="dark"] {
     color-scheme: dark;
-    --bg-primary: #2c2c2b;
+    --bg-primary: #242423;
     --bg-secondary: #2c2c2b;
     --bg-tertiary: #383837;
     --border-color: rgba(255, 255, 255, 0.08);

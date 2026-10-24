@@ -14,13 +14,15 @@ function luminance(hex) {
   return channels[0] * 0.2126 + channels[1] * 0.7152 + channels[2] * 0.0722;
 }
 
-test('dark large surfaces share the native-tone target with readable text', () => {
+test('dark surfaces retain native-tone layers with readable text', () => {
   const dark = tokens('[data-theme="dark"]');
-  assert.equal(dark['--bg-primary'], '#2c2c2b');
+  assert.equal(dark['--bg-primary'], '#242423');
+  assert.ok(luminance(dark['--bg-primary']) < luminance(dark['--bg-secondary']));
+  assert.ok(luminance(dark['--bg-secondary']) < luminance(dark['--bg-tertiary']));
   assert.equal(dark['--bg-secondary'], '#2c2c2b');
   assert.equal(dark['--bg-tertiary'], '#383837');
   assert.equal(dark['--text-muted'], '#b0b0ad');
-  for (const surface of ['--bg-primary', '--bg-tertiary']) {
+  for (const surface of ['--bg-primary', '--bg-secondary', '--bg-tertiary']) {
     for (const text of ['--text-primary', '--text-secondary', '--text-muted']) {
       assert.ok((luminance(dark[text]) + 0.05) / (luminance(dark[surface]) + 0.05) >= 4.5, `${text} on ${surface}`);
     }
