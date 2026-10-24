@@ -283,6 +283,8 @@ let groupTreeModule;
 async function renderGroupTree(filter) {
   groupTreeModule ??= await loadServerComponent(GROUP_TREE_URL, [
     ["import { appState } from '../../stores/appState.svelte';", fixtureStore('appState')],
+    ["import { discovery } from '../../stores/discovery.svelte';", "const discovery = { outcome: 'unavailable', status: null };"],
+    ["'../../discovery'", JSON.stringify(new URL('../src/lib/discovery.ts', import.meta.url).href)],
     ["import { manage } from '../../stores/manage.svelte';", 'const manage = {};'],
     ["import { filterSessionsByAge, refsEqual } from '../../manage';", 'const filterSessionsByAge = () => [];const refsEqual = (a, b) => a === b;'],
     ["import { nodeToHighlight, sessionToSelect } from '../../tree';", 'const nodeToHighlight = () => null;const sessionToSelect = () => null;'],

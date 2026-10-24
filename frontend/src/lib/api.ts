@@ -1344,6 +1344,10 @@ const UNGUARDED = new Set<string>([
   'onFileDrop',
   'openURL',
   'appVersion',
+  // Each reply names the route (host, generation) that answered; the
+  // discovery store checks it against the current route itself, so a reply
+  // issued just before a reload is still usable when it belongs to the new one.
+  'discoveryStatus',
   'launchInfo',
   'terminalSettings',
   'terminalFonts',

@@ -1,6 +1,8 @@
 <script lang="ts">
   import type { GroupNode, SessionRef } from '../../types';
   import { appState } from '../../stores/appState.svelte';
+  import { discovery } from '../../stores/discovery.svelte';
+  import { catalogNotice, emptyCatalogState, discoveryProblem } from '../../discovery';
   import { manage } from '../../stores/manage.svelte';
   import { filterSessionsByAge, refsEqual } from '../../manage';
   import { nodeToHighlight, sessionToSelect } from '../../tree';
@@ -58,11 +60,23 @@
 
   let hasFilter = $derived(
     Boolean(
-      appState.filter.query ||
+      appState.filter.agent ||
+        appState.filter.hasSubagents ||
+        appState.filter.query ||
         appState.filter.path ||
         appState.filter.liveOnly ||
         appState.filter.archived
     )
+  );
+
+  let emptyState = $derived(
+    emptyCatalogState(discovery.outcome, discovery.status, hasFilter, appState.discoveryReloading)
+  );
+  let notice = $derived(catalogNotice(discovery.outcome, discovery.status));
+  let problem = $derived(
+    emptyState === 'failed' || emptyState === 'degraded'
+      ? discoveryProblem(emptyState, discovery.status)
+      : null
   );
 
   // The session list clears its own filters; this one is the directory's.
@@ -72,10 +86,27 @@
 </script>
 
 <div class="tree-container" role="tree" aria-label="Session groups" bind:this={container}>
+  {#if notice && appState.groups.length > 0}
+    <div class="discovery-notice" class:warning={notice.tone === 'warning'} role="status" title={notice.title}>
+      {notice.text}
+    </div>
+  {/if}
   {#if appState.loadingGroups}
     <div class="tree-message loading">Loading groups…</div>
   {:else if appState.groups.length === 0}
-    {#if hasFilter}
+    {#if emptyState === 'discovering'}
+      <div class="tree-message loading" role="status">Discovering agent sessions…</div>
+    {:else if emptyState === 'no-sessions'}
+      <div class="tree-message" role="status">
+        <p class="tree-message-title">No sessions found</p>
+        <p>Agents were detected, but they have no session history yet.</p>
+      </div>
+    {:else if problem}
+      <div class="tree-message" role="status">
+        <p class="tree-message-title">{problem.title}</p>
+        <p>{problem.description}</p>
+      </div>
+    {:else if hasFilter}
       <div class="tree-message">
         <p>No sessions match current filter.</p>
         {#if appState.filter.path}
@@ -141,6 +172,22 @@
     flex-direction: column;
     align-items: center;
     gap: 8px;
+  }
+
+  .tree-message-title {
+    margin: 0;
+    color: var(--text-secondary);
+    font-weight: 600;
+  }
+
+  .discovery-notice {
+    padding: 4px 8px;
+    color: var(--text-muted);
+    font-size: 0.72rem;
+  }
+
+  .discovery-notice.warning {
+    color: var(--text-secondary);
   }
 
   .tree-message.loading {

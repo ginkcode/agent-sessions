@@ -30,6 +30,7 @@
   import { theme } from './lib/stores/theme.svelte';
   import { preferences } from './lib/stores/preferences.svelte';
   import { appState } from './lib/stores/appState.svelte';
+  import { discovery } from './lib/stores/discovery.svelte';
   import { manage } from './lib/stores/manage.svelte';
   import { search } from './lib/stores/search.svelte';
   import { importer } from './lib/stores/importer.svelte';
@@ -106,6 +107,7 @@
   onMount(() => {
     theme.init();
     preferences.init();
+    discovery.init(() => { void appState.reloadAfterDiscovery(); });
     connectionStore.init();
     appState.init();
     manage.init();
@@ -238,6 +240,7 @@
       terminals.destroy();
       sessionLinks.destroy();
       appState.destroy();
+      discovery.destroy();
       connectionStore.destroy();
     };
   });

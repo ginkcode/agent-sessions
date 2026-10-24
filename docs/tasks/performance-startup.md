@@ -1,6 +1,6 @@
 # Startup responsiveness — sequential task briefs
 
-Status: **3/6 complete** 2026-10-24: ST-00/ST-01 complete; ST-02 complete (ST-02A engine, ST-02B adapters); ST-03 next; ST-03…ST-05 pending.
+Status: **4/6 complete** 2026-10-24: ST-00/ST-01 complete; ST-02 complete (ST-02A engine, ST-02B adapters); ST-03 complete; ST-04/ST-05 pending.
 [Plan and status/compatibility contract](../plan/performance-startup.md) ·
 [Roadmap](../plan/performance.md) · [Tracker](../../TASKS.md#startup-priority-package).
 
@@ -27,7 +27,7 @@ Likely files are integration points, not instructions to create duplicate system
 | [ST-01](#st-01--measure-the-real-startup-path) | Complete | Full-startup baseline; ST-04 measurement blocker | 4 h | ST-00 |
 | [ST-02A](#st-02--backend-discovery-readiness-contract) | Complete | Engine lifecycle snapshot/event and outcomes | ≤4 h | ST-01 |
 | [ST-02B](#st-02--backend-discovery-readiness-contract) | Complete | Compatible App/RPC adapters and parity | ≤4 h | ST-02A |
-| [ST-03](#st-03--truthful-frontend-startup-states) | Next | Honest readiness and compatible empty/error states | 3 h | ST-02B |
+| [ST-03](#st-03--truthful-frontend-startup-states) | Complete | Honest readiness and compatible empty/error states | 3 h | ST-02B |
 | [ST-04](#st-04--remove-the-measured-startup-blocker) | Pending, measurement-blocked | One evidence-selected safe optimization | ≤4 h | ST-03; ST-01 evidence |
 | [ST-05](#st-05--integrated-startup-gate) | Pending | Integration, before/after evidence and limits | 4 h | ST-04 |
 
@@ -98,7 +98,7 @@ is recorded. Focused tests pass; no private roots discovered.
 **Status:** complete 2026-10-24, split before coding: **ST-02A complete**
 (engine), **ST-02B complete** (adapters). Adapter negotiation/routing plus
 lifecycle and outcome capture exceeded 4 h together. **Dependency:** ST-01.
-ST-03 is next.
+ST-03 is now complete.
 
 - **ST-02A (≤4 h, complete):** engine-owned snapshot/event, lifecycle and
   attempt invalidation, actual detection/outcome capture, barrier-driven tests.
@@ -247,7 +247,37 @@ existing cache recovery/exclusion invariants are retained. Run affected race tes
 
 ## ST-03 — Truthful frontend startup states
 
-**Status:** pending. **Estimate:** 3 h. **Dependency:** ST-02B (complete ST-02).
+**Status:** complete 2026-10-24. **Estimate:** 3 h. **Dependency:** ST-02B (complete ST-02).
+
+**ST-03 evidence (2026-10-24).** Dedicated `discovery.svelte.ts` subscribes to
+connection/discovery events before snapshots, orders by lifetime/revision within
+host/generation, rejects superseded replies, clears status on phase/route changes
+and refetches after reconnect. Snapshot failure/unsupported status explicitly
+becomes unavailable, not completed or indefinitely loading. Discovery replies
+use their own route/epoch guard rather than the catalog reload epoch.
+
+Both panes distinguish discovering, completed empty with/without detected agents,
+failed/degraded outcomes and usable filtered no-matches. Cached rows stay visible
+with an Updating indication; unavailable hosts keep legacy browsing behavior.
+Terminal events **and snapshots** queue a background catalog reload behind existing
+catalog events (successful empty scans need not emit catalog changes). A pending
+terminal reload delays definitive empty text; host resets invalidate queued work.
+Groups-before-sessions sequencing remains to preserve stale-group reconciliation,
+selection and auto-selection; drafts/navigation and startup observation hooks are
+unchanged. No backend changes were needed.
+
+Fourteen deterministic Node tests cover held initial status, stale event/snapshot
+ordering, pre-subscription event recovery, host/generation isolation, reconnect
+lifetime reset, unavailable/error snapshots, rendered pending cache/empty/outcome/
+filter states, terminal reload and selection retention. Promises only, no timers.
+Final frontend gates: `npm test` **697/697 PASS** (0 failed/skipped/cancelled),
+`npm run check` **PASS**, 508 files, 0 errors, 1 existing `ignoreDeprecations`
+warning; `npm run build` **PASS** (1.10 s, existing chunk-size warning).
+`git diff --check` PASS. Native GUI paint/layout and real remote/SSH use remain
+unverified; this is truthful presentation, not a measured startup speedup or a
+diagnosis of the reported ten-second delay. ST-04 remains measurement-blocked.
+No private data/cache access, installs, app launch, process termination, packaging,
+commit or push. No Go changes/checks required for this frontend-only task.
 
 **Likely files:** `frontend/src/lib/stores/appState.svelte.ts`,
 `frontend/src/lib/components/sidebar/GroupTree.svelte`,

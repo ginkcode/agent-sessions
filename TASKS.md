@@ -396,7 +396,7 @@ split it before coding. Native GUI QA remains separately reported, not assumed.
 
 Startup now precedes performance Milestone 2. [Plan and readiness/compatibility
 policy](docs/plan/performance-startup.md) · [Sequential ≤4h briefs](docs/tasks/performance-startup.md).
-Progress: **3/6 complete**, ST-00 documentation and ST-01 measurement complete; ST-02 complete (ST-02A engine, ST-02B adapters); ST-03 next; ST-03…ST-05 pending; ST-04 measurement-blocked.
+Progress: **4/6 complete**, ST-00 documentation and ST-01 measurement complete; ST-02 complete (ST-02A engine, ST-02B adapters); ST-03 complete; ST-04/ST-05 pending; ST-04 measurement-blocked.
 The reported roughly 10-second launch delay is not a measured baseline; its exact
 cause is unknown. This narrow slice is pulled forward from performance M4, not a
 catalog overhaul. M1 stays **12/15 complete**, PF-07 partial/blocked and
@@ -408,7 +408,7 @@ PF-08/PF-10 blocked; historical evidence and native QA limitations stand.
 | [ST-01](docs/tasks/performance-startup.md#st-01--measure-the-real-startup-path) | Complete | Repeated full startup baseline; ST-04 measurement blocker | 4 h | ST-00 |
 | [ST-02A](docs/tasks/performance-startup.md#st-02--backend-discovery-readiness-contract) | Complete | Engine lifecycle snapshot/event and actual detection outcomes | ≤4 h | ST-01 |
 | [ST-02B](docs/tasks/performance-startup.md#st-02--backend-discovery-readiness-contract) | Complete | Optional Backend/App/RPC adapters, capability, unavailable fallback and parity | ≤4 h | ST-02A |
-| [ST-03](docs/tasks/performance-startup.md#st-03--truthful-frontend-startup-states) | Next | Truthful frontend discovery/empty/error states | 3 h | ST-02B |
+| [ST-03](docs/tasks/performance-startup.md#st-03--truthful-frontend-startup-states) | Complete | Truthful frontend discovery/empty/error states | 3 h | ST-02B |
 | [ST-04](docs/tasks/performance-startup.md#st-04--remove-the-measured-startup-blocker) | Pending, measurement-blocked | One evidence-gated safe optimization | ≤4 h | ST-03; ST-01 evidence |
 | [ST-05](docs/tasks/performance-startup.md#st-05--integrated-startup-gate) | Pending | Integrated barriers, before/after evidence and QA limits | 4 h | ST-04 |
 

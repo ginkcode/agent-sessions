@@ -1,6 +1,8 @@
 <script lang="ts">
   import type { SessionMeta, SortOpts } from '../../types';
   import { appState } from '../../stores/appState.svelte';
+  import { discovery } from '../../stores/discovery.svelte';
+  import { catalogNotice, emptyCatalogState, discoveryProblem } from '../../discovery';
   import { onDestroy } from 'svelte';
   import VirtualList from './VirtualList.svelte';
   import SessionListSkeleton from './SessionListSkeleton.svelte';
@@ -28,6 +30,21 @@
 
   let visibleSessions = $derived(
     filterSessionsByAge(appState.sessions, manage.ageFilter)
+  );
+
+  let narrowed = $derived(Boolean(
+    appState.filter.query || appState.filter.path || appState.filter.agent ||
+    appState.filter.liveOnly || appState.filter.hasSubagents || appState.filter.archived ||
+    appState.selectedGroupKey || manage.ageFilter !== 'any'
+  ));
+  let emptyState = $derived(
+    emptyCatalogState(discovery.outcome, discovery.status, narrowed, appState.discoveryReloading)
+  );
+  let notice = $derived(catalogNotice(discovery.outcome, discovery.status));
+  let problem = $derived(
+    emptyState === 'failed' || emptyState === 'degraded'
+      ? discoveryProblem(emptyState, discovery.status)
+      : null
   );
 
   let selectedVisibleCount = $derived(
@@ -193,6 +210,12 @@
       {visibleSessions.length} {visibleSessions.length === 1 ? 'session' : 'sessions'}
     </span>
 
+    {#if notice && visibleSessions.length > 0}
+      <span class="discovery-notice" class:warning={notice.tone === 'warning'} role="status" title={notice.title}>
+        {notice.text}
+      </span>
+    {/if}
+
     {#if manage.settings.enabled}
       <label class="select-all-label">
         <input
@@ -228,13 +251,33 @@
         onRetry={() => appState.reload()}
       />
     {:else if visibleSessions.length === 0}
-      <EmptyState
-        icon="🔍"
-        title="No matching sessions"
-        description="No sessions match the current search and filters."
-        actionText="Clear filters"
-        onAction={handleClearFilters}
-      />
+      {#if emptyState === 'discovering'}
+        <div class="discovering" role="status">
+          <EmptyState
+            icon="⏳"
+            title="Discovering sessions…"
+            description="Looking for agent session history. Sessions appear here as they are found."
+          />
+        </div>
+      {:else if emptyState === 'no-agents' || emptyState === 'no-sessions'}
+        <EmptyState
+          icon="📭"
+          title="No sessions found"
+          description={emptyState === 'no-agents'
+            ? 'No supported agents were detected.'
+            : 'Discovery finished without finding any session history.'}
+        />
+      {:else if problem}
+        <EmptyState icon="⚠️" title={problem.title} description={problem.description} />
+      {:else}
+        <EmptyState
+          icon="🔍"
+          title="No matching sessions"
+          description="No sessions match the current search and filters."
+          actionText="Clear filters"
+          onAction={handleClearFilters}
+        />
+      {/if}
     {:else}
       <VirtualList items={visibleSessions} itemHeight={84} overscan={5}>
         {#snippet children(session: SessionMeta)}
@@ -403,6 +446,29 @@
   .bulk-delete-btn:disabled {
     opacity: 0.45;
     cursor: not-allowed;
+  }
+
+  .discovery-notice {
+    white-space: nowrap;
+  }
+
+  .discovery-notice.warning {
+    color: var(--text-secondary);
+  }
+
+  .discovering {
+    height: 100%;
+    animation: pulse 1.5s ease-in-out infinite;
+  }
+
+  @keyframes pulse {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.5;
+    }
   }
 
   .list-body {

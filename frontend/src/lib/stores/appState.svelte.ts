@@ -76,6 +76,10 @@ export class AppState {
   // the full list itself, so callers skip their own list load and a
   // vanished group costs one fetch instead of two.
   private staleGroupReloaded = false;
+  // A catalog reload queued by completed discovery has not applied yet.
+  discoveryReloading = $state(false);
+  private discoveryReloads = 0;
+  private discoveryReset = 0;
   // Opt-in startup timing; null in production unless a caller supplies it.
   startupObservation: StartupObservation | null = null;
 
@@ -92,6 +96,29 @@ export class AppState {
     }
     await this.loadGroups();
     await this.loadSessions();
+  }
+
+  // Discovery reached a terminal state: reload once more, queued behind the
+  // catalog events already received (a successful empty scan may emit none).
+  // Uses reload, so groups-before-sessions stale-group reconciliation and the
+  // current selection are kept. Until it applies, an empty catalog may predate
+  // completion, so the panes stay "discovering" rather than definitively empty.
+  // A host reset in between drops it; the reset loads the new host itself.
+  reloadAfterDiscovery(): Promise<void> {
+    const host = this.targetHost;
+    const reset = this.discoveryReset;
+    const id = ++this.discoveryReloads;
+    this.discoveryReloading = true;
+    const run = this.catalogQueue
+      .then(async () => {
+        if (this.targetHost === host && this.discoveryReset === reset) await this.reload(true);
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (id === this.discoveryReloads) this.discoveryReloading = false;
+      });
+    this.catalogQueue = run;
+    return run;
   }
 
   destroy(): void {
@@ -410,6 +437,9 @@ export class AppState {
   async reset(host?: string): Promise<void> {
     // A startup collector belongs to one hydration/host, not later navigation.
     this.startupObservation = null;
+    this.discoveryReloads++;
+    this.discoveryReset++;
+    this.discoveryReloading = false;
     // Drop a header load still in flight for the previous backend.
     this.sessionMetaRequests.next();
     this.targetHost = host;
