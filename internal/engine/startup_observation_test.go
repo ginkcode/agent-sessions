@@ -65,7 +65,7 @@ func TestStartupBaseline(t *testing.T) {
 					opts = append(opts, WithCacheEnabled(false))
 				case "fallback":
 					trialRoots.Cache = filepath.Join(root, fmt.Sprintf("unusable-%d", rep))
-					if err := os.WriteFile(trialRoots.Cache, []byte("not a directory"), 0600); err != nil {
+					if err := os.WriteFile(trialRoots.Cache, []byte("not a directory"), 0o600); err != nil {
 						t.Fatal(err)
 					}
 				}
@@ -106,7 +106,7 @@ func startupGeneratedFixture(t *testing.T) (string, paths.Roots) {
 	root := t.TempDir()
 	roots := paths.Roots{Claude: filepath.Join(root, "claude"), Codex: filepath.Join(root, "codex"), OpenCodeData: filepath.Join(root, "opencode"), Cache: filepath.Join(root, "cache")}
 	project := filepath.Join(roots.Claude, "projects", "generated")
-	if err := os.MkdirAll(project, 0700); err != nil {
+	if err := os.MkdirAll(project, 0o700); err != nil {
 		t.Fatal(err)
 	}
 	// 256 sessions, 16 records each. CWD is generated and has no git ancestors
@@ -118,7 +118,7 @@ func startupGeneratedFixture(t *testing.T) (string, paths.Roots) {
 			body += fmt.Sprintf("{\"type\":\"user\",\"uuid\":\"%d-%d\",\"sessionId\":\"generated-%d\",\"timestamp\":\"2026-01-01T00:00:00Z\",\"cwd\":%q,\"message\":{\"role\":\"user\",\"content\":\"generated startup fixture\"}}\n", i, j, i, root)
 		}
 		fixtureBytes += len(body)
-		if err := os.WriteFile(filepath.Join(project, fmt.Sprintf("generated-%d.jsonl", i)), []byte(body), 0600); err != nil {
+		if err := os.WriteFile(filepath.Join(project, fmt.Sprintf("generated-%d.jsonl", i)), []byte(body), 0o600); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -224,6 +224,7 @@ func (p *startupWatchBarrier) WatchPaths() []string {
 	p.once.Do(func() { close(p.entered); <-p.release })
 	return nil
 }
+
 func TestStartupPublicationQueryableDuringWatcherSetup(t *testing.T) {
 	for _, reader := range []bool{false, true} {
 		t.Run(fmt.Sprint(reader), func(t *testing.T) {
@@ -244,22 +245,29 @@ func TestStartupPublicationQueryableDuringWatcherSetup(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				defer lock.Unlock()
+				defer func() { _ = lock.Unlock() }()
 			}
 			fake := providertest.NewFake(model.AgentClaude, "generated")
-			fake.Sessions = []model.SessionMeta{meta}
+			fresh := model.SessionMeta{Ref: model.SessionRef{Agent: model.AgentClaude, ID: "generated-fresh"}}
+			fake.Sessions = []model.SessionMeta{meta, fresh}
 			fake.DetectionData = provider.Detection{Present: true}
 			barrier := &startupWatchBarrier{Provider: fake, entered: make(chan struct{}), release: make(chan struct{})}
 			o := NewStartupObservation()
 			ctx := WithStartupObservation(t.Context(), o)
-			e := NewEngine(WithRoots(roots), WithService(NewService(scan.NewCatalog(), provider.Set{barrier})))
+			emitter, statuses := discoveryEvents()
+			e := NewEngine(WithRoots(roots), WithService(NewService(scan.NewCatalog(), provider.Set{barrier})), WithEmitter(emitter))
 			finished := make(chan error, 1)
 			go func() { finished <- e.Start(ctx) }()
 			<-barrier.entered
 			// Release even on test failure; Close only after Start has returned.
+			var releaseOnce sync.Once
+			release := func() error {
+				var err error
+				releaseOnce.Do(func() { close(barrier.release); err = <-finished })
+				return err
+			}
 			defer func() {
-				close(barrier.release)
-				if err := <-finished; err != nil {
+				if err := release(); err != nil {
 					t.Error(err)
 				}
 				_ = e.Close()
@@ -299,6 +307,22 @@ func TestStartupPublicationQueryableDuringWatcherSetup(t *testing.T) {
 			}
 			if seen["watcher_setup"] || seen["bootstrap"] || seen["start"] {
 				t.Fatal("held phase completed early")
+			}
+			// ST-05: releasing the held phase reaches a settled terminal status
+			// and the final catalog matches the providers, not the cached hint.
+			if err := release(); err != nil {
+				t.Fatal(err)
+			}
+			s := awaitDiscovery(t, statuses, func(s DiscoveryStatus) bool { return s.Complete })
+			if s.State != DiscoverySettled || s.DetectedProviders != 1 || !s.CatalogUsable {
+				t.Fatalf("terminal status=%+v", s)
+			}
+			rows, err = e.ListSessions(ctx, "", FilterOpts{}, SortOpts{})
+			if err != nil || len(rows) != 2 {
+				t.Fatalf("final rows=%d err=%v", len(rows), err)
+			}
+			if counts, err := e.AgentCounts(ctx, FilterOpts{}); err != nil || counts[string(model.AgentClaude)] != 2 {
+				t.Fatalf("final counts=%v err=%v", counts, err)
 			}
 		})
 	}

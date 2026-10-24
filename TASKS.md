@@ -396,7 +396,7 @@ split it before coding. Native GUI QA remains separately reported, not assumed.
 
 Startup now precedes performance Milestone 2. [Plan and readiness/compatibility
 policy](docs/plan/performance-startup.md) · [Sequential ≤4h briefs](docs/tasks/performance-startup.md).
-Progress: **5/6 complete**, ST-00 documentation and ST-01 measurement complete; ST-02 complete (ST-02A engine, ST-02B adapters); ST-03/ST-04 complete; ST-05 pending. ST-04 resolves its measurement gate with generated fanout and fast/slow provider evidence; early disabled/fallback catalog notification is the one selected fix.
+Progress: **6/6 complete**, package closed 2026-10-24: ST-00…ST-04 complete; ST-05 integrated gate complete ([evidence](docs/perf.md#st-05--integrated-startup-gate-2026-10-24)) with native GUI/SSH/Windows execution explicitly unperformed. ST-04 resolves its measurement gate with generated fanout and fast/slow provider evidence; early disabled/fallback catalog notification is the one selected fix. Watcher fanout scaling remains a follow-up.
 The reported roughly 10-second launch delay is not a measured baseline; its exact
 cause is unknown. This narrow slice is pulled forward from performance M4, not a
 catalog overhaul. M1 stays **12/15 complete**, PF-07 partial/blocked and
@@ -410,7 +410,7 @@ PF-08/PF-10 blocked; historical evidence and native QA limitations stand.
 | [ST-02B](docs/tasks/performance-startup.md#st-02--backend-discovery-readiness-contract) | Complete | Optional Backend/App/RPC adapters, capability, unavailable fallback and parity | ≤4 h | ST-02A |
 | [ST-03](docs/tasks/performance-startup.md#st-03--truthful-frontend-startup-states) | Complete | Truthful frontend discovery/empty/error states | 3 h | ST-02B |
 | [ST-04](docs/tasks/performance-startup.md#st-04--remove-the-measured-startup-blocker) | Complete | Measured fanout; early runner provider publication | ≤4 h | ST-03; ST-01 evidence |
-| [ST-05](docs/tasks/performance-startup.md#st-05--integrated-startup-gate) | Pending | Integrated barriers, before/after evidence and QA limits | 4 h | ST-04 |
+| [ST-05](docs/tasks/performance-startup.md#st-05--integrated-startup-gate) | Complete | Integrated barriers, before/after evidence and QA limits | 4 h | ST-04 |
 
 Strictly sequential; **≤24 h after ST-02 split** including focused tests. Split oversized tasks
 before coding. Generated fixtures and explicit roots only: no private session

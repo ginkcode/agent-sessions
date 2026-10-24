@@ -1762,3 +1762,165 @@ including both sweeps PASS (33.251 s); index/watch race PASS (41.753 s / 3.893 s
 full scan/engine packages PASS (1.060 s / 16.117 s); vet and diff check PASS.
 No frontend change, so no frontend checks; no full-repository Go suite, native app,
 remote host, Windows build or GUI paint check. No tools installed; no commit/push.
+
+## ST-05 — Integrated startup gate (2026-10-24)
+
+**Revision/environment:** `7b401fa` plus uncommitted ST-05 test-only changes,
+branch `feature/improve-performance`; Darwin arm64, Apple M5, Go 1.26.8,
+Node 22.23.2, npm 10.9.8. Same generated fixtures, explicit throwaway
+provider/cache roots, opt-in observation and exclusions as
+[ST-01](#st-01--full-engine-startup-baseline-2026-10-24) and
+[ST-04](#st-04--startup-scaling-and-runner-publication-2026-10-24). No private
+stores, caches or logs, no `scripts/qa-perf-bench.sh`, native app, installs,
+Windows packaging, commit or push. Historical Codex/M1 benchmarks were not rerun.
+Each cell is **min / median / p95 / max** (ms), n=9, nearest-rank p95 = max;
+advisory, not CI thresholds. This does **not** diagnose the reported roughly
+10-second delay.
+
+The recorded run below is the final `AS_STARTUP_BASELINE=1 go test
+./internal/engine -run '^TestStartup' -count=1 -v`, run alone (13.698 s). An
+earlier rerun overlapped the race and frontend suites and was discarded for
+comparison: same orderings and work counts, but wider tails (for example 10k
+fanout Start median 588 ms, max 1,166 ms), showing that contention dominates
+these small absolute numbers.
+
+### Full startup (ST-01 workload repeated)
+
+Fixture: 256 Claude JSONL sessions, 4,096 records, 1,017,920 file bytes;
+Codex/OpenCode roots nonexistent; final catalog 256 sessions in every trial.
+
+| Full startup mode | Start duration | Bootstrap completion endpoint | First groups endpoint | First counts endpoint | First sessions endpoint |
+|---|---|---|---|---|---|
+| Cold writer | 5.316 / 5.543 / 5.791 / 5.791 | 41.067 / 42.530 / 43.544 / 43.544 | 5.319 / 5.546 / 5.794 / 5.794 | 5.319 / 5.547 / 5.795 / 5.795 | 5.319 / 5.548 / 5.796 / 5.796 |
+| Warm writer | 6.292 / 6.774 / 6.979 / 6.979 | 8.929 / 9.286 / 9.790 / 9.790 | 6.826 / 7.172 / 7.371 / 7.371 | 6.970 / 7.499 / 7.614 / 7.614 | 7.114 / 7.643 / 8.004 / 8.004 |
+| Warm reader | 5.921 / 6.071 / 6.601 / 6.601 | 7.378 / 7.580 / 8.062 / 8.062 | 6.385 / 6.639 / 7.073 / 7.073 | 6.791 / 7.033 / 7.608 / 7.608 | 6.974 / 7.210 / 7.741 / 7.741 |
+| Disabled | 0.002 / 0.002 / 0.002 / 0.002 | 12.627 / 14.168 / 15.049 / 15.049 | 0.003 / 0.003 / 0.005 / 0.005 | 0.003 / 0.003 / 0.005 / 0.005 | 0.003 / 0.004 / 0.005 / 0.005 |
+| Fallback | 0.005 / 0.007 / 0.013 / 0.013 | 13.924 / 14.838 / 15.449 / 15.449 | 0.006 / 0.008 / 0.014 / 0.014 | 0.006 / 0.009 / 0.015 / 0.015 | 0.006 / 0.009 / 0.015 / 0.015 |
+
+| Phase duration (unless endpoint specified) | Cold writer | Warm writer | Warm reader |
+|---|---|---|---|
+| DB open, writer including integrity | 1.547 / 1.622 / 1.759 / 1.759 | 0.755 / 0.839 / 0.909 / 0.909 | N/A |
+| DB open, read-only | N/A | N/A | 0.271 / 0.319 / 0.375 / 0.375 |
+| Catalog restore | 0.011 / 0.013 / 0.017 / 0.017 | 0.892 / 1.158 / 1.233 / 1.233 | Atomic span below |
+| Catalog+state snapshot | N/A | N/A | 2.018 / 2.128 / 2.562 / 2.562 |
+| Catalog publication endpoint | 1.661 / 1.745 / 1.909 / 1.909 | 1.695 / 2.037 / 2.155 / 2.155 | 2.333 / 2.465 / 2.928 / 2.928 |
+| State restoration / refresher construction | 0.018 / 0.019 / 0.022 / 0.022 | 0.887 / 1.013 / 1.254 / 1.254 | Included in atomic snapshot |
+| Watcher setup | 3.626 / 3.732 / 3.909 / 3.909 | 3.545 / 3.675 / 3.970 / 3.970 | 3.476 / 3.572 / 3.690 / 3.690 |
+
+Work totals per mode across nine trials are identical to ST-01: cold writer,
+disabled and fallback **2,304 opens / 36,864 records / 9,124,416 record bytes /
+0 decodes / 2,304 encodes**; warm writer and reader **0 / 0 / 0 / 2,304 / 0**.
+
+### Before/after medians (ms)
+
+| Measurement | Before | After (ST-05) | Interpretation |
+|---|---|---|---|
+| Cold writer Start / bootstrap endpoint | 5.267 / 44.072 (ST-01) | 5.543 / 42.530 | Unchanged within noise; no intervention on this path |
+| Warm writer Start / publication endpoint / first sessions | 7.330 / 2.098 / 8.520 (ST-01) | 6.774 / 2.037 / 7.643 | Unchanged within noise; cached rows were already published at ~2 ms |
+| Warm reader Start / publication endpoint / first sessions | 6.540 / 2.554 / 7.578 (ST-01) | 6.071 / 2.465 / 7.210 | Unchanged within noise |
+| Disabled / fallback bootstrap endpoint | 14.910 / 14.759 (ST-01) | 14.168 / 14.838 | Unchanged; single real provider, no slow peer |
+| Fanout Start, 0 / 1k / 10k extra directories | 6.115 / 45.189 / 415.195 (ST-04) | 6.461 / 46.471 / 427.056 | **Not improved**: watcher setup still linear |
+| Fanout watcher setup, 0 / 1k / 10k | 3.349 / 42.276 / 412.209 (ST-04) | 3.526 / 43.598 / 423.655 | Not improved; publication still 1.9 / 1.9 / 2.1 ms |
+| Disabled / fallback first catalog event, 300 ms slow fake peer | 401.241 / 401.255 (ST-04 before) | 100.241 / 100.290 | **Improved** by ST-04; remaining ~100 ms is the preserved debounce |
+| Disabled / fallback first nonempty query | 1.178 / 1.223 (ST-04 before) | 1.288 / 1.326 | Unchanged: rows were already queryable |
+| Disabled / fallback bootstrap endpoint, slow peer | 300.199 / 300.250 (ST-04 before) | 300.285 / 300.314 | Unchanged: discovery completion still waits for the slow provider |
+
+Fanout tiers (warm writer, 256 sessions; 0 / 1,000 / 10,000 extra leaf dirs in
+0 / 10 / 100 buckets) after ST-05, full distributions:
+
+| Extra leaf / bucket dirs | Start duration | Watcher setup | Publication endpoint | First sessions endpoint | Bootstrap endpoint |
+|---|---|---|---|---|---|
+| 0 / 0 | 6.242 / 6.461 / 7.066 / 7.066 | 3.386 / 3.526 / 4.138 / 4.138 | 1.809 / 1.905 / 2.144 / 2.144 | 7.200 / 7.409 / 8.071 / 8.071 | 8.748 / 9.047 / 9.526 / 9.526 |
+| 1,000 / 10 | 45.437 / 46.471 / 51.489 / 51.489 | 42.618 / 43.598 / 48.845 / 48.845 | 1.752 / 1.858 / 2.202 / 2.202 | 46.452 / 47.413 / 52.461 / 52.461 | 48.194 / 48.953 / 53.910 / 53.910 |
+| 10,000 / 100 | 291.737 / 427.056 / 435.727 / 435.727 | 288.403 / 423.655 / 432.098 / 432.098 | 1.992 / 2.118 / 2.504 / 2.504 | 293.184 / 427.740 / 436.408 / 436.408 | 295.432 / 429.852 / 438.640 / 438.640 |
+
+Each fanout tier: 0 opens / 0 records / 0 record bytes / **2,304 checkpoint
+decodes** / 0 encodes. Provider publication (two fakes, one held 300 ms in
+Scan): 18 scans/mode, 2 final rows/trial, logical ScanWork 0; disabled event
+100.231 / 100.241 / 100.250 / 100.250, query 1.214 / 1.288 / 1.322 / 1.322,
+bootstrap 300.257 / 300.285 / 300.307 / 300.307; fallback event
+100.181 / 100.290 / 100.327 / 100.327, query 1.289 / 1.326 / 1.334 / 1.334,
+bootstrap 300.206 / 300.314 / 300.350 / 300.350.
+
+**What improved:** truthful discovery status (ST-02/03) and, in disabled and
+fallback cache modes only, a catalog event after each successful provider
+application instead of after the slowest provider (ST-04). **What did not:**
+synchronous `Engine.Start`, watcher setup, backend queryability and discovery
+completion. Warm writer/reader notification was already per provider through the
+refresher and is not claimed as improved. Timings are backend endpoints within
+one process; they are not frontend applied state or native paint.
+
+### Integrated acceptance coverage
+
+Deterministic tests use channel barriers; timeouts only detect deadlock.
+
+| Acceptance item | Test evidence |
+|---|---|
+| Warm cached rows queryable while watcher setup is held; final parity | `TestStartupPublicationQueryableDuringWatcherSetup` (writer and reader): `reconciling`/usable status without waiting on `e.mu`; groups/counts/sessions answer while WatchPaths is held; **ST-05 extension**: release → `settled` terminal, provider-backed final catalog (2 rows, count 2) supersedes the 1-row cached hint |
+| Successful empty, zero detected/configured, isolated and total failure, fallback | `TestDiscoveryTerminalOutcomes` (24 cases: disabled/writer/reader/fallback × six outcomes) |
+| Cancellation, Close and restart | `TestDiscoveryCancelledAttemptPublishesTerminalFailure`, `TestDiscoveryCloseCancelsOwnedBootstrapAndRestarts` (disabled/writer), `TestStartupRunnerPublishesFastProvider` cancel cases, `TestDiscoveryLifetimeAndAttempts` |
+| Reader promotion supersedes the reader attempt | `TestDiscoveryReaderPromotionSupersedesReaderAttempt` |
+| Fast provider event before slow release; final parity | `TestRunnerOnAppliedOutcomes`, `TestRunnerOnAppliedDoesNotWaitForSlowProvider`, `TestStartupRunnerPublishesFastProvider` |
+| Local vs in-process RPC snapshot/event parity; old-host fallback | `TestDiscoveryLocalRPCParity` (two lifetimes), `TestDiscoveryOldHostFallback` (no capability, `-32601`, `unsupported`, browsing still works) |
+| App routes, unavailable reply and host/generation event isolation | `TestDiscoveryReplyRoutes`, `TestDiscoveryEventHostIsolation` |
+| Frontend snapshot/event ordering, missed events, host switch/reconnect, unavailable, empty/outcome/filter, terminal refresh, selection | `frontend/test/discovery.test.mjs` (14 tests), `discovery-api.test.mjs` |
+
+The review found one concrete gap: the held-watcher test proved cached
+queryability but not terminal status and final-catalog parity after the held
+phase. It was extended rather than duplicated. No discovery correctness bug was
+found, so no production code changed. GroupTree with **unavailable** status
+(old host or backend without `DiscoveryBackend`) intentionally keeps its legacy
+"No Agents Detected" empty text and SessionList keeps "No matching sessions";
+this compatibility is tested but is not detection-backed, and its native
+rendering is unverified.
+
+### Remaining bottlenecks and limits
+
+- The user's reported roughly 10-second delay remains **undiagnosed**; no
+  generated workload here reached it (10k directories ≈ 0.43 s on this machine).
+- Watcher fanout still scales linearly (~42 µs/directory) inside synchronous
+  `Engine.Start`/`App.OnStartup`. Owned asynchronous watcher installation remains
+  a separate follow-up needing installation/event reconciliation and
+  Close/restart/promotion tests.
+- The early-event fix applies to disabled/fallback runner discovery only; events
+  remain coalesced by the 100 ms bus window, and discovery completion still waits
+  for the slowest provider. Real provider scan times were not measured.
+- Status events are emitted synchronously during Start; manual Scan and watcher
+  refreshes do not update discovery status; automatic reconnect keeps the
+  connection generation (the frontend resets on phase change).
+- Not executed: native GUI window/paint, Wails transport timing, frontend
+  usable-data wall time, real SSH/remote hosts, Windows/WSL disks, kqueue/inotify
+  limits, multi-process writer contention, cold OS caches, a representative
+  300 MB history, and Windows packaging.
+- M1 remains 12/15 with PF-07 partial/blocked and PF-08/PF-10 blocked; Milestone 2
+  is not started.
+
+### Reproduction and checks
+
+```sh
+AS_STARTUP_BASELINE=1 go test ./internal/engine -run '^TestStartup' -count=1 -v
+go test ./... -count=1
+go vet ./... && go build ./... && GOOS=windows go vet ./...
+go test -race -count=1 ./internal/engine ./internal/scan ./internal/index ./internal/watch ./internal/app ./internal/rpc
+AS_STARTUP_BASELINE=1 go test -race ./internal/engine -run '^TestStartup' -count=1
+go test -race -count=3 ./internal/engine ./internal/rpc -run 'TestStartupPublicationQueryableDuringWatcherSetup|TestDiscovery|TestStartupRunnerPublishesFastProvider'
+go tool golangci-lint run --new-from-rev=0d734ad --max-issues-per-linter=0 --max-same-issues=0
+(cd frontend && npm test && npm run check && npm run build)
+git diff --check
+```
+
+Recorded on the final tree: `go test ./...` **PASS** (36 packages ok, 3 without
+tests; engine 16.635 s); `go vet ./...`, `go build ./...`, `GOOS=windows go vet
+./...` **PASS** (exit 0). Race: engine 171.826 s, scan 2.146 s, index 37.046 s,
+watch 3.913 s, app 2.960 s, rpc 9.153 s, all **PASS**; opt-in startup race
+**PASS** (28.510 s); focused barrier tests `-count=3` **PASS** (engine 4.540 s,
+rpc 1.291 s). Changed-code lint (`golangci-lint` via `go tool`, repo
+`.golangci.yml`, since startup-package base `0d734ad`) initially reported
+5 errcheck and 3 gofumpt issues, all in ST-01…ST-04 startup/discovery test
+files; fixed (deferred `Close`/`Unlock` errors discarded explicitly, `0o` file
+modes, blank lines), now **0 issues**. The whole repository still has preexisting
+lint findings outside this package; they were not changed. Frontend (no frontend
+changes in ST-05): `npm test` **697/697 PASS** (0 failed/skipped/cancelled,
+9.99 s), `npm run check` **0 errors**, 508 files, 1 existing `ignoreDeprecations`
+warning; `npm run build` **PASS** (1.42 s, existing >500 kB chunk warning).
+No frontend lint script is configured. `git diff --check` **PASS**.

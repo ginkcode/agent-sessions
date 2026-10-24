@@ -26,7 +26,7 @@ func TestStartupFanout(t *testing.T) {
 		t.Run(fmt.Sprint(dirs), func(t *testing.T) {
 			_, roots := startupGeneratedFixture(t)
 			for i := 0; i < dirs; i++ {
-				if err := os.MkdirAll(filepath.Join(roots.Claude, "projects", "fanout", fmt.Sprintf("bucket-%02d", i/100), fmt.Sprintf("leaf-%05d", i)), 0700); err != nil {
+				if err := os.MkdirAll(filepath.Join(roots.Claude, "projects", "fanout", fmt.Sprintf("bucket-%02d", i/100), fmt.Sprintf("leaf-%05d", i)), 0o700); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -71,7 +71,7 @@ func TestStartupProviderPublication(t *testing.T) {
 			for range 9 {
 				root := t.TempDir()
 				cache := filepath.Join(root, "unusable")
-				if err := os.WriteFile(cache, []byte("fixture"), 0600); err != nil {
+				if err := os.WriteFile(cache, []byte("fixture"), 0o600); err != nil {
 					t.Fatal(err)
 				}
 				fast := providertest.NewFake(model.AgentClaude, "generated-fast")
@@ -177,7 +177,7 @@ func TestStartupRunnerPublishesFastProvider(t *testing.T) {
 			t.Run(fmt.Sprintf("%s/cancel=%t", mode, cancelSlow), func(t *testing.T) {
 				root := t.TempDir()
 				cache := filepath.Join(root, "unusable")
-				if err := os.WriteFile(cache, []byte("generated"), 0600); err != nil {
+				if err := os.WriteFile(cache, []byte("generated"), 0o600); err != nil {
 					t.Fatal(err)
 				}
 				fast := providertest.NewFake(model.AgentClaude, "generated-fast")
@@ -195,7 +195,7 @@ func TestStartupRunnerPublishesFastProvider(t *testing.T) {
 						catalogEvents <- payload.(CatalogChanged)
 					}
 				})))
-				defer e.Close()
+				defer func() { _ = e.Close() }()
 				if err := e.Start(t.Context()); err != nil {
 					t.Fatal(err)
 				}

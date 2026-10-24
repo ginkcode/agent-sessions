@@ -18,7 +18,7 @@ Measure synthetic workloads first and preserve correctness while removing work.
 | Performance milestone | Scope | Status |
 |---|---|---|
 | 1 | Synthetic baselines; correct/coalesced transcript loads; validated Codex source fast paths; unchanged checkpoint reuse; frontend listing retention; directory ignore-check batching | Gate closed; PF-01…PF-06, PF-09 and PF-11…PF-15 complete (12/15), PF-07 partial, PF-08/PF-10 blocked |
-| Startup priority | Narrow startup responsiveness package pulled forward from M4, before M2; [plan](performance-startup.md), [ST-00…ST-05 briefs](../tasks/performance-startup.md) | ST-00/ST-01/ST-02 complete (ST-02A engine, ST-02B adapters); ST-03/ST-04 complete (measured fanout; early disabled/fallback publication); ST-05 pending; exact reported-delay cause unknown |
+| Startup priority | Narrow startup responsiveness package pulled forward from M4, before M2; [plan](performance-startup.md), [ST-00…ST-05 briefs](../tasks/performance-startup.md) | Complete 6/6: ST-00/ST-01, ST-02 (ST-02A engine, ST-02B adapters), ST-03, ST-04 (measured fanout; early disabled/fallback publication) and ST-05 integrated gate; watcher fanout follow-up; native GUI unperformed; exact reported-delay cause unknown |
 | 2 | Provider-owned incremental transcript state, immutable snapshots, byte-bounded cache, revision-aware FTS reuse, compatible transcript deltas | Roadmap only |
 | 3 | Shared per-root project index, separate Git-status freshness, coalesced refresh and safe invalidation | Roadmap only |
 | 4 | Per-source persistent checkpoints, targeted scans, progressive cold discovery, catalog deltas/paging, bounded fair FTS job batches | Roadmap only |
@@ -50,7 +50,7 @@ PF-07B matrix/recovery/evidence implemented, but larger byte-heavy workloads reg
 PF-07C safe opt-out complete: no defensible cheap automatic policy established;
 production optional calls decline with zero proof and one canonical fallback.
 [Decision and evidence](../perf.md#pf-07c--cost-policy-decision-and-production-bypass-2026-10-24).
-PF-07 remains partial/blocked; PF-08/PF-10 blocked; PF-09 and PF-11…PF-15 complete; Milestone 1 gate closed at 12/15 ([evidence](../perf.md#pf-15--integrated-evidence-and-milestone-gate-2026-10-24)). Next: [startup priority package](performance-startup.md), then Milestone 2 design and task breakdown.
+PF-07 remains partial/blocked; PF-08/PF-10 blocked; PF-09 and PF-11…PF-15 complete; Milestone 1 gate closed at 12/15 ([evidence](../perf.md#pf-15--integrated-evidence-and-milestone-gate-2026-10-24)). The [startup priority package](performance-startup.md) is complete (6/6); next is Milestone 2 design and task breakdown.
 [Evidence and activation gate](../perf.md#pf-07b--mutation-matrix-recovery-and-larger-evidence-2026-10-24). M1 is 12/15. Caller activation
 and Codex checkpoint optimization remain unimplemented. [Contract feasibility constraints](../tasks/performance-m1.md#pf-06-contract-and-pf-07-feasibility)
 require conservative canonical fallback when metadata cannot prove selection freshness.

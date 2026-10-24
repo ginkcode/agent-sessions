@@ -142,8 +142,8 @@ Codex source fast paths, checkpoint reuse, frontend listing retention and direct
 ignore-check batching. Dependencies, ≤4h estimates and acceptance criteria are in
 the briefs; status is also tracked in [TASKS.md](../../TASKS.md#follow-up--performance).
 Next, before performance Milestone 2: [startup plan](../plan/performance-startup.md)
-and [sequential ST-00…ST-05 briefs](performance-startup.md), **5/6 complete**:
-ST-00/ST-01/ST-02 complete (ST-02A engine, ST-02B adapters); ST-03/ST-04 complete; ST-05 pending. ST-04 resolves its measurement gate with generated fanout and fast/slow evidence, selecting early disabled/fallback provider publication. This narrow M4 startup slice
+and [sequential ST-00…ST-05 briefs](performance-startup.md), **6/6 complete**:
+ST-00…ST-04 complete; ST-05 integrated gate complete (native GUI/SSH/Windows unperformed). ST-04 resolves its measurement gate with generated fanout and fast/slow evidence, selecting early disabled/fallback provider publication. This narrow M4 startup slice
 does not complete PF-07/08/10; the reported roughly 10-second delay has no measured
 exact-cause diagnosis yet. Later milestones still need their own documented task
 breakdown before coding.

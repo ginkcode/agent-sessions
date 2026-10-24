@@ -1,6 +1,6 @@
 # Startup responsiveness — priority package before Milestone 2
 
-Status: ST-00 documentation, ST-01 measurement and ST-02 (ST-02A engine, ST-02B adapters) complete 2026-10-24; ST-03/ST-04 complete; ST-05 pending.
+Status: **complete** 2026-10-24 (6/6): ST-00 documentation, ST-01 measurement, ST-02 (ST-02A engine, ST-02B adapters), ST-03, ST-04 and the ST-05 integrated gate. Native GUI, real SSH and Windows execution were not performed.
 [Sequential task briefs](../tasks/performance-startup.md) ·
 [Performance roadmap](performance.md) · [Task tracker](../../TASKS.md#startup-priority-package).
 
@@ -69,6 +69,19 @@ scope. The selected bounded fix makes disabled/fallback runner discovery emit a
 catalog event after each successful provider application: with a 300 ms slow
 fake provider, first event median ~401 → ~100 ms (the preserved debounce);
 queryability and discovery completion unchanged. No reported-delay diagnosis.
+
+## ST-05 result
+
+[Integrated gate evidence](../perf.md#st-05--integrated-startup-gate-2026-10-24):
+all automated Go (full, vet, build, Windows cross-vet, affected race), changed-code
+lint and frontend test/check/build gates pass. Repeated generated measurements
+show full-startup timings unchanged within noise, watcher fanout still linear
+(10k extra directories ≈ 427 ms Start median) and the ST-04 disabled/fallback
+first catalog event at ~100 ms instead of ~401 ms behind a 300 ms slow fake.
+One integrated regression was extended (held watcher → settled terminal and final
+catalog parity); no production change. The reported delay remains undiagnosed;
+asynchronous watcher installation remains a follow-up; native paint/GUI, SSH and
+Windows were not exercised. Next: Milestone 2 design and task breakdown.
 
 ## Readiness/status compatibility policy
 

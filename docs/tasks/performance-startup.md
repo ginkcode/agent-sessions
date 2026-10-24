@@ -1,6 +1,6 @@
 # Startup responsiveness — sequential task briefs
 
-Status: **5/6 complete** 2026-10-24: ST-00/ST-01 complete; ST-02 complete (ST-02A engine, ST-02B adapters); ST-03/ST-04 complete; ST-05 pending.
+Status: **6/6 complete** 2026-10-24: ST-00/ST-01 complete; ST-02 complete (ST-02A engine, ST-02B adapters); ST-03/ST-04 complete; ST-05 integrated gate complete with native GUI/SSH/Windows execution explicitly unperformed. Package closed.
 [Plan and status/compatibility contract](../plan/performance-startup.md) ·
 [Roadmap](../plan/performance.md) · [Tracker](../../TASKS.md#startup-priority-package).
 
@@ -10,7 +10,8 @@ partial/blocked, PF-08/PF-10 blocked; its historical evidence stays intact.
 The reported roughly 10-second delay is not a measured baseline and its exact
 cause is unknown. ST-01 synthetic measurement is recorded in
 [../perf.md](../perf.md#st-01--full-engine-startup-baseline-2026-10-24);
-the reported exact delay remains undiagnosed.
+the reported exact delay remains undiagnosed. Final integrated evidence:
+[ST-05](../perf.md#st-05--integrated-startup-gate-2026-10-24).
 
 ## Execution rules and index
 
@@ -29,7 +30,7 @@ Likely files are integration points, not instructions to create duplicate system
 | [ST-02B](#st-02--backend-discovery-readiness-contract) | Complete | Compatible App/RPC adapters and parity | ≤4 h | ST-02A |
 | [ST-03](#st-03--truthful-frontend-startup-states) | Complete | Honest readiness and compatible empty/error states | 3 h | ST-02B |
 | [ST-04](#st-04--remove-the-measured-startup-blocker) | Complete | Measured fanout; early runner provider publication | ≤4 h | ST-03; ST-01 evidence |
-| [ST-05](#st-05--integrated-startup-gate) | Pending | Integration, before/after evidence and limits | 4 h | ST-04 |
+| [ST-05](#st-05--integrated-startup-gate) | Complete | Integration, before/after evidence and limits | 4 h | ST-04 |
 
 Total planned effort: **≤24 h after ST-02 split**. ST-00 is documentation only.
 Reviewed task commits are separate, on `feature/improve-performance` with
@@ -388,7 +389,51 @@ with the reason rather than claiming an optimization.
 
 ## ST-05 — Integrated startup gate
 
-**Status:** pending. **Estimate:** 4 h. **Dependency:** ST-04.
+**Status:** complete 2026-10-24 (automated gates; native GUI, real SSH/remote
+and Windows execution explicitly unperformed). **Estimate:** 4 h.
+**Dependency:** ST-04.
+
+**Evidence (2026-10-24, `7b401fa` + ST-05 test-only changes).**
+[Full results](../perf.md#st-05--integrated-startup-gate-2026-10-24). The ST-01
+full-startup workload and ST-04 fanout/publication sweeps were repeated with
+generated explicit roots (nine trials per mode; isolated final run). Full
+startup is unchanged within noise (warm writer Start median 7.330 → 6.774 ms,
+publication ~2 ms, first sessions 8.520 → 7.643 ms; identical work counts).
+Watcher fanout is **not** improved (Start median 6.461 / 46.471 / 427.056 ms at
+0 / 1k / 10k extra directories). The ST-04 disabled/fallback first catalog event
+stays improved (401.241 / 401.255 → 100.241 / 100.290 ms with a 300 ms slow
+fake), while first nonempty query (~1.3 ms) and discovery completion (~300 ms)
+are unchanged. No warm writer/reader event improvement is claimed. Backend
+query endpoints, frontend applied state and native paint are separate; only the
+first is timed.
+
+Acceptance review mapped every item to existing barrier tests (see the coverage
+table in perf.md). One concrete gap was closed by extending
+`TestStartupPublicationQueryableDuringWatcherSetup` (writer and reader): after
+the held watcher installation is released, discovery reaches `settled` and the
+provider-backed final catalog (2 rows, count 2) supersedes the 1-row cached
+hint. No discovery correctness bug found; no production code changed.
+GroupTree/SessionList keep legacy empty text for **unavailable** status
+(intentional old-host compatibility, not detection-backed; native rendering
+unverified). Changed-code lint since `0d734ad` found 5 errcheck and 3 gofumpt
+issues in ST-01…ST-04 test files; fixed test-only, now 0 issues.
+
+**Recorded checks (final tree):** `go test ./...` PASS (36 ok, 3 no tests);
+`go vet ./...`, `go build ./...`, `GOOS=windows go vet ./...` PASS; race engine /
+scan / index / watch / app / rpc PASS (171.826 / 2.146 / 37.046 / 3.913 / 2.960 /
+9.153 s); opt-in startup race PASS (28.510 s); focused barrier tests `-count=3`
+PASS; `golangci-lint --new-from-rev=0d734ad` 0 issues (whole-repo preexisting
+findings untouched); frontend `npm test` 697/697, `npm run check` 0 errors (1
+existing warning), `npm run build` PASS (existing chunk warning); no frontend
+lint configured; `git diff --check` PASS.
+
+**Remaining limits:** the reported roughly 10-second delay is **not diagnosed**;
+watcher fanout scaling inside synchronous Start remains a documented follow-up
+(owned asynchronous watcher installation); the early event is disabled/fallback
+only and debounce-bounded. Native GUI paint/responsiveness, Wails transport,
+real SSH/remote, Windows/WSL execution and packaging were not performed. M1
+stays 12/15 (PF-07 partial/blocked, PF-08/PF-10 blocked); Milestone 2 design and
+task breakdown is the next separate step, with no implementation here.
 
 **Likely files:** startup/backend/RPC/frontend test suites, `docs/perf.md`, startup
 plan/briefs, indexes and `TASKS.md` status.

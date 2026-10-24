@@ -25,6 +25,7 @@ func discoveryEvents() (Emitter, <-chan DiscoveryStatus) {
 		}
 	}), ch
 }
+
 func awaitDiscovery(t *testing.T, ch <-chan DiscoveryStatus, match func(DiscoveryStatus) bool) DiscoveryStatus {
 	t.Helper()
 	timer := time.NewTimer(10 * time.Second)
@@ -41,6 +42,7 @@ func awaitDiscovery(t *testing.T, ch <-chan DiscoveryStatus, match func(Discover
 		}
 	}
 }
+
 func TestDiscoveryTerminalOutcomes(t *testing.T) {
 	for _, mode := range []string{"disabled", "writer", "reader", "fallback"} {
 		for _, outcome := range []string{"empty", "absent", "detect_failure", "scan_failure", "all_failed", "none"} {
@@ -67,7 +69,7 @@ func TestDiscoveryTerminalOutcomes(t *testing.T) {
 				root := t.TempDir()
 				roots := paths.Roots{Claude: filepath.Join(root, "generated"), Cache: filepath.Join(root, "cache")}
 				if mode == "fallback" {
-					if err := os.WriteFile(roots.Cache, []byte("generated"), 0600); err != nil {
+					if err := os.WriteFile(roots.Cache, []byte("generated"), 0o600); err != nil {
 						t.Fatal(err)
 					}
 				}
@@ -76,11 +78,11 @@ func TestDiscoveryTerminalOutcomes(t *testing.T) {
 					if err != nil {
 						t.Fatal(err)
 					}
-					defer lock.Unlock()
+					defer func() { _ = lock.Unlock() }()
 				}
 				emitter, events := discoveryEvents()
 				e := NewEngine(WithRoots(roots), WithCacheEnabled(mode != "disabled"), WithService(NewService(scan.NewCatalog(), provs)), WithEmitter(emitter))
-				defer e.Close()
+				defer func() { _ = e.Close() }()
 				if err := e.Start(t.Context()); err != nil {
 					t.Fatal(err)
 				}
@@ -198,7 +200,7 @@ func TestDiscoveryCloseCancelsOwnedBootstrapAndRestarts(t *testing.T) {
 			if err := e.Start(t.Context()); err != nil {
 				t.Fatal(err)
 			}
-			defer e.Close()
+			defer func() { _ = e.Close() }()
 			s = awaitDiscovery(t, events, func(s DiscoveryStatus) bool { return s.Complete })
 			if s.Lifetime != 2 || s.State != DiscoverySettled || s.DetectedProviders != 1 {
 				t.Fatalf("restart=%+v", s)
@@ -276,7 +278,7 @@ func TestDiscoveryCancelledAttemptPublishesTerminalFailure(t *testing.T) {
 	p := &discoveryScanBarrier{Provider: fake, entered: make(chan struct{})}
 	emitter, events := discoveryEvents()
 	e := NewEngine(WithCacheEnabled(false), WithService(NewService(scan.NewCatalog(), provider.Set{p})), WithEmitter(emitter))
-	defer e.Close()
+	defer func() { _ = e.Close() }()
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	if err := e.Start(ctx); err != nil {

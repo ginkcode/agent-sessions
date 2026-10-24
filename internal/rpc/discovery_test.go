@@ -30,7 +30,7 @@ func TestDiscoveryLocalRPCParity(t *testing.T) {
 	root := t.TempDir()
 	roots := paths.Roots{Claude: filepath.Join(root, "claude"), Config: filepath.Join(root, "config"), Cache: filepath.Join(root, "cache")}
 	e := engine.NewEngine(engine.WithRoots(roots), engine.WithCacheEnabled(false), engine.WithService(engine.NewService(scan.NewCatalog(), provider.Set{good, bad})))
-	defer e.Close()
+	defer func() { _ = e.Close() }()
 	s, c, cleanup := setupPipePair(e)
 	defer cleanup()
 	// Use a starter with explicit roots, never the default-root initialize path.
