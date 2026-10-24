@@ -428,7 +428,7 @@ M0-01 → M0-02 → M0-03 → M0-07 → M0-08 → M0-09 → M0-10 → M1-13 → 
 - OpenCode (M1-01…07), Codex (M1-08…12), Claude (M0-07…15) and the GUI scaffold (M1-15, M1-17) can each go to a different developer.
 - Frontend work can start against a mocked `M1-16` binding layer.
 
-Dark theme tone: **DT-01 complete / DT-02 pending** — [native-tone surfaces](docs/tasks/dark-tone.md), match all large dark surfaces to #2C2C2B.
+Dark theme tone: **DT-01 / DT-02 complete** — [native-tone surfaces](docs/tasks/dark-tone.md), match all large dark surfaces to #2C2C2B.
 
 Transcript selection: **SL-01…SL-04 complete** — [selected-text menu and contextual translation](docs/tasks/selection-translate.md), Copy/Translate for a selection with its sentence as context.
 

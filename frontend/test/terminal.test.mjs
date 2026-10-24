@@ -248,6 +248,10 @@ test('terminalTheme takes the app colors and falls back per theme', () => {
   const light = terminalTheme('light', () => '');
   assert.deepEqual([light.background, light.foreground, light.cursor], ['#ffffff', '#0b1220', '#0b1220']);
   assert.notEqual(light.red, dark.red);
+  const fallback = terminalTheme('dark', () => '');
+  assert.deepEqual([fallback.background, fallback.cursorAccent, fallback.black], ['#2c2c2b', '#2c2c2b', '#1c1c1e']);
+  const matched = terminalTheme('dark', name => name === '--bg-primary' ? '#2c2c2b' : '');
+  assert.deepEqual([matched.background, matched.cursorAccent], ['#2c2c2b', '#2c2c2b']);
 });
 
 test('LauncherStore saves where agents open and reports a failure', async () => {
