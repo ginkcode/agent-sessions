@@ -3,7 +3,6 @@
   import { formatTokens, formatCost } from '../../format';
   import { formatAbsoluteTime, formatAgo, isKnownTime } from '../../date';
   import { appState } from '../../stores/appState.svelte';
-  import { manage } from '../../stores/manage.svelte';
   import { handoff } from '../../stores/handoff.svelte';
   import { exporter } from '../../stores/export.svelte';
   import { ALL_AGENTS, copyToClipboard } from '../../portable';
@@ -31,8 +30,6 @@
      * place when where is given. Offered where launcher can open it.
      */
     onOpenResume?: (where?: TerminalOpenMode) => void;
-    onReveal: () => void;
-    onDelete: () => void;
     resumeCopied?: boolean;
     resumeOpening?: boolean;
   }
@@ -43,8 +40,6 @@
     onModeChange,
     onResume,
     onOpenResume = () => {},
-    onReveal,
-    onDelete,
     resumeCopied = false,
     resumeOpening = false,
   }: Props = $props();
@@ -422,29 +417,6 @@
           </div>
         {/if}
       </div>
-
-      {#if meta.sourcePath && !link.dataHost}
-        <button
-          type="button"
-          class="action-btn reveal-btn"
-          title="Reveal session file in system file manager"
-          onclick={onReveal}
-        >
-          Reveal
-        </button>
-      {/if}
-
-      {#if manage.settings.enabled}
-        <button
-          type="button"
-          class="action-btn delete-btn"
-          title={meta.live ? 'Live sessions cannot be deleted' : 'Preview deleting this session'}
-          disabled={meta.live}
-          onclick={onDelete}
-        >
-          Delete…
-        </button>
-      {/if}
 
       <div class="mode-switch" role="group" aria-label="Transcript display">
         {#each transcriptModes as option (option.value)}
@@ -828,18 +800,8 @@
     color: var(--text-primary);
   }
 
-  .action-btn.delete-btn {
-    color: var(--danger);
-  }
 
-  .action-btn.delete-btn:hover:not(:disabled) {
-    background-color: color-mix(in srgb, var(--danger) 12%, transparent);
-  }
 
-  .action-btn.delete-btn:disabled {
-    opacity: 0.45;
-    cursor: not-allowed;
-  }
 
   .header-title-row {
     margin: 2px 0;

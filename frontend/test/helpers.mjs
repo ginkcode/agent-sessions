@@ -165,7 +165,6 @@ export async function renderSessionHeader(fixture, props = {}) {
     ["import AgentIcon from '../common/AgentIcon.svelte';", 'const AgentIcon = () => {};'],
     ["import NavButtons from './NavButtons.svelte';", 'const NavButtons = () => {};'],
     ["import { appState } from '../../stores/appState.svelte';", fixtureStore('appState')],
-    ["import { manage } from '../../stores/manage.svelte';", fixtureStore('manage')],
     ["import { handoff } from '../../stores/handoff.svelte';", fixtureStore('handoff')],
     ["import { exporter } from '../../stores/export.svelte';", fixtureStore('exporter')],
     ["import { link } from '../../stores/link.svelte';", fixtureStore('link')],
@@ -184,7 +183,7 @@ export async function renderSessionHeader(fixture, props = {}) {
   return renderWithFixture(
     sessionHeaderModule,
     { appState: {}, manage: { settings: { enabled: false } }, handoff: {}, exporter: {}, toast: {}, preferences: { timeZone: 'utc' }, newSession: { available: false, choices: [], starting: false, refresh() {} }, terminals: { tabFor: () => undefined }, ...fixture },
-    { meta, mode: 'activity', onModeChange() {}, onResume() {}, onReveal() {}, onDelete() {}, ...props },
+    { meta, mode: 'activity', onModeChange() {}, onResume() {}, ...props },
   );
 }
 

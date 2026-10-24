@@ -56,3 +56,10 @@ test('SessionHeader Resume ▾ offers the place agents do not open by default', 
   });
   assert.doesNotMatch(none, /More ways to resume/);
 });
+
+test('SessionHeader leaves Reveal and Delete to the session list', async () => {
+  const html = await renderSessionHeader({ link: { dataHost: undefined }, launcher: { canOpen: true } });
+  assert.doesNotMatch(html, />\s*Reveal\s*</);
+  assert.doesNotMatch(html, /Delete…/);
+  assert.match(html, /Export/);
+});

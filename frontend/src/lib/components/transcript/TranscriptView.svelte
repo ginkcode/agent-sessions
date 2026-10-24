@@ -476,20 +476,6 @@
       resumeOpening = false;
     }
   }
-
-  async function handleRevealSource() {
-    if (!appState.selectedSessionRef) return;
-    try {
-      await api.revealSource(appState.selectedSessionRef);
-    } catch (err) {
-      console.error('Failed to reveal source file:', err);
-    }
-  }
-
-  async function handleDelete() {
-    if (!appState.selectedSessionRef || !manage.settings.enabled) return;
-    await manage.requestDelete([appState.selectedSessionRef]);
-  }
 </script>
 
 <div class="transcript-pane">
@@ -524,8 +510,6 @@
         onResume={handleCopyResume}
         onOpenResume={handleOpenResume}
         {resumeOpening}
-        onReveal={handleRevealSource}
-        onDelete={handleDelete}
         {resumeCopied}
       />
     {/if}
