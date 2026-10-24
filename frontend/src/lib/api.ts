@@ -39,6 +39,8 @@ import type {
   SearchFilter,
   SearchHit,
   FTSProgress,
+  DiscoveryStatusReply,
+  DiscoveryStatusEvent,
   CatalogChanged,
   HandoffRequest,
   HandoffPreview,
@@ -83,6 +85,8 @@ export interface BackendAPI extends CodeDiagnosticsAPI {
   getMessages(ref: SessionRef, offset: number, limit: number): Promise<MessagesPage>;
   search(query: string, filter?: SearchFilter): Promise<SearchHit[]>;
   indexProgress(): Promise<FTSProgress>;
+  /** available:false means startup status is unknown (older backend), never complete. */
+  discoveryStatus(): Promise<DiscoveryStatusReply>;
   getBlob(ref: SessionRef, key: string): Promise<BlobResponse>;
   copyResumeCommand(ref: SessionRef): Promise<string>;
   launchInfo(): Promise<LaunchInfo>;
@@ -264,6 +268,8 @@ interface WailsAppBinding {
   GetMessages(ref: SessionRef, offset: number, limit: number): Promise<MessagesPage>;
   Search(query: string, filter: SearchFilter): Promise<SearchHit[]>;
   IndexProgress(): Promise<FTSProgress>;
+  /** Absent on older App bindings. */
+  DiscoveryStatus?: () => Promise<DiscoveryStatusReply>;
   GetBlob(ref: SessionRef, key: string): Promise<BlobResponse>;
   CopyResumeCommand(ref: SessionRef): Promise<string>;
   LaunchInfo(): Promise<LaunchInfo>;
@@ -525,6 +531,16 @@ class WailsBackendAPI implements BackendAPI {
   async indexProgress(): Promise<FTSProgress> {
     try {
       return await this.binding.IndexProgress();
+    } catch (e) {
+      throw normalizeError(e);
+    }
+  }
+
+  async discoveryStatus(): Promise<DiscoveryStatusReply> {
+    const call = this.binding.DiscoveryStatus;
+    if (!call) return { available: false, host: '', generation: 0 };
+    try {
+      return await call();
     } catch (e) {
       throw normalizeError(e);
     }
@@ -1377,6 +1393,7 @@ export const api: BackendAPI = guardEpoch(createAPI(), epoch, UNGUARDED);
 
 export const CATALOG_CHANGED_EVENT = 'catalog:changed';
 export const INDEX_PROGRESS_EVENT = 'index:progress';
+export const DISCOVERY_STATUS_EVENT = 'discovery:status';
 export const CONNECTION_STATE_EVENT = 'connection:state';
 export const ASKPASS_PROMPT_EVENT = 'askpass:prompt';
 // The desktop app on Linux and macOS sends the mouse's side buttons as this
@@ -1460,5 +1477,15 @@ export function subscribeIndexProgress(
   return backend.onEvent(INDEX_PROGRESS_EVENT, (progress: FTSProgress) => {
     if (!progress || typeof progress !== 'object') return;
     fn(progress);
+  });
+}
+
+export function subscribeDiscoveryStatus(
+  fn: (status: DiscoveryStatusEvent) => void,
+  backend: BackendAPI = api
+): () => void {
+  return backend.onEvent(DISCOVERY_STATUS_EVENT, (status: DiscoveryStatusEvent) => {
+    if (!status || typeof status !== 'object') return;
+    fn(status);
   });
 }

@@ -204,3 +204,9 @@ func (b offlineBackend) RestoreBundle(context.Context, engine.BundleRestoreReque
 func (b offlineBackend) RenderBundleHandoff(context.Context, engine.BundleHandoffRequest) (string, error) {
 	return "", b.err()
 }
+
+// DiscoveryStatus keeps the offline error, so a disconnected host never reads
+// as an old host without startup status.
+func (b offlineBackend) DiscoveryStatus(context.Context) (engine.DiscoveryStatus, error) {
+	return engine.DiscoveryStatus{}, b.err()
+}

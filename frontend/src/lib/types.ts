@@ -37,6 +37,33 @@ export interface CatalogChanged {
   groupsDirty: boolean;
 }
 
+// Engine startup discovery, separate from catalog rows and FTS indexing.
+export interface DiscoveryStatus {
+  lifetime: number;
+  revision: number;
+  state: 'initializing' | 'restoring' | 'reconciling' | 'settled' | 'degraded' | 'failed';
+  catalogUsable: boolean;
+  complete: boolean;
+  cacheMode?: 'writer' | 'reader' | 'disabled' | 'fallback' | 'none';
+  configuredProviders: number;
+  detectedProviders: number;
+  failedProviders: number;
+  detectionComplete: boolean;
+}
+
+export interface DiscoveryStatusReply {
+  available: boolean;
+  status?: DiscoveryStatus;
+  host: string;
+  generation: number;
+}
+
+// Wails adds route identity; RPC carries the unwrapped engine snapshot.
+export interface DiscoveryStatusEvent extends DiscoveryStatus {
+  host: string;
+  generation: number;
+}
+
 export interface FTSProgress {
   done: number;
   pending: number;
@@ -786,6 +813,8 @@ export interface ReplaceResult {
 }
 
 export interface HostCapabilities {
+  /** Absent on older servers; discovery readiness is then unknown. */
+  discoveryStatus?: boolean;
   /** Optional Stage 1 support. Live remains false until Stage 2. */
   codeDiagnostics?: boolean;
   liveCodeDiagnostics?: boolean;

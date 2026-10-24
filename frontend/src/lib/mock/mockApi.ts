@@ -27,6 +27,7 @@ import type {
   SearchHit,
   SearchHitKind,
   FTSProgress,
+  DiscoveryStatusReply,
   HandoffRequest,
   HandoffPreview,
   HandoffCacheInfo,
@@ -464,6 +465,11 @@ export class MockBackendAPI extends MockCodeDiagnostics {
 
   async indexProgress(): Promise<FTSProgress> {
     return { done: this.sessions.length, pending: 0, failed: 0, running: false };
+  }
+
+  /** The browser mock has no engine, so its startup status is unknown. */
+  async discoveryStatus(): Promise<DiscoveryStatusReply> {
+    return { available: false, host: '', generation: 0 };
   }
 
   async getBlob(ref: SessionRef, key: string): Promise<BlobResponse> {

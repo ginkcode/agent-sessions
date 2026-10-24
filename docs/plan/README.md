@@ -20,7 +20,7 @@ later milestones build on the contracts defined in M0.
 
 Startup now precedes performance Milestone 2: [startup plan](performance-startup.md)
 and [sequential ST-00…ST-05 briefs](../tasks/performance-startup.md).
-ST-00/ST-01 complete; ST-02A engine complete; ST-02B adapters and ST-03…ST-05 pending; ST-04 measurement-blocked. M1 remains 12/15 with
+ST-00/ST-01/ST-02 complete (ST-02A engine, ST-02B adapters); ST-03 next; ST-03…ST-05 pending; ST-04 measurement-blocked. M1 remains 12/15 with
 PF-07 partial/blocked and PF-08/PF-10 blocked; no measured exact-delay diagnosis.
 
 Detailed code-diagnostics task briefs: [../tasks/README.md](../tasks/README.md).

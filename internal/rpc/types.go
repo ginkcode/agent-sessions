@@ -18,9 +18,10 @@ const JSONRPCVersion = "2.0"
 
 // Standard notification and control method names.
 const (
-	NotificationCatalogChanged = "catalog:changed"
-	NotificationIndexProgress  = "index:progress"
-	MethodCancelRequest        = "$/cancelRequest"
+	NotificationCatalogChanged  = "catalog:changed"
+	NotificationIndexProgress   = "index:progress"
+	NotificationDiscoveryStatus = engine.DiscoveryStatusEvent
+	MethodCancelRequest         = "$/cancelRequest"
 	// MethodHeartbeat is a notification the client sends on a timer so the
 	// server can tell a live but quiet client from one that vanished.
 	MethodHeartbeat  = "$/heartbeat"
@@ -52,7 +53,8 @@ type Notification struct {
 
 // Capabilities indicates the features supported on the remote host.
 type Capabilities struct {
-	GitDiff bool `json:"gitDiff,omitempty"`
+	DiscoveryStatus bool `json:"discoveryStatus,omitempty"`
+	GitDiff         bool `json:"gitDiff,omitempty"`
 	// GitChanges supports repository status (and is absent on older servers).
 	GitChanges bool `json:"gitChanges,omitempty"`
 	GitWrite   bool `json:"gitWrite,omitempty"`

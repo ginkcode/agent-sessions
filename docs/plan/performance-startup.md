@@ -1,6 +1,6 @@
 # Startup responsiveness — priority package before Milestone 2
 
-Status: ST-00 documentation and ST-01 measurement complete 2026-10-24; ST-02A engine complete; ST-02B adapters and ST-03…ST-05 pending.
+Status: ST-00 documentation, ST-01 measurement and ST-02 (ST-02A engine, ST-02B adapters) complete 2026-10-24; ST-03 next; ST-03…ST-05 pending.
 [Sequential task briefs](../tasks/performance-startup.md) ·
 [Performance roadmap](performance.md) · [Task tracker](../../TASKS.md#startup-priority-package).
 
@@ -56,18 +56,19 @@ ST-01 is complete without a performance intervention. ST-04 is measurement-block
 already ~2 ms and catalog reads bypass engine mu. No evidence explains the
 reported 10-second delay. Generated fanout, multi-provider and adapter/frontend
 measurement is required before selecting a safe bounded change; ST-02/03 remain
-sequential work (ST-02A engine complete; ST-02B adapters next). Native paint remains unmeasured.
+sequential work (ST-02 complete; ST-03 next). Native paint remains unmeasured.
 
 ## Readiness/status compatibility policy
 
-ST-02 must settle concrete DTO, event and capability names with tests before
-ST-03 consumes them. The following behavior is required, not a claim that an API
-already exists across adapters. ST-02A now implements the engine snapshot/event
+ST-02 settles concrete DTO, event and capability names with tests before
+ST-03 consumes them. The following behavior is implemented across the engine
+and adapters, without frontend presentation yet. ST-02A owns the engine snapshot/event
 contract; [the ST-02 brief](../tasks/performance-startup.md#st-02--backend-discovery-readiness-contract)
 fixes DTO/event/capability names and documents outcome rules and test evidence.
-ST-02B retains optional Backend/App/RPC negotiation, unavailable fallback and
-parity acceptance; ST-03 must wait for it. The split was recorded before coding
-because combined lifecycle/outcome/adapter work exceeded four hours.
+ST-02B implements optional Backend/App/RPC negotiation, unavailable fallback,
+route-scoped Wails events and local/RPC parity; ST-03 consumes it next. The split
+was recorded before coding because combined lifecycle/outcome/adapter work
+exceeded four hours.
 
 - Own a small status snapshot and change event in the engine, scoped to one
   lifecycle. Represent initializing/restoring, reconciling, settled and

@@ -330,6 +330,9 @@ func (s *Server) initialize(serveCtx context.Context, req Request, starter Start
 		roots, _ = paths.Default()
 	}
 
+	s.mu.Lock()
+	_, caps.DiscoveryStatus = s.backend.(engine.DiscoveryBackend)
+	s.mu.Unlock()
 	caps.GitWrite = caps.GitWrite && caps.SaveFile
 	// Pull and push change the repository, so sync follows write permission.
 	caps.GitSync = caps.GitSync && caps.GitWrite
@@ -446,6 +449,13 @@ func (s *Server) dispatch(ctx context.Context, req Request) (any, error) {
 
 	case "indexProgress":
 		return backend.IndexProgress(ctx)
+
+	case "discoveryStatus":
+		d, ok := backend.(engine.DiscoveryBackend)
+		if !ok {
+			return nil, &ResponseError{Code: CodeMethodNotFound, Message: "method not found: discoveryStatus"}
+		}
+		return d.DiscoveryStatus(ctx)
 
 	case "copyResumeCommand":
 		var p CopyResumeCommandParams

@@ -568,6 +568,11 @@ func localOnlyEmitter(inner engine.Emitter, c *connection) engine.Emitter {
 		if c.route().backend != nil {
 			return
 		}
+		if name == engine.DiscoveryStatusEvent {
+			if status, ok := payload.(engine.DiscoveryStatus); ok {
+				payload = DiscoveryStatusEvent{DiscoveryStatus: status}
+			}
+		}
 		inner.Emit(name, payload)
 	})
 }
@@ -575,8 +580,16 @@ func localOnlyEmitter(inner engine.Emitter, c *connection) engine.Emitter {
 // generationEmitter drops events whose connection generation is no longer current.
 func generationEmitter(inner engine.Emitter, gen uint64, c *connection) engine.Emitter {
 	return engine.EmitterFunc(func(name string, payload any) {
-		if c.generation() != gen {
+		c.mu.Lock()
+		current, host := c.gen == gen, c.wantHost
+		c.mu.Unlock()
+		if !current {
 			return
+		}
+		if name == engine.DiscoveryStatusEvent {
+			if status, ok := payload.(engine.DiscoveryStatus); ok {
+				payload = DiscoveryStatusEvent{DiscoveryStatus: status, Host: host, Generation: gen}
+			}
 		}
 		if inner != nil {
 			inner.Emit(name, payload)

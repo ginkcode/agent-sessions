@@ -1,6 +1,6 @@
 # Startup responsiveness — sequential task briefs
 
-Status: **2/6 complete; ST-02 partial (A complete, B pending)** 2026-10-24: ST-00/ST-01 complete; ST-02A engine complete; ST-02B adapters and ST-03…ST-05 pending.
+Status: **3/6 complete** 2026-10-24: ST-00/ST-01 complete; ST-02 complete (ST-02A engine, ST-02B adapters); ST-03 next; ST-03…ST-05 pending.
 [Plan and status/compatibility contract](../plan/performance-startup.md) ·
 [Roadmap](../plan/performance.md) · [Tracker](../../TASKS.md#startup-priority-package).
 
@@ -26,8 +26,8 @@ Likely files are integration points, not instructions to create duplicate system
 | [ST-00](#st-00--document-startup-scope-and-tasks) | Complete | Scope, contracts, briefs and links | 1 h | None |
 | [ST-01](#st-01--measure-the-real-startup-path) | Complete | Full-startup baseline; ST-04 measurement blocker | 4 h | ST-00 |
 | [ST-02A](#st-02--backend-discovery-readiness-contract) | Complete | Engine lifecycle snapshot/event and outcomes | ≤4 h | ST-01 |
-| ST-02B | Pending | Compatible App/RPC adapters and parity | ≤4 h | ST-02A |
-| [ST-03](#st-03--truthful-frontend-startup-states) | Pending | Honest readiness and compatible empty/error states | 3 h | ST-02B |
+| [ST-02B](#st-02--backend-discovery-readiness-contract) | Complete | Compatible App/RPC adapters and parity | ≤4 h | ST-02A |
+| [ST-03](#st-03--truthful-frontend-startup-states) | Next | Honest readiness and compatible empty/error states | 3 h | ST-02B |
 | [ST-04](#st-04--remove-the-measured-startup-blocker) | Pending, measurement-blocked | One evidence-selected safe optimization | ≤4 h | ST-03; ST-01 evidence |
 | [ST-05](#st-05--integrated-startup-gate) | Pending | Integration, before/after evidence and limits | 4 h | ST-04 |
 
@@ -95,14 +95,14 @@ is recorded. Focused tests pass; no private roots discovered.
 
 ## ST-02 — Backend discovery readiness contract
 
-**Status:** split before coding (2026-10-24): **ST-02A complete** (engine),
-**ST-02B pending** (adapters). Adapter negotiation/routing plus lifecycle and
-outcome capture exceeded 4 h together. **Dependency:** ST-01. ST-03 requires
-both slices; ST-02 as a whole is not complete until ST-02B passes.
+**Status:** complete 2026-10-24, split before coding: **ST-02A complete**
+(engine), **ST-02B complete** (adapters). Adapter negotiation/routing plus
+lifecycle and outcome capture exceeded 4 h together. **Dependency:** ST-01.
+ST-03 is next.
 
 - **ST-02A (≤4 h, complete):** engine-owned snapshot/event, lifecycle and
   attempt invalidation, actual detection/outcome capture, barrier-driven tests.
-- **ST-02B (≤4 h, pending):** additive optional Backend/App/Wails/RPC adapters,
+- **ST-02B (≤4 h, complete):** additive optional Backend/App/Wails/RPC adapters,
   capability, unknown-method/unavailable fallback, client notification routing,
   mocks, generated Wails bindings/TS types and local-vs-RPC parity tests. No
   frontend presentation work. All original adapter acceptance remains required.
@@ -141,7 +141,7 @@ superseded reader attempt cannot publish. Close ends the lifetime: an incomplete
 lifetime reads as `failed`/complete without an event, and no later callback can
 publish into it or a later lifetime.
 
-**Reserved for ST-02B (names fixed here; not yet implemented):** RPC method
+**ST-02B adapter contract (names fixed in ST-02A; implemented):** RPC method
 `discoveryStatus` (no params, returns `DiscoveryStatus`), capability
 `Capabilities.DiscoveryStatus` / JSON `discoveryStatus` (omitempty, absent on
 old servers), client forwards notification `discovery:status` like
@@ -152,6 +152,12 @@ capability, and maps JSON-RPC `-32601`/`unsupported` to it. Wails App method
 “startup status unavailable” (old host or backend without
 `DiscoveryBackend`), never fabricated completion. Offline routes return their
 existing offline error. Remote events stay connection-generation scoped.
+Wails adds `host` (empty for Local) and `generation` (0 for Local) to both
+`DiscoveryStatusReply` and the flattened `app.DiscoveryStatusEvent` payload.
+RPC keeps the raw engine snapshot, as for index progress. `Connect`/`Disconnect`
+change generation; automatic reconnect currently keeps it, so ST-03 must reset
+held status on connection phase changes and refetch on reconnect (the restarted
+remote engine begins lifetime 1). No frontend presentation is implemented here.
 
 **ST-02A evidence (2026-10-24).** Detection/scan outcomes are captured by a
 context `scan.DiscoveryObserver` invoked inside the existing Runner and
@@ -190,6 +196,32 @@ scan exclusion, then repeated race/full gates passed. Frontend checks not run:
 no frontend files changed. No private roots, benchmark script, app launch,
 install, process termination, Windows packaging, commit or push.
 
+**ST-02B evidence (2026-10-24).** Server advertises `discoveryStatus` only for a
+backend implementing `DiscoveryBackend`, dispatches the method or returns
+`-32601`; client caps gate requests, maps `-32601`/`unsupported` to
+`ErrUnsupportedAction`, decodes and forwards `discovery:status`. App uses one
+captured route; missing/unsupported means `available:false`, offline returns its
+disconnect error. Local-only and generation emitters retain existing filtering
+and add route identity only to discovery events. Generated ignored Wails bindings
+used the documented temporary `cmd/agent-sessions/wails.json`/
+`wails generate module -tags webkit2_41` flow (config removed). Frontend adds
+types, optional-binding wrapper, mock unknown status and subscription helper only.
+Tests: in-process RPC with generated fake providers proves forwarded event
+ordering and final event/local/RPC snapshot parity over two lifetimes, plus no-capability, `-32601`,
+`unsupported` and old-browsing paths; App local/remote/offline/unavailable and
+captured-route replies; local/remote/stale-host/return-to-Local event isolation; frontend
+wrapper/subscription tests. Event barrier only, no sleeps. Limitations: no ST-03
+store/UI, native GUI or real remote/SSH test; automatic reconnect generation unchanged.
+
+**Recorded checks (ST-02B final tree):** `go test -race -count=1
+./internal/app ./internal/rpc ./internal/engine` PASS (2.890s / 9.133s /
+178.689s); focused discovery race
+tests `-count=3` PASS. `go test ./...`, `go vet ./...`, `go build ./...`,
+`GOOS=windows go vet ./...` PASS. Frontend `npm test` (683/683), `npm run check`
+(0 errors, existing `ignoreDeprecations` warning) and `npm run build` PASS;
+`git diff --check` PASS. No changed-code linter is installed.
+No private roots, benchmark script, app launch, install, process termination,
+Windows packaging, commit or push.
 
 **Likely files:** `internal/engine/{engine,cache,events}.go`, Backend/local/App and
 RPC adapters and tests. Finalize concrete DTO/event/capability names here before

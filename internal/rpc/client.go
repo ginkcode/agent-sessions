@@ -115,7 +115,8 @@ func (c *Client) OnNotification(h NotificationHandler) {
 	c.handlers = append(c.handlers, h)
 }
 
-// SetEmitter registers an emitter to receive catalog:changed and index:progress notifications.
+// SetEmitter registers an emitter to receive catalog:changed, index:progress
+// and discovery:status notifications.
 func (c *Client) SetEmitter(emitter engine.Emitter) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -148,6 +149,11 @@ func (c *Client) handleNotification(method string, params json.RawMessage) {
 			var ev engine.CatalogChanged
 			if err := json.Unmarshal(params, &ev); err == nil {
 				emitter.Emit(NotificationCatalogChanged, ev)
+			}
+		case NotificationDiscoveryStatus:
+			var status engine.DiscoveryStatus
+			if json.Unmarshal(params, &status) == nil {
+				emitter.Emit(method, status)
 			}
 		case NotificationIndexProgress:
 			var p index.FTSProgress
@@ -384,6 +390,20 @@ func (c *Client) GetBlob(ctx context.Context, ref model.SessionRef, key string) 
 func (c *Client) Search(ctx context.Context, query string, filter index.SearchFilter) ([]index.SearchHit, error) {
 	var out []index.SearchHit
 	err := c.call(ctx, "search", SearchParams{Query: query, Filter: filter}, &out)
+	return out, err
+}
+
+// DiscoveryStatus is additive: old hosts remain usable without this surface.
+func (c *Client) DiscoveryStatus(ctx context.Context) (engine.DiscoveryStatus, error) {
+	if !c.Capabilities().DiscoveryStatus {
+		return engine.DiscoveryStatus{}, engine.ErrUnsupportedAction
+	}
+	var out engine.DiscoveryStatus
+	err := c.call(ctx, "discoveryStatus", nil, &out)
+	var rpcErr *ResponseError
+	if errors.As(err, &rpcErr) && rpcErr.Code == CodeMethodNotFound {
+		return engine.DiscoveryStatus{}, engine.ErrUnsupportedAction
+	}
 	return out, err
 }
 
