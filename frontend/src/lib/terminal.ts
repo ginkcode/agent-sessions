@@ -63,6 +63,27 @@ export function isNewShellShortcut(
 }
 
 /**
+ * Whether a key splits the focused panel terminal: Cmd+\ on macOS,
+ * Ctrl+Shift+5 elsewhere, as in VS Code (Ctrl+\ alone is left to the
+ * terminal, where it is SIGQUIT). The 5 key's position is read, so layouts
+ * that type another character there work too; AltGr, which is Ctrl+Alt, is
+ * not the chord.
+ */
+export function isSplitShortcut(
+  e: Pick<KeyboardEvent, 'key' | 'code' | 'ctrlKey' | 'metaKey' | 'altKey' | 'shiftKey'>,
+  mac: boolean,
+): boolean {
+  if (e.altKey) return false;
+  if (mac) return e.metaKey && !e.ctrlKey && !e.shiftKey && (e.code === 'Backslash' || e.key === '\\');
+  return e.ctrlKey && e.shiftKey && !e.metaKey && e.code === 'Digit5';
+}
+
+/** The Split terminal shortcut as the platform writes it. */
+export function splitShortcutLabel(mac: boolean): string {
+  return mac ? '⌘\\' : 'Ctrl+Shift+5';
+}
+
+/**
  * Whether a key opens a new app window: Cmd+N on macOS, Ctrl+Shift+N
  * elsewhere (Ctrl+N alone is left to the terminal, where it is readline's
  * next-history).
@@ -147,6 +168,7 @@ export function terminalKeyAction(
   if (
     isPanelToggle(e) ||
     isNewShellShortcut(e, mac) ||
+    isSplitShortcut(e, mac) ||
     isNewWindowShortcut(e, mac) ||
     isNewSessionShortcut(e, mac) ||
     windowCycleShortcut(e, mac) ||

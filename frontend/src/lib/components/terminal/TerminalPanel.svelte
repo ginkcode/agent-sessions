@@ -2,10 +2,10 @@
   import { onMount } from 'svelte';
   import TerminalView from './TerminalView.svelte';
   import { api } from '../../api';
-  import { terminals } from '../../stores/terminals.svelte';
+  import { MAX_GROUP_PANES, terminals } from '../../stores/terminals.svelte';
   import { hostLabel } from '../../hosts';
   import { isMac } from '../../../main';
-  import { newShellShortcutLabel } from '../../terminal';
+  import { newShellShortcutLabel, splitShortcutLabel } from '../../terminal';
   import ContextMenu from '../common/ContextMenu.svelte';
   import Splitter from '../common/Splitter.svelte';
   import AgentIcon from '../common/AgentIcon.svelte';
@@ -61,9 +61,17 @@
     });
     const group = terminals.groups.find((g) => g.id === id);
     const panes = group ? panesOf(group) : [];
+    const splitItem: ContextMenuItem = {
+      label: 'Split Terminal',
+      disabled: !group || !terminals.canSplit(group.focus),
+      title: splitTitle(group?.focus ?? null),
+      onSelect: () => {
+        if (group) void split(group.focus);
+      },
+    };
     // A split tab's transcript is its focused agent's, or its first agent's.
     const tab = panes.find((t) => t.id === group?.focus && t.kind === 'agent') ?? panes.find((t) => t.kind === 'agent');
-    if (tab?.kind !== 'agent') return close.map((item) => ({ ...item, separator: false }));
+    if (tab?.kind !== 'agent') return [splitItem, ...close];
     const session = tab.session;
     // Only the shown host's sessions can be shown.
     const elsewhere = tab.host !== (link.dataHost ?? '');
@@ -79,7 +87,7 @@
         if (session) void appState.selectSession(session, 'push');
       },
     };
-    return [show, ...close];
+    return [splitItem, show, ...close];
   });
 
   interface Props {
@@ -90,8 +98,22 @@
 
   let { cwd = '', hidden = false }: Props = $props();
 
-  // Only the active tab is shown, so files dropped on the panel are its.
-  onMount(() => api.onFileDrop((_x, _y, paths) => void terminals.dropFiles(paths)));
+  // A shell beside pane id, in its directory when it runs on the selected host.
+  function split(id: string) {
+    return terminals.split(id, cwd, link.dataHost ?? '');
+  }
+
+  function splitTitle(id: string | null): string {
+    return id && !terminals.canSplit(id) ? `A tab holds up to ${MAX_GROUP_PANES} terminals` : `Split terminal (${splitShortcutLabel(isMac)})`;
+  }
+
+  // Files dropped on the panel go to the pane under the drop point.
+  onMount(() =>
+    api.onFileDrop((x, y, paths) => {
+      const pane = document.elementFromPoint(x, y)?.closest('[data-pane]')?.getAttribute('data-pane');
+      void terminals.dropFiles(paths, pane ?? terminals.active);
+    }),
+  );
 
   let confirmingTab = $derived(terminals.tabs.find((t) => t.id === terminals.confirming));
 
@@ -195,6 +217,22 @@
       <button
         type="button"
         class="icon-button"
+        title={splitTitle(terminals.active)}
+        aria-label="Split terminal"
+        disabled={!terminals.canSplit()}
+        onclick={() => {
+          if (terminals.active) void split(terminals.active);
+        }}
+      >
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <!-- The way the panes divide. -->
+          <rect x="3" y="3" width="18" height="18" rx="2" />
+          <path d={stacked ? 'M3 12h18' : 'M12 3v18'} />
+        </svg>
+      </button>
+      <button
+        type="button"
+        class="icon-button"
         title="New shell ({newShellShortcutLabel(isMac)})"
         aria-label="New shell"
         onclick={() => void terminals.newShell(cwd)}
@@ -277,7 +315,7 @@
           if (tab.id !== terminals.active) terminals.select(tab.id);
         }}
       >
-        <TerminalView {tab} active={tab.id === terminals.active} />
+        <TerminalView {tab} active={tab.id === terminals.active} onSplit={() => split(tab.id)} />
       </div>
     {:else}
       <div class="empty">

@@ -12,6 +12,8 @@ import {
   terminalTabShortcut,
   isNewShellShortcut,
   isNewWindowShortcut,
+  isSplitShortcut,
+  splitShortcutLabel,
   windowCycleShortcut,
   newShellShortcutLabel,
   newWindowShortcutLabel,
@@ -224,6 +226,33 @@ test('New shell shortcut: Cmd+T on macOS, Ctrl+Shift+T elsewhere', () => {
   assert.equal(terminalKeyAction({ ...key('t', 'KeyT', { metaKey: true }), type: 'keydown' }, true), 'app');
   assert.equal(terminalKeyAction({ ...key('T', 'KeyT', { ctrlKey: true, shiftKey: true }), type: 'keydown' }, false), 'app');
   assert.deepEqual([newShellShortcutLabel(true), newShellShortcutLabel(false)], ['⌘T', 'Ctrl+Shift+T']);
+});
+
+test('Split shortcut: Cmd+\\ on macOS, Ctrl+Shift+5 elsewhere', () => {
+  const key = (k, code, mods = {}) => ({ key: k, code, ctrlKey: false, metaKey: false, altKey: false, shiftKey: false, ...mods });
+  assert.ok(isSplitShortcut(key('\\', 'Backslash', { metaKey: true }), true));
+  assert.ok(isSplitShortcut(key('\\', 'IntlBackslash', { metaKey: true }), true), 'the key that types a backslash');
+  assert.ok(!isSplitShortcut(key('\\', 'Backslash', { metaKey: true, shiftKey: true }), true));
+  assert.ok(!isSplitShortcut(key('\\', 'Backslash', { ctrlKey: true }), true), 'Ctrl+\\ reaches the terminal');
+  assert.ok(isSplitShortcut(key('%', 'Digit5', { ctrlKey: true, shiftKey: true }), false));
+  assert.ok(isSplitShortcut(key('(', 'Digit5', { ctrlKey: true, shiftKey: true }), false), 'AZERTY types ( there');
+  assert.ok(!isSplitShortcut(key('[', 'Digit5', { ctrlKey: true, shiftKey: true, altKey: true }), false), 'AltGr');
+  assert.ok(!isSplitShortcut(key('\\', 'Backslash', { ctrlKey: true }), false), 'Ctrl+\\ is SIGQUIT');
+  assert.ok(!isSplitShortcut(key('5', 'Digit5', { ctrlKey: true }), false));
+  assert.ok(!isSplitShortcut(key('\\', 'Backslash', { metaKey: true }), false));
+  assert.equal(terminalKeyAction({ ...key('\\', 'Backslash', { metaKey: true }), type: 'keydown' }, true), 'app');
+  assert.equal(terminalKeyAction({ ...key('%', 'Digit5', { ctrlKey: true, shiftKey: true }), type: 'keydown' }, false), 'app');
+  assert.equal(terminalKeyAction({ ...key('\\', 'Backslash', { ctrlKey: true }), type: 'keydown' }, false), null);
+  assert.deepEqual([splitShortcutLabel(true), splitShortcutLabel(false)], ['⌘\\', 'Ctrl+Shift+5']);
+
+  // The app splits only a shown terminal, and the terminal's menu splits or
+  // closes its own pane.
+  const app = readFileSync(new URL('../src/App.svelte', import.meta.url), 'utf8');
+  assert.match(app, /isSplitShortcut\(event, isMac\)\) \{\s*if \(!launcher\.info\.panel \|\| !terminals\.open \|\| !terminals\.active \|\| hasOpenModal\(\)\) return;/);
+  assert.match(app, /if \(!event\.repeat\) void terminals\.split\(terminals\.active, shellCwd, link\.dataHost \?\? ''\)/);
+  const view = readFileSync(new URL('../src/lib/components/terminal/TerminalView.svelte', import.meta.url), 'utf8');
+  assert.match(view, /label: 'Split Terminal',[\s\S]*?disabled: !terminals\.canSplit\(tab\.id\),[\s\S]*?onSelect: onSplit/);
+  assert.match(view, /label: 'Close Terminal', onSelect: \(\) => terminals\.close\(tab\.id\)/);
 });
 
 test('terminal tab shortcuts: Cmd+1–9 on macOS, Alt+1–9 elsewhere', () => {
@@ -869,7 +898,7 @@ async function loadPanel() {
     ["'svelte'", JSON.stringify(import.meta.resolve('svelte'))],
     ["import TerminalView from './TerminalView.svelte';", 'const TerminalView = ($$renderer, props) => $$renderer.push(`<div data-terminal-id="${props.tab.id}"></div>`);'],
     ["import { api } from '../../api';", 'const api = {};'],
-    ["import { terminals } from '../../stores/terminals.svelte';", fixtureStore('terminals')],
+    ["import { MAX_GROUP_PANES, terminals } from '../../stores/terminals.svelte';", 'const MAX_GROUP_PANES = 4;' + fixtureStore('terminals')],
     ["import { appState } from '../../stores/appState.svelte';", fixtureStore('appState')],
     ["import { link } from '../../stores/link.svelte';", fixtureStore('link')],
     ["import { isMac } from '../../../main';", 'const isMac = false;'],
@@ -890,7 +919,7 @@ test('terminal toolbar renders maximize and restore without replacing tab views'
         terminals: {
           tabs: [shellPane('generated-shell')],
           groups: [{ id: 'g1', panes: ['generated-shell'], focus: 'generated-shell', sizes: [1] }],
-          active: 'generated-shell', attention: {}, height: 360, position, maximized,
+          active: 'generated-shell', attention: {}, height: 360, position, maximized, canSplit: () => true,
         },
         appState: {}, link: {},
       };
@@ -902,6 +931,10 @@ test('terminal toolbar renders maximize and restore without replacing tab views'
       assert.match(dock, position === 'left' ? /to the bottom/ : /to the left/);
       assert.equal(/\sdisabled/.test(dock), maximized);
       assert.doesNotMatch(html, /Resize terminal panes/, 'a single pane has no splitter');
+      const splitButton = html.match(/<button[^>]*aria-label="Split terminal"[^>]*>[\s\S]*?<\/button>/)?.[0] ?? '';
+      assert.match(splitButton, /title="Split terminal \(Ctrl\+Shift\+5\)"/);
+      assert.doesNotMatch(splitButton, /\sdisabled/);
+      assert.match(splitButton, position === 'left' ? /d="M3 12h18"/ : /d="M12 3v18"/, 'the icon divides the way the panes will');
       assert.doesNotMatch(html, /class="segment[^"]*focused/);
     }
   } finally { delete globalThis.__componentFixture; }
@@ -918,7 +951,7 @@ test('a split tab renders its panes side by side under one tab', async () => {
             { id: 'g1', panes: ['a', 'b'], focus: 'b', sizes: [0.25, 0.75] },
             { id: 'g2', panes: ['other'], focus: 'other', sizes: [1] },
           ],
-          active: 'b', attention: {}, height: 360, position, maximized: false,
+          active: 'b', attention: {}, height: 360, position, maximized: false, canSplit: () => false,
         },
         appState: {}, link: {},
       };
@@ -937,6 +970,9 @@ test('a split tab renders its panes side by side under one tab', async () => {
       assert.match(pane('a'), /flex-grow: 0.25/);
       assert.match(pane('b'), /class="pane[^"]*focused/);
       assert.match(pane('other'), /class="pane[^"]*hidden/);
+      const splitButton = html.match(/<button[^>]*aria-label="Split terminal"[^>]*>/)?.[0] ?? '';
+      assert.match(splitButton, /\sdisabled/);
+      assert.match(splitButton, /title="A tab holds up to 4 terminals"/);
     }
   } finally { delete globalThis.__componentFixture; }
 });

@@ -54,13 +54,25 @@ growth, the other group's pane hidden). Terminal, session-link and alert tests
 pass; check 0 errors. Not run in the app: refitting side-by-side panes and
 dragging the splitter.
 
-## TS-03 — Controls and shortcuts
+## TS-03 — Controls and shortcuts (complete)
 
 "Split terminal" in the panel header and the tab and terminal context menus;
 "Close Terminal" in the terminal menu closes one pane. Shortcut ⌘\ on macOS
 and Ctrl+Shift+5 elsewhere (VS Code's; Ctrl+\ stays with the terminal, where it
 is SIGQUIT; Windows may map Ctrl+Shift+digit to input-language switching).
 Dropped files go to the pane under the drop point.
+
+The header button's icon divides the way the panes will (side by side, or
+stacked when docked left); it and the menu items are disabled, with a reason,
+once a tab holds 4 terminals. A split from the tab menu splits that tab's
+focused pane. The shortcut acts only while the panel is open with a terminal
+and no dialog is over it.
+
+Verification: shortcut tests cover ⌘\, Ctrl+Shift+5 on QWERTY and AZERTY,
+AltGr, Ctrl+\ left to the terminal on every platform, and the terminal
+passing the shortcuts to the app; panel render tests cover the header button
+and its full-tab state; source checks cover the App handler's conditions and
+the terminal menu's items. Full frontend tests pass; check 0 errors.
 
 Out of scope: moving panes between tabs, keyboard pane navigation, persisting
 layouts.

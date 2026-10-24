@@ -56,6 +56,7 @@
   import {
     isNewSessionShortcut,
     isNewShellShortcut,
+    isSplitShortcut,
     isNewWindowShortcut,
     isPanelToggle,
     newWindowShortcutLabel,
@@ -156,6 +157,14 @@
         if (!launcher.info.panel || hasOpenModal()) return;
         event.preventDefault();
         if (!event.repeat) void terminals.newShell(shellCwd);
+        return;
+      }
+      // Cmd+\ on macOS, Ctrl+Shift+5 elsewhere: a shell beside the focused
+      // terminal, while the panel shows it.
+      if (isSplitShortcut(event, isMac)) {
+        if (!launcher.info.panel || !terminals.open || !terminals.active || hasOpenModal()) return;
+        event.preventDefault();
+        if (!event.repeat) void terminals.split(terminals.active, shellCwd, link.dataHost ?? '');
         return;
       }
       // Cmd+Shift+A on macOS, Ctrl+Shift+A elsewhere: a new session of the

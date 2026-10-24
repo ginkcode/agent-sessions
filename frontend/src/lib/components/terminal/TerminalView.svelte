@@ -10,7 +10,7 @@
   import { theme } from '../../stores/theme.svelte';
   import { preferences } from '../../stores/preferences.svelte';
   import { terminalFontFamily } from '../../terminalFont';
-  import { terminalKeyAction, terminalTabShortcut, terminalTheme } from '../../terminal';
+  import { splitShortcutLabel, terminalKeyAction, terminalTabShortcut, terminalTheme } from '../../terminal';
   import { copyToClipboard, readClipboard } from '../../portable';
   import { isMac } from '../../../main';
   import { onSplitterDragEnd, splitterDragging } from '../../splitterDrag';
@@ -26,9 +26,11 @@
     tab: PanelTab;
     /** The focused pane, which takes typing; its panel tab shows it. */
     active: boolean;
+    /** Opens a shell beside this one. */
+    onSplit: () => void;
   }
 
-  let { tab, active }: Props = $props();
+  let { tab, active, onSplit }: Props = $props();
 
   let host: HTMLDivElement;
   let term = $state<Terminal | null>(null);
@@ -245,6 +247,14 @@
         { label: 'Copy', disabled: !term?.hasSelection(), onSelect: () => void copySelection() },
         { label: 'Paste', disabled: tab.status !== 'running', onSelect: () => void paste() },
         { label: 'Clear', onSelect: () => term?.clear() },
+        {
+          label: 'Split Terminal',
+          separator: true,
+          disabled: !terminals.canSplit(tab.id),
+          title: `Split terminal (${splitShortcutLabel(isMac)})`,
+          onSelect: onSplit,
+        },
+        { label: 'Close Terminal', onSelect: () => terminals.close(tab.id) },
       ],
     };
   }
