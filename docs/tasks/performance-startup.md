@@ -610,7 +610,7 @@ Reuse discovery's event counter plus an init/destroy lifecycle token. Live event
 win; destroyed initializations cannot seed or refresh. Keep normal snapshot seeding
 and genuine disconnect behavior. Do not serialize hydration or weaken API guards.
 
-ST-08B pending (≤3 h): deferred-promise regressions for stale Local after connecting/
+ST-08B complete (≤3 h): deferred-promise regressions for stale Local after connecting/
 connected, destroy/re-init, normal snapshot/error/disconnect, and late catalog replies
 using real API epoch guards. Assert remote phase/host/title/link/data identity and no
 extra reset. Confirmed scope is host-identity rollback, not an independently proven
@@ -622,4 +622,21 @@ ST-08A: event-counter/lifecycle admission implemented; five deferred regression
 cases cover connecting/connected stale Local snapshot, destroy/re-init, ordinary
 seed/disconnect and failure. Focused connection/discovery 39/39 PASS. Initial fixture
 failed two assertions because Proxy receivers lost bound mutation state; fixture
-methods bound correctly and suite rerun. ST-08B full gate/epoch regression pending.
+methods bound correctly and suite rerun.
+
+ST-08B: real compiled AppState plus real `guardEpoch` holds Local groups/counts/
+sessions across an epoch change and completed remote reset. Releasing Local replies
+leaves remote target, groups, totals, rows, selected identity/header, loading and error
+state unchanged. `connectionState` remains explicitly unguarded: its stale snapshot
+still reaches the caller, so ST-08A's event/lifecycle admission is necessary. No
+separate Local-row overwrite was reproduced by these deterministic interleavings.
+
+Verification (2026-10-24): focused connection/discovery 40/40 PASS; full frontend
+703/703 PASS; `npm run check` completes with zero errors and the existing
+`tsconfig.json` invalid `ignoreDeprecations` warning; production build PASS with the
+existing >500 kB chunk warning; `git diff --check` PASS. An initial direct Node test
+invocation omitted the project's resolver and failed module resolution before tests;
+rerunning with `--loader ./test/resolver.mjs` passed. No Go changes or native GUI
+verification; real-device startup/paint behavior and the user's exact visible-row
+symptom still require a rebuilt app test. No private data, remote deployment or
+packaging used.

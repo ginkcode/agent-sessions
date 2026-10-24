@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { loadServerModule, loadServerComponent, fixtureStore, renderWithFixture } from './helpers.mjs';
 import { discoveryOutcome, emptyCatalogState } from '../src/lib/discovery.ts';
+import { guardEpoch, bumpEpoch, epoch } from '../src/lib/link.ts';
 
 const lib = (name) => JSON.stringify(new URL(`../src/lib/${name}.ts`, import.meta.url).href);
 const status = (update = {}) => ({ lifetime: 1, revision: 1, state: 'reconciling', catalogUsable: true,
@@ -285,6 +286,64 @@ test('terminal reload applies final rows and retains selection, history and grou
   assert.equal(store.selectedSessionRef, ref);
   assert.equal(store.selectedSessionMeta.title, 'retained header');
   assert.equal(store.selectedGroupKey, null);
+});
+
+test('late Local catalog replies cannot replace remote rows after a host reset', async () => {
+  const pending = { listGroups: deferred(), agentCounts: deferred(), listSessions: deferred() };
+  const snapshot = deferred();
+  const remoteRef = { agent: 'test', id: 'generated-remote' };
+  const remoteGroups = [{ key: 'remote-group', children: [] }];
+  const remoteCounts = { test: 7 };
+  const remoteRows = [{ ref: remoteRef, title: 'Remote session' }];
+  let servingRemote = false;
+  const calls = [];
+  globalThis.__catalogAPI = guardEpoch({
+    ...Object.fromEntries(Object.keys(pending).map((method) => [method, () => {
+      calls.push([method, servingRemote]);
+      if (!servingRemote) return pending[method].promise;
+      return Promise.resolve({ listGroups: remoteGroups, agentCounts: remoteCounts, listSessions: remoteRows }[method]);
+    }])),
+    connectionState: () => snapshot.promise,
+    getSessionMeta: async () => remoteRows[0],
+  }, epoch, new Set(['connectionState']));
+  const store = new AppState();
+  try {
+    const initialSnapshot = globalThis.__catalogAPI.connectionState();
+    const localGroups = store.loadGroups();
+    const localSessions = store.loadSessions();
+    assert.deepEqual(calls, [['listGroups', false], ['agentCounts', false], ['listSessions', false]]);
+
+    servingRemote = true;
+    bumpEpoch();
+    await store.reset('generated-host');
+    const assertRemote = () => {
+      assert.equal(store.targetHost, 'generated-host');
+      assert.deepEqual(store.groups, remoteGroups);
+      assert.deepEqual(store.agentCounts, remoteCounts);
+      assert.deepEqual(store.sessions, remoteRows);
+      assert.deepEqual(store.selectedSessionRef, remoteRef);
+      assert.deepEqual(store.selectedSessionMeta, remoteRows[0]);
+      assert.equal(store.error, null);
+      assert.equal(store.loadingGroups, false);
+      assert.equal(store.loadingSessions, false);
+    };
+    assertRemote();
+    pending.listSessions.resolve([{ ref: { agent: 'test', id: 'generated-local' } }]);
+    await localSessions;
+    assertRemote();
+    pending.listGroups.resolve([{ key: 'local-group', children: [] }]);
+    pending.agentCounts.resolve({ test: 99 });
+    await localGroups;
+    assertRemote();
+
+    // The connection snapshot intentionally bypasses epochs. ConnectionStore's
+    // event/lifecycle admission, not this API proxy, must reject stale identity.
+    snapshot.resolve(local);
+    assert.deepEqual(await initialSnapshot, local);
+  } finally {
+    store.destroy();
+    delete globalThis.__catalogAPI;
+  }
 });
 
 test('catalog events and terminal refresh serialize and retain auto-selection', async () => {
