@@ -18,6 +18,10 @@ import (
 // record. Keys are rec:<lineStart>:<callID> or rec:<lineStart>:<content-index>.
 // Arbitrary paths, external URLs and file IDs are never opened or fetched.
 func (p *Provider) Blob(ctx context.Context, ref model.SessionRef, key string) ([]byte, error) {
+	return p.blob(ctx, ref, key, nil)
+}
+
+func (p *Provider) blob(ctx context.Context, ref model.SessionRef, key string, source *model.SessionMeta) ([]byte, error) {
 	if !strings.HasPrefix(key, "rec:") {
 		return nil, fmt.Errorf("codex: Blob: unsupported key %q", key)
 	}
@@ -29,9 +33,14 @@ func (p *Provider) Blob(ctx context.Context, ref model.SessionRef, key string) (
 	if err != nil {
 		return nil, fmt.Errorf("codex: Blob: malformed key %q: %w", key, err)
 	}
-	meta, err := p.rolloutFor(ctx, ref)
-	if err != nil {
-		return nil, err
+	var meta model.SessionMeta
+	if source != nil {
+		meta = *source
+	} else {
+		meta, err = p.rolloutFor(ctx, ref)
+		if err != nil {
+			return nil, err
+		}
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, err

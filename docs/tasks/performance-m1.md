@@ -24,11 +24,11 @@ PF-05 completed 2026-10-24; coalesced loads, owned cancellation and repeated
 same-key evidence are in [../perf.md](../perf.md#pf-05--coalesced-transcript-loads-2026-10-24).
 PF-06 completed 2026-10-24; optional source contract, bounded canonical fallback,
 ownership and Codex feasibility are in [../perf.md](../perf.md#pf-06--validated-source-loading-contract-2026-10-24).
-No implementation has been performed for PF-07…PF-15.
+PF-07A is complete; PF-07 remains partial pending PF-07B. PF-08…PF-15 are unimplemented.
 
 ## Task index
 
-PF-01 through PF-06 are **complete**; all other rows are **not started**. Dependencies are completion gates, not mere ordering
+PF-01 through PF-06 are **complete**; PF-07 is **partial** (A complete, B next); all other rows are **not started**. Dependencies are completion gates, not mere ordering
 suggestions. All implementation tasks also depend on the shared guardrails in the
 [parent plan](../plan/performance.md#shared-guardrails).
 
@@ -40,7 +40,7 @@ suggestions. All implementation tasks also depend on the shared guardrails in th
 | [PF-04](#pf-04--atomic-transcript-cache-invalidation) | Atomic per-session cache invalidation | 4 h | PF-02 |
 | [PF-05](#pf-05--coalesced-transcript-loads) | Coalesced loads and owned cancellation | 4 h | PF-04 |
 | [PF-06](#pf-06--validated-source-loading-contract) | Optional validated source-loading contract | 3 h | PF-02 |
-| [PF-07](#pf-07--codex-load-and-blob-fast-paths) | Codex Load/Blob fast paths | 4 h | PF-06 |
+| [PF-07](#pf-07--codex-load-and-blob-fast-paths) | Codex Load/Blob fast paths (partial: A complete, B next) | 4 + 4 h | PF-06 |
 | [PF-08](#pf-08--source-aware-engine-and-fts-callers) | Source-aware engine and FTS integration | 4 h | PF-05, PF-07 |
 | [PF-09](#pf-09--claude-checkpoint-reuse) | Claude unchanged checkpoint reuse | 4 h | PF-01 |
 | [PF-10](#pf-10--codex-checkpoint-reuse) | Codex unchanged checkpoint reuse | 4 h | PF-01, PF-07 |
@@ -50,7 +50,7 @@ suggestions. All implementation tasks also depend on the shared guardrails in th
 | [PF-14](#pf-14--batched-ignore-checks) | Batched ignore checks and parity tests | 4 h | PF-13 |
 | [PF-15](#pf-15--integrated-evidence-and-milestone-gate) | Integration and before/after evidence | 4 h | PF-01…PF-14 |
 
-Total: **57 h**, including focused tests. Native/manual QA or unexpected scope
+Total: **61 h** (PF-07 split into 4 h + 4 h), including focused tests. Native/manual QA or unexpected scope
 requires a follow-up package, not an invented passing result.
 
 Baseline tasks may be independent. Cache/source work shares `service.go`;
@@ -258,6 +258,37 @@ budget, split PF-07 before coding, not by relaxing canonicality. PF-06 introduce
 no Codex fast path, validation cache, index query rewrite or engine/FTS activation.
 
 ## PF-07 — Codex Load and Blob fast paths
+
+**Status:** PF-07A complete 2026-10-24; parent **partial** until PF-07B passes. [Evidence and limitations](../perf.md#pf-07a--bounded-content-proof-and-accepting-codex-sources-2026-10-24). Split before implementation. Investigation shows safe proof/reconciliation plus the full mutation/evidence matrix exceeds 4 h. Parent acceptance below is unchanged.
+
+### PF-07A — Bounded content proof and accepting source methods (4 h; PF-06)
+
+Implement provider-owned immutable canonical snapshots, capped per provider root.
+Reconcile discovered and index-added paths and hash complete bytes (streaming,
+not size/mtime trust); reread index semantics including WAL through SQLite.
+Establish proof lazily on an optional cold call only; ordinary Scan and standalone
+Load/Blob retain their original I/O. Publish only when before/after proofs agree
+around one canonical Scan; serve its metadata directly even if proof fails,
+without a second fallback Scan. Account proof bytes/opens/passes/enumerations
+explicitly through an opt-in SourceWork collector. On a proven
+unchanged snapshot, both optional methods accept canonical metadata without Scan
+or unrelated rollout parsing. Uncertain/oversized/changed evidence returns stale
+for the PF-06 single standalone fallback. Reuse existing load/blob parsers.
+Test accepting and ordinary zero-proof work counts, forged/stale hints, same-stat rewrite, duplicate
+appearance, index overlay change, cancellation, snapshot isolation and bounds;
+run focused/race and full verification. This deliberately trades full byte reads
+for no unrelated parsing, not a zero-I/O cache or checkpoint optimization.
+
+### PF-07B — Mutation matrix and repeated evidence (4 h; PF-07A)
+
+Complete targeted Load/Blob parity tests for index path override, numeric index
+replacement/removal/corruption, WAL updates, raw duplicate ordering under index
+times, archive-column presence, authoritative parent removal/visibility,
+disappearance/replacement/symlink changes, concurrent Scan/validation publication,
+and lazy-output/valid and invalid final tails. Add repeated synthetic benchmarks
+and retained-state/work-count evidence, documenting digest overhead and fallback
+frequency. Preserve every parent acceptance criterion; only after these gates
+may PF-07 be counted complete and PF-08 start.
 
 **Goal:** known valid sessions load without scanning unrelated rollouts.
 

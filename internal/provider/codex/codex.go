@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 
 	"github.com/ginkcode/agent-sessions/internal/model"
 	"github.com/ginkcode/agent-sessions/internal/pathutil"
@@ -21,8 +22,10 @@ type Provider struct {
 	root string // ~/.codex or custom root, symlinks resolved
 	// configured is root as given, before symlinks (and Windows 8.3 short
 	// names) are resolved. Codex writes index paths under this form.
-	configured string
-	git        *pathutil.GitResolver
+	configured     string
+	git            *pathutil.GitResolver
+	sourceMu       sync.Mutex // protects the single bounded, immutable source snapshot
+	sourceSnapshot *sourceSnapshot
 }
 
 // New constructs a Codex session provider.

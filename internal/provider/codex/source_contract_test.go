@@ -11,9 +11,8 @@ import (
 	"github.com/ginkcode/agent-sessions/internal/provider"
 )
 
-// A conservative implementation is contract-compliant without claiming a fast
-// path. PF-07 must replace this test adapter with real validation/parity coverage.
-// The production Codex provider intentionally does not opt in during PF-06.
+// Keep explicit stale-dispatch coverage alongside the production accepting
+// implementation and its content-proof tests in source_test.go.
 type staleSourceProvider struct{ *Provider }
 
 func (p staleSourceProvider) LoadFromSource(context.Context, model.SessionRef, model.SessionMeta) (*model.Transcript, error) {

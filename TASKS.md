@@ -340,7 +340,7 @@ milestone totals above.
 
 ## Follow-up — Performance
 
-Planned 2026-10-24. Progress: **6/15 complete**, PF-01…PF-06 complete; PF-07…PF-15 not started.
+Planned 2026-10-24. Progress: **6/15 complete**, PF-01…PF-06 complete; PF-07 partial (A complete, B next); PF-08…PF-15 not started.
 [Roadmap](docs/plan/performance.md) ·
 [Milestone 1 briefs and dependency graph](docs/tasks/performance-m1.md).
 PF-01 completed 2026-10-24: synthetic catalog/provider benchmarks, correctness and
@@ -357,7 +357,9 @@ PF-05 completed 2026-10-24: current-flight coalescing, owned cancellation, four-
 bound and engine restart/shutdown coverage; [evidence](docs/perf.md#pf-05--coalesced-transcript-loads-2026-10-24).
 PF-06 completed 2026-10-24: optional source-loading contract, bounded canonical
 fallback, ownership and Codex feasibility constraints; [evidence](docs/perf.md#pf-06--validated-source-loading-contract-2026-10-24).
-Next: PF-07 (Codex Load/Blob fast paths; not implemented).
+PF-07 split before coding: parent partial, not counted complete. PF-07A complete; next: PF-07B.
+- [PF-07A](docs/tasks/performance-m1.md#pf-07a--bounded-content-proof-and-accepting-source-methods-4-h-pf-06): bounded content proof, accepting Load/Blob methods and focused regression/verification (4 h; PF-06).
+- [PF-07B](docs/tasks/performance-m1.md#pf-07b--mutation-matrix-and-repeated-evidence-4-h-pf-07a): full mutation/overlay/parent/WAL/concurrency matrix and repeated benchmark evidence (4 h; PF-07A). PF-08 remains gated on the entire parent.
 
 These tasks are separate from the original milestone totals. Before each later
 performance milestone starts, write its detailed design and ≤4h task breakdown.
@@ -370,7 +372,7 @@ performance milestone starts, write its detailed design and ≤4h task breakdown
 | [PF-04](docs/tasks/performance-m1.md#pf-04--atomic-transcript-cache-invalidation) | ✅ | Atomic transcript cache invalidation | 4 | PF-02 |
 | [PF-05](docs/tasks/performance-m1.md#pf-05--coalesced-transcript-loads) | ✅ | Coalesced loads and cancellation | 4 | PF-04 |
 | [PF-06](docs/tasks/performance-m1.md#pf-06--validated-source-loading-contract) | ✅ | Validated source-loading contract | 3 | PF-02 |
-| [PF-07](docs/tasks/performance-m1.md#pf-07--codex-load-and-blob-fast-paths) | ⬜ | Codex Load/Blob fast paths | 4 | PF-06 |
+| [PF-07](docs/tasks/performance-m1.md#pf-07--codex-load-and-blob-fast-paths) | partial | Codex Load/Blob fast paths (A complete, B next) | 4 + 4 | PF-06 |
 | [PF-08](docs/tasks/performance-m1.md#pf-08--source-aware-engine-and-fts-callers) | ⬜ | Engine/FTS source-aware callers | 4 | PF-05, PF-07 |
 | [PF-09](docs/tasks/performance-m1.md#pf-09--claude-checkpoint-reuse) | ⬜ | Claude checkpoint reuse | 4 | PF-01 |
 | [PF-10](docs/tasks/performance-m1.md#pf-10--codex-checkpoint-reuse) | ⬜ | Codex checkpoint reuse | 4 | PF-01, PF-07 |
@@ -380,7 +382,7 @@ performance milestone starts, write its detailed design and ≤4h task breakdown
 | [PF-14](docs/tasks/performance-m1.md#pf-14--batched-ignore-checks) | ⬜ | Batched ignore checks | 4 | PF-13 |
 | [PF-15](docs/tasks/performance-m1.md#pf-15--integrated-evidence-and-milestone-gate) | ⬜ | Integration and before/after evidence | 4 | PF-01…PF-14 |
 
-Milestone 1 estimate: **57 h**, focused tests included. If a package exceeds 4 h,
+Milestone 1 estimate: **61 h**, focused tests included. If a package exceeds 4 h,
 split it before coding. Native GUI QA remains separately reported, not assumed.
 
 **Critical path to the MVP:**

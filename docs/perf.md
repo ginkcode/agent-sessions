@@ -739,3 +739,84 @@ Only PF-06 is implemented. PF-07…PF-15 remain unimplemented; no engine/FTS cal
 activation. No private stores, QA perf script, installs, process termination,
 application launches, Windows packages, commits or pushes. Native GUI/manual QA
 and Windows runtime verification are unperformed. Changes left for review.
+
+## PF-07A — Bounded content proof and accepting Codex sources (2026-10-24)
+
+Split PF-07 before coding into two ≤4 h packages; PF-07A complete, parent
+**partial**, M1 still **6/15**. PF-07B retains the full mutation matrix and repeated
+benchmark/retained-memory evidence; PF-08 remains blocked.
+
+Only an optional cold source-aware call captures before/after reconciliation
+evidence around one canonical Scan and publishes one private immutable snapshot
+per Provider root under a mutex. Ordinary Scan and standalone Load/Blob are
+unchanged and perform zero proof hashing, even after optional use. A cold call
+serves its canonical resolution directly if proof cannot be established, avoiding
+a second fallback Scan. Both
+optional source methods accept matching canonical metadata only after rediscovery,
+index reread (SQLite, not DB/WAL mtime), validated index-path classification and
+streaming SHA-256 of every selectable source agree with the snapshot. Identity,
+mode, size and mtime also agree, but are not sufficient alone. This preserves raw
+duplicate and index/parent selection by reusing the existing canonical Scan, not
+reimplementing its overlays. Changed/uncertain/unproven hints return stale for
+PF-06's single standalone fallback. Incremental checkpoints never establish proof.
+
+Limits: at most 4096 sources/index rows/edges, 512 MiB total rollout content per
+proof and 8 MiB serialized index string/metadata payload retained; no rollout bytes
+or parser checkpoints retained. Existing discovery/index readers still allocate
+transient results before cap checks; this is not a bound on all Scan allocations.
+Proof reads use 64 KiB chunks and context checks. Reconciliation still enumerates,
+opens and reads unrelated sources; it eliminates unrelated JSON parsing, not disk
+I/O. Optional cold resolution incurs two extra content passes; ordinary Scan incurs
+none. Actual retained-memory measurement and larger repeated workloads remain
+PF-07B. Normal
+best-effort filesystem/SQLite read races remain; no atomic cross-source snapshot
+or adversarial concurrent rewrite guarantee is claimed. Old snapshots may be
+held by active callers, but provider ownership retains only one; concurrent old
+publication cannot authorize changed content because each use revalidates.
+
+Deterministic synthetic two-source test: standalone Load performs **2 metadata
+source opens and nonzero record parses**; direct accepting Load plus Blob perform
+**0 scan source opens, 0 records, 0 checkpoint decodes/encodes** with identical
+output. Digest opens/bytes/passes/enumerations are counted separately by opt-in
+Codex SourceWork; zero parse counters do not imply zero source I/O.
+Tests include forged hints, fresh-provider fallback, cancellation, concurrent
+readers, immutable old snapshots, oversized proof rejection, same-size/mtime
+rewrite, replacement, disappearance, outside-root symlink, duplicate appearance,
+index addition and title update. Existing Codex lazy-output/tail/index tests pass.
+PF-07B must still exercise the complete dedicated WAL/parent/index-path mutation
+matrix and concurrent Scan publication gates, rather than infer these from design.
+
+Passed `go test ./...`, `go vet ./...`, `go build ./...`,
+`go test -race ./internal/provider/codex ./internal/provider`, frontend `npm test`
+(666 passed), `npm run check`, `npm run build`, cached `go tool gofumpt`,
+`GOPROXY=off go tool golangci-lint run --new-from-rev=HEAD ./internal/provider/codex/...`
+(0 issues), and `git diff --check` on Darwin
+arm64 using installed tools. No private stores, forbidden script, installs,
+app launches, process termination, commits or pushes. GUI/Windows runtime QA
+unperformed. No engine/FTS wiring or checkpoint optimization.
+
+
+### PF-07A lazy-proof correction and repeated microbenchmark
+
+Removed proof work from ordinary Scan after review: only optional cold calls
+establish evidence. `BenchmarkSourceReconciliation` uses 16 generated rollouts,
+100 messages each, 212,614 total bytes. Apple M5/Darwin arm64, three runs,
+`go test ./internal/provider/codex -run '^$' -bench BenchmarkSourceReconciliation
+-benchmem -benchtime=200ms -count=3`, fixture generation excluded:
+
+| Path | ms/op range | allocated B/op (approx) | proof bytes/op | proof passes/enumerations |
+|---|---:|---:|---:|---:|
+| Ordinary Scan before optional use | 1.654–1.658 | 17,293,000 | 0 | 0 |
+| Ordinary Scan after optional use | 1.650–1.704 | 17,293,000 | 0 | 0 |
+| Standalone Load | 1.945–2.007 | 18,521,000 | 0 | 0 |
+| Optional cold Load | 3.379–3.420 | 18,888,000 | 425,228 | 2 |
+| Optional proven warm Load | 0.952–0.958 | 1,404,884 | 212,614 | 1 |
+
+Ordinary Scan is the unchanged pre-PF07 implementation, with no new wrapper;
+these before/after labels compare absence/presence of an optional snapshot, not
+historical independent binaries. Counters prove no new no-hint byte work; timings
+are advisory. Optional cold is materially more expensive; warm avoids unrelated
+parsing but still hashes every byte. Digest opens, actual read bytes (including
+failed proofs), discovery passes, and index reads are explicitly accounted.
+Discovery readability probes and SQLite internal page I/O remain outside digest
+byte counters, as do canonical Scan reads (tracked separately by ScanWork).
