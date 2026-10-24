@@ -30,8 +30,10 @@ func (e *Engine) indexKey() string {
 // the cache cannot be used at all, so Start falls back to an in-memory scan.
 // Called with e.mu held.
 func (e *Engine) startCache(ctx context.Context) bool {
+	done := startupObservation(ctx).begin("cache_role_lock")
 	dir, key := e.cacheDir(), e.indexKey()
 	lock, err := index.TryLock(dir, key)
+	done(err == nil || errors.Is(err, index.ErrLocked))
 	switch {
 	case err == nil:
 		return e.startWriter(ctx, dir, key, lock)
@@ -50,12 +52,16 @@ func (e *Engine) startWriter(ctx context.Context, dir, key string, lock *index.L
 		return false
 	}
 	e.lock = lock
+	done := startupObservation(ctx).begin("catalog_publication")
 	if e.svc.Catalog() != nil {
 		e.svc.Catalog().Reset(metas)
 	}
 	e.events.NotifyFullRefresh()
+	done(true)
 
+	stateDone := startupObservation(ctx).begin("state_restore")
 	e.refresher = index.NewRefresher(db, e.svc.Catalog(), e.svc.Providers(), index.WithOnChanged(e.onChanged))
+	stateDone(true)
 	e.indexer = index.StartIndexer(ctx, db, e.svc.Providers(), e.emitProgress)
 	e.closeWatch = e.startWatcher(ctx)
 	e.bootstrap(ctx, e.refresher)
@@ -67,11 +73,15 @@ func (e *Engine) startWriter(ctx context.Context, dir, key string, lock *index.L
 // catalog that cannot be read is rebuilt from scratch rather than kept, so
 // a bad row cannot stop every engine from becoming the writer.
 func openWriter(ctx context.Context, dir, key string) (*index.DB, []model.SessionMeta, error) {
+	openDone := startupObservation(ctx).begin("db_open_integrity")
 	db, err := index.Open(ctx, dir, key)
+	openDone(err == nil)
 	if err != nil {
 		return nil, nil, err
 	}
+	restoreDone := startupObservation(ctx).begin("catalog_restore")
 	metas, err := db.LoadCatalog(ctx)
+	restoreDone(err == nil)
 	if err == nil {
 		return db, metas, nil
 	}
@@ -88,18 +98,25 @@ func openWriter(ctx context.Context, dir, key string) (*index.DB, []model.Sessio
 func (e *Engine) startReader(ctx context.Context, dir, key string) {
 	var metas []model.SessionMeta
 	var opts []index.RefresherOption
-	if db, err := index.OpenReadOnly(ctx, dir, key); err == nil {
+	openDone := startupObservation(ctx).begin("db_open_reader")
+	db, openErr := index.OpenReadOnly(ctx, dir, key)
+	openDone(openErr == nil)
+	if openErr == nil {
+		snapshotDone := startupObservation(ctx).begin("snapshot_catalog_state_restore")
 		m, states, err := db.LoadSnapshot(ctx)
+		snapshotDone(err == nil)
 		if err == nil {
 			metas = m
 			opts = append(opts, index.WithStates(states))
 		}
 		e.readDB = db
 	}
+	done := startupObservation(ctx).begin("catalog_publication")
 	if e.svc.Catalog() != nil {
 		e.svc.Catalog().Reset(metas)
 	}
 	e.events.NotifyFullRefresh()
+	done(true)
 
 	opts = append(opts, index.WithOnChanged(e.onChanged))
 	e.refresher = index.NewRefresher(nil, e.svc.Catalog(), e.svc.Providers(), opts...)
@@ -230,8 +247,10 @@ func (e *Engine) promote(ctx context.Context, dir, key string, lock *index.Lock)
 
 func (e *Engine) bootstrap(ctx context.Context, r *index.Refresher) {
 	e.bg.Go(func() {
-		_ = r.Bootstrap(ctx)
+		done := startupObservation(ctx).begin("bootstrap")
+		err := r.Bootstrap(ctx)
 		e.svc.ApplyReport(r.Report())
+		done(err == nil)
 	})
 }
 

@@ -208,6 +208,8 @@ func (e *Engine) Start(ctx context.Context) error {
 	if e.started {
 		return nil
 	}
+	done := startupObservation(ctx).begin("start")
+	defer done(true)
 	e.started = true
 	e.closed = false
 	if e.svc != nil {
@@ -222,7 +224,8 @@ func (e *Engine) Start(ctx context.Context) error {
 	if !e.cacheEnabled {
 		if e.runner != nil {
 			go func() {
-				_ = e.Scan(ctx)
+				done := startupObservation(ctx).begin("bootstrap")
+				done(e.Scan(ctx) == nil)
 			}()
 		}
 		return nil
@@ -243,7 +246,8 @@ func (e *Engine) Start(ctx context.Context) error {
 	}
 	if e.runner != nil {
 		go func() {
-			_ = e.Scan(ctx)
+			done := startupObservation(ctx).begin("bootstrap")
+			done(e.Scan(ctx) == nil)
 		}()
 	}
 	return nil
@@ -271,7 +275,9 @@ func (e *Engine) startWatcher(ctx context.Context) func() error {
 			e.svc.ApplyReport(refresher.Report())
 		}()
 	}
+	done := startupObservation(ctx).begin("watcher_setup")
 	closeWatch, err := watch.Start(ctx, e.svc.Providers(), onChange)
+	done(err == nil)
 	if err != nil {
 		return nil
 	}
@@ -402,18 +408,27 @@ func (e *Engine) Ping(_ context.Context, name string) (string, error) {
 }
 
 // ListGroups returns the grouped navigation tree for the filtered snapshot.
-func (e *Engine) ListGroups(_ context.Context, mode GroupMode, filter FilterOpts) ([]GroupNode, error) {
-	return e.svc.ListGroups(mode, filter)
+func (e *Engine) ListGroups(ctx context.Context, mode GroupMode, filter FilterOpts) ([]GroupNode, error) {
+	done := startupObservation(ctx).begin("groups")
+	result, err := e.svc.ListGroups(mode, filter)
+	done(err == nil)
+	return result, err
 }
 
 // ListSessions returns session metadata for one group.
-func (e *Engine) ListSessions(_ context.Context, groupKey string, filter FilterOpts, sort SortOpts) ([]model.SessionMeta, error) {
-	return e.svc.ListSessions(groupKey, filter, sort)
+func (e *Engine) ListSessions(ctx context.Context, groupKey string, filter FilterOpts, sort SortOpts) ([]model.SessionMeta, error) {
+	done := startupObservation(ctx).begin("sessions")
+	result, err := e.svc.ListSessions(groupKey, filter, sort)
+	done(err == nil)
+	return result, err
 }
 
 // AgentCounts returns per-agent session totals across the filtered catalog.
-func (e *Engine) AgentCounts(_ context.Context, filter FilterOpts) (map[string]int, error) {
-	return e.svc.AgentCounts(filter)
+func (e *Engine) AgentCounts(ctx context.Context, filter FilterOpts) (map[string]int, error) {
+	done := startupObservation(ctx).begin("counts")
+	result, err := e.svc.AgentCounts(filter)
+	done(err == nil)
+	return result, err
 }
 
 // GetSessionMeta returns the catalog metadata for one session.

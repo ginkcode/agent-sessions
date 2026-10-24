@@ -1,6 +1,6 @@
 # Startup responsiveness — priority package before Milestone 2
 
-Status: ST-00 documentation complete 2026-10-24; ST-01…ST-05 pending.
+Status: ST-00 documentation and ST-01 measurement complete 2026-10-24; ST-02…ST-05 pending.
 [Sequential task briefs](../tasks/performance-startup.md) ·
 [Performance roadmap](performance.md) · [Task tracker](../../TASKS.md#startup-priority-package).
 
@@ -18,7 +18,8 @@ fallback decisions and native GUI QA limitations remain unchanged. Startup is a
 separate six-task package, not completion of those blocked tasks or all of M4.
 
 ST-00 changes documentation only. No runtime implementation, measurement, app
-launch, packaging or commit is claimed by completing it. Execute ST-01 through
+launch or packaging is claimed by completing it. The reviewed ST-00 documentation
+was committed separately as `0d734ad`. Execute ST-01 through
 ST-05 sequentially, with review of each task before proceeding. Split any task
 that will exceed four developer hours before coding; estimates include tests.
 Milestone 2 still requires its own design and task breakdown after this package.
@@ -45,6 +46,17 @@ Milestone 2 still requires its own design and task breakdown after this package.
   explicit startup completion; successful empty discovery also needs a terminal
   outcome. Reuse existing cache/catalog, routing and request guards, not a new cache
   or speculative provider rewrite.
+
+## ST-01 result and next gate
+
+[Full repeated generated-startup evidence](../perf.md#st-01--full-engine-startup-baseline-2026-10-24)
+records opt-in observation, nine trials per mode, work counts and focused tests.
+ST-01 is complete without a performance intervention. ST-04 is measurement-blocked:
+~4 ms watcher setup dominates this small warm fixture, but cached publication is
+already ~2 ms and catalog reads bypass engine mu. No evidence explains the
+reported 10-second delay. Generated fanout, multi-provider and adapter/frontend
+measurement is required before selecting a safe bounded change; ST-02/03 remain
+sequential pending work. Native paint remains unmeasured.
 
 ## Readiness/status compatibility policy
 
@@ -139,7 +151,7 @@ tests in its brief, using ST-01 evidence:
 - Own cancellation and bound background work; no leaked watcher installations or
   late writes/publications after Close or restart.
 - No installs, app replacement, process termination, Windows packaging or pushes.
-  No Milestone 2 implementation. ST-00 makes no commits; subsequent reviewed task
+  No Milestone 2 implementation. ST-00 is documentation-only; reviewed task
   commits are handled separately on `feature/improve-performance` with required
   attribution, without pushing.
 

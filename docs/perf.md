@@ -1483,3 +1483,171 @@ full-byte proof. Write its design and ≤4 h task breakdown in `docs/` before co
 as for Milestone 1. Native GUI QA of the M1 changes (Go to File reopen and mutation
 freshness, concurrent transcript opens) remains unperformed and should be done
 when an app run is requested.
+
+
+## ST-01 — Full engine startup baseline (2026-10-24)
+
+**Revision/environment:** `0d734ad` plus uncommitted ST-01 observation/tests only,
+branch `feature/improve-performance`; Darwin arm64, Apple M5, Go 1.26.8,
+Node 22.23.2, npm 10.9.8. No performance intervention. This section is new
+synthetic evidence; it neither replaces M1 history nor diagnoses the reported
+roughly 10-second launch delay. No private provider stores or caches were used.
+
+### Scope and opt-in observation
+
+`engine.WithStartupObservation(ctx, engine.NewStartupObservation())` attaches an
+in-memory, concurrency-safe collector to **one startup and its query contexts**.
+Use the same context/collector for Start and the measured ListGroups, AgentCounts
+and ListSessions calls; there is no automatic transport propagation. Samples
+retain only fixed phase names, success and monotonic start/end durations since
+collector creation. No callbacks, default logging, file paths, errors or payloads.
+Collector construction is immediately before Start; fixture creation, engine
+construction, seeding and Close are excluded. DB writer open includes schema /
+integrity / recovery work; it is not a separate measurement of quick_check alone.
+`state_restore` covers NewRefresher (including persisted state reads); its success
+means construction returned, not that every provider state was valid. Bootstrap
+success similarly means the existing call returned nil, not a new discovery
+readiness contract. Runner reports may contain isolated provider errors; this
+metric does not change error semantics. Reader catalog/state restore is deliberately
+one `snapshot_catalog_state_restore` span around atomic LoadSnapshot. No snapshot
+split, mutex relocation, watcher scheduling or notification changes were made.
+`cache_role_lock` records lock selection, including unavailable-cache failure.
+
+Frontend opt-in: assign `new StartupObservation()` from
+`frontend/src/lib/startupObservation.ts` to an AppState's `startupObservation`
+before `init()`, then inspect `snapshot()` in memory. Default is null, with no
+console output or persisted setting. First accepted groups/counts and sessions
+responses are marked after stale-request guards. `usable_data` requires an
+accepted nonempty session list after groups/counts; a successful empty reply is
+not usable rows or discovery completion. It precedes optional transcript
+selection. Host reset detaches the collector; use a fresh collector for another
+hydration. Browser timings use only their own performance.now origin; never
+subtract them from backend timings. Tests exercise the real compiled store with
+generated API replies. **No frontend wall-time distribution, Wails/RPC transport,
+native window creation, paint, or GUI responsiveness was measured.**
+
+### Generated workload and method
+
+Nine sequential trials per mode (45 measured full Engine.Start lifecycles), plus
+one unmeasured full startup to seed warm cache. Real providers use explicit
+throwaway Claude/Codex/OpenCode/cache roots. Claude fixture: **256 JSONL files /
+sessions, 16 user records each, 4,096 records, 1,017,920 file bytes** in this run
+(temp-root length can change bytes on reproduction). Codex/OpenCode roots are
+explicitly nonexistent; their empty discovery is included. No real cache, native
+app, tool installation, OS-cache flush, or QA shell benchmark is involved.
+
+Cold writer uses a unique empty application cache per trial; source files and OS
+filesystem caches are already warm from fixture construction/seeding. Warm writer
+reuses seeded DB/state. Warm reader holds the real writer lock while the engine
+opens read-only; there is **no concurrently active writer process**. Disabled
+turns SQLite off. Fallback gives the cache root a generated regular file so lock
+preparation fails and Start takes its existing in-memory fallback (not a corrupt
+DB recovery benchmark). Queries run immediately after synchronous Start returns,
+groups → counts → sessions, not via UI parallel groups/counts. They can return
+empty before bootstrap. The harness polls the observation snapshot at 1 ms only
+to await completion; recorded bootstrap end is collected inside bootstrap, not
+the polling wake-up. Final catalog is checked at 256 sessions in every trial.
+
+### Distributions (milliseconds)
+
+Each cell is **min / median / p95 / max**, n=9; nearest-rank p95 is the maximum
+for this small sample. Endpoints share the per-trial collector origin, durations
+measure only the named span. Independent column percentiles must not be
+subtracted. These are advisory, not CI timing thresholds.
+
+| Full startup mode | Start duration | Bootstrap completion endpoint | First groups endpoint | First counts endpoint | First sessions endpoint |
+|---|---|---|---|---|---|
+| Cold writer | 5.177 / 5.267 / 5.951 / 5.951 | 42.774 / 44.072 / 69.233 / 69.233 | 5.179 / 5.269 / 5.954 / 5.954 | 5.179 / 5.270 / 5.954 / 5.954 | 5.180 / 5.271 / 5.954 / 5.954 |
+| Warm writer | 6.555 / 7.330 / 7.837 / 7.837 | 9.038 / 10.536 / 10.948 / 10.948 | 7.150 / 7.832 / 8.290 / 8.290 | 7.297 / 8.255 / 8.426 / 8.426 | 7.552 / 8.520 / 8.805 / 8.805 |
+| Warm reader | 5.935 / 6.540 / 7.008 / 7.008 | 7.393 / 8.309 / 9.387 / 9.387 | 6.515 / 6.951 / 7.442 / 7.442 | 6.931 / 7.331 / 8.227 / 8.227 | 7.092 / 7.578 / 8.979 / 8.979 |
+| Disabled | 0.002 / 0.002 / 0.015 / 0.015 | 13.519 / 14.910 / 15.656 / 15.656 | 0.002 / 0.003 / 0.022 / 0.022 | 0.002 / 0.003 / 0.022 / 0.022 | 0.003 / 0.003 / 0.023 / 0.023 |
+| Fallback | 0.005 / 0.007 / 0.010 / 0.010 | 13.634 / 14.759 / 18.057 / 18.057 | 0.006 / 0.008 / 0.015 / 0.015 | 0.006 / 0.009 / 0.015 / 0.015 | 0.006 / 0.009 / 0.015 / 0.015 |
+
+| Phase duration (unless endpoint specified) | Cold writer | Warm writer | Warm reader |
+|---|---|---|---|
+| DB open, writer including integrity | 1.569 / 1.598 / 2.024 / 2.024 | 0.947 / 1.062 / 1.184 / 1.184 | N/A |
+| DB open, read-only | N/A | N/A | 0.343 / 0.432 / 0.556 / 0.556 |
+| Catalog restore | 0.011 / 0.013 / 0.016 / 0.016 | 0.852 / 1.027 / 1.198 / 1.198 | Atomic span below |
+| Catalog+state snapshot | N/A | N/A | 1.860 / 2.164 / 2.399 / 2.399 |
+| Catalog publication endpoint (includes event enqueue) | 1.693 / 1.722 / 2.153 / 2.153 | 1.891 / 2.098 / 2.373 / 2.373 | 2.344 / 2.554 / 2.972 / 2.972 |
+| State restoration / refresher construction | 0.017 / 0.019 / 0.021 / 0.021 | 0.883 / 0.946 / 1.196 / 1.196 | Included in atomic snapshot |
+| Watcher setup | 3.455 / 3.523 / 3.777 / 3.777 | 3.716 / 4.063 / 4.739 / 4.739 | 3.382 / 4.002 / 4.115 / 4.115 |
+
+Work totals across all nine trials per mode (logical ScanWork, not physical I/O):
+
+| Mode | Source opens | Records | Record bytes | Checkpoint decodes | Checkpoint encodes |
+|---|---:|---:|---:|---:|---:|
+| Cold writer | 2,304 | 36,864 | 9,124,416 | 0 | 2,304 |
+| Warm writer | 0 | 0 | 0 | 2,304 | 0 |
+| Warm reader | 0 | 0 | 0 | 2,304 | 0 |
+| Disabled | 2,304 | 36,864 | 9,124,416 | 0 | 2,304 |
+| Fallback | 2,304 | 36,864 | 9,124,416 | 0 | 2,304 |
+
+Record bytes exclude JSONL newline bytes. Accounting is attached to scanner
+contexts, not FTS loads, directory discovery, OS reads or all background work.
+Indexer and cleanup are real full-startup work and may contend during trials,
+but their transcript I/O and completion are not measured here. Close waits for
+owned cache work outside the timing interval. Disabled/fallback existing runner
+lifecycle is unchanged; trials wait for scan completion before Close.
+
+### Ordering, decision and limitations
+
+Deterministic channel-barrier tests hold the provider's WatchPaths during
+synchronous watcher installation, separately for warm writer and warm reader.
+They prove cached catalog publication and successful sessions/groups/counts reads
+while Start still holds engine mu, **before watcher setup or bootstrap can finish**.
+Query methods still bypass engine mu. Observation tests check concurrent first
+success de-duplication, detached snapshots and opt-out. Repeated generated trials
+check publication → watcher setup → bootstrap start and final catalog parity.
+No elapsed-time assertion enforces that ordering. Existing commit → catalog apply
+→ event, exclusion, reader promotion and atomic LoadSnapshot logic is untouched.
+
+**ST-04 decision: measurement blocker; leave pending, do not optimize yet.**
+Watcher setup is the largest synchronous span on these tiny warm fixtures
+(~4 ms of ~7 ms), but cached data is already published (~2 ms) and independently
+queryable. This neither explains a 10-second delay nor demonstrates benefit worth
+the installation-race/lifecycle change. Cold bootstrap (~44 ms) is intentionally
+asynchronous and one-provider dominated; this workload cannot justify per-provider
+notification changes. No transport/frontend timing supports removing sequencing,
+and integrity/atomic snapshot checks must remain. The bounded next measurement
+is a generated directory-fanout sweep (same rows, increasing empty nested watch
+directories), then generated multi-provider/held-fast-slow completion cases and
+an approved generated-root adapter/frontend hydration trace. Keep fixture setup
+outside timing; compare publication, Start, queries and usable-data separately.
+If fanout makes watcher setup dominate a meaningful usability delay, scope only
+owned/deferred watcher setup with installation reconciliation and deterministic
+Close/restart/promotion tests before ST-04 coding. Otherwise continue measuring;
+no speculative performance intervention is selected. ST-02/03 may proceed in
+sequence on truthful readiness, but ST-04 remains evidence-gated.
+
+This is not a representative 300 MB history, SQLite-provider population, recursive
+watcher fanout, multi-process contention, Windows/WSL disk, cold OS cache or native
+paint baseline. The preexisting Open → LoadCatalog → Reset test is not used as
+full startup evidence. Frontend measurements are deterministic observation/guard
+coverage, not native elapsed evidence. M1 12/15 status and PF-07/08/10 blockers
+are unchanged.
+
+### Reproduction and checks
+
+From repository root, using installed tools only:
+
+```sh
+AS_STARTUP_BASELINE=1 go test ./internal/engine -run '^TestStartup' -count=1 -v
+AS_STARTUP_BASELINE=1 go test -race ./internal/engine -run 'TestStartup|TestSharedCache_|Test.*(ClearCache|Forget|Retire)' -count=1
+go test -race ./internal/index ./internal/watch
+go vet ./internal/engine
+(cd frontend && npm test && npm run check && npm run build)
+git diff --check
+```
+
+Recorded checks: startup repeated baseline PASS; engine startup/shared-cache/
+exclusion focused race PASS (`11.224s`, final rerun); index/watch race PASS (`36.847s` /
+`3.887s`); engine vet PASS. Frontend tests **680/680 PASS** (`7.832s`, final rerun, including the
+stale-reply test); check **0 errors, 1 existing
+ignoreDeprecations warning**; production build PASS (existing >500 kB chunk
+warning). Startup-specific frontend coverage is 3 tests; the test API fixture
+was corrected to use a proxy because the compiled module is cached between tests.
+No frontend lint script/configured lint executable is present; TypeScript/Svelte
+checks and production build cover affected frontend code. No full-repository Go
+tests, native app, remote host, Windows packaging or GUI
+paint check was run for ST-01. No tools installed; no commit or push made.

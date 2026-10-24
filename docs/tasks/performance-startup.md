@@ -1,6 +1,6 @@
 # Startup responsiveness — sequential task briefs
 
-Status: **1/6 complete** 2026-10-24: ST-00 complete; ST-01…ST-05 pending.
+Status: **2/6 complete** 2026-10-24: ST-00/ST-01 complete; ST-02…ST-05 pending.
 [Plan and status/compatibility contract](../plan/performance-startup.md) ·
 [Roadmap](../plan/performance.md) · [Tracker](../../TASKS.md#startup-priority-package).
 
@@ -8,7 +8,9 @@ This priority package precedes performance Milestone 2; it pulls forward a narro
 startup slice, not all of Milestone 4. M1 remains **12/15 complete**, PF-07
 partial/blocked, PF-08/PF-10 blocked; its historical evidence stays intact.
 The reported roughly 10-second delay is not a measured baseline and its exact
-cause is unknown. No ST-01 measurement or implementation is claimed here.
+cause is unknown. ST-01 synthetic measurement is recorded in
+[../perf.md](../perf.md#st-01--full-engine-startup-baseline-2026-10-24);
+the reported exact delay remains undiagnosed.
 
 ## Execution rules and index
 
@@ -22,10 +24,10 @@ Likely files are integration points, not instructions to create duplicate system
 | Task | Status | Deliverable | Estimate | Dependency |
 |---|---|---|---|---|
 | [ST-00](#st-00--document-startup-scope-and-tasks) | Complete | Scope, contracts, briefs and links | 1 h | None |
-| [ST-01](#st-01--measure-the-real-startup-path) | Pending | Full-startup baseline and intervention decision | 4 h | ST-00 |
+| [ST-01](#st-01--measure-the-real-startup-path) | Complete | Full-startup baseline; ST-04 measurement blocker | 4 h | ST-00 |
 | [ST-02](#st-02--backend-discovery-readiness-contract) | Pending | Lifecycle status snapshot/event across adapters | 4 h | ST-01 |
 | [ST-03](#st-03--truthful-frontend-startup-states) | Pending | Honest readiness and compatible empty/error states | 3 h | ST-02 |
-| [ST-04](#st-04--remove-the-measured-startup-blocker) | Pending | One evidence-selected safe optimization | ≤4 h | ST-03; ST-01 evidence |
+| [ST-04](#st-04--remove-the-measured-startup-blocker) | Pending, measurement-blocked | One evidence-selected safe optimization | ≤4 h | ST-03; ST-01 evidence |
 | [ST-05](#st-05--integrated-startup-gate) | Pending | Integration, before/after evidence and limits | 4 h | ST-04 |
 
 Total planned effort: **≤20 h**. ST-00 is documentation only.
@@ -56,7 +58,13 @@ are checked. No implementation, private data access or benchmark run.
 
 ## ST-01 — Measure the real startup path
 
-**Status:** pending. **Estimate:** 4 h. **Dependency:** ST-00.
+**Status:** complete 2026-10-24. **Estimate:** 4 h. **Dependency:** ST-00.
+
+**Evidence:** [full startup baseline](../perf.md#st-01--full-engine-startup-baseline-2026-10-24):
+45 generated full startups across cold/warm writer, warm reader, disabled and
+fallback; opt-in backend/frontend content-free observations; deterministic
+writer/reader watcher barriers, focused race and frontend checks. No optimization
+or native paint claim. ST-04 remains measurement-blocked; sequential ST-02 is next.
 
 **Likely files:** `internal/engine/{engine,cache}.go` and startup tests,
 `internal/index`/`internal/watch` test seams, frontend API/store tests,
@@ -139,11 +147,18 @@ Native GUI paint/layout remains unverified unless separately exercised.
 
 ## ST-04 — Remove the measured startup blocker
 
-**Status:** pending, evidence-gated. **Estimate:** ≤4 h.
+**Status:** pending, measurement-blocked. **Estimate:** ≤4 h.
 **Dependency:** ST-03 and the ST-01 measurement/decision.
 
-**Selected intervention and acceptance tests:** not selected yet; record the
-ST-01 evidence link, bounded change and specific tests here **before coding**.
+**Selected intervention:** none; measurement-blocked by ST-01 synthetic evidence
+([baseline/decision](../perf.md#st-01--full-engine-startup-baseline-2026-10-24)).
+Warm watcher setup (~4 ms) dominates synchronous setup on this tiny fixture but
+publication (~2 ms) already precedes it and queries bypass engine mu. No measured
+10-second delay, transport/frontend bottleneck, or meaningful multi-provider
+notification delay supports an intervention. Before coding, run a generated watch
+directory-fanout sweep and fast/slow provider cases, then approved generated-root
+adapter/frontend hydration measurements; keep fixture creation excluded. Select
+only the demonstrated blocker and its deterministic lifecycle/ordering tests.
 Do not assume synchronous watchers explain the reported delay.
 
 Choose **one**, not every candidate:

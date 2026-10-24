@@ -24,6 +24,7 @@ import {
 import { nextSelectionAfterDelete, refsEqual } from '../manage';
 import { isDisconnectedError, isStaleReply } from '../link';
 import { NavHistory, type NavEntry } from '../navHistory';
+import type { StartupObservation } from '../startupObservation';
 
 // How a selection change is recorded in the back/forward history: as a new
 // place, as an arrow-key step, as an update of the current place, or not at
@@ -75,6 +76,8 @@ export class AppState {
   // the full list itself, so callers skip their own list load and a
   // vanished group costs one fetch instead of two.
   private staleGroupReloaded = false;
+  // Opt-in startup timing; null in production unless a caller supplies it.
+  startupObservation: StartupObservation | null = null;
 
   async init(): Promise<void> {
     this.collapsedKeys = loadCollapsedKeys(this.targetHost);
@@ -331,6 +334,7 @@ export class AppState {
       this.groups = groups;
       this.agentCounts = counts;
       this.defaultCollapsed = defaultCollapsedKeys(groups);
+      this.startupObservation?.data('groups_counts', groups.length > 0);
       // A narrowing filter hides nodes that still exist, so only prune
       // toggles for vanished nodes against the unfiltered tree. An empty
       // tree (e.g. before the first scan) is not evidence that nodes vanished.
@@ -389,6 +393,7 @@ export class AppState {
       if (!this.sessionsRequests.isCurrent(id)) return;
       this.sessions = sessions;
       this.error = null;
+      this.startupObservation?.data('sessions', sessions.length > 0);
 
       // Auto-select first session if none is selected
       if (!this.selectedSessionRef && this.sessions.length > 0) {
@@ -403,6 +408,8 @@ export class AppState {
   }
 
   async reset(host?: string): Promise<void> {
+    // A startup collector belongs to one hydration/host, not later navigation.
+    this.startupObservation = null;
     // Drop a header load still in flight for the previous backend.
     this.sessionMetaRequests.next();
     this.targetHost = host;
