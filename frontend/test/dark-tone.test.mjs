@@ -47,3 +47,22 @@ test('command block exception is screen-dark only and editor uses shared surface
   assert.match(editor, /backgroundColor: 'var\(--bg-primary\)'/);
   assert.match(editor, /backgroundColor: 'var\(--bg-secondary\)'/);
 });
+
+test('session count tooltip is a readable dark surface in dark mode', () => {
+  const tooltip = source('../src/lib/components/sessionlist/CountTooltip.svelte');
+  const dark = tokens('[data-theme="dark"]');
+  const light = tokens(':root {');
+  const contrast = (a, b) => (Math.max(luminance(a), luminance(b)) + 0.05) / (Math.min(luminance(a), luminance(b)) + 0.05);
+  // Light mode keeps the inverted chip; its role colors read on dark text-primary.
+  assert.match(tooltip, /\.count-tooltip\s*\{[^}]*background-color: var\(--text-primary\);[^}]*color: var\(--bg-primary\);/);
+  for (const role of ['#60a5fa', '#a78bfa', '#34d399', '#f87171']) assert.ok(contrast(role, light['--text-primary']) >= 4.5, role);
+  const screenDark = tooltip.slice(tooltip.indexOf('@media screen'));
+  assert.match(screenDark, /:global\(\[data-theme="dark"\]\) \.count-tooltip\s*\{\s*background-color: var\(--bg-tertiary\);\s*color: var\(--text-primary\);\s*border: 1px solid var\(--border-color\);/);
+  const roles = { user: '#93c5fd', assistant: '#c4b5fd', errors: '#fca5a5' };
+  for (const [role, color] of Object.entries(roles)) {
+    assert.match(screenDark, new RegExp(`\\[data-theme="dark"\\]\\) \\.count-item\\.${role}\\s*\\{\\s*color: ${color};`));
+  }
+  for (const color of [...Object.values(roles), '#34d399', dark['--text-primary']]) {
+    assert.ok(contrast(color, dark['--bg-tertiary']) >= 4.5, `${color} on dark tooltip`);
+  }
+});

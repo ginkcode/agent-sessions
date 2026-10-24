@@ -56,4 +56,27 @@
   .count-item.errors {
     color: #f87171;
   }
+
+  /* The inverted chip would be light in dark mode; use an elevated dark
+     surface with role tints that stay readable on it. */
+  @media screen {
+    :global([data-theme="dark"]) .count-tooltip {
+      background-color: var(--bg-tertiary);
+      color: var(--text-primary);
+      border: 1px solid var(--border-color);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.45);
+    }
+
+    :global([data-theme="dark"]) .count-item.user {
+      color: #93c5fd;
+    }
+
+    :global([data-theme="dark"]) .count-item.assistant {
+      color: #c4b5fd;
+    }
+
+    :global([data-theme="dark"]) .count-item.errors {
+      color: #fca5a5;
+    }
+  }
 </style>

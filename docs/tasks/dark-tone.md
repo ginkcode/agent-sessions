@@ -6,6 +6,25 @@ should retain lighter/darker surface layers, equivalent to the light-mode hierar
 The native title bar remains OS-managed; its appearance can vary with focus and
 system settings.
 
+## DT-04 — Session-list count tooltip (complete)
+
+Report: hovering a session row's message count in dark mode shows a light chip
+("user N · assistant N · tool calls N"). The tooltip inverted the theme
+(`--text-primary` background), which suits light mode but yields a #f2f2f2 chip
+in dark mode with pastel role colors at ~1.7–2.5:1 contrast.
+
+Keep the light-mode inverted chip unchanged. In screen dark mode, render it as an
+elevated dark surface: `--bg-tertiary` background, `--text-primary` text, a
+`--border-color` hairline and a deeper shadow. Lighten the role colors only in
+dark mode so each is at least 4.5:1 on #383837 (user #93c5fd, assistant #c4b5fd,
+tool calls #34d399, errors #fca5a5). Add a regression test for the override and
+the contrast; run frontend tests, check, build and diff checks.
+
+Verification: frontend 728/728 PASS; check 0 errors (existing tsconfig
+warning); build PASS (existing chunk-size warning); diff check clean. The test
+asserts the light chip is unchanged and readable, the screen-dark override, and
+≥4.5:1 for every role tint and text on #383837. Native appearance not exercised.
+
 ## DT-03 — Restore layered surfaces (complete)
 
 Clarification: use #242423 for the primary content/terminal canvas, #2c2c2b for
