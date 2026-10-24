@@ -2,6 +2,7 @@ package index
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"html"
 	"sort"
@@ -19,6 +20,9 @@ type SearchFilter struct {
 	// Dir is a normalized absolute path prefix; both cwd and repo root are
 	// matched at path boundaries.
 	Dir string `json:"dir,omitempty"`
+	// Path keeps sessions whose cwd or repo root contains it, ignoring
+	// case: the session list's path filter, so partial text works.
+	Path string `json:"path,omitempty"`
 	// Limit clamps to 1..100 (default 30).
 	Limit int `json:"limit,omitempty"`
 }
@@ -30,6 +34,8 @@ type SearchHit struct {
 	Snippet      string           `json:"snippet"`      // HTML-escaped; only <mark> is allowed
 	Score        float64          `json:"score"`
 	Kind         string           `json:"kind"` // title | text | reasoning | tool
+	// CWD is the session's working directory, so a hit says where it is from.
+	CWD string `json:"cwd,omitempty"`
 }
 
 // searchLimits bound user input before it reaches SQLite.
@@ -191,7 +197,17 @@ func (d *DB) Search(ctx context.Context, query string, filter SearchFilter) ([]S
 		return []SearchHit{}, nil
 	}
 
-	hits, err := d.searchRows(ctx, parsed.match, agents, dir, limit*searchCandidateFactor)
+	var dirs []string
+	if path := strings.ToLower(strings.TrimSpace(filter.Path)); path != "" {
+		if dirs, err = d.dirsContaining(ctx, path); err != nil {
+			return nil, err
+		}
+		if len(dirs) == 0 {
+			return []SearchHit{}, nil
+		}
+	}
+
+	hits, err := d.searchRows(ctx, parsed.match, agents, dir, dirs, limit*searchCandidateFactor)
 	if err != nil {
 		return nil, err
 	}
@@ -237,9 +253,35 @@ type searchRow struct {
 	updatedAt int64
 }
 
+// dirsContaining lists the indexed cwd and repo root values containing path,
+// which is lowercase. It matches in Go, as the session list does, because
+// SQLite only folds ASCII case.
+func (d *DB) dirsContaining(ctx context.Context, path string) ([]string, error) {
+	if d.db == nil {
+		return nil, errDBClosed
+	}
+	rows, err := d.db.QueryContext(ctx, `SELECT cwd FROM sessions WHERE cwd != '' UNION SELECT repo_root FROM sessions WHERE repo_root != ''`)
+	if err != nil {
+		return nil, fmt.Errorf("index: search directories: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	var out []string
+	for rows.Next() {
+		var dir string
+		if err := rows.Scan(&dir); err != nil {
+			return nil, fmt.Errorf("index: scan search directory: %w", err)
+		}
+		if strings.Contains(strings.ToLower(dir), path) {
+			out = append(out, dir)
+		}
+	}
+	return out, rows.Err()
+}
+
 // searchRows executes the parameterized FTS query. User text only ever
-// reaches SQLite as a bound argument.
-func (d *DB) searchRows(ctx context.Context, match string, agents []model.AgentID, dir string, limit int) ([]searchRow, error) {
+// reaches SQLite as a bound argument. A non-nil dirs keeps sessions whose cwd
+// or repo root is one of them.
+func (d *DB) searchRows(ctx context.Context, match string, agents []model.AgentID, dir string, dirs []string, limit int) ([]searchRow, error) {
 	if d.db == nil {
 		return nil, errDBClosed
 	}
@@ -251,7 +293,7 @@ func (d *DB) searchRows(ctx context.Context, match string, agents []model.AgentI
 	sb.WriteString(`
 SELECT d.ref, d.message_index, d.kind,
        snippet(fts_messages, 0, char(1), char(2), '…', 16) AS excerpt,
-       bm25(fts_messages) AS lexical, s.updated_at
+       bm25(fts_messages) AS lexical, s.updated_at, s.cwd
 FROM fts_messages
 JOIN fts_docs AS d ON d.rowid = fts_messages.rowid
 JOIN sessions AS s ON s.ref = d.ref
@@ -282,6 +324,16 @@ WHERE fts_messages MATCH ?
 		sb.WriteString(" AND (s.cwd" + equal + " OR s.cwd" + child + " OR s.repo_root" + equal + " OR s.repo_root" + child + ")")
 		args = append(args, dir, prefix, dir, prefix)
 	}
+	if dirs != nil {
+		// One JSON argument, so no directory count can exceed SQLite's
+		// bound-parameter limit.
+		list, err := json.Marshal(dirs)
+		if err != nil {
+			return nil, err
+		}
+		sb.WriteString(" AND (s.cwd IN (SELECT value FROM json_each(?)) OR s.repo_root IN (SELECT value FROM json_each(?)))")
+		args = append(args, string(list), string(list))
+	}
 	sb.WriteString(" ORDER BY lexical ASC, s.updated_at DESC LIMIT ?")
 	args = append(args, limit)
 
@@ -295,7 +347,7 @@ WHERE fts_messages MATCH ?
 	for rows.Next() {
 		var r searchRow
 		var refKey, kind, excerpt string
-		if err := rows.Scan(&refKey, &r.hit.MessageIndex, &kind, &excerpt, &r.lexical, &r.updatedAt); err != nil {
+		if err := rows.Scan(&refKey, &r.hit.MessageIndex, &kind, &excerpt, &r.lexical, &r.updatedAt, &r.hit.CWD); err != nil {
 			return nil, fmt.Errorf("index: scan search row: %w", err)
 		}
 		ref, err := parseFTSRef(refKey)

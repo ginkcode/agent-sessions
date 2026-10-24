@@ -8,6 +8,8 @@ export interface SessionRef {
 export interface SearchFilter {
   agents?: string[];
   dir?: string;
+  /** Partial cwd or repo root text, matched like the session list's path filter. */
+  path?: string;
   limit?: number;
 }
 
@@ -21,6 +23,8 @@ export interface SearchHit {
   snippet: string;
   score: number;
   kind: SearchHitKind;
+  /** The session's working directory; absent from older servers. */
+  cwd?: string;
 }
 
 /**
@@ -808,6 +812,8 @@ export interface HostCapabilities {
   export: boolean;
   import: boolean;
   search: boolean;
+  /** Absent on older servers, which only filter search by an absolute directory. */
+  searchPath?: boolean;
 }
 
 export interface ConnectionState {

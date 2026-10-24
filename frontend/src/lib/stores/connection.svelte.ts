@@ -42,6 +42,7 @@ const LOCAL_CAPABILITIES: HostCapabilities = {
   export: true,
   import: true,
   search: true,
+  searchPath: true,
 };
 
 export class ConnectionStore {

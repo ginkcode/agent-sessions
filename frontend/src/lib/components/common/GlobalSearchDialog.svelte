@@ -3,7 +3,8 @@
   import type { SearchHit } from '../../types';
   import { appState } from '../../stores/appState.svelte';
   import { search } from '../../stores/search.svelte';
-  import { progressIncomplete, safeSnippetHTML, searchFilterFromApp } from '../../search';
+  import { connectionStore } from '../../stores/connection.svelte';
+  import { progressIncomplete, safeSnippetHTML, searchFilterFromApp, searchPathScoped } from '../../search';
   import AgentIcon from './AgentIcon.svelte';
   import LoadingSpinner from './LoadingSpinner.svelte';
 
@@ -11,11 +12,13 @@
   let resultsEl: HTMLElement | null = $state(null);
   let restoreFocus: HTMLElement | null = null;
   let wasOpen = false;
+  let pathText = $derived(Boolean(connectionStore.capabilities.searchPath));
+  let pathScoped = $derived(searchPathScoped(appState.filter.path, pathText));
 
   $effect(() => {
     // Search follows the same agent/path scope as the catalog. The filter is
     // passed separately so snippets and ranking remain backend-owned.
-    const filter = searchFilterFromApp(appState.filter.agent, appState.filter.path);
+    const filter = searchFilterFromApp(appState.filter.agent, appState.filter.path, 30, pathText);
     // setFilter reads the query; only filter changes should re-run this.
     untrack(() => search.setFilter(filter));
   });
@@ -46,10 +49,19 @@
     return `global-search-result-${index}`;
   }
 
-  function sessionTitle(hit: SearchHit): string {
+  function hitSession(hit: SearchHit) {
     return appState.sessions.find(
       (session) => session.ref.agent === hit.ref.agent && session.ref.id === hit.ref.id
-    )?.title || hit.ref.id;
+    );
+  }
+
+  function sessionTitle(hit: SearchHit): string {
+    return hitSession(hit)?.title || hit.ref.id;
+  }
+
+  /** Older servers send no cwd; the loaded session list may still know it. */
+  function sessionDir(hit: SearchHit): string {
+    return hit.cwd || hitSession(hit)?.cwd || '';
   }
 
   function hitLabel(hit: SearchHit): string {
@@ -138,12 +150,17 @@
         <button type="button" class="close-button" aria-label="Close search" title="Close search" onclick={() => search.close()}>×</button>
       </header>
 
-      {#if appState.filter.agent || appState.filter.path}
+      {#if appState.filter.agent || (appState.filter.path && pathScoped)}
         <div class="active-scope">
           Searching within
           {#if appState.filter.agent}<strong>{appState.filter.agent}</strong>{/if}
-          {#if appState.filter.agent && appState.filter.path}<span>·</span>{/if}
-          {#if appState.filter.path}<strong title={appState.filter.path}>{appState.filter.path}</strong>{/if}
+          {#if appState.filter.agent && appState.filter.path && pathScoped}<span>·</span>{/if}
+          {#if appState.filter.path && pathScoped}<strong title={appState.filter.path}>{appState.filter.path}</strong>{/if}
+        </div>
+      {/if}
+      {#if !pathScoped}
+        <div class="index-warning" role="status">
+          This host can only limit search to a full folder path, so results include every folder, not just ones matching “{appState.filter.path}”. Update the server and reconnect to search by partial path.
         </div>
       {/if}
 
@@ -201,6 +218,7 @@
                   <strong title={sessionTitle(hit)}>{sessionTitle(hit)}</strong>
                   <span>{hitLabel(hit)}</span>
                 </span>
+                {#if sessionDir(hit)}<span class="result-dir" title={sessionDir(hit)}>{sessionDir(hit)}</span>{/if}
                 <span class="result-snippet">{@html safeSnippetHTML(hit.snippet)}</span>
               </span>
             </button>
@@ -356,6 +374,7 @@
   .result-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
   .result-heading strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.8rem; }
   .result-heading > span { flex: none; color: var(--text-muted); font-size: 0.68rem; }
+  .result-dir { margin-top: -3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-muted); font-family: var(--font-mono); font-size: 0.66rem; }
   .result-snippet { color: var(--text-secondary); font-size: 0.8rem; line-height: 1.45; overflow-wrap: anywhere; }
   .result-snippet :global(mark) { padding: 0 1px; border-radius: 2px; background: rgba(245, 158, 11, 0.34); color: var(--text-primary); }
 

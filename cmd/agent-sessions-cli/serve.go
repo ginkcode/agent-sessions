@@ -97,6 +97,7 @@ func serveCmd(ctx context.Context, args []string, resolveRoots func() (paths.Roo
 			Export:          true,
 			Import:          true,
 			Search:          true,
+			SearchPath:      true,
 			SaveFile:        true,
 			AddFile:         true,
 			CreateDirectory: true,

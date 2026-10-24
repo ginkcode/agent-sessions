@@ -68,6 +68,9 @@ type Capabilities struct {
 	Export         bool `json:"export"`
 	Import         bool `json:"import"`
 	Search         bool `json:"search"`
+	// SearchPath supports SearchFilter.Path, partial text matched like the
+	// session list's path filter. Older servers only take an absolute Dir.
+	SearchPath bool `json:"searchPath,omitempty"`
 	// SaveFile: the file viewer may save edited files. Older servers leave
 	// it false, and their files stay read-only.
 	SaveFile bool `json:"saveFile,omitempty"`

@@ -8,6 +8,7 @@ import {
   progressIncomplete,
   safeSnippetHTML,
   searchFilterFromApp,
+  searchPathScoped,
   searchTerms,
 } from '../src/lib/search.ts';
 import {
@@ -110,7 +111,7 @@ test('search helpers preserve global jump indexes and active filters', () => {
   assert.equal(jumpOffset(10), 0);
   assert.equal(jumpOffset(9000), 8980);
   assert.deepEqual(searchFilterFromApp('codex', '/repo', 15), {
-    agents: ['codex'], dir: '/repo', limit: 15,
+    agents: ['codex'], path: '/repo', limit: 15,
   });
   assert.deepEqual(searchTerms('agent:codex "exact phrase" alpha'), ['exact phrase', 'alpha']);
   assert.equal(progressIncomplete({ done: 4, pending: 1, failed: 0, running: false }), true);
@@ -119,12 +120,30 @@ test('search helpers preserve global jump indexes and active filters', () => {
 
 test('searchFilterFromApp passes Windows directories through unchanged', () => {
   for (const dir of WINDOWS_DIRS) {
-    assert.deepEqual(searchFilterFromApp('codex', dir, 15), { agents: ['codex'], dir, limit: 15 });
+    assert.deepEqual(searchFilterFromApp('codex', dir, 15), { agents: ['codex'], path: dir, limit: 15 });
+    assert.deepEqual(searchFilterFromApp('codex', dir, 15, false), { agents: ['codex'], dir, limit: 15 });
   }
   // Only surrounding whitespace is trimmed; inner spaces and separators stay.
   assert.deepEqual(searchFilterFromApp(undefined, '  C:\\Program Files\\app\\  '), {
-    dir: 'C:\\Program Files\\app\\', limit: 30,
+    path: 'C:\\Program Files\\app\\', limit: 30,
   });
+});
+
+test('partial path text scopes search like the session list, or is reported unscoped on older hosts', async () => {
+  assert.deepEqual(searchFilterFromApp(undefined, ' agent '), { path: 'agent', limit: 30 });
+  assert.deepEqual(searchFilterFromApp(undefined, 'agent', 30, false), { limit: 30 });
+  assert.equal(searchPathScoped('agent', true), true);
+  assert.equal(searchPathScoped('agent', false), false);
+  assert.equal(searchPathScoped('/repo', false), true);
+  assert.equal(searchPathScoped('  ', false), true);
+  const backend = new MockBackendAPI();
+  const [first] = backend.sessions;
+  const needle = first.cwd.split('/').filter(Boolean).at(-1).slice(1, 4).toUpperCase();
+  const word = (first.title.match(/[A-Za-z]{4,}/) ?? [])[0];
+  const hits = await backend.search(word, { path: needle });
+  assert.ok(hits.length > 0);
+  assert.ok(hits.every(h => h.cwd === backend.sessions.find(s => s.ref.id === h.ref.id).cwd));
+  assert.ok(hits.every(h => h.cwd.toLowerCase().includes(needle.toLowerCase())));
 });
 
 test('MockBackendAPI path filter matches Windows cwd case-insensitively', async () => {

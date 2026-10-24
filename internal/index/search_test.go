@@ -155,6 +155,11 @@ func TestSearchQueryParserAndSafety(t *testing.T) {
 	if len(hits) == 0 {
 		t.Errorf("expected hit with matching Dir filter")
 	}
+	for _, h := range hits {
+		if h.CWD != "/home/user/project" {
+			t.Errorf("hit CWD = %q, want the session's directory", h.CWD)
+		}
+	}
 	hits, err = db.Search(ctx, "SQLite", index.SearchFilter{Dir: "/other/dir"})
 	if err != nil {
 		t.Fatalf("Search with non-matching Dir filter: %v", err)
@@ -174,6 +179,23 @@ func TestSearchQueryParserAndSafety(t *testing.T) {
 		if got := len(hits) > 0; got != want {
 			t.Errorf("Search with ancestor Dir %q matched = %t, want %t", dir, got, want)
 		}
+	}
+	// Path is partial, case-insensitive text, like the session list's filter.
+	for path, want := range map[string]bool{
+		"proj": true, "USER/PRO": true, " ject ": true, "/home/user/project": true,
+		"other": false, "project/sub": false,
+	} {
+		hits, err = db.Search(ctx, "SQLite", index.SearchFilter{Path: path})
+		if err != nil {
+			t.Fatalf("Search with Path %q: %v", path, err)
+		}
+		if got := len(hits) > 0; got != want {
+			t.Errorf("Search with Path %q matched = %t, want %t", path, got, want)
+		}
+	}
+	hits, err = db.Search(ctx, "SQLite", index.SearchFilter{Path: "proj", Dir: "/other"})
+	if err != nil || len(hits) != 0 {
+		t.Errorf("Path and Dir both apply: hits=%d err=%v", len(hits), err)
 	}
 }
 

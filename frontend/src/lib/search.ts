@@ -58,15 +58,33 @@ export function progressIncomplete(progress: FTSProgress | null): boolean {
   return Boolean(progress && (progress.running || progress.pending > 0));
 }
 
+/**
+ * The session list's path filter is partial, case-insensitive text. Hosts
+ * that support it match search the same way; older ones only take an absolute
+ * directory, so other text cannot scope their search (see searchPathScoped).
+ */
 export function searchFilterFromApp(
   agent?: string,
-  dir?: string,
-  limit = 30
+  path?: string,
+  limit = 30,
+  pathText = true
 ): SearchFilter {
   const filter: SearchFilter = { limit };
   if (agent) filter.agents = [agent];
-  if (dir?.trim()) filter.dir = dir.trim();
+  const text = path?.trim();
+  if (text && pathText) filter.path = text;
+  else if (text && isAbsolutePath(text)) filter.dir = text;
   return filter;
+}
+
+/** Whether searchFilterFromApp can apply this path filter on the host. */
+export function searchPathScoped(path: string | undefined, pathText: boolean): boolean {
+  const text = path?.trim();
+  return !text || pathText || isAbsolutePath(text);
+}
+
+function isAbsolutePath(path: string): boolean {
+  return path.startsWith('/') || /^[A-Za-z]:[\\/]/.test(path) || path.startsWith('\\\\');
 }
 
 export function jumpOffset(messageIndex: number): number {

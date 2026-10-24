@@ -420,12 +420,14 @@ export class MockBackendAPI extends MockCodeDiagnostics {
     if (!needle) return [];
     const agents = filter.agents?.length ? new Set(filter.agents) : null;
     const dir = normalizeSearchDir(filter.dir);
+    const path = filter.path?.trim().toLowerCase();
     const limit = Math.max(1, Math.min(100, filter.limit || 30));
     const hits: SearchHit[] = [];
 
     for (const session of this.sessions) {
       if (agents && !agents.has(session.ref.agent)) continue;
       if (dir && !isInsideDir(session.cwd, dir)) continue;
+      if (path && !session.cwd.toLowerCase().includes(path)) continue;
 
       const titleAt = session.title.toLocaleLowerCase().indexOf(needle);
       if (titleAt >= 0) {
@@ -435,6 +437,7 @@ export class MockBackendAPI extends MockCodeDiagnostics {
           snippet: highlightedSnippet(session.title, titleAt, needle.length),
           score: 100 - titleAt,
           kind: 'title',
+          cwd: session.cwd,
         });
       }
 
@@ -449,6 +452,7 @@ export class MockBackendAPI extends MockCodeDiagnostics {
           snippet: highlightedSnippet(searchable.text, at, needle.length),
           score: 50 - at / 100,
           kind: searchable.kind,
+          cwd: session.cwd,
         });
       });
     }

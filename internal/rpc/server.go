@@ -306,6 +306,7 @@ func (s *Server) initialize(serveCtx context.Context, req Request, starter Start
 		Export:      true,
 		Import:      true,
 		Search:      true,
+		SearchPath:  true,
 		Blame:       true,
 		GitChanges:  true,
 		GitDiff:     true,
