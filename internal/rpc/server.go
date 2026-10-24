@@ -321,6 +321,7 @@ func (s *Server) initialize(serveCtx context.Context, req Request, starter Start
 		// SaveFile and ReplaceFiles stay off without a starter, which is a
 		// test setup.
 	}
+	prepareDone := engine.BeginStartupPhase(serveCtx, "rpc_prepare")
 	var roots paths.Roots
 	var start func(context.Context) error
 	switch {
@@ -356,7 +357,10 @@ func (s *Server) initialize(serveCtx context.Context, req Request, starter Start
 	s.gitWrite = caps.GitWrite
 	s.gitSync = caps.GitSync
 	s.mu.Unlock()
+	prepareDone(true)
+	identityDone := engine.BeginStartupPhase(serveCtx, "rpc_diagnostics_identity")
 	host := s.initializeDiagnostics(serveCtx, &caps)
+	identityDone(true)
 	if start != nil {
 		if err := s.startPrepared(serveCtx, start); err != nil {
 			return InitializeResult{}, err

@@ -44,6 +44,12 @@ func startupObservation(ctx context.Context) *StartupObservation {
 	return o
 }
 
+// BeginStartupPhase records an opt-in phase on this process's context-local
+// observer. It is a no-op without observation; callers must use content-free names.
+func BeginStartupPhase(ctx context.Context, phase string) func(bool) {
+	return startupObservation(ctx).begin(phase)
+}
+
 func (o *StartupObservation) begin(phase string) func(bool) {
 	if o == nil {
 		return func(bool) {}
@@ -55,7 +61,7 @@ func (o *StartupObservation) begin(phase string) func(bool) {
 		defer o.mu.Unlock()
 		// Query observations describe only the first successful response.
 		switch phase {
-		case "groups", "counts", "sessions":
+		case "groups", "counts", "sessions", "client_groups", "client_counts", "client_sessions":
 			if !ok || o.first[phase] {
 				return
 			}

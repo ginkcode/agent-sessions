@@ -44,7 +44,8 @@ func TestPreparedRealEngineCatalogDuringStartup(t *testing.T) {
 	fake := providertest.NewFake(model.AgentClaude, "generated")
 	fake.DetectionData.Present = true
 	watch := &remoteStartupWatch{Provider: fake, entered: make(chan struct{}), release: make(chan struct{})}
-	e := engine.NewEngine(engine.WithRoots(roots), engine.WithService(engine.NewService(scan.NewCatalog(), provider.Set{watch})))
+	e := engine.NewEngine(engine.WithRoots(roots), engine.WithService(engine.NewService(scan.NewCatalog(), provider.Set{watch})),
+		engine.WithRemoteCodeDiagnostics("ssh"), engine.WithFixtureMachineIdentity("generated-machine"))
 	defer func() { _ = e.Close() }()
 	s, c, cleanup := setupPipePair(nil)
 	defer cleanup()
@@ -53,8 +54,12 @@ func TestPreparedRealEngineCatalogDuringStartup(t *testing.T) {
 	s.SetPreparer(func(context.Context) (PreparedBackend, error) {
 		return PreparedBackend{Backend: e, Roots: roots, Start: e.Start}, nil
 	})
-	if _, err := c.Initialize(ctx, InitializeRequest{}); err != nil {
+	res, err := c.Initialize(ctx, InitializeRequest{})
+	if err != nil {
 		t.Fatal(err)
+	}
+	if !res.Capabilities.CodeDiagnostics || res.CodeDiagnosticsHostID == "" {
+		t.Fatalf("remote identity/capability lost: %+v", res)
 	}
 	select {
 	case <-watch.entered:

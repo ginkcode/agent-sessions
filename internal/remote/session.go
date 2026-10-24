@@ -51,14 +51,18 @@ func StartSession(ctx context.Context, alias string, opts SSHOptions, clientEnv 
 			return nil, err
 		}
 	}
+	probeDone := engine.BeginStartupPhase(ctx, "remote_probe")
 	probe, err := ProbeHost(ctx, alias, opts, version.Current())
+	probeDone(err == nil)
 	if err != nil {
 		return nil, err
 	}
 
+	chooseDone := engine.BeginStartupPhase(ctx, "remote_bundle_selection")
 	bin, bundle := chooseServer(probe)
+	chooseDone(bin != "" || bundle != "")
 	if bin == "" {
-		bin, err = DeployServer(ctx, alias, opts, probe, bundle)
+		bin, err = deployObserved(ctx, alias, opts, probe, bundle)
 		if err != nil {
 			return nil, err
 		}
@@ -69,11 +73,18 @@ func StartSession(ctx context.Context, alias string, opts SSHOptions, clientEnv 
 		return sess, err
 	}
 	// Another client's deploy pruned the build after the probe listed it.
-	bin, err = DeployServer(ctx, alias, opts, probe, bundle)
+	bin, err = deployObserved(ctx, alias, opts, probe, bundle)
 	if err != nil {
 		return nil, err
 	}
 	return startServe(ctx, alias, opts, bin, clientEnv, emitter)
+}
+
+func deployObserved(ctx context.Context, alias string, opts SSHOptions, probe *HostProbe, bundle string) (string, error) {
+	done := engine.BeginStartupPhase(ctx, "remote_deploy")
+	bin, err := DeployServer(ctx, alias, opts, probe, bundle)
+	done(err == nil)
+	return bin, err
 }
 
 // ErrServerMissing means the server binary was gone when the start script
@@ -203,7 +214,9 @@ func startServe(ctx context.Context, alias string, opts SSHOptions, bin string, 
 	// kills ssh, which ends the preface scan or the initialize call.
 	handshake := time.AfterFunc(handshakeTimeout, cancel)
 	defer handshake.Stop()
+	prefaceDone := engine.BeginStartupPhase(ctx, "remote_preface")
 	framed, err := rpc.WaitForPreface(runCtx, stdout, nonce)
+	prefaceDone(err == nil)
 	if err != nil {
 		// A script that exited on its own has ended ssh too, or soon will;
 		// its status is read before Close kills ssh.
@@ -229,11 +242,13 @@ func startServe(ctx context.Context, alias string, opts SSHOptions, bin string, 
 	// Started before initialize: the server's idle timer runs from the
 	// preface on, and starting the engine can take a while.
 	go heartbeat(runCtx, client, heartbeatInterval)
+	initializeDone := engine.BeginStartupPhase(ctx, "remote_initialize")
 	res, err := client.Initialize(runCtx, rpc.InitializeRequest{
 		ProtocolVersion: rpc.ProtocolVersion,
 		AppVersion:      version.Current(),
 		ClientEnv:       clientEnv,
 	})
+	initializeDone(err == nil)
 	if err != nil {
 		_ = client.Close()
 		_ = s.Close()

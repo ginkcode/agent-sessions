@@ -352,20 +352,26 @@ func (c *Client) Scan(ctx context.Context) error {
 }
 
 func (c *Client) ListGroups(ctx context.Context, mode engine.GroupMode, filter engine.FilterOpts) ([]engine.GroupNode, error) {
+	done := engine.BeginStartupPhase(ctx, "client_groups")
 	var out []engine.GroupNode
 	err := c.call(ctx, "listGroups", ListGroupsParams{Mode: mode, Filter: filter}, &out)
+	done(err == nil)
 	return out, err
 }
 
 func (c *Client) ListSessions(ctx context.Context, groupKey string, filter engine.FilterOpts, sort engine.SortOpts) ([]model.SessionMeta, error) {
+	done := engine.BeginStartupPhase(ctx, "client_sessions")
 	var out []model.SessionMeta
 	err := c.call(ctx, "listSessions", ListSessionsParams{GroupKey: groupKey, Filter: filter, Sort: sort}, &out)
+	done(err == nil)
 	return out, err
 }
 
 func (c *Client) AgentCounts(ctx context.Context, filter engine.FilterOpts) (map[string]int, error) {
+	done := engine.BeginStartupPhase(ctx, "client_counts")
 	var out map[string]int
 	err := c.call(ctx, "agentCounts", AgentCountsParams{Filter: filter}, &out)
+	done(err == nil)
 	return out, err
 }
 

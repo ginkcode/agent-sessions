@@ -518,7 +518,7 @@ mandatory. Generated fixtures only, no private stores or real host connections.
 | ST-07B | Complete | Atomic discovery snapshot/change subscription | ≤3 h |
 | ST-07C | Complete | Prepared RPC startup, early initialize and method gate | ≤4 h |
 | ST-07D | Complete | CLI wiring and generated real-engine integration | ≤3 h |
-| ST-07E | Pending | Opt-in content-free remote phase timing | ≤3 h |
+| ST-07E | Complete | Opt-in content-free remote phase timing | ≤3 h |
 | ST-07F | Pending | Integrated regression gate and repeated evidence | ≤3 h |
 
 Execute sequentially; commit per completed task, no push. Split oversized work
@@ -587,3 +587,10 @@ ST-07D evidence: production CLI now prepares engine ownership before tracked sta
 Real-engine generated-cache RPC test reads catalog/status with watcher setup held.
 RPC / CLI / app race suites PASS (9.217 / 2.121 / 2.891 s); changed-code lint 0 issues.
 No real remote deployment or native UI exercised.
+
+ST-07E evidence: content-free context phases cover client probe/bundle selection/
+deploy/preface/initialize, server prepare/identity/catalog wait/full startup and first
+successful remote catalog calls. Fake SSH observation tests PASS; RPC/remote race
+suites PASS (9.329 / 20.082 s), changed-code lint 0 issues. Nine-trial generated
+150 ms workload: first successful empty catalog response median 150.933 ms before /
+486 µs after; this is not useful nonempty data or real SSH latency.

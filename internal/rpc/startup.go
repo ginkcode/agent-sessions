@@ -32,7 +32,9 @@ type startupTask struct {
 	err  error // published by closing done
 }
 
-func (s *Server) startPrepared(ctx context.Context, start func(context.Context) error) error {
+func (s *Server) startPrepared(ctx context.Context, start func(context.Context) error) (err error) {
+	readyDone := engine.BeginStartupPhase(ctx, "rpc_catalog_ready_wait")
+	defer func() { readyDone(err == nil) }()
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -51,7 +53,9 @@ func (s *Server) startPrepared(ctx context.Context, start func(context.Context) 
 	s.startups.Add(1)
 	go func() {
 		defer s.startups.Done()
+		startDone := engine.BeginStartupPhase(ctx, "rpc_start")
 		task.err = start(ctx)
+		startDone(task.err == nil)
 		close(task.done)
 		if task.err != nil {
 			_ = s.Close()

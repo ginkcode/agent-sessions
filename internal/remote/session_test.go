@@ -8,12 +8,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ginkcode/agent-sessions/internal/engine"
 	"github.com/ginkcode/agent-sessions/internal/rpc"
 )
 
 func TestDialSession(t *testing.T) {
 	bin := fakeSSHPath(t, "serve", nil)
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	obs := engine.NewStartupObservation()
+	ctx, cancel := context.WithTimeout(engine.WithStartupObservation(context.Background(), obs), 10*time.Second)
 	defer cancel()
 
 	s, err := DialSession(ctx, "box", SSHOptions{Binary: bin, ControlMaster: "no"}, "/opt/agent-sessions-cli", nil, nil)
@@ -22,6 +24,13 @@ func TestDialSession(t *testing.T) {
 	}
 	defer s.Close()
 
+	seen := map[string]bool{}
+	for _, sample := range obs.Samples() {
+		seen[sample.Phase] = sample.Success
+	}
+	if !seen["remote_preface"] || !seen["remote_initialize"] {
+		t.Fatalf("missing successful handshake observations: %+v", obs.Samples())
+	}
 	if s.Client() == nil || s.InitializeResult() == nil {
 		t.Fatal("handshake did not complete")
 	}
