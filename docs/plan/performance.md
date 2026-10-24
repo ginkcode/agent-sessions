@@ -42,8 +42,9 @@ PF-03 evidence: [project listing baseline](../perf.md#pf-03--synthetic-project-l
 PF-04 evidence: [atomic transcript invalidation](../perf.md#pf-04--atomic-transcript-invalidation-2026-10-24).
 PF-05 evidence: [coalesced transcript loads](../perf.md#pf-05--coalesced-transcript-loads-2026-10-24).
 PF-06 evidence: [validated source-loading contract](../perf.md#pf-06--validated-source-loading-contract-2026-10-24).
-PF-07 partial: PF-07A accepting content-proof Load/Blob methods complete; next
-PF-07B mutation matrix and repeated evidence. M1 remains 6/15. Caller activation
+PF-07 partial: PF-07A accepting content-proof Load/Blob methods complete;
+PF-07B matrix/recovery/evidence implemented, but larger byte-heavy workloads regress.
+[Evidence and activation gate](../perf.md#pf-07b--mutation-matrix-recovery-and-larger-evidence-2026-10-24). M1 remains 6/15. Caller activation
 and checkpoint optimization remain unimplemented. [Contract feasibility constraints](../tasks/performance-m1.md#pf-06-contract-and-pf-07-feasibility)
 require conservative canonical fallback when metadata cannot prove selection freshness.
 [PF-07A evidence/limits](../perf.md#pf-07a--bounded-content-proof-and-accepting-codex-sources-2026-10-24).

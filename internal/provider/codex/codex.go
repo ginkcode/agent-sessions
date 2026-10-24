@@ -22,10 +22,11 @@ type Provider struct {
 	root string // ~/.codex or custom root, symlinks resolved
 	// configured is root as given, before symlinks (and Windows 8.3 short
 	// names) are resolved. Codex writes index paths under this form.
-	configured     string
-	git            *pathutil.GitResolver
-	sourceMu       sync.Mutex // protects the single bounded, immutable source snapshot
-	sourceSnapshot *sourceSnapshot
+	configured       string
+	git              *pathutil.GitResolver
+	sourceMu         sync.Mutex // protects the single bounded, immutable source snapshot
+	sourceSnapshot   *sourceSnapshot
+	sourceGeneration uint64 // prevents an older cold proof from replacing newer evidence
 }
 
 // New constructs a Codex session provider.

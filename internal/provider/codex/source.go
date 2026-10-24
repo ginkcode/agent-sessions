@@ -181,6 +181,10 @@ func sameProof(a, b *sourceProof) bool {
 // never hash sources. Even when proof fails, this canonical result serves the
 // current request without causing a second standalone scan.
 func (p *Provider) establishSource(ctx context.Context, ref model.SessionRef) (model.SessionMeta, error) {
+	p.sourceMu.Lock()
+	p.sourceGeneration++
+	generation := p.sourceGeneration
+	p.sourceMu.Unlock()
 	before := p.proveSources(ctx)
 	result, err := p.Scan(ctx, provider.ScanState{})
 	if err != nil {
@@ -194,9 +198,7 @@ func (p *Provider) establishSource(ctx context.Context, ref model.SessionRef) (m
 		after := p.proveSources(ctx)
 		if sameProof(before, after) {
 			snapshot := &sourceSnapshot{proof: after, canonical: canonical}
-			p.sourceMu.Lock()
-			p.sourceSnapshot = snapshot
-			p.sourceMu.Unlock()
+			p.publishSource(generation, snapshot)
 		}
 	}
 	if err := ctx.Err(); err != nil {
@@ -212,6 +214,25 @@ func (p *Provider) establishSource(ctx context.Context, ref model.SessionRef) (m
 	return meta, nil
 }
 
+// Only discard the evidence this caller actually checked. A concurrent cold
+// request may already have published a newer snapshot.
+func (p *Provider) invalidateSource(snapshot *sourceSnapshot) {
+	p.sourceMu.Lock()
+	defer p.sourceMu.Unlock()
+	if p.sourceSnapshot == snapshot {
+		p.sourceSnapshot = nil
+		p.sourceGeneration++
+	}
+}
+
+func (p *Provider) publishSource(generation uint64, snapshot *sourceSnapshot) {
+	p.sourceMu.Lock()
+	defer p.sourceMu.Unlock()
+	if p.sourceGeneration == generation {
+		p.sourceSnapshot = snapshot
+	}
+}
+
 func (p *Provider) sourceMeta(ctx context.Context, ref model.SessionRef, hint model.SessionMeta) (model.SessionMeta, error) {
 	if err := ctx.Err(); err != nil {
 		return model.SessionMeta{}, err
@@ -225,14 +246,15 @@ func (p *Provider) sourceMeta(ctx context.Context, ref model.SessionRef, hint mo
 	if snapshot == nil {
 		return p.establishSource(ctx, ref)
 	}
-	meta, ok := snapshot.canonical[ref]
-	if !ok || meta != hint {
-		return model.SessionMeta{}, provider.ErrStaleSource
-	}
 	if !sameProof(snapshot.proof, p.proveSources(ctx)) {
 		if err := ctx.Err(); err != nil {
 			return model.SessionMeta{}, err
 		}
+		p.invalidateSource(snapshot)
+		return model.SessionMeta{}, provider.ErrStaleSource
+	}
+	meta, ok := snapshot.canonical[ref]
+	if !ok || meta != hint {
 		return model.SessionMeta{}, provider.ErrStaleSource
 	}
 	if _, err := p.indexRolloutPath(meta.SourcePath); err != nil {

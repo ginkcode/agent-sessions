@@ -156,10 +156,12 @@ func TestSourceStaleReconciliation(t *testing.T) {
 					t.Skip(err)
 				}
 			}
+			blobProvider := New(p.root, nil)
+			blobProvider.sourceSnapshot = p.sourceSnapshot
 			if _, err := p.LoadFromSource(ctx, ref, hint); !errors.Is(err, provider.ErrStaleSource) {
 				t.Fatalf("load accepted stale evidence: %v", err)
 			}
-			if _, err := p.BlobFromSource(ctx, ref, hint, "rec:0:0"); !errors.Is(err, provider.ErrStaleSource) {
+			if _, err := blobProvider.BlobFromSource(ctx, ref, hint, "rec:0:0"); !errors.Is(err, provider.ErrStaleSource) {
 				t.Fatalf("blob accepted stale evidence: %v", err)
 			}
 			want, wantErr := New(p.root, nil).Load(ctx, ref)

@@ -820,3 +820,109 @@ parsing but still hashes every byte. Digest opens, actual read bytes (including
 failed proofs), discovery passes, and index reads are explicitly accounted.
 Discovery readability probes and SQLite internal page I/O remain outside digest
 byte counters, as do canonical Scan reads (tracked separately by ScanWork).
+
+## PF-07B — Mutation matrix, recovery and larger evidence (2026-10-24)
+
+Implemented the dedicated synthetic Load/Blob matrix and retained-state evidence.
+**Parent PF-07 remains partial; M1 stays 6/15 and PF-08 activation remains gated.**
+The larger byte-heavy workload is slower even on proven warm hits, so these
+results do not justify unconditional integration or a general speedup claim.
+
+Correctness review found a permanent-reuse failure: an immutable stale snapshot
+was never refreshed, including when a newly scanned hint differed from its cached
+metadata. Validation now checks proof before hint equality, compare-and-clears
+only the snapshot actually checked, and returns stale for the one canonical
+fallback. The next optional call establishes fresh before/Scan/after evidence.
+Cold publication carries a generation so an older in-flight establish cannot
+replace newer evidence; a delayed validator cannot invalidate a newer snapshot.
+Ordinary Scan and standalone Load/Blob neither invalidate nor establish proof.
+An unstable or corrupt source may still prevent proof indefinitely by design.
+There is no filesystem/SQLite atomicity claim or active caller cancellation.
+
+Dedicated coverage now includes WAL-only title updates with an open writer,
+numeric 9→10 selection, index removal/replacement/corruption, unconventional
+index path override and ID mismatch, archive-column removal (raw archived state
+restored), authoritative edge removal and parent disappearance/visibility, raw
+newer/active-tie/lexical-tie duplicates beneath index timestamp overlays, append
+recovery, existing disappearance/replacement/outside-symlink and same-stat rewrite
+cases, lazy output and valid/invalid final tails. Each matrix branch compares
+canonical standalone output, proves stale Load and Blob independently, rebuilds,
+and accepts Load plus a real inline-file Blob without metadata parsing. Corrupt
+indexes intentionally cannot retain proof. Deterministic late invalidation and
+publication ordering plus concurrent ordinary Scan/validation exercise ownership;
+source-count and byte caps reject proof. No production hook or private fixture.
+
+### Isolated repeated larger workloads
+
+Apple M5, Darwin arm64, generated eight-rollout fixtures, approximately 38 and
+100 MiB total; mostly 8 KiB ignored world-state records plus a message per file.
+This deliberately measures byte-heavy, low-parsing-cost sources, not typical
+message-heavy data. Fixture construction and warm seeding excluded. Command:
+`go test ./internal/provider/codex -run '^$' -bench '^BenchmarkSourceLarge$'
+-benchmem -benchtime=1x -count=3`, isolated from broad tests. These are three
+single-operation samples per mode, not steady-state statistics or cold disk I/O.
+
+| Path | 38 MiB ms/op range | 100 MiB ms/op range | allocated MB/op (38 / 100) |
+|---|---:|---:|---:|
+| Ordinary Scan before optional use | 7.50–7.97 | 17.48–18.17 | 54.30 / 129.03 |
+| Ordinary Scan after optional use | 7.30–8.02 | 17.96–18.99 | 54.30 / 129.02 |
+| Standalone Load | 19.24–20.62 | 49.63–51.27 | 61.29 / 145.71 |
+| Optional cold Load | 46.15–46.37 | 120.71–121.38 | 61.48 / 145.90 |
+| Optional proven warm Load | 25.27–26.40 | 67.06–68.14 | 7.09 / 16.78 |
+| Changed source + one fallback | 33.41–34.85 | 85.68–90.26 | 61.38 / 145.80 |
+
+Exact full proof bytes/pass: **39,792,696 / 104,808,952**. Warm does one
+full digest pass and **zero Scan bytes/records/opens**; cold does two passes plus
+one Scan. Standalone and both ordinary Scan modes perform **zero proof work**,
+8 Scan opens and **4,824 / 12,680** records (**39,787,872 / 104,796,272**
+record bytes). Changed-mode samples append one blank line, invalidate proof and
+perform one canonical fallback (8 Scan opens); fallback frequency is 100% for
+these changed samples and 0% for stable warm samples. Subsequent cold rebuild
+cost is not hidden in these changed samples. The benchmark also supports longer
+runs, where alternating stale/rebuild calls are included in the changed average.
+Digest counters include unrelated source bytes; Scan bytes count record payload
+rather than newline bytes. Neither includes SQLite internal pages, readability
+probe opens, or selected transcript parser bytes. Timings include those actual
+operations; no claim of zero total I/O is made.
+
+**Concrete activation gate/follow-up:** do not wire PF-08 unconditionally. Warm
+hashing is about 25–37% slower here despite lower allocations; cold is >2×
+standalone. Above 512 MiB or 4096 sources, no proof is retained and every optional
+cold call may repeat proof attempts plus a full Scan. Before PF-08, establish an
+explicit workload/size and mutation-rate policy with measured end-to-end benefit,
+including cold amortization and over-cap bypass/backoff, or develop stronger
+incremental freshness evidence in a separately scoped follow-up. No cheap
+mtime-only trust, reduced canonicality, or ordinary-Scan hashing is acceptable.
+PF-07B correctness/evidence work is implemented; parent performance acceptance
+and integration suitability are not claimed complete.
+
+A final three-repeat 200ms small-fixture rerun measured warm 1.003–1.013 ms
+versus standalone 2.069–2.109 ms; ordinary before/after Scan 1.760–1.769 /
+1.747–1.788 ms, zero proof work. This advisory rerun was launched while a full
+race command was outstanding, so it is **not** part of the isolated acceptance
+benchmark evidence above and is not used to justify integration.
+
+### Actual retained heap sample and verification
+
+`go test ./internal/provider/codex -run '^TestSourceRetainedHeapSample$' -v
+-count=3`, run separately before benchmarks: after forced GC, keeping Provider
+alive and dropping transcript, the 100 MiB/eight-source snapshot retained process
+HeapAlloc deltas **52,504 / 15,192 / 18,488 bytes** (final test-cleanup rerun:
+47,488 / 13,536 / 12,720 bytes). This process-global subtraction
+includes caches/runtime noise; it is neither object attribution, a maximum nor
+peak memory evidence. Source bytes are not retained. Existing 4096-source,
+512 MiB-byte and 8 MiB serialized-index caps remain; transient discovery/index
+allocations occur before bounds, multiple in-flight snapshots can coexist, and
+canonical metadata retention is not independently byte-capped.
+
+Passed focused source tests repeated three times, provider/Codex race tests
+repeated three times, deterministic recovery/publication tests repeated ten times,
+full `go test ./...` and `go test -race ./...`, `go vet ./...`, `go build ./...`, and
+frontend `npm test` (666 passed), `npm run check`, `npm run build`, cached
+`go tool gofumpt`, changed-line golangci-lint (0 issues), and `git diff --check`.
+Frontend emitted Node experimental-loader/MockTimers and bundle-size warnings;
+no test/check/build failures. Initial new-test failures
+were fixture errors (non-discoverable duplicate directory, Darwin /var alias
+comparison, and an invalid index row does not hide a discovered parent); corrected
+fixtures/assertions and reruns pass. No installed tooling, private stores,
+qa-perf-bench, application launches/kills, engine/FTS wiring, commits or pushes.
