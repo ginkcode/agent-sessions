@@ -49,6 +49,13 @@ other machines over SSH or in WSL distributions.
   redaction. It is delivered as a file the new agent reads, then waits for
   you.
 
+**Built-in terminal**
+
+- The maximize button at the top right of the terminal panel expands it to
+  fill the app window; the same button restores the docked size and position.
+  Tabs, scrollback and running sessions are kept. Hiding the panel or closing
+  its last tab returns it to the docked size.
+
 **Terminal file links**
 
 - In the built-in terminal, Cmd+click (macOS) or Ctrl+click (Linux/Windows)

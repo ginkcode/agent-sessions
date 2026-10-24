@@ -21,7 +21,9 @@ import {
 import { hostLabel, shellCommand, windowTitle, wslDistro } from '../src/lib/hosts.ts';
 import { StaleReplyError } from '../src/lib/link.ts';
 import { ALL_AGENTS } from '../src/lib/portable.ts';
-import { fixtureStore, loadServerModule } from './helpers.mjs';
+import { fixtureStore, loadServerModule, loadServerComponent } from './helpers.mjs';
+import { render } from 'svelte/server';
+import { readFileSync } from 'node:fs';
 
 test('MockBackendAPI opens terminals only when supported and not over SSH', async () => {
   const mock = new MockBackendAPI();
@@ -641,6 +643,105 @@ test('TerminalsStore keeps its height within the window and remembers the layout
     assert.deepEqual([fallback.open, fallback.height, fallback.position], [false, PANEL_HEIGHT.default, 'bottom']);
     fallback.destroy();
   });
+});
+
+test('maximizing preserves dock layout and live terminal routing without restarting', async () => {
+  await withTerminals(async ({ store, mock, storage, TerminalsStore }) => {
+    store.toggleMaximized();
+    assert.equal(store.maximized, false, 'a hidden panel cannot maximize');
+    for (const position of ['bottom', 'left']) {
+      store.setPosition(position);
+      store.setHeight(360, 1000);
+      const tab = await store.newShell('/generated');
+      const sink = sinkFor(store, tab.id);
+      const ids = store.tabs.map(t => t.id);
+      const process = mock.panelTerminals.get(tab.id);
+      const saved = storage.get('agent-sessions:terminal-panel');
+      store.toggleMaximized();
+      assert.equal(store.maximized, true);
+      store.setHeight(800, 1000);
+      await mock.terminalWrite(tab.id, 'echo retained\r');
+      assert.match(sink.text, /echo retained/);
+      assert.equal(mock.panelTerminals.get(tab.id), process);
+      assert.deepEqual(store.tabs.map(t => t.id), ids);
+      assert.equal(store.active, tab.id);
+      assert.equal(storage.get('agent-sessions:terminal-panel'), saved);
+      const restored = new TerminalsStore();
+      restored.init();
+      assert.equal(restored.maximized, false);
+      assert.deepEqual([restored.height, restored.position], [360, position]);
+      restored.destroy();
+      store.toggleMaximized();
+      assert.deepEqual([store.maximized, store.height, store.position], [false, 360, position]);
+      store.toggleMaximized();
+      await store.toggle();
+      assert.deepEqual([store.open, store.maximized], [false, false]);
+      await store.toggle();
+      assert.equal(store.maximized, false);
+      assert.equal(mock.panelTerminals.get(tab.id), process);
+      sink.detach();
+      store.close(tab.id);
+    }
+  });
+});
+
+test('maximize clears on final tab close or exit, but not canceled agent close', async () => {
+  await withTerminals(async ({ store, mock }) => {
+    const [meta] = await mock.listSessions('', {}, { field: 'updatedAt', dir: 'desc' });
+    const agent = await store.runResume(meta.ref);
+    store.toggleMaximized();
+    store.close(agent.id);
+    store.cancelClose();
+    assert.equal(store.maximized, true);
+    store.close(agent.id);
+    store.confirmClose();
+    assert.deepEqual([store.open, store.maximized], [false, false]);
+    const shell = await store.newShell();
+    store.toggleMaximized();
+    mock.emit('term:exit', { id: shell.id, code: 0 });
+    assert.deepEqual([store.open, store.maximized], [false, false]);
+    assert.equal(terminalKeyAction({ key: 'Escape' }, false), null);
+  });
+});
+
+test('terminal toolbar renders maximize and restore without replacing tab views', async () => {
+  const lib = (name) => JSON.stringify(new URL(`../src/lib/${name}.ts`, import.meta.url).href);
+  const { default: Panel } = await loadServerComponent(new URL('../src/lib/components/terminal/TerminalPanel.svelte', import.meta.url), [
+    ["'svelte'", JSON.stringify(import.meta.resolve('svelte'))],
+    ["import TerminalView from './TerminalView.svelte';", 'const TerminalView = ($$renderer, props) => $$renderer.push(`<div data-terminal-id="${props.tab.id}"></div>`);'],
+    ["import { api } from '../../api';", 'const api = {};'],
+    ["import { terminals } from '../../stores/terminals.svelte';", fixtureStore('terminals')],
+    ["import { appState } from '../../stores/appState.svelte';", fixtureStore('appState')],
+    ["import { link } from '../../stores/link.svelte';", fixtureStore('link')],
+    ["import { isMac } from '../../../main';", 'const isMac = false;'],
+    ...['hosts', 'terminal', 'alerts', 'tabActions'].map(name => [`'../../${name}'`, lib(name)]),
+    ...['ContextMenu', 'AgentIcon', 'AttentionDot'].map(name => [`import ${name} from '../common/${name}.svelte';`, `const ${name} = () => {};`]),
+  ]);
+  try {
+    for (const position of ['bottom', 'left']) for (const maximized of [false, true]) {
+      globalThis.__componentFixture = {
+        terminals: { tabs: [{ id: 'generated-shell', kind: 'shell', label: 'Shell', status: 'running' }], active: 'generated-shell', attention: {}, height: 360, position, maximized },
+        appState: {}, link: {},
+      };
+      const html = render(Panel).body;
+      assert.match(html, new RegExp(`aria-label="${maximized ? 'Restore' : 'Maximize'} terminal" aria-pressed="${maximized}"`));
+      assert.match(html, /data-terminal-id="generated-shell"/);
+      assert.equal(html.includes('height: 360px'), !maximized);
+      const dock = html.match(/<button[^>]*aria-label="Move terminal[^>]*>/)?.[0] ?? '';
+      assert.match(dock, position === 'left' ? /to the bottom/ : /to the left/);
+      assert.equal(/\sdisabled/.test(dock), maximized);
+    }
+  } finally { delete globalThis.__componentFixture; }
+});
+
+test('maximized workspace hides panes but leaves dialogs mounted and one terminal panel', () => {
+  const app = readFileSync(new URL('../src/App.svelte', import.meta.url), 'utf8');
+  assert.equal((app.match(/<TerminalPanel\b/g) ?? []).length, 1);
+  assert.match(app, /terminals\.position === 'left' && !panelMaximized/);
+  assert.match(app, /terminals\.open && !panelMaximized/);
+  assert.match(app, /inert=\{stale \|\| panelMaximized\}/);
+  assert.match(app, /\.panel-maximized \.shell > \.pane,[\s\S]*?display: none/);
+  assert.match(app, /<GoToFileDialog \/>/);
 });
 
 test('MockBackendAPI runs fake panel terminals on every host', async () => {
