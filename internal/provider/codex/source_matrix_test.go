@@ -45,8 +45,9 @@ func TestSourceMutationMatrix(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			p := New(root, nil)
+			p := newExperimentalSource(root, nil)
 			ref := model.SessionRef{Agent: model.AgentCodex, ID: indexID}
+			p.sourceExperiment = true
 			ctx := context.Background()
 			initial, err := p.Load(ctx, ref)
 			if err != nil {
@@ -55,7 +56,7 @@ func TestSourceMutationMatrix(t *testing.T) {
 			if _, err := p.LoadFromSource(ctx, ref, initial.Meta); err != nil {
 				t.Fatal(err)
 			}
-			blobP := New(root, nil)
+			blobP := newExperimentalSource(root, nil)
 			blobP.sourceSnapshot = p.sourceSnapshot
 			raw := string(mustRead(t, path))
 			switch mode {
@@ -145,7 +146,7 @@ func TestSourceMutationMatrix(t *testing.T) {
 			if _, err := blobP.BlobFromSource(ctx, ref, initial.Meta, "rec:0:0"); !errors.Is(err, provider.ErrStaleSource) {
 				t.Fatalf("stale Blob: %v", err)
 			}
-			want, wantErr := New(root, nil).Load(ctx, ref)
+			want, wantErr := newExperimentalSource(root, nil).Load(ctx, ref)
 			got, gotErr := provider.LoadWithSource(ctx, p, ref, initial.Meta)
 			if (wantErr == nil) != (gotErr == nil) || !reflect.DeepEqual(got, want) {
 				t.Fatalf("canonical mismatch: %v / %v", gotErr, wantErr)
@@ -206,7 +207,7 @@ func TestSourceMutationMatrix(t *testing.T) {
 				t.Fatalf("rebuilt accepting Load: %v", err)
 			}
 			a, ae := p.BlobFromSource(observed, ref, want.Meta, key)
-			b, be := New(root, nil).Blob(ctx, ref, key)
+			b, be := newExperimentalSource(root, nil).Blob(ctx, ref, key)
 			if ae != nil || be != nil || string(a) != "HELLO" || !reflect.DeepEqual(a, b) {
 				t.Fatalf("Blob mismatch %v / %v", ae, be)
 			}
@@ -219,6 +220,7 @@ func TestSourceMutationMatrix(t *testing.T) {
 
 func TestSourcePublicationOwnership(t *testing.T) {
 	p, ref, _ := syntheticRollout(t, record("session_meta", `{"id":"fixture"}`))
+	p.sourceExperiment = true
 	ctx := context.Background()
 	tr, err := p.Load(ctx, ref)
 	if err != nil {
@@ -272,6 +274,7 @@ func TestSourcePublicationOwnership(t *testing.T) {
 
 func TestSourceFreshHintClearsOldProof(t *testing.T) {
 	p, ref, path := syntheticRollout(t, record("session_meta", `{"id":"fixture"}`))
+	p.sourceExperiment = true
 	ctx := context.Background()
 	initial, err := p.Load(ctx, ref)
 	if err != nil {
@@ -329,8 +332,22 @@ func TestSourceCountCap(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	// Production declines repeatedly before even enumerating this over-cap root.
+	ordinary := New(root, nil)
+	var bypass SourceWork
+	ctx := WithSourceWork(context.Background(), &bypass)
+	ref := model.SessionRef{Agent: model.AgentCodex, ID: "missing"}
+	for range 5 {
+		if _, err := ordinary.LoadFromSource(ctx, ref, model.SessionMeta{Ref: ref}); !errors.Is(err, provider.ErrStaleSource) {
+			t.Fatal(err)
+		}
+		if _, err := ordinary.BlobFromSource(ctx, ref, model.SessionMeta{Ref: ref}, "invalid"); !errors.Is(err, provider.ErrStaleSource) {
+			t.Fatal(err)
+		}
+	}
+	assertNoSourceWork(t, &bypass)
 	var work SourceWork
-	p := New(root, nil)
+	p := newExperimentalSource(root, nil)
 	if p.proveSources(WithSourceWork(context.Background(), &work)) != nil {
 		t.Fatal("oversized source set retained")
 	}
@@ -351,6 +368,7 @@ func TestSourceLazyAndFinalTails(t *testing.T) {
 				last = last[:len(last)-5]
 			}
 			p, ref, _ := syntheticRollout(t, record("session_meta", `{"id":"fixture"}`), record("response_item", `{"type":"function_call","call_id":"big","name":"run","arguments":"{}"}`), last)
+			p.sourceExperiment = true
 			ctx := context.Background()
 			want, err := p.Load(ctx, ref)
 			if err != nil {

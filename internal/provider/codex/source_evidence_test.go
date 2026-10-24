@@ -37,13 +37,13 @@ func BenchmarkSourceLarge(b *testing.B) {
 		b.Run(fmt.Sprintf("%dMiB", mib), func(b *testing.B) {
 			root, ref := sourceEvidenceFixture(b, mib)
 			ctx := context.Background()
-			tr, err := New(root, nil).Load(ctx, ref)
+			tr, err := newExperimentalSource(root, nil).Load(ctx, ref)
 			if err != nil {
 				b.Fatal(err)
 			}
-			for _, mode := range []string{"OrdinaryScanBefore", "OrdinaryScanAfter", "StandaloneLoad", "Cold", "Warm", "Changed"} {
+			for _, mode := range []string{"OrdinaryScanBefore", "OrdinaryScanAfter", "StandaloneLoad", "ProductionBypass", "Cold", "Warm", "Changed"} {
 				b.Run(mode, func(b *testing.B) {
-					p := New(root, nil)
+					p := newExperimentalSource(root, nil)
 					if mode == "Warm" || mode == "Changed" || mode == "OrdinaryScanAfter" {
 						if _, err := p.LoadFromSource(ctx, ref, tr.Meta); err != nil {
 							b.Fatal(err)
@@ -60,8 +60,11 @@ func BenchmarkSourceLarge(b *testing.B) {
 							_, err = p.Scan(observed, provider.ScanState{})
 						case "StandaloneLoad":
 							_, err = p.Load(observed, ref)
+						case "ProductionBypass":
+							p.sourceExperiment = false
+							_, err = provider.LoadWithSource(observed, p, ref, tr.Meta)
 						case "Cold":
-							_, err = New(root, nil).LoadFromSource(observed, ref, tr.Meta)
+							_, err = newExperimentalSource(root, nil).LoadFromSource(observed, ref, tr.Meta)
 						case "Warm":
 							_, err = p.LoadFromSource(observed, ref, tr.Meta)
 						case "Changed":
@@ -100,7 +103,7 @@ func TestSourceRetainedHeapSample(t *testing.T) {
 	runtime.GC()
 	var before, after runtime.MemStats
 	runtime.ReadMemStats(&before)
-	p := New(root, nil)
+	p := newExperimentalSource(root, nil)
 	ctx := context.Background()
 	tr, err := p.LoadFromSource(ctx, ref, model.SessionMeta{Ref: ref})
 	if err != nil {

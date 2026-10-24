@@ -27,6 +27,9 @@ type Provider struct {
 	sourceMu         sync.Mutex // protects the single bounded, immutable source snapshot
 	sourceSnapshot   *sourceSnapshot
 	sourceGeneration uint64 // prevents an older cold proof from replacing newer evidence
+	// Test-only experiment; New never enables full-source reconciliation. Cheap
+	// source statistics do not establish an amortized benefit (PF-07C).
+	sourceExperiment bool
 }
 
 // New constructs a Codex session provider.

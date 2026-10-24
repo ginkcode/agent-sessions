@@ -44,6 +44,10 @@ PF-05 evidence: [coalesced transcript loads](../perf.md#pf-05--coalesced-transcr
 PF-06 evidence: [validated source-loading contract](../perf.md#pf-06--validated-source-loading-contract-2026-10-24).
 PF-07 partial: PF-07A accepting content-proof Load/Blob methods complete;
 PF-07B matrix/recovery/evidence implemented, but larger byte-heavy workloads regress.
+PF-07C safe opt-out complete: no defensible cheap automatic policy established;
+production optional calls decline with zero proof and one canonical fallback.
+[Decision and evidence](../perf.md#pf-07c--cost-policy-decision-and-production-bypass-2026-10-24).
+PF-07 remains partial/blocked; PF-08/PF-10 blocked; next independent task PF-09.
 [Evidence and activation gate](../perf.md#pf-07b--mutation-matrix-recovery-and-larger-evidence-2026-10-24). M1 remains 6/15. Caller activation
 and checkpoint optimization remain unimplemented. [Contract feasibility constraints](../tasks/performance-m1.md#pf-06-contract-and-pf-07-feasibility)
 require conservative canonical fallback when metadata cannot prove selection freshness.

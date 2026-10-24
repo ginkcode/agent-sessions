@@ -233,17 +233,23 @@ func (p *Provider) publishSource(generation uint64, snapshot *sourceSnapshot) {
 	}
 }
 
-func (p *Provider) sourceMeta(ctx context.Context, ref model.SessionRef, hint model.SessionMeta) (model.SessionMeta, error) {
+func (p *Provider) sourceMeta(ctx context.Context, ref model.SessionRef, hint model.SessionMeta, allowCold bool) (model.SessionMeta, error) {
 	if err := ctx.Err(); err != nil {
 		return model.SessionMeta{}, err
 	}
-	if ref.Agent != p.ID() || ref.ID == "" || hint.Ref != ref {
+	// Full-byte proof is deliberately disabled for production, regardless of
+	// root size or prior evidence. Return before ANY discovery/index/hash work;
+	// the contract dispatcher performs one ordinary canonical fallback.
+	if !p.sourceExperiment || ref.Agent != p.ID() || ref.ID == "" || hint.Ref != ref {
 		return model.SessionMeta{}, provider.ErrStaleSource
 	}
 	p.sourceMu.Lock()
 	snapshot := p.sourceSnapshot
 	p.sourceMu.Unlock()
 	if snapshot == nil {
+		if !allowCold {
+			return model.SessionMeta{}, provider.ErrStaleSource
+		}
 		return p.establishSource(ctx, ref)
 	}
 	if !sameProof(snapshot.proof, p.proveSources(ctx)) {
@@ -274,7 +280,7 @@ func (p *Provider) sourceMeta(ctx context.Context, ref model.SessionRef, hint mo
 }
 
 func (p *Provider) LoadFromSource(ctx context.Context, ref model.SessionRef, hint model.SessionMeta) (*model.Transcript, error) {
-	meta, err := p.sourceMeta(ctx, ref, hint)
+	meta, err := p.sourceMeta(ctx, ref, hint, true)
 	if err != nil {
 		return nil, err
 	}
@@ -286,7 +292,9 @@ func (p *Provider) LoadFromSource(ctx context.Context, ref model.SessionRef, hin
 }
 
 func (p *Provider) BlobFromSource(ctx context.Context, ref model.SessionRef, hint model.SessionMeta, key string) ([]byte, error) {
-	meta, err := p.sourceMeta(ctx, ref, hint)
+	// Even in the experiment a Blob must not pay two proof passes plus Scan
+	// merely to extract one part. Only Load can establish experimental evidence.
+	meta, err := p.sourceMeta(ctx, ref, hint, false)
 	if err != nil {
 		return nil, err
 	}

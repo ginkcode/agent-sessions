@@ -926,3 +926,99 @@ were fixture errors (non-discoverable duplicate directory, Darwin /var alias
 comparison, and an invalid index row does not hide a discovered parent); corrected
 fixtures/assertions and reruns pass. No installed tooling, private stores,
 qa-perf-bench, application launches/kills, engine/FTS wiring, commits or pushes.
+
+## PF-07C — Cost-policy decision and production bypass (2026-10-24)
+
+PF-07C was documented in both trackers before coding (≤4 h package). **Safe
+opt-out implemented; parent PF-07 remains partial/blocked, M1 6/15.** No automatic
+eligibility policy is justified by the available evidence. PF-08 and dependent
+PF-10 remain blocked; **PF-09 is the next independent package**, not implemented
+here. This is a negative performance conclusion, not a universal speedup claim.
+
+### Decision and exact supported workload
+
+Cheap discovered source count and stat aggregate size can bound digest cost, but
+cannot predict the cost of decoding ignored versus meaningful records, selected
+transcript cost, or the number of future unchanged requests needed for amortization.
+They also omit unconventional index-added paths unless index semantics are read.
+Obtaining density by a new parse defeats cheap eligibility; canonical Scan's
+existing request-local counters can describe records but not their decode
+complexity or future reuse. Ordinary Scan must not gain extra parsing, hashing or
+persistent policy machinery merely to classify this experiment. No cutoff chosen
+between the small and large fixtures establishes a portable break-even rule.
+Timing-adaptive activation would itself incur costly trial reads and needs further
+scope/evidence across workload shapes, I/O and mutation rates.
+
+Production therefore supports **no automatically eligible workload**: New leaves
+the private experiment flag off; both optional methods immediately return stale
+(after cancellation checking), even if evidence exists. The PF-06 dispatcher then
+does exactly one canonical standalone Load/Blob. Zero proof attempts is the retry
+bound, including large, over-cap, cold and rapidly changing roots. There is no
+cooldown clock, sleep, periodic trial, hidden size preflight, public activation
+switch, discovery or SQLite read in the decline. Ordinary Scan is unchanged.
+This avoids the regression rather than asserting a learned policy. Any future
+activation requires a separately documented measured package and parent acceptance.
+
+The test-only experiment continues to support the measured **16 rollouts × 100
+small messages, 212,614 bytes total**, stable unchanged warm Load case. It still
+hashes all bytes and is not production eligibility. Experimental Blob may consume
+an existing Load-established snapshot but now cannot initiate cold before/Scan/after
+proof, including if evidence disappears between calls. Mutation/canonicality matrix
+and publication-generation safeguards remain covered. Large experimental retained
+heap evidence above remains historical experimental evidence, not production state.
+
+### Isolated repeated evidence
+
+Apple M5/Darwin arm64; synthetic fixtures only; no other test/race work was running.
+Setup and experimental warm seeding excluded. Commands (each count=3):
+
+```sh
+go test ./internal/provider/codex -run '^$' -bench '^BenchmarkSourceReconciliation/(OrdinaryLoad|ProductionBypass|OptionalCold|OptionalWarm)$' -benchmem -benchtime=300ms -count=3
+go test ./internal/provider/codex -run '^$' -bench '^BenchmarkSourceLarge/(38MiB|100MiB)/(StandaloneLoad|ProductionBypass)$' -benchmem -benchtime=3x -count=3
+go test ./internal/provider/codex -run '^$' -bench '^BenchmarkSourceBlobPolicy$' -benchmem -benchtime=3x -count=3
+```
+
+| Load path | small ms/op | 38 MiB ms/op | 100 MiB ms/op |
+|---|---:|---:|---:|
+| Standalone | 1.946–1.997 | 22.364–22.471 | 55.821–57.476 |
+| Production bypass + fallback | 1.964–1.998 | 22.304–22.435 | 56.002–58.207 |
+| Experimental cold | 3.395–3.438 | historical above | historical above |
+| Experimental warm | 0.952–0.994 | historical regression above | historical regression above |
+
+Standalone/bypass allocations approximately 18.52 / 61.29 / 145.71 MB/op for
+small/38/100. Experimental small cold 18.89 MB/op, warm 1.405 MB/op. Small cold
+reads 425,228 proof bytes in two passes; warm 212,614 in one. The roughly 1.4 ms
+extra small cold cost needs about two subsequent unchanged warm hits just to repay
+on this host/fixture; mutation can erase that benefit. This is not a general
+break-even estimate.
+
+| Blob path (real HELLO attachment) | 1 MiB ms/op | 38 MiB ms/op | 100 MiB ms/op |
+|---|---:|---:|---:|
+| Standalone | 1.261–1.576 | 7.645–8.117 | 18.187–18.999 |
+| Production bypass + fallback | 1.103–1.265 | 7.920–7.949 | 17.930–18.456 |
+
+Blob allocations approximately 10.76 / 55.36 / 130.09 MB/op for both paths.
+Three operations per large/Blob sample are advisory, not latency distributions or
+cold-disk measurements; differences within these ranges are not speedup claims.
+Bypass is approximately standalone in these repeated samples.
+
+**No hidden byte work:** every bypass/standalone measured proof counter is zero.
+Large Load canonical counts are identical: eight Scan opens, 4,824 / 12,680
+records, 39,787,872 / 104,796,272 record bytes per operation. Blob standalone and
+bypass both do eight Scan opens. Proof bytes do not include canonical Scan,
+selected transcript reads, SQLite pages or readability probes; those ordinary
+costs remain, rather than being described as zero I/O. Deterministic tests assert
+all five SourceWork counters stay zero on repeated declines (including >512 MiB
+sparse source and >4096 sources), production with a retained snapshot, rapid
+appends, cancellation and concurrent dispatch. Three appended Load+Blob pairs do
+exactly six canonical source opens in a one-file root, with canonical output;
+experimental repeated cold Blob calls do no Scan or proof.
+
+### Verification and boundaries
+
+Passed `go test ./internal/provider/codex ./internal/provider -count=1`, focused
+source race tests for both packages `-count=3`, `go test ./...`, `go vet ./...`,
+`go build ./...`, gofmt and `git diff --check`. Frontend code was untouched;
+frontend tests/check/build and full repository race were not rerun for PF-07C
+(previous PF-07B results above are historical). No private stores/scripts, installs,
+app launch/kill, extra agents, engine/FTS activation, commits or pushes.

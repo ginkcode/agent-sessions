@@ -24,11 +24,13 @@ PF-05 completed 2026-10-24; coalesced loads, owned cancellation and repeated
 same-key evidence are in [../perf.md](../perf.md#pf-05--coalesced-transcript-loads-2026-10-24).
 PF-06 completed 2026-10-24; optional source contract, bounded canonical fallback,
 ownership and Codex feasibility are in [../perf.md](../perf.md#pf-06--validated-source-loading-contract-2026-10-24).
-PF-07A is complete; PF-07 remains partial pending the measured activation gate (PF-07B matrix/evidence implemented). PF-08…PF-15 are unimplemented.
+PF-07A/B implemented; PF-07C safe opt-out complete. PF-07 remains partial/blocked:
+no defensible automatic activation policy; production proof is off. PF-08/PF-10
+remain blocked. PF-09 is next; PF-08…PF-15 are unimplemented.
 
 ## Task index
 
-PF-01 through PF-06 are **complete**; PF-07 is **partial** (A complete, B evidence implemented; activation gated); all other rows are **not started**. Dependencies are completion gates, not mere ordering
+PF-01 through PF-06 are **complete**; PF-07 is **partial/blocked** (A/B implemented, C safe opt-out complete; activation gated); all other rows are **not started**. Dependencies are completion gates, not mere ordering
 suggestions. All implementation tasks also depend on the shared guardrails in the
 [parent plan](../plan/performance.md#shared-guardrails).
 
@@ -40,7 +42,7 @@ suggestions. All implementation tasks also depend on the shared guardrails in th
 | [PF-04](#pf-04--atomic-transcript-cache-invalidation) | Atomic per-session cache invalidation | 4 h | PF-02 |
 | [PF-05](#pf-05--coalesced-transcript-loads) | Coalesced loads and owned cancellation | 4 h | PF-04 |
 | [PF-06](#pf-06--validated-source-loading-contract) | Optional validated source-loading contract | 3 h | PF-02 |
-| [PF-07](#pf-07--codex-load-and-blob-fast-paths) | Codex Load/Blob fast paths (partial: activation gated) | 4 + 4 h | PF-06 |
+| [PF-07](#pf-07--codex-load-and-blob-fast-paths) | Codex Load/Blob fast paths (partial/blocked: C safe opt-out) | 4 + 4 + 4 h | PF-06 |
 | [PF-08](#pf-08--source-aware-engine-and-fts-callers) | Source-aware engine and FTS integration | 4 h | PF-05, PF-07 |
 | [PF-09](#pf-09--claude-checkpoint-reuse) | Claude unchanged checkpoint reuse | 4 h | PF-01 |
 | [PF-10](#pf-10--codex-checkpoint-reuse) | Codex unchanged checkpoint reuse | 4 h | PF-01, PF-07 |
@@ -50,7 +52,7 @@ suggestions. All implementation tasks also depend on the shared guardrails in th
 | [PF-14](#pf-14--batched-ignore-checks) | Batched ignore checks and parity tests | 4 h | PF-13 |
 | [PF-15](#pf-15--integrated-evidence-and-milestone-gate) | Integration and before/after evidence | 4 h | PF-01…PF-14 |
 
-Total: **61 h** (PF-07 split into 4 h + 4 h), including focused tests. Native/manual QA or unexpected scope
+Total: **65 h** (PF-07 split into 4 h + 4 h + 4 h), including focused tests. Native/manual QA or unexpected scope
 requires a follow-up package, not an invented passing result.
 
 Baseline tasks may be independent. Cache/source work shares `service.go`;
@@ -259,7 +261,7 @@ no Codex fast path, validation cache, index query rewrite or engine/FTS activati
 
 ## PF-07 — Codex Load and Blob fast paths
 
-**Status:** PF-07A complete 2026-10-24; parent **partial**: PF-07B matrix/evidence implemented, but larger warm workloads regress; activation gate remains. [Evidence and limitations](../perf.md#pf-07a--bounded-content-proof-and-accepting-codex-sources-2026-10-24). Split before implementation. Investigation shows safe proof/reconciliation plus the full mutation/evidence matrix exceeds 4 h. Parent acceptance below is unchanged.
+**Status:** PF-07A/B implemented 2026-10-24; PF-07C safe opt-out complete; parent **partial/blocked**: larger warm workloads regress and no defensible automatic policy was established; production proof is off. PF-09 next; PF-08/PF-10 blocked. [Evidence and limitations](../perf.md#pf-07a--bounded-content-proof-and-accepting-codex-sources-2026-10-24). Split before implementation. Investigation shows safe proof/reconciliation plus the full mutation/evidence matrix exceeds 4 h. Parent acceptance below is unchanged.
 
 ### PF-07A — Bounded content proof and accepting source methods (4 h; PF-06)
 
@@ -291,6 +293,40 @@ and lazy-output/valid and invalid final tails. Add repeated synthetic benchmarks
 and retained-state/work-count evidence, documenting digest overhead and fallback
 frequency. Preserve every parent acceptance criterion; only after these gates
 may PF-07 be counted complete and PF-08 start.
+
+### PF-07C — Cost-policy decision and safe production bypass (4 h; PF-07B)
+
+**Complete 2026-10-24: safe opt-out branch; parent remains partial/blocked.**
+[Decision, repeated isolated evidence and verification](../perf.md#pf-07c--cost-policy-decision-and-production-bypass-2026-10-24).
+Planned before coding 2026-10-24. Investigate cheap eligibility against the
+existing small record-dense and 38/100 MiB byte-heavy evidence. Source count and
+aggregate size bound cost but cannot predict JSON decoding savings or future
+reuse; a density metric alone does not measure record complexity or selected-file
+cost. Do not pick a universal threshold from these fixtures. If no defensible
+policy can be validated in this package, keep production source-proof dispatch
+**off by default**, with no public activation switch, and retain the experimental
+implementation only through a private test seam. This is the selected conservative
+fallback, not performance acceptance of PF-07.
+
+- Decline optional Load/Blob immediately with ErrStaleSource before discovery,
+  SQLite reads, hashing or canonical Scan; PF-06 then performs one standalone call.
+  Default bypass has no cold retry, cooldown timer or mutation-dependent work.
+- Do not let even an experimental cold Blob establish expensive proof; it can
+  consume an existing Load-established snapshot only. Preserve key validation via
+  the standalone fallback and all ordinary Scan behavior.
+- Add deterministic operation counts for repeated default calls, large/over-cap
+  and changing roots, cancellation, Blob and snapshot non-activation; preserve the
+  accepting experimental mutation/race matrix and warm-benefit benchmarks.
+- Repeat isolated bypass/standalone benchmarks on small and large fixtures,
+  including Blob; report exact proof work and canonical work separately. Keep
+  historical evidence. Verify focused/race and backend suites.
+
+**Done when:** production bypass is canonical and zero-proof for every root,
+repeated benchmarks show its cost is approximately standalone, experimental warm
+benefit remains explicitly workload-limited, and all trackers record the policy
+conclusion. Unless automatic activation is genuinely justified, parent remains
+**partial/blocked**, M1 **6/15**, PF-08/PF-10 blocked; choose **PF-09** next (not
+implemented in this package). No commit, activation, private data or extra agents.
 
 **Goal:** known valid sessions load without scanning unrelated rollouts.
 

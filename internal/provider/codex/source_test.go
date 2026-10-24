@@ -21,6 +21,7 @@ func TestSourceAcceptsWithoutUnrelatedParsing(t *testing.T) {
 		record("response_item", `{"type":"message","role":"user","content":[{"type":"input_file","file_data":"data:text/plain;base64,SEVMTE8="}]}`),
 	)
 	indexRollout(t, p.root, indexID, false)
+	p.sourceExperiment = true
 	ctx := context.Background()
 	want, err := p.Load(ctx, ref)
 	if err != nil {
@@ -75,7 +76,7 @@ func TestSourceAcceptsWithoutUnrelatedParsing(t *testing.T) {
 	if _, err := p.LoadFromSource(canceled, ref, hint); !errors.Is(err, context.Canceled) {
 		t.Fatal(err)
 	}
-	fresh := New(p.root, nil)
+	fresh := newExperimentalSource(p.root, nil)
 	if tr, err := fresh.LoadFromSource(ctx, ref, hint); err != nil || !reflect.DeepEqual(tr, want) {
 		t.Fatalf("unproven new provider: %v", err)
 	}
@@ -99,6 +100,7 @@ func TestSourceStaleReconciliation(t *testing.T) {
 	for _, mutation := range []string{"same-stat rewrite", "duplicate", "index", "disappear", "replace", "symlink"} {
 		t.Run(mutation, func(t *testing.T) {
 			p, ref, path := syntheticRollout(t, record("session_meta", `{"id":"fixture"}`), record("response_item", `{"type":"message","role":"user","content":"before"}`))
+			p.sourceExperiment = true
 			ctx := context.Background()
 			initial, err := p.Load(ctx, ref)
 			if err != nil {
@@ -156,7 +158,7 @@ func TestSourceStaleReconciliation(t *testing.T) {
 					t.Skip(err)
 				}
 			}
-			blobProvider := New(p.root, nil)
+			blobProvider := newExperimentalSource(p.root, nil)
 			blobProvider.sourceSnapshot = p.sourceSnapshot
 			if _, err := p.LoadFromSource(ctx, ref, hint); !errors.Is(err, provider.ErrStaleSource) {
 				t.Fatalf("load accepted stale evidence: %v", err)
@@ -164,7 +166,7 @@ func TestSourceStaleReconciliation(t *testing.T) {
 			if _, err := blobProvider.BlobFromSource(ctx, ref, hint, "rec:0:0"); !errors.Is(err, provider.ErrStaleSource) {
 				t.Fatalf("blob accepted stale evidence: %v", err)
 			}
-			want, wantErr := New(p.root, nil).Load(ctx, ref)
+			want, wantErr := newExperimentalSource(p.root, nil).Load(ctx, ref)
 			got, gotErr := provider.LoadWithSource(ctx, p, ref, hint)
 			if (wantErr == nil) != (gotErr == nil) || !reflect.DeepEqual(got, want) {
 				t.Fatalf("fallback mismatch: %v / %v", gotErr, wantErr)
@@ -178,8 +180,9 @@ func TestSourceIndexOverlayChange(t *testing.T) {
 	path := indexRollout(t, root, indexID, false)
 	db := stateDB(t, root, "state_1.sqlite", stateSQL)
 	insertThread(t, db, indexID, path, "original", 0)
-	p := New(root, nil)
+	p := newExperimentalSource(root, nil)
 	ref := model.SessionRef{Agent: model.AgentCodex, ID: indexID}
+	p.sourceExperiment = true
 	ctx := context.Background()
 	tr, err := p.Load(ctx, ref)
 	if err != nil {
@@ -232,14 +235,14 @@ func BenchmarkSourceReconciliation(b *testing.B) {
 		}
 	}
 	ref := model.SessionRef{Agent: model.AgentCodex, ID: "fixture-0"}
-	p := New(root, nil)
+	p := newExperimentalSource(root, nil)
 	initial, err := p.Load(context.Background(), ref)
 	if err != nil {
 		b.Fatal(err)
 	}
-	for _, mode := range []string{"OrdinaryScanBefore", "OrdinaryScanAfter", "OrdinaryLoad", "OptionalCold", "OptionalWarm"} {
+	for _, mode := range []string{"OrdinaryScanBefore", "OrdinaryScanAfter", "OrdinaryLoad", "ProductionBypass", "OptionalCold", "OptionalWarm"} {
 		b.Run(mode, func(b *testing.B) {
-			p := New(root, nil)
+			p := newExperimentalSource(root, nil)
 			if mode == "OptionalWarm" || mode == "OrdinaryScanAfter" {
 				if _, err := p.LoadFromSource(context.Background(), ref, initial.Meta); err != nil {
 					b.Fatal(err)
@@ -256,8 +259,11 @@ func BenchmarkSourceReconciliation(b *testing.B) {
 					_, err = p.Scan(ctx, provider.ScanState{})
 				case "OrdinaryLoad":
 					_, err = p.Load(ctx, ref)
+				case "ProductionBypass":
+					p.sourceExperiment = false
+					_, err = provider.LoadWithSource(ctx, p, ref, initial.Meta)
 				case "OptionalCold":
-					_, err = New(root, nil).LoadFromSource(ctx, ref, initial.Meta)
+					_, err = newExperimentalSource(root, nil).LoadFromSource(ctx, ref, initial.Meta)
 				case "OptionalWarm":
 					_, err = p.LoadFromSource(ctx, ref, initial.Meta)
 				}
