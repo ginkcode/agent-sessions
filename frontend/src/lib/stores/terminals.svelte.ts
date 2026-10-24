@@ -69,6 +69,27 @@ export interface PanelTab extends TerminalTab {
   exitCode: number | null;
 }
 
+/** The most panes one tab of the panel splits into. */
+export const MAX_GROUP_PANES = 4;
+
+/**
+ * A tab of the panel: one or more terminals (panes) shown side by side. The
+ * panes are ids of PanelTabs, which stay a flat list in start order.
+ */
+export interface TerminalGroup {
+  id: string;
+  /** Its panes, in the order they show. */
+  panes: string[];
+  /** The pane focused when the group shows. */
+  focus: string;
+  /** Each pane's share of the group, summing to 1. */
+  sizes: number[];
+}
+
+function evenShares(count: number): number[] {
+  return Array.from({ length: count }, () => 1 / count);
+}
+
 /** Where a tab's output goes once its view is mounted. */
 export interface TerminalSink {
   write(data: Uint8Array): void;
@@ -103,7 +124,11 @@ export function agentTabLabel(name: string | undefined, agent: AgentID | string)
  * call that started the tab returned.
  */
 export class TerminalsStore {
+  /** Every terminal (pane), in the order they started. */
   tabs = $state<PanelTab[]>([]);
+  /** The panel's tabs, each a group of panes, in the order they show. */
+  groups = $state<TerminalGroup[]>([]);
+  /** The focused pane; its group is the one shown. */
   active = $state<string | null>(null);
   open = $state(false);
   maximized = $state(false);
@@ -121,8 +146,9 @@ export class TerminalsStore {
   private attentionListeners = new Set<(id: string, state: AgentAttention) => void>();
   private viewingListeners = new Set<(id: string) => void>();
   private windowFocused = true;
-  /** The tab the user is looking at, as last noted. */
-  private viewing: string | null = null;
+  /** The panes the user is looking at, as last noted. */
+  private viewing = new Set<string>();
+  private groupCount = 0;
   private offFocus: (() => void) | null = null;
 
   /** Bulk closes pause at each running agent rather than skipping confirmation. */
@@ -140,6 +166,8 @@ export class TerminalsStore {
   }
   /** The size the views last reported, for a new tab's first size. */
   size: TerminalSize = { cols: 80, rows: 24 };
+  /** Each pane's size as its view last reported, for splitting it. */
+  private paneSizes = new Map<string, TerminalSize>();
 
   private sinks = new Map<string, TerminalSink>();
   private buffered = new Map<string, Uint8Array[]>();
@@ -195,6 +223,16 @@ export class TerminalsStore {
     return this.tabs.find((t) => t.id === this.active);
   }
 
+  /** The group a pane is in. */
+  groupOf(id: string | null): TerminalGroup | undefined {
+    return id === null ? undefined : this.groups.find((g) => g.panes.includes(id));
+  }
+
+  /** The group shown: the focused pane's. */
+  get shownGroup(): TerminalGroup | undefined {
+    return this.groupOf(this.active);
+  }
+
   /**
    * Resumes a session in a new tab, on the host the session belongs to.
    * dir is the session's directory, shown where the backend cannot tell;
@@ -240,10 +278,41 @@ export class TerminalsStore {
     }
   }
 
+  /** Whether the pane id is in a tab with room for another pane. */
+  canSplit(id: string | null = this.active): boolean {
+    const group = this.groupOf(id);
+    return !!group && group.panes.length < MAX_GROUP_PANES;
+  }
+
+  /**
+   * Opens a shell beside pane id, on the selected host (host). It starts in
+   * the pane's directory when the pane runs on that host, else in cwd. It
+   * gets a tab of its own when the pane closed or its tab filled meanwhile;
+   * failures are shown as a toast.
+   */
+  async split(id: string | null = this.active, cwd = '', host = ''): Promise<PanelTab | null> {
+    const source = this.tabs.find((t) => t.id === id);
+    const group = this.groupOf(id);
+    if (!source || !group || !this.canSplit(source.id)) return null;
+    const dir = source.host === host ? source.cwd || source.dir || cwd : cwd;
+    // The panes share the group evenly once it splits.
+    const sourceSize = this.paneSizes.get(source.id) ?? this.size;
+    const share = group.sizes[group.panes.indexOf(source.id)] || 1 / group.panes.length;
+    const axis = this.position === 'left' ? 'rows' : 'cols';
+    const size = { ...sourceSize, [axis]: Math.max(1, Math.floor(sourceSize[axis] / share / (group.panes.length + 1))) };
+    try {
+      return await this.start((s) => api.panelShell(dir, s), 'Shell', dir, undefined, {}, { after: source.id, size });
+    } catch (err) {
+      toast.show(openFailed(err));
+      return null;
+    }
+  }
+
   /**
    * Starts a tab and shows the panel with it. Errors reach the caller; null
    * means the host changed while it started. prompted marks an agent started
-   * with a prompt, as a handoff is: its first turn needs no input.
+   * with a prompt, as a handoff is: its first turn needs no input. place.after
+   * puts it beside that pane rather than in a new tab, at place.size.
    */
   private async start(
     launch: (size: TerminalSize) => Promise<TerminalTab>,
@@ -251,11 +320,12 @@ export class TerminalsStore {
     dir: string,
     agent?: AgentID,
     link: Pick<PanelTab, 'session' | 'linkPending'> & { prompted?: boolean } = {},
+    place: { after?: string; size?: TerminalSize } = {},
   ): Promise<PanelTab | null> {
     this.starting++;
     let started: TerminalTab;
     try {
-      started = await launch({ ...this.size });
+      started = await launch({ ...(place.size ?? this.size) });
     } catch (err) {
       if (isStaleReply(err)) {
         this.starting--;
@@ -289,9 +359,29 @@ export class TerminalsStore {
       if (tab.status === 'exited') this.tracker.exited(tab.id);
     }
     this.tabs = [...this.tabs, tab];
+    this.addPane(tab.id, place.after);
     this.active = tab.id;
     this.setOpen(true);
     return tab;
+  }
+
+  /** Puts a new pane after pane after, while its group has room, else in a group of its own. */
+  private addPane(id: string, after?: string): void {
+    const group = after ? this.groupOf(after) : undefined;
+    if (!after || !group || group.panes.length >= MAX_GROUP_PANES) {
+      this.groups = [...this.groups, { id: `g${++this.groupCount}`, panes: [id], focus: id, sizes: [1] }];
+      return;
+    }
+    const at = group.panes.indexOf(after) + 1;
+    const panes = [...group.panes.slice(0, at), id, ...group.panes.slice(at)];
+    this.groups = this.groups.map((g) => (g.id === group.id ? { ...g, panes, focus: id, sizes: evenShares(panes.length) } : g));
+  }
+
+  /** Focuses a pane, which shows its group. */
+  private focusPane(id: string): void {
+    this.active = id;
+    const group = this.groupOf(id);
+    if (group && group.focus !== id) this.groups = this.groups.map((g) => (g.id === group.id ? { ...g, focus: id } : g));
   }
 
   /**
@@ -346,12 +436,13 @@ export class TerminalsStore {
   }
 
   /**
-   * Types the paths of files dropped on the panel into the active tab, each
-   * pasted on its own as terminal apps do, so agents attach images. An SSH
-   * host gets copies first; failures are shown as a toast.
+   * Types the paths of files dropped on the panel into pane id (the focused
+   * one by default), each pasted on its own as terminal apps do, so agents
+   * attach images. An SSH host gets copies first; failures are shown as a
+   * toast.
    */
-  async dropFiles(paths: string[]): Promise<void> {
-    const tab = this.activeTab;
+  async dropFiles(paths: string[], id: string | null = this.active): Promise<void> {
+    const tab = this.tabs.find((t) => t.id === id);
     if (!tab || tab.status !== 'running' || paths.length === 0) return;
     let progress: number | undefined;
     if (tab.host && !wslDistro(tab.host)) {
@@ -372,7 +463,7 @@ export class TerminalsStore {
   }
 
   private receive(id: string, data: Uint8Array): void {
-    this.tracker.output(id, data, this.viewing === id);
+    this.tracker.output(id, data, this.viewing.has(id));
     const sink = this.sinks.get(id);
     if (sink) {
       sink.write(data);
@@ -417,7 +508,7 @@ export class TerminalsStore {
     if (!tab) return true;
     if (tab.status === 'running' && tab.kind === 'agent' && !confirmed) {
       this.confirming = id;
-      this.active = id;
+      this.focusPane(id);
       this.noteViewing();
       return false;
     }
@@ -428,24 +519,44 @@ export class TerminalsStore {
     return true;
   }
 
-  /** Drops a tab, selects its neighbour, and hides the panel when it was the last. */
+  /**
+   * Drops a pane. Its neighbour in the group takes focus; a group left empty
+   * goes and its neighbour shows. The last pane hides the panel.
+   */
   private remove(tab: PanelTab): void {
-    const index = this.tabs.findIndex((t) => t.id === tab.id);
     this.tabs = this.tabs.filter((t) => t.id !== tab.id);
     this.sinks.delete(tab.id);
     this.buffered.delete(tab.id);
     this.startedAt.delete(tab.id);
     this.writing.delete(tab.id);
+    this.paneSizes.delete(tab.id);
     this.tracker.remove(tab.id);
     if (tab.id in this.attention) {
       const { [tab.id]: _, ...rest } = this.attention;
       this.attention = rest;
       for (const fn of this.attentionListeners) fn(tab.id, 'exited');
     }
-    if (this.viewing === tab.id) this.viewing = null;
-    if (this.active === tab.id) {
-      this.active = this.tabs[Math.min(index, this.tabs.length - 1)]?.id ?? null;
+    this.viewing.delete(tab.id);
+    const group = this.groupOf(tab.id);
+    let next: string | null = null;
+    if (group) {
+      const at = group.panes.indexOf(tab.id);
+      const panes = group.panes.filter((id) => id !== tab.id);
+      if (panes.length > 0) {
+        // The others keep their proportions.
+        const kept = group.sizes.filter((_, i) => i !== at);
+        const total = kept.reduce((sum, share) => sum + share, 0);
+        const sizes = total > 0 ? kept.map((share) => share / total) : evenShares(panes.length);
+        const focus = group.focus === tab.id ? panes[Math.min(at, panes.length - 1)] : group.focus;
+        this.groups = this.groups.map((g) => (g.id === group.id ? { ...g, panes, focus, sizes } : g));
+        next = focus;
+      } else {
+        const index = this.groups.findIndex((g) => g.id === group.id);
+        this.groups = this.groups.filter((g) => g.id !== group.id);
+        next = this.groups[Math.min(index, this.groups.length - 1)]?.focus ?? null;
+      }
     }
+    if (this.active === tab.id) this.active = next;
     if (this.tabs.length === 0) this.setOpen(false);
     this.noteViewing();
   }
@@ -460,21 +571,40 @@ export class TerminalsStore {
     this.closeQueue = [];
   }
 
+  /** Focuses a pane, showing its tab. */
   select(id: string): void {
-    if (this.tabs.some((t) => t.id === id)) this.active = id;
+    if (this.tabs.some((t) => t.id === id)) this.focusPane(id);
     this.noteViewing();
   }
 
   /**
-   * Selects the tab at a position counting from 1, when the panel shows and
-   * has that many tabs; returns whether it did.
+   * Shows the tab at a position counting from 1, with the pane it had
+   * focused, when the panel shows and has that many tabs; returns whether it
+   * did.
    */
   selectNth(n: number): boolean {
-    const tab = this.tabs[n - 1];
-    if (!this.open || !tab) return false;
-    this.active = tab.id;
+    const group = this.groups[n - 1];
+    if (!this.open || !group) return false;
+    this.focusPane(group.focus);
     this.noteViewing();
     return true;
+  }
+
+  /**
+   * Moves the border after pane index of a group by delta, a share of the
+   * group; each pane keeps at least min. Returns the share it moved.
+   */
+  resizePanes(groupId: string, index: number, delta: number, min = 0): number {
+    const group = this.groups.find((g) => g.id === groupId);
+    if (!group || index < 0 || index + 1 >= group.sizes.length) return 0;
+    const [a, b] = [group.sizes[index], group.sizes[index + 1]];
+    const moved = Math.min(Math.max(delta, Math.min(0, min - a)), Math.max(0, b - min));
+    if (moved === 0) return 0;
+    const sizes = [...group.sizes];
+    sizes[index] = a + moved;
+    sizes[index + 1] = b - moved;
+    this.groups = this.groups.map((g) => (g.id === groupId ? { ...g, sizes } : g));
+    return moved;
   }
 
   /** Shows or hides the panel; showing an empty panel opens a shell. */
@@ -508,19 +638,25 @@ export class TerminalsStore {
     return this.windowFocused;
   }
 
-  /** The tab the user is looking at: the panel's, while it shows and the window has focus. */
+  /** The pane the user is working in: the focused one, while the panel shows and the window has focus. */
   get viewedTab(): string | null {
     return this.open && this.windowFocused ? this.active : null;
   }
 
-  /** Tells the tracker when the user starts or stops looking at a tab. */
+  /** The panes the user is looking at: all of the shown tab's, while the panel shows and the window has focus. */
+  get viewedPanes(): string[] {
+    return this.open && this.windowFocused ? (this.shownGroup?.panes ?? []) : [];
+  }
+
+  /** Tells the tracker when the user starts or stops looking at a pane. */
   private noteViewing(): void {
-    const now = this.viewedTab;
-    if (now === this.viewing) return;
-    if (this.viewing) this.tracker.seen(this.viewing);
-    if (now) this.tracker.seen(now);
+    const now = new Set(this.viewedPanes);
+    const shown = [...now].filter((id) => !this.viewing.has(id));
+    const hidden = [...this.viewing].filter((id) => !now.has(id));
+    if (shown.length === 0 && hidden.length === 0) return;
+    for (const id of [...hidden, ...shown]) this.tracker.seen(id);
     this.viewing = now;
-    if (now) for (const fn of this.viewingListeners) fn(now);
+    for (const id of shown) for (const fn of this.viewingListeners) fn(id);
   }
 
   /** Calls fn with each change of an agent tab's state. */
@@ -529,7 +665,7 @@ export class TerminalsStore {
     return () => this.attentionListeners.delete(fn);
   }
 
-  /** Calls fn with each tab the user starts looking at. */
+  /** Calls fn with each pane the user starts looking at. */
   onViewing(fn: (id: string) => void): () => void {
     this.viewingListeners.add(fn);
     return () => this.viewingListeners.delete(fn);
@@ -571,10 +707,10 @@ export class TerminalsStore {
     );
   }
 
-  /** Shows the panel with a tab selected. */
+  /** Shows the panel with a pane focused. */
   show(id: string): void {
     if (!this.tabs.some((t) => t.id === id)) return;
-    this.active = id;
+    this.focusPane(id);
     this.setOpen(true);
   }
 
@@ -608,14 +744,17 @@ export class TerminalsStore {
     });
   }
 
-  /** Records a view's size so the next tab starts at it. */
+  /** Records the directory a pane's shell reports. */
   setCwd(id: string, cwd: string): void {
     const tab = this.tabs.find((t) => t.id === id);
     if (tab) tab.cwd = cwd;
   }
 
-  setSize(cols: number, rows: number): void {
-    if (cols > 0 && rows > 0) this.size = { cols, rows };
+  /** Records the size a view fits, pane id's, so new tabs and splits start near it. */
+  setSize(cols: number, rows: number, id?: string): void {
+    if (!(cols > 0 && rows > 0)) return;
+    this.size = { cols, rows };
+    if (id && this.tabs.some((t) => t.id === id)) this.paneSizes.set(id, { cols, rows });
   }
 
   private save(): void {

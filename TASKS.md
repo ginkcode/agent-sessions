@@ -439,3 +439,5 @@ Internal terminal layout: **TM-01 / TM-02 complete** — [maximize/restore termi
 Startup regression follow-up: **ST-08A / ST-08B complete** — [stale initial connection snapshot](docs/tasks/performance-startup.md#st-08--startup-connection-snapshot-rollback-2026-10-24), preserve remote selection over delayed Local startup replies.
 
 Go to File blame: **NB-01…NB-04 complete** — [Git in nested repositories](docs/tasks/nested-repo-blame.md), line blame, changed-line markers and status tints for repositories under a non-Git directory.
+
+Internal terminal split: **TS-01…TS-04 planned** — [split terminals](docs/tasks/terminal-split.md), several shells side by side in one tab, as in VS Code.

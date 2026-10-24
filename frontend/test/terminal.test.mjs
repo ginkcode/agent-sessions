@@ -522,6 +522,157 @@ test('TerminalsStore selects a tab by its position while the panel shows', async
   });
 });
 
+const panes = (store) => store.groups.map((g) => g.panes);
+
+test('TerminalsStore splits a tab into panes beside the source, in its directory on the same host', async () => {
+  await withTerminals(async ({ store, mock, MAX_GROUP_PANES }) => {
+    const first = await store.newShell('/a');
+    const second = await store.newShell('/b');
+    assert.deepEqual(panes(store), [[first.id], [second.id]], 'each launch is a tab of its own');
+    assert.match(store.groups[0].id, /^g\d+$/);
+
+    store.setCwd(first.id, '/a/nested');
+    store.setSize(120, 30, first.id);
+    const right = await store.split(first.id, '/default', '');
+    assert.deepEqual(panes(store), [[first.id, right.id], [second.id]]);
+    assert.deepEqual(store.tabs.map((t) => t.id), [first.id, second.id, right.id], 'tabs stay in start order');
+    assert.deepEqual([store.active, store.shownGroup.focus, store.groups[0].sizes], [right.id, right.id, [0.5, 0.5]]);
+    assert.equal(right.dir, '/a/nested', 'the source pane’s directory');
+    assert.deepEqual(mock.panelTerminals.get(right.id).size, { cols: 60, rows: 30 }, 'half the source’s width');
+
+    // Splitting the first pane again puts the shell right after it.
+    const middle = await store.split(first.id, '/default', '');
+    assert.deepEqual(store.groups[0].panes, [first.id, middle.id, right.id]);
+    assert.ok(store.groups[0].sizes.every((share) => Math.abs(share - 1 / 3) < 1e-9));
+
+    // A pane on another host than the selected one starts at the default.
+    mock.connState = { ...mock.connState, phase: 'connected', host: 'box' };
+    const remote = await store.newShell('/srv');
+    const local = await store.split(remote.id, '/default', '');
+    assert.equal(local.dir, '/default');
+
+    // The panel docked left stacks panes, so a split halves the rows.
+    store.setPosition('left');
+    store.setSize(80, 40, second.id);
+    const below = await store.split(second.id, '', 'box');
+    assert.deepEqual(mock.panelTerminals.get(below.id).size, { cols: 80, rows: 20 });
+
+    // A full tab takes no more panes.
+    await store.split(first.id);
+    assert.equal(store.groups[0].panes.length, MAX_GROUP_PANES);
+    assert.equal(store.canSplit(first.id), false);
+    const count = store.tabs.length;
+    assert.equal(await store.split(first.id), null);
+    assert.equal(store.tabs.length, count);
+    assert.equal(store.canSplit('missing'), false);
+  });
+});
+
+test('TerminalsStore gives a split its own tab when the source closed while it started', async () => {
+  await withTerminals(async ({ store, mock }) => {
+    const source = await store.newShell('/a');
+    const other = await store.newShell('/b');
+    const panelShell = mock.panelShell.bind(mock);
+    mock.panelShell = async (cwd, size) => {
+      store.close(source.id);
+      return panelShell(cwd, size);
+    };
+    const split = await store.split(source.id);
+    assert.deepEqual(panes(store), [[other.id], [split.id]]);
+    assert.equal(store.active, split.id);
+  });
+});
+
+test('TerminalsStore closing a pane focuses its neighbour and an empty tab gives way to the next', async () => {
+  await withTerminals(async ({ store, mock }) => {
+    const a = await store.newShell();
+    const a2 = await store.split(a.id);
+    const a3 = await store.split(a2.id);
+    const b = await store.newShell();
+    store.resizePanes(store.groups[0].id, 0, 0.2);
+    store.select(a2.id);
+
+    // The focused pane closes: the next pane in its tab takes focus.
+    store.close(a2.id);
+    assert.deepEqual(panes(store), [[a.id, a3.id], [b.id]]);
+    assert.deepEqual([store.active, store.groups[0].focus], [a3.id, a3.id]);
+    const [left, right] = store.groups[0].sizes;
+    assert.ok(Math.abs(left + right - 1) < 1e-9 && left > right, 'the others keep their proportions');
+
+    // A pane exiting in a tab not shown leaves the shown tab alone.
+    store.select(b.id);
+    await mock.terminalWrite(a3.id, 'exit\r');
+    assert.deepEqual([panes(store), store.active, store.groups[0].focus], [[[a.id], [b.id]], b.id, a.id]);
+
+    // The last pane of a tab closing shows its neighbour's focused pane.
+    store.select(a.id);
+    store.close(a.id);
+    assert.deepEqual([panes(store), store.active], [[[b.id]], b.id]);
+    store.close(b.id);
+    assert.deepEqual([store.groups, store.active, store.open], [[], null, false]);
+
+    // Exited-before-shown and stale starts add no tab.
+    const panelShell = mock.panelShell.bind(mock);
+    mock.panelShell = async (cwd, size) => {
+      const tab = await panelShell(cwd, size);
+      mock.emit('term:exit', { id: tab.id, code: 0 });
+      return tab;
+    };
+    await store.newShell();
+    mock.panelShell = async (cwd, size) => {
+      await panelShell(cwd, size);
+      throw new StaleReplyError();
+    };
+    await store.newShell();
+    assert.deepEqual(store.groups, []);
+  });
+});
+
+test('TerminalsStore selects tabs by position and shows a pane in a hidden tab', async () => {
+  await withTerminals(async ({ store }) => {
+    const a = await store.newShell();
+    const a2 = await store.split(a.id);
+    const b = await store.newShell();
+    store.select(a.id);
+    store.select(b.id);
+    assert.equal(store.selectNth(1), true);
+    assert.equal(store.active, a.id, 'the pane the tab had focused');
+    assert.equal(store.selectNth(3), false, 'three panes, two tabs');
+    store.setOpen(false);
+    store.show(a2.id);
+    assert.deepEqual([store.open, store.active, store.groups[0].focus], [true, a2.id, a2.id]);
+  });
+});
+
+test('TerminalsStore resizes panes within their limits', async () => {
+  await withTerminals(async ({ store }) => {
+    const a = await store.newShell();
+    await store.split(a.id);
+    await store.split(a.id);
+    const id = store.groups[0].id;
+    assert.equal(store.resizePanes(id, 0, 1, 0.1), 1 / 3 - 0.1, 'the right pane keeps its minimum');
+    assert.ok(Math.abs(store.groups[0].sizes[1] - 0.1) < 1e-9);
+    assert.ok(Math.abs(store.resizePanes(id, 0, 0.5, 0.1)) < 1e-9, 'nothing left to give');
+    assert.ok(Math.abs(store.resizePanes(id, 0, -1, 0.1) - (0.1 - (2 / 3 - 0.1))) < 1e-9);
+    assert.equal(store.resizePanes(id, 2, 0.1), 0, 'no border after the last pane');
+    assert.equal(store.resizePanes('missing', 0, 0.1), 0);
+    assert.ok(Math.abs(store.groups[0].sizes.reduce((s, x) => s + x, 0) - 1) < 1e-9);
+  });
+});
+
+test('TerminalsStore closing a split tab asks for each running agent in it', async () => {
+  await withTerminals(async ({ store, mock }) => {
+    const [meta] = await mock.listSessions('', {}, { field: 'updatedAt', dir: 'desc' });
+    const agent = await store.runResume(meta.ref, meta.cwd);
+    const shell = await store.split(agent.id);
+    store.closeMany(store.groups[0].panes);
+    assert.deepEqual([store.confirming, store.active, store.tabs.length], [agent.id, agent.id, 2]);
+    store.confirmClose();
+    assert.deepEqual([store.tabs.length, store.groups.length, store.open], [0, 0, false]);
+    assert.ok(!mock.panelTerminals.has(shell.id));
+  });
+});
+
 test('TerminalsStore reports a failed start and opens a shell when toggled empty', async () => {
   await withTerminals(async ({ store, mock, toasts }) => {
     const [meta] = await mock.listSessions('', {}, { field: 'updatedAt', dir: 'desc' });
@@ -608,8 +759,12 @@ test('TerminalsStore types dropped files into the active tab, copying them to an
     assert.deepEqual([toasts.at(-2).title, toasts.at(-1).title, toasts.at(-1).body], ['Copying 2 files to box', "Couldn't add the dropped files", 'Permission denied (publickey)']);
     assert.equal(remoteSink.pastes.length, 1);
 
-    // An ended tab takes no files.
+    // Files dropped on a pane go to it, focused or not.
     mock.terminalDropFiles = drop;
+    await store.dropFiles(['/home/me/beside.png'], local.id);
+    assert.deepEqual([sink.pastes.at(-1), remoteSink.pastes.length], ['/home/me/beside.png ', 1]);
+
+    // An ended tab takes no files.
     store.select(local.id);
     const failed = mock.droppedFiles.length;
     store.tabs = store.tabs.map((t) => (t.id === local.id ? { ...t, status: 'exited', exitCode: 1 } : t));

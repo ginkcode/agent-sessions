@@ -233,6 +233,34 @@ test('agent tabs: a bell needs the user unless they are looking, and the session
   });
 });
 
+test('every pane of the shown tab counts as viewed, not only the focused one', async () => {
+  await withLinks(async ({ mock, terminals }) => {
+    const [meta] = await mock.listSessions('', {}, { field: 'updatedAt', desc: true });
+    const beside = await terminals.runResume(meta.ref, meta.cwd, meta.title);
+    const shell = await terminals.split(beside.id);
+    const other = await terminals.runNewSession('codex', meta.cwd);
+    const viewed = [];
+    terminals.onViewing((id) => viewed.push(id));
+    terminals.select(shell.id);
+    assert.deepEqual(viewed.sort(), [beside.id, shell.id].sort(), 'showing a tab views each of its panes');
+    assert.deepEqual([terminals.viewedTab, terminals.viewedPanes], [shell.id, [beside.id, shell.id]]);
+
+    const ring = (id) => mock.emit('term:data', { id, data: btoa('\x07') });
+    ring(beside.id);
+    ring(other.id);
+    assert.equal(terminals.attention[beside.id] ?? 'idle', 'idle', 'the pane beside the focused one is in view');
+    assert.equal(terminals.attention[other.id], 'needs');
+
+    viewed.length = 0;
+    terminals.select(beside.id);
+    assert.deepEqual(viewed, [], 'focusing another pane of the same tab views nothing new');
+    terminals.select(other.id);
+    assert.deepEqual([viewed, terminals.attention[other.id]], [[other.id], 'idle']);
+    ring(beside.id);
+    assert.equal(terminals.attention[beside.id], 'needs', 'its tab is no longer shown');
+  });
+});
+
 test('a mock agent turn ends waiting for approval: the tab needs the user', async () => {
   await withLinks(async ({ mock, terminals }) => {
     mock.agentTurnMs = 700;
