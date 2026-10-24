@@ -51,6 +51,9 @@ func (p *Provider) rolloutFor(ctx context.Context, ref model.SessionRef) (model.
 
 // Load reconstructs conversation records from a validated rollout path.
 func (p *Provider) Load(ctx context.Context, ref model.SessionRef) (*model.Transcript, error) {
+	if work := provider.LoadWorkFromContext(ctx); work != nil {
+		work.Calls.Add(1)
+	}
 	meta, err := p.rolloutFor(ctx, ref)
 	if err != nil {
 		return nil, err
@@ -110,11 +113,11 @@ type rolloutLoader struct {
 // the transcript; scan diagnostics remain in ScanResult.Diag.
 func (p *Provider) loadRollout(ctx context.Context, meta model.SessionMeta) (*model.Transcript, provider.Diagnostics, error) {
 	path := meta.SourcePath
-	r, err := jsonl.Open(path, 0)
+	r, closer, err := provider.OpenLoadSource(ctx, path)
 	if err != nil {
 		return nil, provider.Diagnostics{}, fmt.Errorf("codex: load rollout %q: %w", path, err)
 	}
-	defer func() { _ = r.Close() }()
+	defer func() { _ = closer.Close() }()
 	l := rolloutLoader{path: path, tools: make(map[string]*model.ToolCall), assistant: make(map[string]int), current: -1}
 	for n := 0; ; n++ {
 		if n%128 == 0 {

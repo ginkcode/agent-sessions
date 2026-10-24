@@ -133,6 +133,9 @@ type subMeta struct {
 
 // Load returns the full transcript for a session reference.
 func (p *Provider) Load(ctx context.Context, ref model.SessionRef) (*model.Transcript, error) {
+	if work := provider.LoadWorkFromContext(ctx); work != nil {
+		work.Calls.Add(1)
+	}
 	s, err := p.sourceFor(ctx, ref)
 	if err != nil {
 		return nil, err
@@ -171,11 +174,11 @@ func (p *Provider) loadFile(ctx context.Context, s source) (*model.Transcript, *
 		}
 	}
 
-	r, err := jsonl.Open(s.Path, 0)
+	r, closer, err := provider.OpenLoadSource(ctx, s.Path)
 	if err != nil {
 		return nil, nil, fmt.Errorf("claude: load %s: %w", s.Path, err)
 	}
-	defer func() { _ = r.Close() }()
+	defer func() { _ = closer.Close() }()
 
 	l := &loader{
 		path:       s.Path,

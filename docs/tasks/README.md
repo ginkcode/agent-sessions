@@ -133,6 +133,16 @@ not a promise that the entire workspace has been checked.
 Additional languages and checker adapters require separately scoped tasks after
 feedback from the first two stages; they are not included in CD-28.
 
+## Performance
+
+[Performance roadmap](../plan/performance.md) and
+[Milestone 1 task briefs](performance-m1.md): **2/15 complete**, PF-01/PF-02 complete; PF-03…PF-15 not started.
+PF-01…PF-15 cover synthetic baselines, transcript cache correctness/coalescing,
+Codex source fast paths, checkpoint reuse, frontend listing retention and directory
+ignore-check batching. Dependencies, ≤4h estimates and acceptance criteria are in
+the briefs; status is also tracked in [TASKS.md](../../TASKS.md#follow-up--performance).
+Later milestones must receive their own documented task breakdown before coding.
+
 ## Editor essentials
 
 Briefs for [editor-essentials.md](../plan/editor-essentials.md): project
