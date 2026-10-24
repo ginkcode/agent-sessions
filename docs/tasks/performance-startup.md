@@ -515,7 +515,7 @@ mandatory. Generated fixtures only, no private stores or real host connections.
 | Task | Status | Scope | Estimate |
 |---|---|---|---|
 | ST-07A | Complete | Document readiness/admission/lifecycle contracts | 1 h |
-| ST-07B | Pending | Atomic discovery snapshot/change subscription | ≤3 h |
+| ST-07B | Complete | Atomic discovery snapshot/change subscription | ≤3 h |
 | ST-07C | Pending | Prepared RPC startup, early initialize and method gate | ≤4 h |
 | ST-07D | Pending | CLI wiring and generated real-engine integration | ≤3 h |
 | ST-07E | Pending | Opt-in content-free remote phase timing | ≤3 h |
@@ -571,3 +571,8 @@ real SSH/WSL and Windows execution unperformed. Retest instructions must rebuild
 remote bundles as well as desktop; checksum matching already handles same-version
 rebuilds. Build bundles only into a fresh temporary directory if needed. No installs,
 private data, process termination, app replacement, packaging or push.
+
+ST-07B evidence: snapshot/change subscription wakes on begin/update/stop under the
+discovery mutex, stale lifetime updates do not wake or publish. Held writer-open
+cases verify observer snapshot equals lock-free status before verification. Focused
+engine discovery/hint race tests `-count=3` PASS (4.613 s), changed-code lint 0 issues.

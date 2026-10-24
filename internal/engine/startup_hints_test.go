@@ -115,7 +115,16 @@ func TestStartupWriterHintsBeforeVerification(t *testing.T) {
 			if err != nil || counts[string(model.AgentClaude)] != want {
 				t.Fatalf("provisional counts=%v err=%v", counts, err)
 			}
+			watched, changed := e.WatchDiscovery()
+			select {
+			case <-changed:
+				t.Fatal("held verification unexpectedly changed discovery")
+			default:
+			}
 			status, err := e.DiscoveryStatus(ctx)
+			if watched != status {
+				t.Fatalf("watch snapshot=%+v, status=%+v", watched, status)
+			}
 			if err != nil || status.Complete || status.CatalogUsable != (want == 1) {
 				t.Fatalf("provisional status=%+v err=%v", status, err)
 			}

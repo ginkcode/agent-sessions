@@ -77,6 +77,7 @@ type discoveryOwner struct {
 	attempt uint64
 	active  bool
 	emitter Emitter
+	changed chan struct{}
 }
 
 // discoveryScope ties a context to one lifetime and, once reconciling, one
@@ -104,6 +105,35 @@ func (e *Engine) DiscoveryStatus(context.Context) (DiscoveryStatus, error) {
 	return d.status, nil
 }
 
+// DiscoveryWatcher atomically subscribes to changes without depending on wire
+// event delivery. Callers must read again after the returned channel closes.
+// The channel belongs to the owner; callers must never close it.
+type DiscoveryWatcher interface {
+	WatchDiscovery() (DiscoveryStatus, <-chan struct{})
+}
+
+func (e *Engine) WatchDiscovery() (DiscoveryStatus, <-chan struct{}) {
+	d := &e.discovery
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if d.changed == nil {
+		d.changed = make(chan struct{})
+	}
+	s := d.status
+	if s.Lifetime == 0 {
+		s.State = DiscoveryInitializing
+	}
+	return s, d.changed
+}
+
+// changedLocked wakes snapshot observers even when no wire event is emitted.
+func (d *discoveryOwner) changedLocked() {
+	if d.changed != nil {
+		close(d.changed)
+		d.changed = nil
+	}
+}
+
 func (e *Engine) setDiscoveryEmitter(emitter Emitter) {
 	e.discovery.mu.Lock()
 	e.discovery.emitter = emitter
@@ -129,6 +159,7 @@ func (e *Engine) beginDiscovery(ctx context.Context) context.Context {
 	d.attempt = 0
 	d.active = true
 	d.emitter = e.emitter
+	d.changedLocked()
 	s, emitter := d.status, d.emitter
 	d.mu.Unlock()
 	emit(emitter, s)
@@ -155,6 +186,7 @@ func (e *Engine) updateDiscovery(ctx context.Context, newAttempt bool, change fu
 	}
 	change(&d.status)
 	d.status.Revision++
+	d.changedLocked()
 	s, emitter := d.status, d.emitter
 	d.mu.Unlock()
 	emit(emitter, s)
@@ -180,6 +212,7 @@ func (e *Engine) stopDiscovery() {
 		d.status.Complete = true
 		d.status.Revision++
 	}
+	d.changedLocked()
 	d.mu.Unlock()
 }
 
