@@ -20,6 +20,9 @@ export class GitChangesStore {
   branchesTruncated = $state(false);
   branchesLoading = $state(false);
   collapsed = $state(new Set<string>());
+  syncOperation = $state<'fetch' | 'pull' | 'push' | null>(null);
+  syncMessage = $state('');
+  private syncController: AbortController | null = null;
   private identity = '';
   private sequence = 0;
 
@@ -39,7 +42,7 @@ export class GitChangesStore {
     if (identity !== this.identity) {
       this.identity = identity;
       this.status = null; this.message = ''; this.error = null; this.collapsed = new Set();
-      this.branches = []; this.branchesTruncated = false;
+      this.branches = []; this.branchesTruncated = false; this.syncMessage = '';
     }
     const sequence = ++this.sequence;
     if (!files.dir || !connectionStore.capabilities.gitChanges || link.blockedReason) { this.loading = false; return; }
@@ -69,6 +72,55 @@ export class GitChangesStore {
     const paths = files.tabs.filter(t => !t.external).map(t => t.path);
     const ok = await this.write((dir, host) => api.gitSwitch(dir, { name, create, remote, draftPaths: this.draftPaths }, host), paths);
     if (ok && files.dir && identity === this.key()) { await codeDiagnostics.hide(); if (identity === this.key() && files.dir) await codeDiagnostics.show(files.dir); await this.loadBranches(); }
+    return ok;
+  }
+
+  get syncBlocker(): string | null {
+    if (!connectionStore.capabilities.gitSync) return 'This host does not support Git sync. Update the server and reconnect.';
+    return this.writeBlocker;
+  }
+
+  cancelSync(): void { this.syncController?.abort(); }
+
+  async sync(op: 'fetch' | 'pull' | 'push'): Promise<boolean> {
+    const dir = files.dir, host = link.dataHost, identity = this.key();
+    if (!dir || this.syncBlocker) return false;
+    if (op !== 'fetch' && this.status?.detached) { this.error = 'Switch to a branch before pulling or pushing.'; return false; }
+    if (op === 'pull' && this.draftPaths.length) { this.error = 'Save or close unsaved drafts before pulling.'; return false; }
+    // Publishing creates a remote branch, so it asks; a push to the upstream does not.
+    if (op === 'push' && !this.status?.upstream) {
+      const answer = await filePrompt.ask('Publish branch', `Publish ${this.status?.branch} to the remote and track it as its upstream?`, [{ value: 'push', label: 'Publish' }]);
+      if (answer !== 'push' || identity !== this.key() || this.syncBlocker) return false;
+    }
+    const controller = new AbortController();
+    this.syncController = controller; this.syncOperation = op;
+    this.busy = true; this.error = null; this.syncMessage = '';
+    let ok = false;
+    try {
+      const result = await api.gitSync(dir, op, host, controller.signal);
+      ok = true;
+      if (identity === this.key()) { this.status = result.status; this.syncMessage = result.summary; }
+    } catch (e) {
+      if (identity !== this.key()) { /* another project now */ }
+      else if ((e as { code?: string } | null)?.code === 'canceled') this.syncMessage = `Canceled ${op}. Anything Git already finished is kept.`;
+      else this.error = errorText(e, 'Git sync failed.');
+    } finally {
+      // Cancellation or a failed pull can still have fetched refs or changed disk.
+      if (identity === this.key()) {
+        const failure = this.error;
+        try {
+          if (op === 'pull') {
+            await files.reloadReplaced(files.tabs.filter(t => !t.external).map(t => t.path));
+            if (identity === this.key()) await files.refresh();
+            if (identity === this.key()) await codeDiagnostics.hide();
+            if (identity === this.key() && files.dir) await codeDiagnostics.show(files.dir);
+          }
+          if (identity === this.key()) await this.refresh();
+        } catch (e) { if (identity === this.key()) this.error = errorText(e, 'Could not refresh after Git sync.'); }
+        if (failure && identity === this.key()) this.error = failure;
+      }
+      this.syncController = null; this.syncOperation = null; this.busy = false;
+    }
     return ok;
   }
 

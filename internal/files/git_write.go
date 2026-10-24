@@ -86,13 +86,35 @@ func (b *gitLimitedBuffer) Write(p []byte) (int, error) {
 type gitWriter struct {
 	ctx       context.Context
 	root, git string
+	// env is appended after the defaults. session runs network commands without
+	// a controlling terminal so SSH or credential helpers cannot wait on /dev/tty.
+	env     []string
+	session bool
 }
+
+// gitCommandError keeps Git's bounded output for callers that classify it.
+type gitCommandError struct {
+	command, output string
+	err             error
+}
+
+func (e *gitCommandError) Error() string {
+	if e.output != "" {
+		return fmt.Sprintf("git %s: %s", e.command, e.output)
+	}
+	return fmt.Sprintf("git %s: %v", e.command, e.err)
+}
+func (e *gitCommandError) Unwrap() error { return e.err }
 
 func (w gitWriter) run(input string, args ...string) ([]byte, error) {
 	cmd := exec.CommandContext(w.ctx, w.git, append([]string{"-C", w.root, "--literal-pathspecs", "--no-pager"}, args...)...)
 	hideConsole(cmd)
-	prepareGitWriteProcess(cmd)
-	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0", "GIT_EDITOR=true", "GIT_SEQUENCE_EDITOR=true", "GIT_PAGER=cat")
+	if w.session {
+		prepareGitSessionProcess(cmd)
+	} else {
+		prepareGitWriteProcess(cmd)
+	}
+	cmd.Env = append(append(os.Environ(), "GIT_TERMINAL_PROMPT=0", "GIT_EDITOR=true", "GIT_SEQUENCE_EDITOR=true", "GIT_PAGER=cat"), w.env...)
 	cmd.Stdin = strings.NewReader(input)
 	stdout := &gitLimitedBuffer{limit: 16 << 20}
 	stderr := &gitLimitedBuffer{limit: gitErrorLimit}
@@ -112,10 +134,7 @@ func (w gitWriter) run(input string, args ...string) ([]byte, error) {
 				text = text[:gitErrorLimit]
 			}
 		}
-		if text != "" {
-			return nil, fmt.Errorf("git %s: %s", args[0], text)
-		}
-		return nil, fmt.Errorf("git %s: %w", args[0], err)
+		return nil, &gitCommandError{command: args[0], output: text, err: err}
 	}
 	if stdout.overflow {
 		return nil, errors.New("git output exceeds safety limit")
@@ -124,7 +143,12 @@ func (w gitWriter) run(input string, args ...string) ([]byte, error) {
 }
 
 func withGitWrite(ctx context.Context, root string, action func(gitWriter) error) error {
-	ctx, cancel := context.WithTimeout(ctx, gitWriteTimeout)
+	return withGitRepo(ctx, root, gitWriteTimeout, action)
+}
+
+// withGitRepo bounds lock waiting and every command by one timeout.
+func withGitRepo(ctx context.Context, root string, timeout time.Duration, action func(gitWriter) error) error {
+	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	root, err := filepath.EvalSymlinks(root)
 	if err != nil {

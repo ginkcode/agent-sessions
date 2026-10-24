@@ -37,6 +37,7 @@ type Server struct {
 	initState   int
 	initialized bool
 	gitWrite    bool
+	gitSync     bool
 	initErr     error
 	mu          sync.Mutex
 	handlers    sync.WaitGroup
@@ -308,6 +309,7 @@ func (s *Server) initialize(serveCtx context.Context, req Request, starter Start
 		Blame:       true,
 		GitChanges:  true,
 		GitDiff:     true,
+		GitSync:     true, // still masked below without gitWrite
 		SearchFiles: true,
 		NewSession:  true,
 		// SaveFile and ReplaceFiles stay off without a starter, which is a
@@ -328,8 +330,11 @@ func (s *Server) initialize(serveCtx context.Context, req Request, starter Start
 	}
 
 	caps.GitWrite = caps.GitWrite && caps.SaveFile
+	// Pull and push change the repository, so sync follows write permission.
+	caps.GitSync = caps.GitSync && caps.GitWrite
 	s.mu.Lock()
 	s.gitWrite = caps.GitWrite
+	s.gitSync = caps.GitSync
 	s.mu.Unlock()
 	host := s.initializeDiagnostics(serveCtx, &caps)
 	return InitializeResult{
@@ -484,6 +489,8 @@ func (s *Server) dispatch(ctx context.Context, req Request) (any, error) {
 		return s.dispatchGitBranches(ctx, req, backend)
 	case "gitStage", "gitUnstage", "gitDiscard", "gitCommit":
 		return s.dispatchGitWrite(ctx, req, backend)
+	case "gitSync":
+		return s.dispatchGitSync(ctx, req, backend)
 	case "gitStatus":
 		var p GitStatusParams
 		if err := json.Unmarshal(req.Params, &p); err != nil {

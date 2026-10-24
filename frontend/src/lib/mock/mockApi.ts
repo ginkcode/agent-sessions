@@ -54,6 +54,8 @@ import type {
   GitSwitchRequest,
   GitDiffBasis,
   GitDiffContent,
+  GitSyncOp,
+  GitSyncResult,
   SearchQuery,
   SearchResult,
   HostEntry,
@@ -69,6 +71,7 @@ import type {
 import { mockSessions, mockMessages, mockBlobs, mockDiagnostics } from './fixtures.js';
 import { refKey } from '../manage.js';
 import { wslDistro } from '../hosts.js';
+import { GitSyncError } from '../gitSync';
 
 async function mockFileRevision(text: string): Promise<string> {
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
@@ -1127,6 +1130,46 @@ export class MockBackendAPI extends MockCodeDiagnostics {
     });
   }
 
+  /** Mock remote divergence per [host, dir]; tests and demos may set it. */
+  mockSyncState = new Map<string, { ahead: number; behind: number }>();
+  /** Delay before a mock sync settles, so cancellation can be exercised. */
+  gitSyncMs = 0;
+  async gitSync(dir: string, op: GitSyncOp, host: string | undefined, signal?: AbortSignal): Promise<GitSyncResult> {
+    if ((host ?? '') !== (this.connState.host ?? '')) throw new Error('The connection changed to another host.');
+    if (!['fetch', 'pull', 'push'].includes(op)) throw new Error('invalid Git sync operation');
+    const canceled = () => new GitSyncError('canceled', `git ${op} was canceled.`);
+    if (signal?.aborted) throw canceled();
+    if (this.gitSyncMs > 0) await new Promise<void>((resolve, reject) => {
+      const abort = () => { clearTimeout(timer); reject(canceled()); };
+      const timer = setTimeout(() => { signal?.removeEventListener('abort', abort); resolve(); }, this.gitSyncMs);
+      signal?.addEventListener('abort', abort, { once: true });
+    });
+    const key = JSON.stringify([host ?? '', dir]);
+    const list = await this.gitBranches(dir);
+    const current = list.branches.find(b => b.current && !b.remote);
+    const name = current?.name ?? 'main';
+    const sync = this.mockSyncState.get(key) ?? { ahead: 0, behind: 0 };
+    let summary = 'Fetched origin.';
+    if (op === 'pull') {
+      if (!current?.upstream) throw new GitSyncError('noUpstream', `Branch ${name} has no upstream to pull from. Push it first to set one.`);
+      if (sync.ahead && sync.behind) throw new GitSyncError('nonFastForward', 'The branch and its upstream have diverged, so this cannot fast-forward. Merge or rebase in a terminal.\nfatal: Not possible to fast-forward, aborting.');
+      summary = sync.behind ? `Fast-forwarded ${name} to ${current.upstream} (${sync.behind} commit${sync.behind === 1 ? '' : 's'}).` : `${name} is already up to date with ${current.upstream}.`;
+      sync.behind = 0;
+    } else if (op === 'push') {
+      if (sync.behind) throw new GitSyncError('nonFastForward', 'The remote has commits this branch does not. Pull, or merge or rebase in a terminal, before pushing.\n! [rejected] (fetch first)');
+      if (current && !current.upstream) {
+        current.upstream = `origin/${name}`;
+        this.mockBranchLists.set(key, list);
+        summary = `Pushed ${name} to origin/${name} and set it as upstream.`;
+      } else summary = `Pushed ${name} to ${current?.upstream ?? 'origin/main'}.`;
+      sync.ahead = 0;
+    }
+    this.mockSyncState.set(key, sync);
+    const status = await this.gitStatus(dir);
+    if (op !== 'pull') summary += ` ${status.ahead} ahead, ${status.behind} behind ${status.upstream}.`;
+    return { op, summary, status };
+  }
+
   private mockBranchLists = new Map<string, GitBranchList>();
   async gitBranches(dir: string): Promise<GitBranchList> {
     const key = JSON.stringify([this.connState.host ?? '', dir]);
@@ -1173,9 +1216,10 @@ export class MockBackendAPI extends MockCodeDiagnostics {
     const listing = await this.listFiles(dir);
     const changed = this.mockGitEntries.get(JSON.stringify([this.connState.host ?? '', dir]));
     const currentBranch = (await this.gitBranches(dir)).branches.find(b => b.current);
+    const sync = this.mockSyncState.get(JSON.stringify([this.connState.host ?? '', dir])) ?? { ahead: 0, behind: 0 };
     return {
       ok: true, branch: currentBranch?.name ?? 'main', head: 'abc1234', detached: false, hasCommits: true,
-      upstream: 'origin/main', ahead: 0, behind: 0, truncated: false,
+      upstream: currentBranch ? currentBranch.upstream ?? '' : 'origin/main', ahead: sync.ahead, behind: sync.behind, truncated: false,
       entries: changed?.map(e => ({ ...e })) ?? Object.entries(listing.status ?? {}).map(([path, state]) => ({
         path, index: state === 'A' || state === 'R' ? state : '',
         worktree: state === 'U' ? '?' : state === 'A' || state === 'R' ? '' : state,
@@ -1720,6 +1764,7 @@ export class MockBackendAPI extends MockCodeDiagnostics {
       gitChanges: true,
       gitDiff: true,
       gitWrite: true,
+      gitSync: true,
       searchFiles: true,
       replaceFiles: true,
       newSession: true,

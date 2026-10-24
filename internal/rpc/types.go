@@ -54,8 +54,10 @@ type Notification struct {
 type Capabilities struct {
 	GitDiff bool `json:"gitDiff,omitempty"`
 	// GitChanges supports repository status (and is absent on older servers).
-	GitChanges          bool `json:"gitChanges,omitempty"`
-	GitWrite            bool `json:"gitWrite,omitempty"`
+	GitChanges bool `json:"gitChanges,omitempty"`
+	GitWrite   bool `json:"gitWrite,omitempty"`
+	// GitSync supports fetch/pull/push; servers only advertise it with GitWrite.
+	GitSync             bool `json:"gitSync,omitempty"`
 	CodeDiagnostics     bool `json:"codeDiagnostics,omitempty"`
 	LiveCodeDiagnostics bool `json:"liveCodeDiagnostics,omitempty"`
 	// CodeNavigation: definition, references and hover for live documents.

@@ -73,6 +73,7 @@ type App struct {
 	transportOverride remote.ArtifactTransport
 	fileClose         fileCloseGuard
 	searches          fileSearches
+	gitSyncs          fileSearches // fetch/pull/push in progress, by sync ID
 
 	// Agent alerts: notify is set up on first use; notifierOverride and
 	// notifyRaise replace the desktop's notifications and raising the

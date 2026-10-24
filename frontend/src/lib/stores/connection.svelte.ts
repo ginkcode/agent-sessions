@@ -33,6 +33,7 @@ const LOCAL_CAPABILITIES: HostCapabilities = {
   gitChanges: true,
   gitDiff: true,
   gitWrite: true,
+  gitSync: true,
   searchFiles: true,
   replaceFiles: true,
   newSession: true,

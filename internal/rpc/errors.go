@@ -36,6 +36,8 @@ const (
 	ErrCodePayloadTooLarge  = "payload_too_large"
 	ErrCodeTimeout          = "timeout"
 	ErrCodeSaveIncomplete   = "save_incomplete"
+	// ErrCodeGitSync carries files.GitSyncError's own code in ErrorData.Details.
+	ErrCodeGitSync = "git_sync"
 )
 
 // Client-side and server-side sentinel errors.
@@ -87,6 +89,10 @@ func ToRPCError(err error) *ResponseError {
 	var rpcErr *ResponseError
 	if errors.As(err, &rpcErr) {
 		return rpcErr
+	}
+	var syncErr *files.GitSyncError
+	if errors.As(err, &syncErr) {
+		return &ResponseError{Code: CodeAppError, Message: syncErr.Message, Data: &ErrorData{Code: ErrCodeGitSync, Details: syncErr.Code}}
 	}
 
 	code := CodeAppError
@@ -146,6 +152,9 @@ func FromRPCError(respErr *ResponseError) error {
 	}
 	if respErr.Data == nil || respErr.Data.Code == "" {
 		return respErr
+	}
+	if respErr.Data.Code == ErrCodeGitSync {
+		return files.NewGitSyncError(respErr.Data.Details, respErr.Message)
 	}
 
 	var sentinel error

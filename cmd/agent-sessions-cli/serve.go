@@ -107,6 +107,7 @@ func serveCmd(ctx context.Context, args []string, resolveRoots func() (paths.Roo
 			GitChanges:      true,
 			GitDiff:         true,
 			GitWrite:        true,
+			GitSync:         true,
 			SearchFiles:     true,
 			ReplaceFiles:    true,
 			NewSession:      true,

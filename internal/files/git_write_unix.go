@@ -21,3 +21,10 @@ func prepareGitWriteProcess(cmd *exec.Cmd) {
 		return err
 	}
 }
+
+// prepareGitSessionProcess also detaches from any controlling terminal. A new
+// session leader's process group still equals its PID for the group kill.
+func prepareGitSessionProcess(cmd *exec.Cmd) {
+	prepareGitWriteProcess(cmd)
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+}

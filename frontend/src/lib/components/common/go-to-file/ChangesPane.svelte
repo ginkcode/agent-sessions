@@ -42,6 +42,24 @@
       {#if status?.ahead || status?.behind}<span title="Ahead / behind upstream">↑{status.ahead} ↓{status.behind}</span>{/if}
       <button type="button" title="Refresh changes" aria-label="Refresh changes" disabled={gitChanges.loading || gitChanges.busy} onclick={() => void gitChanges.refresh()}>↻</button>
     </div>
+    {#if status?.ok}
+      <div class="sync-actions">
+        {#if gitChanges.syncOperation}
+          <span role="status">{gitChanges.syncOperation === 'fetch' ? 'Fetching' : gitChanges.syncOperation === 'pull' ? 'Pulling' : 'Pushing'}…</span>
+          <button type="button" onclick={() => gitChanges.cancelSync()}>Cancel</button>
+        {:else}
+          <button type="button" disabled={Boolean(gitChanges.syncBlocker)} title={gitChanges.syncBlocker ?? 'Fetch remote updates without changing working files'} onclick={() => void gitChanges.sync('fetch')}>Fetch</button>
+          {#if status.behind > 0}
+            <button type="button" disabled={Boolean(gitChanges.syncBlocker) || status.detached || Boolean(status.operation) || groups.conflicts.length > 0} title={gitChanges.syncBlocker ?? (status.operation ? `Finish the ${status.operation} first` : 'Pull with fast-forward only; never merge or rebase')} onclick={() => void gitChanges.sync('pull')}>Pull ↓{status.behind}</button>
+          {/if}
+          {#if status.ahead > 0 || !status.upstream}
+            <button type="button" disabled={Boolean(gitChanges.syncBlocker) || status.detached || !status.hasCommits || Boolean(status.operation) || groups.conflicts.length > 0} title={gitChanges.syncBlocker ?? (status.operation ? `Finish the ${status.operation} first` : 'Push commits; never force')} onclick={() => void gitChanges.sync('push')}>{status.upstream ? `Push ↑${status.ahead}` : 'Publish branch…'}</button>
+          {/if}
+        {/if}
+      </div>
+      {#if gitChanges.syncMessage}<p class="note" role="status">{gitChanges.syncMessage}</p>{/if}
+      {#if !connectionStore.capabilities.gitSync}<p class="note">This host does not support Git sync. Update the server and reconnect.</p>{/if}
+    {/if}
     {#if branchesOpen}
       <div class="branches">
         <input aria-label="Filter branches" placeholder="Filter branches…" bind:value={branchQuery} />
@@ -106,6 +124,7 @@
   .changes-pane { flex: 1; min-height: 0; overflow: auto; font-size: 12px; }
   .repo-head, .section-head, .change-row, .commit-actions { display: flex; align-items: center; gap: 5px; }
   .repo-head { padding: 10px; border-bottom: 1px solid var(--border-color); }
+  .sync-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 5px; padding: 6px 10px; border-bottom: 1px solid var(--border-color); }
   .branch { flex: 1; overflow: hidden; text-overflow: ellipsis; text-align: left; }
   .branches { padding: 8px; display: flex; flex-direction: column; gap: 4px; max-height: 280px; overflow: auto; }
   .branches input { padding: 5px; color: var(--text-primary); background: var(--bg-secondary); border: 1px solid var(--border-color); }

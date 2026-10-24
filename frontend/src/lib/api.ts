@@ -1,5 +1,6 @@
 import type { CodeDiagnosticsAPI, CodeDiagnosticsContext, CodeDiagnosticsRun, CodeDiagnosticsAttachment, CodeDiagnosticsSnapshot, CodeDiagnosticsAck, CodeDiagnosticsRuns, CodeDiagnosticsDocumentReceipt, CodeDiagnosticPosition, CodeNavigationOp, CodeNavigationResult } from './codeDiagnostics';
 import { CodeDiagnosticsError, codeDiagnosticsError } from './codeDiagnostics';
+import { GitSyncError, gitSyncError } from './gitSync';
 import type { PortForwardRequest, PortForwardState } from './portForward';
 import type { ManagedToolRequest, ManagedToolState } from './managedTools';
 import type { TerminalFileTarget } from './terminalFileOpen';
@@ -24,6 +25,8 @@ import type {
   GitSwitchRequest,
   GitDiffBasis,
   GitDiffContent,
+  GitSyncOp,
+  GitSyncResult,
   SearchQuery,
   SearchResult,
   FileSaveRequest,
@@ -155,6 +158,8 @@ export interface BackendAPI extends CodeDiagnosticsAPI {
   gitUnstage(dir: string, paths: string[], host: string | undefined): Promise<void>;
   gitDiscard(dir: string, req: GitDiscardRequest, host: string | undefined): Promise<void>;
   gitCommit(dir: string, req: GitCommitRequest, host: string | undefined): Promise<void>;
+  /** Optional signal cancels the Git process group, locally or over RPC. */
+  gitSync(dir: string, op: GitSyncOp, host: string | undefined, signal?: AbortSignal): Promise<GitSyncResult>;
   blameFile(dir: string, path: string, line: number): Promise<BlameLine>;
   /**
    * Searches the text of the files of dir on the selected host. searchId
@@ -300,6 +305,8 @@ interface WailsAppBinding {
   GitStatus?(dir: string): Promise<RepoStatus>;
   GitBranches?(dir: string): Promise<GitBranchList>;
   GitSwitch?(dir: string, req: GitSwitchRequest, host: string): Promise<void>;
+  GitSync?(dir: string, req: { op: GitSyncOp }, syncId: string, host: string): Promise<GitSyncResult>;
+  CancelGitSync?(syncId: string): Promise<void>;
   GitStage?(dir: string, paths: string[], host: string): Promise<void>;
   GitUnstage?(dir: string, paths: string[], host: string): Promise<void>;
   GitDiscard?(dir: string, req: GitDiscardRequest, host: string): Promise<void>;
@@ -361,7 +368,12 @@ interface WailsAppBinding {
   GetHostEnv(): Promise<Record<string, string>>;
 }
 
-export const GIT_DIFF_UNSUPPORTED = 'Git diff bases are not supported by this version of the app backend.';
+export const GIT_SYNC_UNSUPPORTED = 'Git sync is not supported by this version of the app backend.';
+
+export { GitSyncError, gitSyncError };
+let gitSyncSequence = 0;
+
+export const GIT_DIFF_UNSUPPORTED ='Git diff bases are not supported by this version of the app backend.';
 export const GIT_WRITE_UNSUPPORTED = 'Git writes are not supported by this version of the app backend.';
 export const GIT_CHANGES_UNSUPPORTED = 'Git changes are not supported by this version of the app backend.';
 
@@ -832,6 +844,23 @@ class WailsBackendAPI implements BackendAPI {
     if (!this.binding.GitCommit) throw new Error(GIT_WRITE_UNSUPPORTED);
     try { await this.binding.GitCommit(dir, req, host ?? ''); }
     catch (e) { throw normalizeError(e); }
+  }
+
+  async gitSync(dir: string, op: GitSyncOp, host: string | undefined, signal?: AbortSignal): Promise<GitSyncResult> {
+    if (!this.binding.GitSync || (signal && !this.binding.CancelGitSync)) {
+      throw new GitSyncError('unsupported', GIT_SYNC_UNSUPPORTED);
+    }
+    if (signal?.aborted) throw new GitSyncError('canceled', `git ${op} was canceled.`);
+    const syncId = `git-sync-${Date.now()}-${++gitSyncSequence}`;
+    const cancel = () => { void this.binding.CancelGitSync?.(syncId).catch(() => {}); };
+    // Wails sends the start request before an abort can dispatch its cancel.
+    // Await the original run rather than racing: it retains the repo lock
+    // until the process group has actually stopped.
+    const pending = this.binding.GitSync(dir, { op }, syncId, host ?? '');
+    signal?.addEventListener('abort', cancel, { once: true });
+    try { return await pending; }
+    catch (e) { throw gitSyncError(e); }
+    finally { signal?.removeEventListener('abort', cancel); }
   }
 
   async gitBranches(dir: string): Promise<GitBranchList> {

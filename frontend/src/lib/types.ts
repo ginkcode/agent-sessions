@@ -795,6 +795,8 @@ export interface HostCapabilities {
   gitChanges?: boolean;
   gitDiff?: boolean;
   gitWrite?: boolean;
+  /** Fetch/pull/push; absent on older servers and only advertised with gitWrite. */
+  gitSync?: boolean;
   /** Absent on older servers; content search requires an explicit true. */
   searchFiles?: boolean;
   /** Absent on older servers; replacing in files requires an explicit true. */
@@ -897,6 +899,21 @@ export interface GitSwitchRequest {
   /** Any live draft blocks branch switching/creation. */
   draftPaths?: string[];
 }
+
+/** pull is fast-forward only; push sets the upstream when there is none. Never forces. */
+export type GitSyncOp = 'fetch' | 'pull' | 'push';
+export interface GitSyncResult {
+  op: GitSyncOp;
+  /** Short sentence, e.g. "Fast-forwarded main to origin/main (2 commits)." */
+  summary: string;
+  /** Refreshed upstream/ahead/behind; ok is false only if the refresh failed. */
+  status: RepoStatus;
+}
+/** Stable GitSyncError codes; Git's own output follows the message's first line. */
+export type GitSyncErrorCode =
+  | 'authRequired' | 'nonFastForward' | 'localChanges' | 'detached' | 'noUpstream'
+  | 'noRemote' | 'ambiguousRemote' | 'pushRemote' | 'noCommits' | 'inProgress' | 'timeout'
+  | 'canceled' | 'unsupported' | 'failed';
 
 export type GitDiffBasis = 'head' | 'index' | 'staged';
 export interface GitDiffContent {
