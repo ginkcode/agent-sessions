@@ -11,10 +11,26 @@ import (
 	"time"
 )
 
+// ignoreCheck reports which candidate paths are ignored; false means unknown.
+type ignoreCheck func(ctx context.Context, root string, paths []string) (map[string]bool, bool)
+
+// frontierLimit bounds the candidates awaiting one ignore decision: a path
+// count and their NUL-terminated stdin size. One oversized path is still allowed.
+type frontierLimit struct{ paths, bytes int }
+
+var directoryFrontier = frontierLimit{paths: 128, bytes: 64 << 10}
+
 // gitDirectories visits directory entries in bounded batches. check-ignore is
 // applied before descending, so ignored dependency trees are never enumerated.
 // Neither symlink directories nor repository metadata are followed.
 func gitDirectories(ctx context.Context, root string) ([]string, bool, error) {
+	return walkDirectories(ctx, root, ignoredDirectories, directoryFrontier)
+}
+
+// walkDirectories collects candidate subdirectories from as many unvisited
+// directories as fit in one frontier, decides them together, and only then
+// queues the survivors. Reads stay chunked; a full frontier is decided mid-read.
+func walkDirectories(ctx context.Context, root string, check ignoreCheck, limit frontierLimit) ([]string, bool, error) {
 	callerCtx := ctx
 	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
@@ -23,11 +39,42 @@ func gitDirectories(ctx context.Context, root string) ([]string, bool, error) {
 		return nil, false, err
 	}
 	defer r.Close()
-	var directories []string
+	var directories, frontier []string
 	pending := []string{""}
-	visited := 0
-	truncated := false
-	for len(pending) > 0 {
+	visited, frontierBytes := 0, 0
+	truncated, capped := false, false
+	decide := func() {
+		batch := frontier
+		frontier, frontierBytes = nil, 0
+		if len(batch) == 0 {
+			return
+		}
+		ignored, ok := check(ctx, root, batch)
+		if !ok {
+			// Fail closed: never walk possibly ignored trees after git fails.
+			truncated = true
+			return
+		}
+		for _, candidate := range batch {
+			if ignored[candidate] {
+				continue
+			}
+			if len(directories) >= MaxFiles {
+				truncated = true
+				return
+			}
+			directories = append(directories, candidate)
+			pending = append(pending, candidate)
+		}
+	}
+	for !truncated {
+		if len(pending) == 0 {
+			if len(frontier) == 0 {
+				break
+			}
+			decide()
+			continue
+		}
 		if ctx.Err() != nil {
 			if err := callerCtx.Err(); err != nil {
 				return nil, false, err
@@ -45,46 +92,35 @@ func gitDirectories(ctx context.Context, root string) ([]string, bool, error) {
 		if err != nil {
 			continue
 		}
-		for {
+		for !truncated {
 			entries, readErr := f.ReadDir(128)
-			var candidates []string
 			for _, entry := range entries {
 				visited++
 				if visited > MaxFiles*4 {
-					truncated = true
+					truncated, capped = true, true
 					break
 				}
-				if entry.IsDir() && entry.Name() != ".git" {
-					candidates = append(candidates, filepath.ToSlash(filepath.Join(rel, entry.Name())))
+				if !entry.IsDir() || entry.Name() == ".git" {
+					continue
 				}
-			}
-			if len(candidates) > 0 {
-				ignored, ok := ignoredDirectories(ctx, root, candidates)
-				if !ok {
-					// Fail closed: never walk possibly ignored trees after git fails.
-					truncated = true
-				} else {
-					for _, candidate := range candidates {
-						if ignored[candidate] {
-							continue
-						}
-						if len(directories) >= MaxFiles {
-							truncated = true
-							break
-						}
-						directories = append(directories, candidate)
-						pending = append(pending, candidate)
+				candidate := filepath.ToSlash(filepath.Join(rel, entry.Name()))
+				if len(frontier) > 0 && (len(frontier) >= limit.paths || frontierBytes+len(candidate)+1 > limit.bytes) {
+					if decide(); truncated {
+						break
 					}
 				}
+				frontier = append(frontier, candidate)
+				frontierBytes += len(candidate) + 1
 			}
-			if truncated || readErr != nil {
+			if readErr != nil {
 				break
 			}
 		}
 		f.Close()
-		if truncated {
-			break
-		}
+	}
+	if capped {
+		// Entries seen before the visit cap are still listed, never descended.
+		decide()
 	}
 	if err := callerCtx.Err(); err != nil {
 		return nil, false, err

@@ -1238,3 +1238,64 @@ dialog path has no component test; its store call is covered directly. Symlink
 aliases and external edits (terminal, other tools) are not detected; snapshots stay
 hints that every reopen revalidates. No native GUI/Windows verification, timing or
 heap claim. No private data, installation, app launch/kill, extra agents, commits or pushes.
+
+## PF-13 — Bounded directory frontiers (2026-10-24)
+
+Backend-only change to `internal/files/directories.go`. No listing API, frontend,
+cache or Git-runner change.
+
+### Policy
+
+- `gitDirectories` now delegates to `walkDirectories`, which keeps reading unvisited
+  directories (still in 128-entry `ReadDir` chunks) and collects their candidate
+  subdirectories into one frontier. The frontier is decided by a single
+  `check-ignore -z --stdin` when it reaches **128 paths or 64 KiB** of NUL-terminated
+  input, or when no undecided directory remains. A full frontier is decided mid-read.
+- Only survivors of a decision are queued, so no directory is opened before its own
+  ignore decision. `.git` and symlinks are never candidates; empty directories are
+  listed; one oversized path may form a batch alone.
+- Unchanged limits: 20 s walk timeout (truncated), caller cancellation (error),
+  `MaxFiles` directories and `MaxFiles*4` visited entries (truncated). Entries read
+  before the visit cap are still decided and listed but never entered, as before. A
+  failed decision truncates the result and stops the walk (fail closed).
+- Untruncated results are identical to the previous walker. Under truncation the
+  surviving subset may differ, because a frontier can span directories; only the
+  `Truncated` flag and caps are contractual.
+
+### Evidence
+
+`internal/files/directories_frontier_test.go` keeps the previous per-chunk walker as
+a test-only oracle:
+
+- A generated tree (300-wide level, 40-deep chain, empty and ignored directories,
+  repository metadata, inside/outside directory symlinks, files, and names with
+  spaces, Unicode, leading `-`, `#`, `!`, brackets, `*`, plus `:`, newline, backslash
+  and `?` off Windows) lists identically with frontier limits {1 path}, {2 paths},
+  {7 paths, 64 B}, the production limit and an unbounded one. Every batch respects
+  its limit and contains only children of already-decided, non-ignored directories.
+- Failure on the second decision: truncated, no further checks, only the first
+  batch's survivors listed. Cancellation from inside a decision returns
+  `context.Canceled` with no result. A flat `MaxFiles*4 + 10` entry root matches the
+  oracle's capped output without descent (skipped under `-short`).
+- Real Git with nested `.gitignore` rules (`listingTree(300)` plus 40 nested
+  `srcNN/subNN/leaf` chains and an ignored `nested/hidden/deeper`): identical output;
+  **3** `check-ignore` processes versus **58** for the per-chunk oracle. Most real
+  trees have few subdirectories per directory, so batching across directories is
+  where processes are saved; PF-14 tunes budgets and covers the remaining matrix.
+- PF-03 fixture (flat `srcNN` directories, so already 2 checks): unchanged counts.
+  `BenchmarkProjectListing`, 20 iterations × 3 runs on the same Apple Silicon host:
+  1000 files `Directories` 15.2–15.4 ms, `List` 52–57 ms; 20,001 files
+  `Directories` 49–56 ms, `List` 156–164 ms; **2** and **6** Git processes per op.
+  Advisory timings only, comparable with PF-03's 152 ms `List` median.
+
+### Verification
+
+```sh
+go test -race -count=1 ./internal/files/
+go vet ./internal/files/
+go build ./...
+go test -count=1 -run '^$' -bench 'ProjectListing/(1000|20001)/(Directories|List)$' -benchtime=20x ./internal/files/
+```
+
+All pass. Windows path behavior was not run on Windows; candidate paths still use
+`filepath.ToSlash`. No real project, private data, installation, app launch or push.

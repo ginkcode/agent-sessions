@@ -1,6 +1,6 @@
 # Performance Milestone 1 — Baselines and targeted reuse
 
-- Status: in progress 2026-10-24; **9/15 tasks complete**.
+- Status: in progress 2026-10-24; **10/15 tasks complete**.
 - Parent plan: [performance.md](../plan/performance.md).
 - All estimates include focused tests and are planning estimates, not promises.
 - Every task is ≤4 developer hours. Split it here and in `TASKS.md` before coding
@@ -26,11 +26,11 @@ PF-06 completed 2026-10-24; optional source contract, bounded canonical fallback
 ownership and Codex feasibility are in [../perf.md](../perf.md#pf-06--validated-source-loading-contract-2026-10-24).
 PF-07A/B implemented; PF-07C safe opt-out complete. PF-07 remains partial/blocked:
 no defensible automatic activation policy; production proof is off. PF-08/PF-10
-remain blocked. PF-09, PF-11 and PF-12 complete; PF-13 is next; PF-13…PF-15 unimplemented.
+remain blocked. PF-09 and PF-11…PF-13 complete; PF-14 is next; PF-14/PF-15 unimplemented.
 
 ## Task index
 
-PF-01 through PF-06, PF-09, PF-11 and PF-12 are **complete**; PF-07 is **partial/blocked** (A/B implemented, C safe opt-out complete; activation gated); all remaining rows are **not started**. Dependencies are completion gates, not mere ordering
+PF-01 through PF-06, PF-09 and PF-11…PF-13 are **complete**; PF-07 is **partial/blocked** (A/B implemented, C safe opt-out complete; activation gated); all remaining rows are **not started**. Dependencies are completion gates, not mere ordering
 suggestions. All implementation tasks also depend on the shared guardrails in the
 [parent plan](../plan/performance.md#shared-guardrails).
 
@@ -442,6 +442,11 @@ refresh failure and host switches; existing draft safety suites pass. Native UI
 verification remains separate and explicitly unperformed unless actually run.
 
 ## PF-13 — Bounded directory frontiers
+
+**Status:** complete 2026-10-24. One ignore decision per bounded frontier (128 paths,
+64 KiB stdin) that may span directories; check-before-descent, caps, fail-closed and
+cancellation retained; [evidence](../perf.md#pf-13--bounded-directory-frontiers-2026-10-24).
+PF-14 owns budget tuning and the real-Git ignore/filename/Windows matrix.
 
 **Goal:** prepare larger safe ignore-check batches without changing listing results.
 

@@ -1,6 +1,6 @@
 # Performance improvement roadmap
 
-Status: in progress 2026-10-24; PF-01…PF-06, PF-09, PF-11 and PF-12 complete: synthetic baselines, atomic transcript invalidation, coalesced loads, validated source-loading contract, checkpoint reuse, bounded frontend listing snapshots and their mutation freshness (9/15 M1 tasks).
+Status: in progress 2026-10-24; PF-01…PF-06, PF-09 and PF-11…PF-13 complete: synthetic baselines, atomic transcript invalidation, coalesced loads, validated source-loading contract, checkpoint reuse, bounded frontend listing snapshots and their mutation freshness, bounded directory ignore frontiers (10/15 M1 tasks).
 
 ## Context and goal
 
@@ -17,7 +17,7 @@ Measure synthetic workloads first and preserve correctness while removing work.
 
 | Performance milestone | Scope | Status |
 |---|---|---|
-| 1 | Synthetic baselines; correct/coalesced transcript loads; validated Codex source fast paths; unchanged checkpoint reuse; frontend listing retention; directory ignore-check batching | In progress; PF-01…PF-06, PF-09, PF-11 and PF-12 complete (9/15) |
+| 1 | Synthetic baselines; correct/coalesced transcript loads; validated Codex source fast paths; unchanged checkpoint reuse; frontend listing retention; directory ignore-check batching | In progress; PF-01…PF-06, PF-09 and PF-11…PF-13 complete (10/15) |
 | 2 | Provider-owned incremental transcript state, immutable snapshots, byte-bounded cache, revision-aware FTS reuse, compatible transcript deltas | Roadmap only |
 | 3 | Shared per-root project index, separate Git-status freshness, coalesced refresh and safe invalidation | Roadmap only |
 | 4 | Per-source persistent checkpoints, targeted scans, progressive cold discovery, catalog deltas/paging, bounded fair FTS job batches | Roadmap only |
@@ -47,8 +47,8 @@ PF-07B matrix/recovery/evidence implemented, but larger byte-heavy workloads reg
 PF-07C safe opt-out complete: no defensible cheap automatic policy established;
 production optional calls decline with zero proof and one canonical fallback.
 [Decision and evidence](../perf.md#pf-07c--cost-policy-decision-and-production-bypass-2026-10-24).
-PF-07 remains partial/blocked; PF-08/PF-10 blocked; PF-09, PF-11 and PF-12 complete; next task PF-13.
-[Evidence and activation gate](../perf.md#pf-07b--mutation-matrix-recovery-and-larger-evidence-2026-10-24). M1 is 9/15. Caller activation
+PF-07 remains partial/blocked; PF-08/PF-10 blocked; PF-09 and PF-11…PF-13 complete; next task PF-14.
+[Evidence and activation gate](../perf.md#pf-07b--mutation-matrix-recovery-and-larger-evidence-2026-10-24). M1 is 10/15. Caller activation
 and Codex checkpoint optimization remain unimplemented. [Contract feasibility constraints](../tasks/performance-m1.md#pf-06-contract-and-pf-07-feasibility)
 require conservative canonical fallback when metadata cannot prove selection freshness.
 [PF-07A evidence/limits](../perf.md#pf-07a--bounded-content-proof-and-accepting-codex-sources-2026-10-24).
@@ -58,6 +58,7 @@ PF-09 complete: bounded Claude checkpoint summaries; [work counts, retained cost
 PF-11 complete: bounded listing-only snapshots and immediate reopen; [work counts, verification and freshness limits](../perf.md#pf-11--bounded-frontend-listing-snapshots-2026-10-24).
 
 PF-12 complete: app mutations (including hidden saves and Git writes) invalidate overlapping snapshots and supersede older visible list requests; [policy, regressions and limits](../perf.md#pf-12--listing-freshness-and-draft-safety-2026-10-24).
+PF-13 complete: ignore decisions batch a bounded frontier spanning directories, still before descent; [equivalence, counts and limits](../perf.md#pf-13--bounded-directory-frontiers-2026-10-24).
 
 Recommended order: baseline tasks → transcript cache correctness/coalescing →
 Codex source loading → checkpoint reuse → listing retention → directory batching
