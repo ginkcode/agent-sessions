@@ -20,7 +20,14 @@ handlers, GoToFile end alignment and PortForward's initial-focus hook. Remove
 obsolete close-only CSS. Footer actions, tabs, popovers and footer-only dialogs
 are out of scope.
 
-## DC-02 — Regression gate (pending)
+## DC-02 — Regression gate (complete)
+
+New shared-control tests cover default/custom accessible name and tooltip,
+native disabled state, SVG geometry, class forwarding/alignment, compiled
+centering/focus/hover CSS and all ten migrations with critical callback/focus
+hooks. Full frontend suite 727/727 PASS. Check: 0 errors, existing
+`ignoreDeprecations` warning. Build PASS with existing >500 kB chunk warning;
+diff check clean. No native app launched; optical appearance remains unverified.
 
 Use the actual shared control in SSR dialog fixtures. Test button semantics,
 SVG geometry, disabled state, layout/focus hooks and migration coverage. Run

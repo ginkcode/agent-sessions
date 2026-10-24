@@ -428,7 +428,7 @@ M0-01 → M0-02 → M0-03 → M0-07 → M0-08 → M0-09 → M0-10 → M1-13 → 
 - OpenCode (M1-01…07), Codex (M1-08…12), Claude (M0-07…15) and the GUI scaffold (M1-15, M1-17) can each go to a different developer.
 - Frontend work can start against a mocked `M1-16` binding layer.
 
-Dialog close controls: **DC-01 complete / DC-02 pending** — [centered shared close button](docs/tasks/dialog-close.md), consistent modal header controls.
+Dialog close controls: **DC-01 / DC-02 complete** — [centered shared close button](docs/tasks/dialog-close.md), consistent modal header controls.
 
 Dark theme tone: **DT-01…DT-03 complete** — [native-tone surfaces](docs/tasks/dark-tone.md), layer dark surfaces around the native #2C2C2B tone.
 
