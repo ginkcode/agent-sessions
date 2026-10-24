@@ -340,7 +340,7 @@ milestone totals above.
 
 ## Follow-up — Performance
 
-Planned 2026-10-24. Progress: **5/15 complete**, PF-01…PF-05 complete; PF-06…PF-15 not started.
+Planned 2026-10-24. Progress: **6/15 complete**, PF-01…PF-06 complete; PF-07…PF-15 not started.
 [Roadmap](docs/plan/performance.md) ·
 [Milestone 1 briefs and dependency graph](docs/tasks/performance-m1.md).
 PF-01 completed 2026-10-24: synthetic catalog/provider benchmarks, correctness and
@@ -355,7 +355,9 @@ per-key tokens and clear epoch; deterministic race/capacity/paging regressions a
 verification [evidence](docs/perf.md#pf-04--atomic-transcript-invalidation-2026-10-24).
 PF-05 completed 2026-10-24: current-flight coalescing, owned cancellation, four-load
 bound and engine restart/shutdown coverage; [evidence](docs/perf.md#pf-05--coalesced-transcript-loads-2026-10-24).
-Next: PF-06 (validated source-loading contract; not implemented).
+PF-06 completed 2026-10-24: optional source-loading contract, bounded canonical
+fallback, ownership and Codex feasibility constraints; [evidence](docs/perf.md#pf-06--validated-source-loading-contract-2026-10-24).
+Next: PF-07 (Codex Load/Blob fast paths; not implemented).
 
 These tasks are separate from the original milestone totals. Before each later
 performance milestone starts, write its detailed design and ≤4h task breakdown.
@@ -367,7 +369,7 @@ performance milestone starts, write its detailed design and ≤4h task breakdown
 | [PF-03](docs/tasks/performance-m1.md#pf-03--project-listing-baselines) | ✅ | Project listing baselines | 4 | — |
 | [PF-04](docs/tasks/performance-m1.md#pf-04--atomic-transcript-cache-invalidation) | ✅ | Atomic transcript cache invalidation | 4 | PF-02 |
 | [PF-05](docs/tasks/performance-m1.md#pf-05--coalesced-transcript-loads) | ✅ | Coalesced loads and cancellation | 4 | PF-04 |
-| [PF-06](docs/tasks/performance-m1.md#pf-06--validated-source-loading-contract) | ⬜ | Validated source-loading contract | 3 | PF-02 |
+| [PF-06](docs/tasks/performance-m1.md#pf-06--validated-source-loading-contract) | ✅ | Validated source-loading contract | 3 | PF-02 |
 | [PF-07](docs/tasks/performance-m1.md#pf-07--codex-load-and-blob-fast-paths) | ⬜ | Codex Load/Blob fast paths | 4 | PF-06 |
 | [PF-08](docs/tasks/performance-m1.md#pf-08--source-aware-engine-and-fts-callers) | ⬜ | Engine/FTS source-aware callers | 4 | PF-05, PF-07 |
 | [PF-09](docs/tasks/performance-m1.md#pf-09--claude-checkpoint-reuse) | ⬜ | Claude checkpoint reuse | 4 | PF-01 |

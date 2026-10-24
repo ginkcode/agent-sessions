@@ -136,7 +136,7 @@ feedback from the first two stages; they are not included in CD-28.
 ## Performance
 
 [Performance roadmap](../plan/performance.md) and
-[Milestone 1 task briefs](performance-m1.md): **5/15 complete**, PF-01…PF-05 complete; PF-06…PF-15 not started.
+[Milestone 1 task briefs](performance-m1.md): **6/15 complete**, PF-01…PF-06 complete; PF-07…PF-15 not started.
 PF-01…PF-15 cover synthetic baselines, transcript cache correctness/coalescing,
 Codex source fast paths, checkpoint reuse, frontend listing retention and directory
 ignore-check batching. Dependencies, ≤4h estimates and acceptance criteria are in

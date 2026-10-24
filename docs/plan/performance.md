@@ -1,6 +1,6 @@
 # Performance improvement roadmap
 
-Status: in progress 2026-10-24; PF-01…PF-05 complete: synthetic baselines, atomic transcript invalidation and coalesced loads (5/15 M1 tasks).
+Status: in progress 2026-10-24; PF-01…PF-06 complete: synthetic baselines, atomic transcript invalidation, coalesced loads and validated source-loading contract (6/15 M1 tasks).
 
 ## Context and goal
 
@@ -17,7 +17,7 @@ Measure synthetic workloads first and preserve correctness while removing work.
 
 | Performance milestone | Scope | Status |
 |---|---|---|
-| 1 | Synthetic baselines; correct/coalesced transcript loads; validated Codex source fast paths; unchanged checkpoint reuse; frontend listing retention; directory ignore-check batching | In progress; PF-01…PF-05 complete (5/15) |
+| 1 | Synthetic baselines; correct/coalesced transcript loads; validated Codex source fast paths; unchanged checkpoint reuse; frontend listing retention; directory ignore-check batching | In progress; PF-01…PF-06 complete (6/15) |
 | 2 | Provider-owned incremental transcript state, immutable snapshots, byte-bounded cache, revision-aware FTS reuse, compatible transcript deltas | Roadmap only |
 | 3 | Shared per-root project index, separate Git-status freshness, coalesced refresh and safe invalidation | Roadmap only |
 | 4 | Per-source persistent checkpoints, targeted scans, progressive cold discovery, catalog deltas/paging, bounded fair FTS job batches | Roadmap only |
@@ -34,14 +34,17 @@ specifications or permission to implement them wholesale.
 ## Milestone 1
 
 Detailed plan, dependencies, estimates and acceptance criteria:
-[performance-m1.md](../tasks/performance-m1.md). Progress: **5/15 complete**.
+[performance-m1.md](../tasks/performance-m1.md). Progress: **6/15 complete**.
 
 PF-01 evidence: [synthetic baseline](../perf.md#pf-01--synthetic-catalog-and-scanner-baseline-2026-10-24).
 PF-02 evidence: [transcript baseline](../perf.md#pf-02--synthetic-transcript-baseline-2026-10-24).
 PF-03 evidence: [project listing baseline](../perf.md#pf-03--synthetic-project-listing-baseline-2026-10-24).
 PF-04 evidence: [atomic transcript invalidation](../perf.md#pf-04--atomic-transcript-invalidation-2026-10-24).
 PF-05 evidence: [coalesced transcript loads](../perf.md#pf-05--coalesced-transcript-loads-2026-10-24).
-Next: PF-06; source-loading contracts and checkpoint optimization remain unimplemented.
+PF-06 evidence: [validated source-loading contract](../perf.md#pf-06--validated-source-loading-contract-2026-10-24).
+Next: PF-07; Codex fast paths, caller activation and checkpoint optimization remain
+unimplemented. [Contract feasibility constraints](../tasks/performance-m1.md#pf-06-contract-and-pf-07-feasibility)
+require conservative canonical fallback when metadata cannot prove selection freshness.
 
 Recommended order: baseline tasks → transcript cache correctness/coalescing →
 Codex source loading → checkpoint reuse → listing retention → directory batching

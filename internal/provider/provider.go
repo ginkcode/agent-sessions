@@ -59,6 +59,20 @@ type Provider interface {
 	NewSessionCommand(dir string) Command
 }
 
+// SourceLoader optionally loads using canonical scan metadata as an untrusted hint.
+// See LoadWithSource for validation, fallback and metadata ownership rules.
+// Implementations must retain standalone Provider.Load behavior without hints.
+// This is an in-process optimization, not a wire capability or authorization grant.
+type SourceLoader interface {
+	LoadFromSource(ctx context.Context, ref model.SessionRef, source model.SessionMeta) (*model.Transcript, error)
+}
+
+// SourceBlobLoader is the independent Blob counterpart of SourceLoader. Source
+// validation does not replace blob-key validation or authorize external content.
+type SourceBlobLoader interface {
+	BlobFromSource(ctx context.Context, ref model.SessionRef, source model.SessionMeta, key string) ([]byte, error)
+}
+
 // LiveDetector is an optional interface for providers supporting live session detection.
 type LiveDetector interface {
 	Live(ctx context.Context) (map[string]LiveInfo, error) // key: session ID

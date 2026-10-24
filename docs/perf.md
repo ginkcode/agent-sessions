@@ -695,3 +695,47 @@ in PF-04 is not changed or cleaned up here.
 No native GUI/Windows/RPC latency claim. No private stores, QA perf script,
 installs, app launches, process termination, pushes or Windows packages. PF-06
 through PF-15 remain unimplemented; changes are left uncommitted for review.
+
+## PF-06 — Validated source-loading contract (2026-10-24)
+
+Added independent optional `SourceLoader` / `SourceBlobLoader` interfaces and
+`LoadWithSource` / `BlobWithSource` dispatch helpers without changing Provider,
+RPC, generated bindings or frontend protocols. Identity mismatch and unsupported
+providers use standalone methods; wrapped `ErrStaleSource` triggers exactly one
+canonical fallback. Other errors propagate, and cancellation prevents fallback.
+The source value is an untrusted canonical metadata hint, not a capability.
+
+[Contract and Codex feasibility](tasks/performance-m1.md#pf-06-contract-and-pf-07-feasibility)
+records path/ref validation, canonical overlays, freshness, cancellation, Blob key
+semantics, engine catalog ownership and FTS queued-revision ownership. Deep review
+of discovery, index loading, canonical scan selection and Load/Blob found that
+metadata alone cannot exclude unseen duplicates or prove index/WAL/parent
+freshness. PF-07 must obtain sufficient provider-owned evidence or conservatively
+re-resolve; file stat/UpdatedAt alone is not a valid shortcut. No performance gain,
+zero-discovery guarantee, validation cache or fast-path implementation is claimed.
+
+### Evidence and verification
+
+- New dispatch tests count optional/base calls for success, mismatched ref, wrapped
+  stale errors, ordinary failures, cancellation before dispatch and during stale
+  rejection. Both Load and Blob are covered, including canonical fallback output.
+- Generated temporary Codex fixtures test unsupported providers and a deliberately
+  stale-only optional adapter. Outside-root/traversal/missing/duplicate hints and
+  forged title overlays cannot alter canonical transcript/Blob output; invalid
+  Blob keys and a source replaced by an outside-root symlink are rejected.
+  This tests fallback safety, not a future accepting fast-path validator. PF-07
+  must add accepting-path duplicate/index/freshness validation tests.
+- Passed focused `go test ./internal/provider ./internal/provider/codex -run
+  TestSource -count=1`; repeated source contract race tests with `-count=25`;
+  `go test -race ./internal/provider/... -run
+  'TestSource|TestLoad|TestBlob|TestIndex|TestScan' -count=1`.
+- Passed `go test ./...`, `go build ./...`, `go vet ./...`; frontend `npm test`,
+  `npm run check`, `npm run build`; cached pinned `go tool gofumpt`;
+  `go tool golangci-lint run --new-from-rev=HEAD ./internal/provider/...` (0 issues)
+  and `git diff --check`. Existing repository-wide lint debt remains as recorded
+  in PF-04; no unrelated lint cleanup. Tool invocation used `GOPROXY=off`.
+
+Only PF-06 is implemented. PF-07…PF-15 remain unimplemented; no engine/FTS caller
+activation. No private stores, QA perf script, installs, process termination,
+application launches, Windows packages, commits or pushes. Native GUI/manual QA
+and Windows runtime verification are unperformed. Changes left for review.

@@ -1,6 +1,6 @@
 # Performance Milestone 1 — Baselines and targeted reuse
 
-- Status: in progress 2026-10-24; **5/15 tasks complete**.
+- Status: in progress 2026-10-24; **6/15 tasks complete**.
 - Parent plan: [performance.md](../plan/performance.md).
 - All estimates include focused tests and are planning estimates, not promises.
 - Every task is ≤4 developer hours. Split it here and in `TASKS.md` before coding
@@ -22,11 +22,13 @@ PF-04 completed 2026-10-24; atomic per-key transcript invalidation and determini
 race evidence are in [../perf.md](../perf.md#pf-04--atomic-transcript-invalidation-2026-10-24).
 PF-05 completed 2026-10-24; coalesced loads, owned cancellation and repeated
 same-key evidence are in [../perf.md](../perf.md#pf-05--coalesced-transcript-loads-2026-10-24).
-No implementation has been performed for PF-06…PF-15.
+PF-06 completed 2026-10-24; optional source contract, bounded canonical fallback,
+ownership and Codex feasibility are in [../perf.md](../perf.md#pf-06--validated-source-loading-contract-2026-10-24).
+No implementation has been performed for PF-07…PF-15.
 
 ## Task index
 
-PF-01 through PF-05 are **complete**; all other rows are **not started**. Dependencies are completion gates, not mere ordering
+PF-01 through PF-06 are **complete**; all other rows are **not started**. Dependencies are completion gates, not mere ordering
 suggestions. All implementation tasks also depend on the shared guardrails in the
 [parent plan](../plan/performance.md#shared-guardrails).
 
@@ -179,6 +181,10 @@ bounds. Same-generation misses invoke the provider once. Race tests pass.
 
 ## PF-06 — Validated source-loading contract
 
+**Status:** complete 2026-10-24. Independent optional interfaces, single canonical
+fallback, ownership/freshness contract and synthetic invalid-hint/race tests;
+[evidence and limits](../perf.md#pf-06--validated-source-loading-contract-2026-10-24).
+
 **Goal:** callers with current metadata can avoid rediscovery without weakening
 canonical source selection.
 
@@ -194,6 +200,62 @@ Codex resolution helpers and tests.
 
 **Done when:** contract tests demonstrate invalid hints cannot bypass path checks,
 fallback rules are explicit, and no remote/public frontend protocol changes are needed.
+
+### PF-06 contract and PF-07 feasibility
+
+`provider.SourceLoader` / `SourceBlobLoader` take `(ctx, ref, SessionMeta)`;
+`LoadWithSource` / `BlobWithSource` dispatch independently and fall back to the
+base method once on `errors.Is(err, ErrStaleSource)`. Missing optional support or
+mismatched identity also uses the base method. Other errors propagate; cancellation
+is checked before dispatch and before fallback. No retry loop or public/wire field
+is added. Implementations can instead re-resolve canonically internally. The
+metadata value is an unmodified canonical scan snapshot, never authorization.
+Standalone Load/Blob remain the canonical fallback and support fresh providers.
+
+Engine callers own a catalog snapshot plus the transcript coordinator's current
+token/epoch. FTS must read session metadata consistently with the queued revision
+(or skip a superseded job), independently of engine/catalog state. Its existing
+transaction checks of both current and queued revisions remain mandatory before
+document replacement; fallback must not overwrite DB metadata with `Load.Meta`.
+Neither caller is integrated in PF-06. Blob keys retain standalone validation and
+are not revision-pinned: fallback may reject a key whose source changed.
+
+Codex inspection establishes these constraints for PF-07:
+
+- `Scan` discovers conventional active/archive files, then reads the highest
+  numeric valid `state_N.sqlite`. Valid index paths can add unconventional files.
+  `indexRolloutPath` checks lexical and resolved containment, configured-root
+  aliases, rollout naming, regular-file status and readability. It is necessary
+  before using a hinted path, but proves neither session ID nor canonicality.
+- Raw rollout aggregates choose newer **raw** UpdatedAt, active on a tie, then
+  lexically smaller path. A valid index path overrides that choice only if the
+  parsed file ID matches. An invalid index path discards that row; an absent path
+  permits discovered selection plus overlays. Path/ID mismatch discards overlays.
+- Nonempty index title/prompt/CWD/model/version/branch/times override raw values;
+  counts/tokens remain parsed. Archive-column presence matters. If spawn edges
+  exist they clear raw ancestry and require a visible canonical parent. Therefore
+  even a targeted thread lookup cannot blindly trust its parent ID.
+- `SessionMeta` has no file identity, source size/mtime, discovery generation or
+  SQLite revision proof. UpdatedAt can come from records or index overlays.
+  A hint matching the file cannot exclude a newer/added duplicate elsewhere,
+  a rewritten file with preserved timestamps, a new higher-numbered index, WAL
+  updates, lost index overlays or changed parent visibility. Checking only the
+  hinted file or DB mtime would silently weaken standalone semantics.
+- PF-07 may skip provider-wide **rollout parsing** only when it has evidence for
+  all relevant selection/overlay dependencies. Safe conservatism is required:
+  absent that evidence return ErrStaleSource or do one canonical resolution.
+  Discovery/reconciliation may still be necessary to exclude competing sources;
+  this contract does not promise zero directory enumeration or that every valid
+  catalog hint is fast. Provider-owned bounded evidence may be developed in
+  PF-07, but a trusted path, immutable snapshot, watcher proof or persisted token
+  must not be invented from this metadata. Preserve existing best-effort read
+  races; no atomic filesystem/index snapshot is claimed.
+
+PF-07's “valid hints cause no provider-wide scan” gate applies to **validated**
+hints with sufficient evidence, not merely matching caller fields. If proving a
+useful no-Scan case while retaining duplicate/index parity exceeds its four-hour
+budget, split PF-07 before coding, not by relaxing canonicality. PF-06 introduces
+no Codex fast path, validation cache, index query rewrite or engine/FTS activation.
 
 ## PF-07 — Codex Load and Blob fast paths
 
