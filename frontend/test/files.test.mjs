@@ -11,6 +11,7 @@ import {
   filterFiles,
   isImageFile,
   folderStatus,
+  inGitRepository,
   lineMarks,
   matchScore,
   parentFolders,
@@ -291,4 +292,19 @@ test('FilesStore: one click previews, double click keeps a tab, folders are reme
   } finally {
     delete globalThis.__storeFixture;
   }
+});
+
+test('inGitRepository covers git listings and repositories nested below a plain directory', () => {
+  assert.equal(inGitRepository(null, 'a.go'), false);
+  assert.equal(inGitRepository({ git: true }, 'anything/a.go'), true);
+  // Older servers send no repositories: a walked listing has no blame, as before.
+  assert.equal(inGitRepository({}, 'api/main.go'), false);
+  const walked = { repositories: ['api', 'apps/web'] };
+  assert.equal(inGitRepository(walked, 'api/main.go'), true);
+  assert.equal(inGitRepository(walked, 'apps/web/src/deep/x.ts'), true);
+  assert.equal(inGitRepository(walked, 'notes.md'), false);
+  assert.equal(inGitRepository(walked, 'api'), false, 'the directory itself is not a file in it');
+  assert.equal(inGitRepository(walked, 'apis/x.go'), false, 'whole path segments only');
+  assert.equal(inGitRepository(walked, 'apps/website/x.ts'), false);
+  assert.equal(inGitRepository(walked, 'apps/x.ts'), false);
 });

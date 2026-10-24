@@ -200,13 +200,15 @@ test('PF-11 Windows separator normalization preserves root and host isolation', 
 
 test('PF-11 snapshots own immutable listing data and reject old epoch and same-root replies', async () => {
   const { store, fixture } = await setup();
-  const result = { root: '/p', files: ['owned'], directories: ['empty'], ignored: ['.env'], status: { owned: 'M' } };
+  const result = { root: '/p', files: ['owned'], directories: ['empty'], ignored: ['.env'], repositories: ['repo'], status: { owned: 'M' } };
   fixture.api.listFiles = async () => result;
   await store.refresh();
-  result.files.push('mutated'); result.directories.push('mutated'); result.ignored.push('mutated'); result.status.owned = 'D';
+  result.files.push('mutated'); result.directories.push('mutated'); result.ignored.push('mutated'); result.repositories.push('mutated'); result.status.owned = 'D';
   assert.deepEqual(store.listing.files, ['owned']);
   assert.deepEqual(store.listing.directories, ['empty']);
   assert.deepEqual(store.listing.ignored, ['.env']);
+  assert.deepEqual(store.listing.repositories, ['repo']);
+  assert.throws(() => store.listing.repositories.push('oops'), TypeError);
   assert.equal(store.listing.status.owned, 'M');
   assert.throws(() => store.listing.files.push('oops'), TypeError);
   const old = deferred(), fresh = deferred();

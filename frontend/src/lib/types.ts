@@ -293,6 +293,8 @@ export interface FileListing {
   truncated?: boolean;
   /** The list came from git, so ignored files are left out. */
   git?: boolean;
+  /** Git work trees inside a listing made without git (relative directories); older servers omit this. */
+  repositories?: string[];
   /** Git status of each changed file; deleted files are here, not in files. */
   status?: Record<string, GitStatus>;
   /** Files .gitignore leaves out (such as .env), for search only. */

@@ -41,6 +41,7 @@ function listingSnapshot(listing: FileListing): FileListing {
     files: Object.freeze([...listing.files]) as unknown as string[],
     ...(listing.directories && { directories: Object.freeze([...listing.directories]) as unknown as string[] }),
     ...(listing.ignored && { ignored: Object.freeze([...listing.ignored]) as unknown as string[] }),
+    ...(listing.repositories && { repositories: Object.freeze([...listing.repositories]) as unknown as string[] }),
     ...(listing.status && { status: Object.freeze({ ...listing.status }) }),
   });
 }

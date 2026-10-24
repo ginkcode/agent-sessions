@@ -199,6 +199,15 @@ export function withDeleted(paths: string[], status: Record<string, GitStatus> |
   return deleted.length ? [...paths, ...deleted].sort() : paths;
 }
 
+/**
+ * Whether path is in a Git work tree: the whole listing came from git, or
+ * the path is inside one of the repositories found below a plain directory.
+ */
+export function inGitRepository(listing: { git?: boolean; repositories?: string[] } | null | undefined, path: string): boolean {
+  if (!listing) return false;
+  return Boolean(listing.git) || (listing.repositories ?? []).some((dir) => path.startsWith(dir + '/'));
+}
+
 // Which letter wins when a folder holds several kinds of change.
 const STATUS_RANK: Record<GitStatus, number> = { C: 5, M: 4, D: 3, R: 2, A: 1, U: 0 };
 

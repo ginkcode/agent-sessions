@@ -17,7 +17,7 @@
   import { copyToClipboard } from '../../../portable';
   import { printFile } from '../../../print';
   import { findCount } from '../../../fileFind';
-  import { diffRows, fileChanges, fileLanguage, filePreview, isImageFile, lineMarks, type DiffRow } from '../../../files';
+  import { diffRows, fileChanges, fileLanguage, filePreview, inGitRepository, isImageFile, lineMarks, type DiffRow } from '../../../files';
   import type { GitStatus } from '../../../types';
   import { toast } from '../../../stores/toast.svelte';
   import { markdownFileTarget } from '../../../fileActions';
@@ -297,8 +297,9 @@
   let showSvg = $derived(previewOn && !editing && previewKind === 'svg');
   // Rendered rather than source: the source-only tools hide.
   let showPreview = $derived(showMarkdown || showSvg);
-  // Only git listings can blame; older hosts say so instead of failing per line.
-  let blameShown = $derived(Boolean(selectedLines && !showPreview && files.listing?.git && !external && !activeTab?.gitBasis));
+  // Only files in a Git work tree (the listing's, or one nested below a plain
+  // directory) can blame; older hosts say so instead of failing per line.
+  let blameShown = $derived(Boolean(selectedLines && !showPreview && files.selected && inGitRepository(files.listing, files.selected) && !external && !activeTab?.gitBasis));
   let canBlame = $derived(connectionStore.capabilities.blame === true && !blocked);
   // The selected line's blame loads by itself; another line, file or text starts over.
   $effect(() => {
