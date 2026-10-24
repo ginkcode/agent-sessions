@@ -54,7 +54,7 @@ Verification: `internal/files` PASS alone, including
 `TestReadChangesInNestedRepository` (markers below a plain directory, none for a
 plain file) and the existing Git-root diff/save tests.
 
-## NB-04 — Git status for nested repositories in walked listings (in progress)
+## NB-04 — Git status for nested repositories in walked listings (complete)
 
 Walked listings carry no `Status`, so the tree and tabs show no change tints.
 For each repository the walk finds, run one `git status --porcelain=v1 -z
@@ -70,6 +70,17 @@ stays best effort: a failing repository contributes nothing and never fails the
 listing. Git-rooted listings are unchanged (same Git invocations). Test the
 merge, prefixing, ceiling isolation, failures, cancellation and the bounded
 grace with real Git; run Go and frontend tests, check, build and diff checks.
+
+Verification: Go `./internal/...` PASS; `internal/files` PASS under `-race`;
+frontend 732/732 PASS and check 0 errors (no frontend changes needed: status
+and markers were never gated on Git listings). Real-Git tests cover modified,
+untracked and deleted files across nested repositories (one `status` call per
+repository, no other Git work), and an invalid nested `.git` inside an outer
+repository reporting nothing (the test fails without the ceiling). Fakes cover at
+most 4 concurrent statuses, the grace cutoff cancelling a slow repository before
+the listing returns, failures, no repositories, and a cancelled listing. Not
+exercised in the native app, on a large real workspace or on a remote host
+(which needs the rebuilt server bundle).
 
 The Changes (source control) pane still covers only the opened directory's own
 repository.

@@ -173,6 +173,11 @@ func runGit(ctx context.Context, root string, args ...string) ([]byte, bool) {
 // console and unquoted paths. flags precede the subcommand; stdin may be nil.
 // On error, stdout holds whatever git wrote, for exit codes that are answers.
 func gitOutput(ctx context.Context, root string, stdin io.Reader, flags []string, args ...string) ([]byte, error) {
+	return gitOutputEnv(ctx, root, stdin, nil, flags, args...)
+}
+
+// gitOutputEnv is gitOutput with env added to the process environment.
+func gitOutputEnv(ctx context.Context, root string, stdin io.Reader, env, flags []string, args ...string) ([]byte, error) {
 	git, err := exec.LookPath("git")
 	if err != nil {
 		return nil, err
@@ -182,6 +187,9 @@ func gitOutput(ctx context.Context, root string, stdin io.Reader, flags []string
 	argv := append(append([]string{"-C", root}, flags...), "-c", "core.quotepath=off")
 	cmd := exec.CommandContext(ctx, git, append(argv, args...)...) //nolint:gosec
 	hideConsole(cmd)
+	if len(env) > 0 {
+		cmd.Env = append(os.Environ(), env...)
+	}
 	cmd.Stdin = stdin
 	var stdout bytes.Buffer
 	cmd.Stdout = &stdout
@@ -354,6 +362,7 @@ func hunkRange(s string) (start, count int) {
 
 func walk(ctx context.Context, root string) (Listing, error) {
 	out := Listing{Root: root, Files: []string{}}
+	statuses := startNestedStatuses(ctx)
 	errFull := errors.New("full")
 	err := filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -375,6 +384,7 @@ func walk(ctx context.Context, root string) (Listing, error) {
 			if parent := filepath.Dir(p); parent != root {
 				if rel, err := filepath.Rel(root, parent); err == nil {
 					out.Repositories = append(out.Repositories, filepath.ToSlash(rel))
+					statuses.start(parent, filepath.ToSlash(rel))
 				}
 			}
 		}
@@ -396,10 +406,12 @@ func walk(ctx context.Context, root string) (Listing, error) {
 		return nil
 	})
 	if err != nil && !errors.Is(err, errFull) {
+		statuses.finish(0)
 		return Listing{}, err
 	}
 	slices.Sort(out.Files)
 	slices.Sort(out.Repositories)
+	out.Status = statuses.finish(nestedStatusGrace)
 	return out, nil
 }
 
