@@ -1,6 +1,6 @@
 # Startup responsiveness — priority package before Milestone 2
 
-Status: **complete** 2026-10-24 (6/6): ST-00 documentation, ST-01 measurement, ST-02 (ST-02A engine, ST-02B adapters), ST-03, ST-04 and the ST-05 integrated gate. Native GUI, real SSH and Windows execution were not performed.
+Status: original package **complete** 2026-10-24 (6/6); ST-06 large-index follow-up reopened after the user retest. Original gate: ST-00 documentation, ST-01 measurement, ST-02 (ST-02A engine, ST-02B adapters), ST-03, ST-04 and the ST-05 integrated gate. Native GUI, real SSH and Windows execution were not performed.
 [Sequential task briefs](../tasks/performance-startup.md) ·
 [Performance roadmap](performance.md) · [Task tracker](../../TASKS.md#startup-priority-package).
 
@@ -219,3 +219,12 @@ for changed-code lint and report unavailable/existing failures faithfully. These
 are implementation gates, not checks claimed by ST-00. Automated evidence does
 not establish native GUI responsiveness; native paint remains unverified unless
 separately exercised.
+
+
+## Large-index follow-up (2026-10-24)
+
+The retest still shows >10 s locally. ST-01/ST-05 used small databases and did not
+exclude database-size-dependent integrity costs. [ST-06A/B](../tasks/performance-startup.md#st-06a--reproduce-large-index-startup-cost)
+measure a generated large FTS index first, then validate early read-only cached-hint
+publication while retaining mandatory writer integrity checking and recovery. This
+extends startup work before M2, not the completed historical small-fixture gate.

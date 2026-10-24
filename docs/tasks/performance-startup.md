@@ -1,6 +1,6 @@
 # Startup responsiveness — sequential task briefs
 
-Status: **6/6 complete** 2026-10-24: ST-00/ST-01 complete; ST-02 complete (ST-02A engine, ST-02B adapters); ST-03/ST-04 complete; ST-05 integrated gate complete with native GUI/SSH/Windows execution explicitly unperformed. Package closed.
+Status: original package **6/6 complete**; large-index follow-up **ST-06A in progress, ST-06B pending** 2026-10-24. The original gate did not reproduce the user's continuing >10 s delay. Original completion:  ST-00/ST-01 complete; ST-02 complete (ST-02A engine, ST-02B adapters); ST-03/ST-04 complete; ST-05 integrated gate complete with native GUI/SSH/Windows execution explicitly unperformed. Package closed.
 [Plan and status/compatibility contract](../plan/performance-startup.md) ·
 [Roadmap](../plan/performance.md) · [Tracker](../../TASKS.md#startup-priority-package).
 
@@ -459,3 +459,43 @@ separately exercised on approved generated roots or explicitly unperformed, not
 inferred from API timing. Update statuses without completing blocked PF tasks;
 Milestone 2 design/task breakdown remains a separate next step, not implementation
 in this package.
+
+
+## ST-06A — Reproduce large-index startup cost
+
+**Status:** in progress 2026-10-24. **Estimate:** ≤4 h. **Dependency:** ST-05.
+
+The user still observes >10 s of empty discovery locally, with a session containing
+2,952 messages, while a remote host loads in <3 s. Earlier synthetic fixtures were
+too small to test database-size scaling. Do not infer exact device latency from them.
+
+- Add an opt-in generated approximately 300 MB FTS index including a 3,000-message
+  transcript. No private database or logs may be read. Measure `Open`, Ping,
+  `quick_check(1)`, migrations and `LoadCatalog` separately across repeated opens.
+- Use real metadata commits and FTS replacement logic; record actual final size,
+  page-cache/WAL conditions and fixture-generation exclusions honestly. No CI timing
+  thresholds or machine-dependent duration subtraction.
+- Record evidence and select the next safe intervention. Commit independently.
+
+**Done when:** repeatable large-index evidence explains a demonstrable pre-publication
+cost; no claim that it fully reproduces the user's device or native UI timing.
+
+## ST-06B — Publish cached hints before full integrity verification
+
+**Status:** pending design validation. **Estimate:** ≤4 h. **Dependency:** ST-06A.
+
+Candidate design: while owning the writer lock, read only the current-schema cache
+metadata through the existing read-only API and publish a consistent cached snapshot
+before the existing full writer open/integrity/migration path. Keep verification
+mandatory and the discovery state nonterminal. After verification/recovery, replace
+hints with the authoritative catalog and notify again, including an empty rebuild.
+A failed early read must not block normal startup or trigger destructive recovery.
+Do not split the established reader snapshot or alter promotion ordering.
+
+**Acceptance:** deterministic barrier inside verification proves cached groups/counts/
+sessions can be queried and catalog event delivered beforehand; failed/corrupt early
+read falls through safely; successful integrity recovery removes stale hints; writer
+failure followed by fallback cannot leave ghost hints; cancellation/Close/restart and
+reader promotion invariants preserved. Repeated generated large-index timing must
+show publication no longer waits for the full integrity scan. Native responsiveness
+remains unverified. Split before coding if design exceeds this scope.
