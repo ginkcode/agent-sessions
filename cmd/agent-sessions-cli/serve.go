@@ -70,11 +70,11 @@ func serveCmd(ctx context.Context, args []string, resolveRoots func() (paths.Roo
 
 	srv := rpc.NewServer(nil, stdin, stdout)
 	srv.SetIdleTimeout(*idleTimeout)
-	srv.SetStarter(func(sctx context.Context) (engine.Backend, rpc.Capabilities, paths.Roots, error) {
+	srv.SetPreparer(func(context.Context) (rpc.PreparedBackend, error) {
 		roots, err := resolveRoots()
 		if err != nil {
 			initErr = fmt.Errorf("resolve roots: %w", err)
-			return nil, rpc.Capabilities{}, paths.Roots{}, initErr
+			return rpc.PreparedBackend{}, initErr
 		}
 		// 2. Create and start the engine
 		e := engine.NewEngine(
@@ -86,12 +86,14 @@ func serveCmd(ctx context.Context, args []string, resolveRoots func() (paths.Roo
 			// without it code diagnostics stay unsupported.
 			engine.WithRemoteCodeDiagnostics(os.Getenv(remote.DiagnosticsHostEnv)),
 		)
-		if err := e.Start(sctx); err != nil {
-			initErr = fmt.Errorf("start engine: %w", err)
-			return nil, rpc.Capabilities{}, paths.Roots{}, initErr
-		}
 		eng = e
-		return e, rpc.Capabilities{
+		return rpc.PreparedBackend{Backend: e, Roots: roots, Start: func(sctx context.Context) error {
+			if err := e.Start(sctx); err != nil {
+				initErr = fmt.Errorf("start engine: %w", err)
+				return initErr
+			}
+			return nil
+		}, Capabilities: rpc.Capabilities{
 			Trash:           e.TrashSupported(),
 			Manage:          true,
 			Export:          true,
@@ -112,7 +114,7 @@ func serveCmd(ctx context.Context, args []string, resolveRoots func() (paths.Roo
 			SearchFiles:     true,
 			ReplaceFiles:    true,
 			NewSession:      true,
-		}, roots, nil
+		}}, nil
 	})
 	server.Store(srv)
 

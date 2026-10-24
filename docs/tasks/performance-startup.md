@@ -517,7 +517,7 @@ mandatory. Generated fixtures only, no private stores or real host connections.
 | ST-07A | Complete | Document readiness/admission/lifecycle contracts | 1 h |
 | ST-07B | Complete | Atomic discovery snapshot/change subscription | ≤3 h |
 | ST-07C | Complete | Prepared RPC startup, early initialize and method gate | ≤4 h |
-| ST-07D | Pending | CLI wiring and generated real-engine integration | ≤3 h |
+| ST-07D | Complete | CLI wiring and generated real-engine integration | ≤3 h |
 | ST-07E | Pending | Opt-in content-free remote phase timing | ≤3 h |
 | ST-07F | Pending | Integrated regression gate and repeated evidence | ≤3 h |
 
@@ -582,3 +582,8 @@ initialization before tracked Start, waits for new-lifetime usability, and gates
 noncatalog calls cancellation-aware. Serve joins startup before diagnostics expiry.
 Existing synchronous composition remains unchanged. RPC race suite PASS (9.150 s),
 focused prepared tests repeated three times PASS, changed-code lint 0 issues.
+
+ST-07D evidence: production CLI now prepares engine ownership before tracked startup.
+Real-engine generated-cache RPC test reads catalog/status with watcher setup held.
+RPC / CLI / app race suites PASS (9.217 / 2.121 / 2.891 s); changed-code lint 0 issues.
+No real remote deployment or native UI exercised.
