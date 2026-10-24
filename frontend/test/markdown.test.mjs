@@ -116,6 +116,12 @@ test('links normalize prose escapes and entities before validating destinations'
   assert.match(renderMarkdown('[x](src/a&amp;b.ts)', true), /data-file-link="src\/a&amp;b.ts"/);
 });
 
+test('documentation admonitions remain ordinary text outside hovers', () => {
+  const html = renderMarkdown('!!! abstract "Usage Documentation"\n    A description');
+  assert.match(html, /!!! abstract &quot;Usage Documentation&quot;/);
+  assert.doesNotMatch(html, /<blockquote>/);
+});
+
 test('renderMarkdown leaves mermaid blocks for the diagram renderer', () => {
   const md = renderMarkdown('```Mermaid\ngraph TD\n  A["<img src=x onerror=alert(1)>"] --> B\n```');
   assert.ok(md.includes('class="code-block-container mermaid-block"'));

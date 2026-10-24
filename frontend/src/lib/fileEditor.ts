@@ -109,6 +109,7 @@ const theme = EditorView.theme({
   '.cm-symbol-hover .hover-body > :last-child': { marginBottom: '0' },
   '.cm-symbol-hover ul, .cm-symbol-hover ol': { paddingLeft: '1.4em' },
   '.cm-symbol-hover .inline-code': { fontFamily: 'var(--font-mono)', fontSize: '0.9em', padding: '0 3px', borderRadius: '3px', backgroundColor: 'var(--bg-tertiary)' },
+  '.cm-symbol-hover blockquote': { margin: '0.4em 0', paddingLeft: '0.8em', borderLeft: '2px solid var(--border-color)' },
   '.cm-symbol-hover a': { color: 'var(--accent-color)' },
   '.cm-symbol-hover .hover-plain': { margin: '0', fontFamily: 'var(--font-mono)', whiteSpace: 'pre-wrap' },
   '.cm-symbol-hover .hover-truncated': { marginTop: '4px', fontSize: '11px', color: 'var(--text-secondary)' },

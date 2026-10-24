@@ -80,6 +80,11 @@
     border-radius: 3px;
     background-color: var(--bg-tertiary);
   }
+  .hover-body :global(blockquote) {
+    margin: 0.4em 0;
+    padding-left: 0.8em;
+    border-left: 2px solid var(--border-color);
+  }
   .hover-body :global(a) { color: var(--accent-color); }
   .hover-body :global(.hover-plain) {
     margin: 0;

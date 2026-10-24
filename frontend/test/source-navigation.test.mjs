@@ -55,6 +55,40 @@ test('hover escapes plaintext and renders markdown through the safe transcript r
   assert.equal(locationText({ ...place('/home/a/lib.go', 3), external: true }, () => '~/lib.go'), '~/lib.go:4:3');
 });
 
+test('Python documentation hover renders entities, escaped identifiers and admonitions', () => {
+  const value = [
+    '```python', 'class ItemCreate(*, name: str):', '    pass', '```', '---',
+    '!!! abstract "Usage Documentation"',
+    '&nbsp;&nbsp;&nbsp;&nbsp;[Models](https://docs.example/models)', '',
+    'A base class for creating models.', '', 'Attributes:',
+    String.raw`&nbsp;&nbsp;&nbsp;&nbsp;\_\_class\_vars\_\_: The class variables.`,
+  ].join('\n');
+  const html = hoverHtml({ kind: 'markdown', value });
+  assert.match(html, /language-python/);
+  assert.match(html, /<blockquote><p><strong>Usage Documentation<\/strong>/);
+  assert.match(html, /href="https:\/\/docs.example\/models"/);
+  assert.match(html, /<\/blockquote>\n<p>A base class/);
+  assert.match(html, / {4}__class_vars__: The class variables/);
+  assert.doesNotMatch(html, /&amp;nbsp;|\\_|!!! abstract/);
+});
+
+test('hover admonitions respect dedents, code literals, malformed headers and plaintext', () => {
+  const value = 'Intro\n!!! note "Custom <title>"\n    First\n\n    Second\nAfter';
+  const html = hoverHtml({ kind: 'markdown', value });
+  assert.match(html, /<p>Intro<\/p>\n<blockquote>/);
+  assert.match(html, /Custom &lt;title&gt;/);
+  assert.match(html, /<p>First<\/p>\n<p>Second<\/p><\/blockquote>\n<p>After<\/p>/);
+  for (const content of ['!!! broken "title', '!!! note "No body"\nAfter']) {
+    assert.doesNotMatch(hoverHtml({ kind: 'markdown', value: content }), /<blockquote>/);
+  }
+  const literal = '```text\n!!! note "Literal"\n    &nbsp; \\_name\n```';
+  const code = hoverHtml({ kind: 'markdown', value: literal });
+  assert.doesNotMatch(code, /<blockquote>/);
+  assert.match(code, /data-code="!!! note &quot;Literal&quot;\n    &amp;nbsp; \\_name"/);
+  assert.match(hoverHtml({ kind: 'plaintext', value }), /!!! note &quot;Custom &lt;title&gt;&quot;/);
+  assert.equal(hoverHtml({ kind: 'plaintext', value: '&nbsp; \\_name' }), '<pre class="hover-plain">&amp;nbsp; \\_name</pre>');
+});
+
 test('caret lookup supports Chromium and WebKit and missing points', () => {
   const node = {};
   assert.deepEqual(caretPoint({ caretPositionFromPoint: () => ({ offsetNode: node, offset: 3 }) }, 1, 2), { node, offset: 3 });

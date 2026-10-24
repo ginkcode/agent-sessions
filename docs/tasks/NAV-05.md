@@ -8,10 +8,17 @@
   source NULs cannot forge renderer tokens. Focused renderer/navigation/editor
   tests: 62/62 PASS. An initial new test had invalid JavaScript backtick quoting;
   corrected the fixture and reran successfully.
-- HD-02 pending: adapt indentation-delimited documentation admonitions only for
-  Markdown hovers, with matching viewer/editor styles and synthetic Python
-  documentation regressions. Run focused/full frontend tests, check/build and
-  diff checks. Native tooltip appearance remains unverified without an app test.
+- HD-02 complete: Markdown hovers adapt indentation-delimited documentation
+  admonitions to a titled blockquote, including four `&nbsp;` indentation tokens
+  emitted by language servers. Fenced examples, plaintext, malformed directives,
+  body/dedent boundaries and ordinary transcript Markdown remain unchanged.
+  Compact blockquote styles match in viewer and editor. Synthetic Python class
+  documentation verifies the signature, link and escaped attribute names together.
+  Focused renderer/navigation/editor tests: 64/64 PASS; final full frontend suite:
+  708/708 PASS (includes an additional hover-only scope regression). Check: zero
+  errors, existing invalid `ignoreDeprecations` warning. Production build PASS,
+  existing >500 kB chunk warning. `git diff --check` PASS. No app launch: native
+  tooltip appearance and pointer behavior remain unverified.
 
 The reported class hover displays literal `&nbsp;`, backslashes around attribute
 names and `!!! abstract "Usage Documentation"`. The first two are standard inline

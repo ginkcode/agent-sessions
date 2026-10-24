@@ -132,9 +132,47 @@ function escapeHtml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
+// Language servers may pass through Python-Markdown documentation directives.
+// Adapt only their indented bodies, never literal examples or plaintext hovers.
+function hoverMarkdown(source: string): string {
+  const lines = source.split(/\r?\n/);
+  const out: string[] = [];
+  let fenced = false;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (line.trimStart().startsWith('```')) fenced = !fenced;
+    const header = !fenced && line.match(/^!!! ([a-z][\w-]*)(?: "([^"\n]+)")?\s*$/i);
+    if (!header) {
+      out.push(line);
+      continue;
+    }
+    // Some servers encode the four-space indent as nonbreaking spaces.
+    const indent = /^(?: {4}|\t|(?:&nbsp;){4}| {4})/;
+    const body: string[] = [];
+    let next = i + 1;
+    while (next < lines.length) {
+      if (indent.test(lines[next])) {
+        body.push(lines[next].replace(indent, ''));
+        next++;
+      } else if (!lines[next].trim()) {
+        body.push('');
+        next++;
+      } else break;
+    }
+    if (!body.some((l) => l.trim())) {
+      out.push(line);
+      continue;
+    }
+    const title = (header[2] ?? header[1]).replace(/[\\`*_[\]<>]/g, '\\$&');
+    out.push('', `> **${title}**`, '>', ...body.map((l) => `> ${l}`), '');
+    i = next - 1;
+  }
+  return out.join('\n');
+}
+
 /** The hover text as HTML: Markdown through the transcript renderer, plain text escaped. */
 export function hoverHtml(hover: CodeHoverText): string {
-  return hover.kind === 'markdown' ? renderMarkdown(hover.value) : `<pre class="hover-plain">${escapeHtml(hover.value)}</pre>`;
+  return hover.kind === 'markdown' ? renderMarkdown(hoverMarkdown(hover.value)) : `<pre class="hover-plain">${escapeHtml(hover.value)}</pre>`;
 }
 
 export const SOURCE_HISTORY_LIMIT = 50;
